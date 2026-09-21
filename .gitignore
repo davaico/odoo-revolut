@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.coverage
+.pytest_cache/
+
+# Local environments and tooling
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+.idea/
+.vscode/
+
+# Odoo runtime data
+*.log
+*.pid
+filestore/
+sessions/
+
+# Secrets and certificates
+*.key
+*.pem
+*.p12
+secrets/
+
+# Operating system files
+.DS_Store
+Thumbs.db
