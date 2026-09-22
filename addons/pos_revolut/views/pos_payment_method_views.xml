@@ -15,6 +15,10 @@
                     <field name="revolut_location_id" required="use_payment_terminal == 'revolut'"/>
                     <field name="revolut_terminal_id" required="use_payment_terminal == 'revolut'"/>
                     <field
+                        name="revolut_fulfilment_type"
+                        required="use_payment_terminal == 'revolut'"
+                    />
+                    <field
                         name="revolut_secret_reference"
                         required="use_payment_terminal == 'revolut'"
                         placeholder="ODOO_REVOLUT_SECRET_MAIN_TERMINAL"

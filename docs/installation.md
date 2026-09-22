@@ -1,7 +1,10 @@
 # Install and configure POS Revolut
 
-This release adds configuration and a non-payment terminal check. It does not
-create Revolut orders, payment intents, payments, or refunds.
+This release supports one full Revolut terminal payment per POS order. Odoo
+persists and claims the operation before each mutating Merchant API request,
+pushes the amount to the configured terminal, polls through the Odoo server,
+and completes the sale only after the underlying Revolut payment is verified as
+`captured` or `completed`.
 
 ## Requirements
 
@@ -10,9 +13,13 @@ create Revolut orders, payment intents, payments, or refunds.
 - the standard Odoo `point_of_sale` addon
 - outbound HTTPS from the Odoo server to the selected fixed Revolut host
 - a Revolut Merchant secret key, location UUID, and terminal UUID
+- a restaurant fulfilment selection supported by the published terminal guide:
+  `eat_in` or `take_away`
 
-`pos_restaurant` is optional. The addon depends only on `point_of_sale`, so a
-retail installation does not install Restaurant.
+`pos_restaurant` is optional at the module level. However, live retail payments
+are currently blocked because Revolut has not published or confirmed a retail
+`fulfilment_type`. Do not map a retail sale to a restaurant value. Mocked and
+controlled testing must select the actual `eat_in` or `take_away` context.
 
 ## Provision the secret
 
@@ -70,14 +77,47 @@ As a Point of Sale administrator:
 4. Select **Sandbox** or **Production**.
 5. Enter the Revolut location UUID and the single terminal UUID assigned to this
    payment method.
-6. Enter the environment-variable name, not its value, in **Revolut Secret
+6. Select the restaurant fulfilment that this payment method represents.
+7. Enter the environment-variable name, not its value, in **Revolut Secret
    Reference** and save.
-7. Select **Check Connection**.
+8. Select **Check Connection**.
+9. Add the payment method to the intended POS configuration and keep
+   **Automatically validate terminal payments** enabled. The server rejects a
+   payment start when this standard Odoo setting is disabled.
 
 The check performs only `GET /api/terminals` with the location and
 `operation_mode=pos`. It reports success only when the configured terminal is
 returned as online. It never initiates a payment. Non-managers and users outside
 the payment method's company are rejected on the server.
+
+## Payment behavior and current limitations
+
+When the cashier selects Revolut, the browser sends only the order UUID,
+payment-line UUID, amount, currency, session, and payment-method identifier to
+Odoo. The Merchant credential, terminal ID, location, fulfilment and all
+Merchant API calls stay on the Odoo server. Odoo uses bounded 10-second HTTP
+requests and converts the amount using the currency exponent, independently of
+POS cash rounding.
+
+The successful flow is:
+
+1. persist the immutable local operation;
+2. verify that the configured terminal is online, at the expected location and
+   in Pay at Counter mode;
+3. durably claim and create the Revolut order;
+4. durably claim and create the terminal payment intent;
+5. poll the intent, then the underlying payment; and
+6. let Odoo's standard automatic terminal-payment validation complete the sale
+   only after the payment is `captured` or `completed`.
+
+Intent completion or payment authorisation is not success. Declined, failed and
+cancelled results remain explicit. A timeout, malformed/lost response, unknown
+state, reference mismatch, or process crash after dispatch leaves an unresolved
+operation. The affected order and terminal stay blocked, the force-done path is
+guarded, and mutating requests are never automatically replayed. Recovery,
+manager reconciliation, safe retries, cancellation, refunds, split tender and
+retail fulfilment are follow-up tickets; until those land, an unresolved payment
+requires support review and must not be retried on that order or terminal.
 
 ## Disposable verification environment
 
