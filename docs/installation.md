@@ -82,9 +82,10 @@ the payment method's company are rejected on the server.
 ## Disposable verification environment
 
 The root `compose.yaml` pins the official Odoo image containing package
-`19.0.20260908` and PostgreSQL 16.14 by digest. Its network is internal, so an
-unexpected outbound Merchant API call fails. Automated tests patch every
-expected Revolut request.
+`19.0.20260908` and PostgreSQL 16.14 by digest. The test image adds a fixed
+Google Chrome package whose SHA-256 is verified during the build. Its runtime
+network is internal, so an unexpected outbound Merchant API call fails.
+Automated tests patch every expected Revolut request.
 
 Run the addon suite on a fresh database:
 
@@ -92,7 +93,8 @@ Run the addon suite on a fresh database:
 ./scripts/test-addon
 ```
 
-Run the install, addon tests, module upgrade, and optional Restaurant install:
+Run the install, addon tests, manager configuration browser tour, module
+upgrade, and retail/Restaurant POS startup tours:
 
 ```bash
 ./scripts/test-addon --verify-install-upgrade

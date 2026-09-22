@@ -52,14 +52,16 @@ The repository now includes a disposable environment pinned to Odoo Community
 ./scripts/test-addon
 ```
 
-Verify install, upgrade, and compatibility with the optional Restaurant addon:
+Verify install, upgrade, the manager configuration browser flow, and actual
+retail and Restaurant POS startup:
 
 ```bash
 ./scripts/test-addon --verify-install-upgrade
 ```
 
-The environment has no external network route. Expected Revolut calls are
-mocked; any accidental outbound API traffic fails.
+The runtime environment has no external network route. Expected Revolut calls
+are mocked; any accidental outbound API traffic fails. The browser-test image
+adds a checksum-verified Chrome package to the exact pinned Odoo base image.
 
 Still unavailable:
 

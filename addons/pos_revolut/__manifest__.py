@@ -6,6 +6,9 @@
     "author": "Davai",
     "depends": ["point_of_sale"],
     "data": ["views/pos_payment_method_views.xml"],
+    "assets": {
+        "web.assets_tests": ["pos_revolut/static/tests/tours/**/*.js"],
+    },
     "license": "LGPL-3",
     "installable": True,
 }

@@ -36,7 +36,10 @@ git diff --check
 ./scripts/test-addon --verify-install-upgrade
 ```
 
-The pinned image reported Odoo `19.0.20260908`. Thirteen addon test methods
-passed on a clean install and again on upgrade. The same disposable database
-then installed `pos_restaurant` and completed registry startup. The Compose
-network is internal-only and all expected Revolut requests were mocked.
+The pinned image reported Odoo `19.0.20260908`. Sixteen addon test methods ran
+on a clean install and again on upgrade (the Restaurant-specific case skips
+until that optional addon is present). A Chrome tour configured the payment
+method in the manager form, saved it, and completed a mocked non-payment
+terminal check. Separate browser tours reached the retail product screen and,
+after `pos_restaurant` was installed, the Restaurant floor screen. The Compose
+runtime network is internal-only and all expected Revolut requests were mocked.

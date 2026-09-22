@@ -32,6 +32,7 @@ cleanup() {
 trap cleanup EXIT
 
 cleanup
+"${compose[@]}" build odoo
 "${compose[@]}" up --detach --wait db
 
 installed_version="$(
@@ -47,7 +48,6 @@ run_odoo() {
     "${compose[@]}" run --rm odoo \
         --database "$database_name" \
         --stop-after-init \
-        --no-http \
         --workers 0 \
         --log-level warn \
         "$@"
@@ -62,4 +62,7 @@ if [[ "$verify_install_upgrade" == true ]]; then
         --update pos_revolut \
         --test-tags "$test_tags"
     run_odoo --init pos_restaurant
+    run_odoo \
+        --update pos_revolut \
+        --test-tags pos_revolut_restaurant
 fi
