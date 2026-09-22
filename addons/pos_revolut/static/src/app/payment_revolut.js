@@ -70,6 +70,26 @@ export class PaymentRevolut extends PaymentInterface {
             this._showResultError("unresolved");
             return false;
         } catch (error) {
+            try {
+                const operation = await this.pos.data.call(
+                    "pos.payment.method",
+                    "revolut_find_payment",
+                    [
+                        [this.payment_method_id.id],
+                        order.uuid,
+                        line.uuid,
+                    ]
+                );
+                if (operation) {
+                    line.uiState.revolutOperationId = operation.operation_id;
+                    if (operation.state === "unresolved") {
+                        this._showResultError("unresolved");
+                        return false;
+                    }
+                }
+            } catch {
+                // The original error remains the best available explanation.
+            }
             const { message } = error.data || error;
             this._showError(message || _t("The Revolut payment could not be completed."));
             return false;

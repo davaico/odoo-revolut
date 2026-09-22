@@ -57,6 +57,15 @@ class PosOrder(models.Model):
         has_revolut_line = any(
             method.use_payment_terminal == "revolut" for method in payment_methods
         )
+        existing_revolut_payments = (
+            existing_order
+            and existing_order.payment_ids.filtered(
+                lambda payment: (
+                    payment.payment_method_id.use_payment_terminal == "revolut"
+                )
+            )
+        )
+        has_revolut_line = has_revolut_line or bool(existing_revolut_payments)
         if not operation:
             if has_revolut_line:
                 raise UserError(_("The Revolut payment has not been verified."))
