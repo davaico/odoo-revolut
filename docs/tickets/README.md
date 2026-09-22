@@ -25,9 +25,9 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 
 | Ticket | Category | Blocked by |
 | --- | --- | --- |
-| [01 — Configure and verify a Revolut payment method](ready-to-implement/01-configure-revolut-payment-method.md) | Ready to implement | None |
+| [01 — Configure and verify a Revolut payment method](closed/01-configure-revolut-payment-method.md) | Closed | None |
 | [02 — Resolve the Revolut terminal contract and testing prerequisites](ready-to-implement/02-confirm-terminal-contract.md) | Ready to implement | None |
-| [03 — Complete one verified Revolut terminal payment](blocked/03-verified-terminal-payment.md) | Blocked | 01 |
+| [03 — Complete one verified Revolut terminal payment](ready-to-implement/03-verified-terminal-payment.md) | Ready to implement | 01 (closed) |
 | [04 — Handle unsuccessful payments and safe retries](blocked/04-unsuccessful-payments-safe-retries.md) | Blocked | 03 |
 | [05 — Recover payments after interruption or late success](blocked/05-recover-interrupted-payments.md) | Blocked | 04 |
 | [06 — Resolve uncertain payments from a manager worklist](blocked/06-manager-reconciliation-worklist.md) | Blocked | 05 |

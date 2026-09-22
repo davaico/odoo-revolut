@@ -1,6 +1,6 @@
 # Odoo–Revolut Terminal Integration
 
-This repository is the single source of truth for an installable Odoo 19 Point of Sale addon connecting Odoo POS to a Revolut payment terminal through the Revolut Merchant API. Implementation has not started.
+This repository is the single source of truth for an installable Odoo 19 Point of Sale addon connecting Odoo POS to a Revolut payment terminal through the Revolut Merchant API. The first implementation slice provides secure payment-method configuration and a non-payment terminal check.
 
 ## Cashier Experience
 
@@ -51,6 +51,7 @@ The project is ready when the addon installs in a new Odoo environment, a cashie
 
 ## Development Documents
 
+- [Installation and configuration](docs/installation.md) covers secret provisioning, terminal setup, rotation, and the pinned disposable test environment.
 - [Odoo 19 and Revolut API validation](docs/api-validation-2026-09-22.md) records the verified extension points, API operations, and remaining contract uncertainties that implementation must respect.
 - [Development environment](docs/development-environment.md) describes the live staging target, repository boundaries, and the intended local development and deployment workflow.
 

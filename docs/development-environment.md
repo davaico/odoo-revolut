@@ -43,11 +43,28 @@ Never commit or document Merchant API tokens, Odoo passwords, Terraform state, T
 
 The infrastructure account IDs, VM provisioning commands, Terraform recovery procedure, and provider credentials are intentionally omitted because they are not required to implement the addon. Consult `../odoo-hosting` when infrastructure work is actually needed.
 
-## Not yet available
+## Local addon verification
 
-- An addon-specific local test command
-- A local staging deployment script
-- Non-production Revolut Merchant credentials
-- Confirmed terminal access and location identifiers
+The repository now includes a disposable environment pinned to Odoo Community
+`19.0.20260908` and PostgreSQL 16.14. Run the addon tests with:
 
-Add the exact commands here when their implementations exist; do not document speculative commands.
+```bash
+./scripts/test-addon
+```
+
+Verify install, upgrade, the manager configuration browser flow, and actual
+retail and Restaurant POS startup:
+
+```bash
+./scripts/test-addon --verify-install-upgrade
+```
+
+The runtime environment has no external network route. Expected Revolut calls
+are mocked; any accidental outbound API traffic fails. The browser-test image
+adds a checksum-verified Chrome package to the exact pinned Odoo base image.
+
+Still unavailable:
+
+- a local staging deployment script
+- non-production Revolut Merchant credentials
+- confirmed terminal access and location identifiers

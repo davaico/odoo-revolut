@@ -4,9 +4,9 @@
 
 Before starting, confirm this ticket’s blockers are closed and merge the latest reviewed `main` into this branch. Verify it includes the completed blocker implementations; do not start from the initial branch snapshot alone. Use a separate worktree when another agent is working in this repository.
 
-**Status:** blocked
+**Status:** ready-for-agent
 
-**Category:** Blocked
+**Category:** Ready to implement
 
 ## What to build
 
@@ -26,3 +26,6 @@ A cashier selects Revolut for a full payment, sees progress, and gets automatic 
 ## Blocked by
 
 - 01 — Configure and verify a Revolut payment method
+
+Ticket 01 closed on 2026-09-22; its implementation is the required baseline for
+this ticket.
