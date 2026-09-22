@@ -1,0 +1,33 @@
+name: odoo-revolut-dev
+
+services:
+  db:
+    image: postgres:16.14-bookworm@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: odoo
+      POSTGRES_USER: odoo
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo -d postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  odoo:
+    image: odoo:19.0@sha256:144175ec0039d52daff1d79f7e51c9281ca3c98b96c830feb49d09764a9f5d7c
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      HOST: db
+      PASSWORD: odoo
+      USER: odoo
+      ODOO_REVOLUT_SECRET_TEST_TERMINAL: test-only-not-a-credential
+    volumes:
+      - ./addons:/mnt/extra-addons:ro
+
+networks:
+  default:
+    internal: true
