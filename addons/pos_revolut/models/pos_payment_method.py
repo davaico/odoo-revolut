@@ -4,6 +4,7 @@ from uuid import UUID
 
 import requests
 from psycopg2 import IntegrityError
+from psycopg2.errors import SerializationFailure
 
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError, ValidationError
@@ -285,17 +286,16 @@ class PosPaymentMethod(models.Model):
         registry = self.env.registry
         context = dict(self.env.context)
         user_id = self.env.uid
+        logical_domain = [
+            ("company_id", "=", values["company_id"]),
+            ("order_uuid", "=", values["order_uuid"]),
+            ("payment_line_uuid", "=", values["payment_line_uuid"]),
+        ]
+        conflicted = False
         with registry.cursor() as cursor:
             owned_env = api.Environment(cursor, user_id, context)
             operations = owned_env["pos.revolut.payment.operation"].sudo()
-            operation = operations.search(
-                [
-                    ("company_id", "=", values["company_id"]),
-                    ("order_uuid", "=", values["order_uuid"]),
-                    ("payment_line_uuid", "=", values["payment_line_uuid"]),
-                ],
-                limit=1,
-            )
+            operation = operations.search(logical_domain, limit=1)
             created = False
             if not operation:
                 try:
@@ -303,37 +303,40 @@ class PosPaymentMethod(models.Model):
                         operation = operations.create(values)
                         created = True
                 except IntegrityError:
-                    operation = operations.search(
-                        [
-                            ("company_id", "=", values["company_id"]),
-                            ("order_uuid", "=", values["order_uuid"]),
-                            ("payment_line_uuid", "=", values["payment_line_uuid"]),
-                        ],
-                        limit=1,
-                    )
-                    if not operation:
-                        blocker = operations.search(
-                            [
-                                "|",
-                                ("blocking_order_key", "=", values["blocking_order_key"]),
-                                (
-                                    "blocking_terminal_key",
-                                    "=",
-                                    values["blocking_terminal_key"],
-                                ),
-                            ],
-                            limit=1,
-                        )
-                        if blocker.blocking_order_key == values["blocking_order_key"]:
-                            raise UserError(
-                                _("Another Revolut payment already blocks this order.")
-                            ) from None
-                        raise UserError(
-                            _("The Revolut terminal has an unresolved payment.")
-                        ) from None
-            snapshot = operations.operation_snapshot(operation)
-            cursor.commit()
-        return snapshot, created
+                    conflicted = True
+            if conflicted:
+                cursor.rollback()
+            else:
+                snapshot = operations.operation_snapshot(operation)
+                cursor.commit()
+                return snapshot, created
+
+        # A uniqueness conflict may have waited for another owned transaction.
+        # Read from a fresh transaction so PostgreSQL's repeatable-read snapshot
+        # can see the winner that just committed.
+        with registry.cursor() as cursor:
+            owned_env = api.Environment(cursor, user_id, context)
+            operations = owned_env["pos.revolut.payment.operation"].sudo()
+            operation = operations.search(logical_domain, limit=1)
+            if operation:
+                snapshot = operations.operation_snapshot(operation)
+                cursor.commit()
+                return snapshot, False
+            blocker = operations.search(
+                [
+                    "|",
+                    ("blocking_order_key", "=", values["blocking_order_key"]),
+                    ("blocking_terminal_key", "=", values["blocking_terminal_key"]),
+                ],
+                limit=1,
+            )
+            if blocker.blocking_order_key == values["blocking_order_key"]:
+                raise UserError(
+                    _("Another Revolut payment already blocks this order.")
+                )
+            raise UserError(
+                _("The Revolut terminal has an unresolved payment.")
+            )
 
     def _read_revolut_operation_owned(
         self, operation_id, order_uuid=None, payment_line_uuid=None
@@ -380,23 +383,34 @@ class PosPaymentMethod(models.Model):
         context = dict(self.env.context)
         user_id = self.env.uid
         with registry.cursor() as cursor:
-            owned_env = api.Environment(cursor, user_id, context)
-            cursor.execute(
-                "SELECT id FROM pos_revolut_payment_operation WHERE id = %s FOR UPDATE",
-                [operation_id],
-            )
-            operation = owned_env["pos.revolut.payment.operation"].sudo().browse(
-                operation_id
-            )
-            dispatches = owned_env["pos.revolut.payment.dispatch"].sudo()
-            if dispatches.search_count(
-                [("operation_id", "=", operation_id), ("action", "=", action)]
-            ):
+            try:
+                owned_env = api.Environment(cursor, user_id, context)
+                cursor.execute(
+                    "SELECT id FROM pos_revolut_payment_operation "
+                    "WHERE id = %s FOR UPDATE",
+                    [operation_id],
+                )
+                operation = owned_env["pos.revolut.payment.operation"].sudo().browse(
+                    operation_id
+                )
+                dispatches = owned_env["pos.revolut.payment.dispatch"].sudo()
+                if dispatches.search_count(
+                    [("operation_id", "=", operation_id), ("action", "=", action)]
+                ):
+                    cursor.commit()
+                    return False
+                try:
+                    with cursor.savepoint():
+                        dispatches.create(
+                            {"operation_id": operation_id, "action": action}
+                        )
+                except IntegrityError:
+                    return False
+                operation.write({"state": state})
                 cursor.commit()
+            except SerializationFailure:
+                cursor.rollback()
                 return False
-            dispatches.create({"operation_id": operation_id, "action": action})
-            operation.write({"state": state})
-            cursor.commit()
         return True
 
     def _complete_revolut_dispatch_owned(
@@ -639,6 +653,35 @@ class PosPaymentMethod(models.Model):
             return self._mark_revolut_unresolved_owned(
                 operation["id"], "create_intent"
             )
+
+    def revolut_find_payment(self, order_uuid, payment_line_uuid):
+        self.ensure_one()
+        if not self.env.user.has_group("point_of_sale.group_pos_user"):
+            raise AccessError(_("Only Point of Sale users can read terminal payments."))
+        self.check_access("read")
+        if self.use_payment_terminal != "revolut":
+            raise UserError(_("This payment method does not use Revolut."))
+        if self.company_id not in self.env.companies:
+            raise AccessError(_("You cannot use a terminal from another company."))
+        try:
+            order_uuid = str(UUID(order_uuid))
+            payment_line_uuid = str(UUID(payment_line_uuid))
+        except (TypeError, ValueError, AttributeError):
+            raise UserError(_("The POS payment identifiers are invalid.")) from None
+        operation = self.env["pos.revolut.payment.operation"].sudo().search(
+            [
+                ("payment_method_id", "=", self.id),
+                ("company_id", "=", self.company_id.id),
+                ("order_uuid", "=", order_uuid),
+                ("payment_line_uuid", "=", payment_line_uuid),
+            ],
+            limit=1,
+        )
+        if not operation:
+            return False
+        return self.env[
+            "pos.revolut.payment.operation"
+        ].operation_snapshot(operation)
 
     def revolut_poll_payment(self, operation_id, order_uuid, payment_line_uuid):
         self.ensure_one()
