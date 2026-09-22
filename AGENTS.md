@@ -2,11 +2,11 @@
 
 ## Repository Boundary
 
-This Git repository is `/home/gary/delivery/Tek2/stage/odoo-rev/odoo-revolut`. Its sibling `../odoo-hosting` provides the local/development environment, while `../worktree` holds additional worktrees for parallel-agent tasks. Do not add Odoo–Revolut product code to either sibling.
+This Git repository is `/home/gary/delivery/Tek2/stage/odoo-rev/odoo-revolut` and is the single source of truth for the complete integration. Its sibling `../odoo-hosting` only provides the local/development environment, while `../worktree` holds additional worktrees for parallel-agent tasks. Do not add integration code to either sibling or develop it directly on an Odoo server.
 
 ## Project Mission
 
-Build an Odoo 19 Point of Sale addon that integrates a Revolut payment terminal through the Revolut Merchant API. Follow established Odoo addon conventions and keep changes focused on this integration.
+Build an installable Odoo 19 Point of Sale addon that integrates a Revolut payment terminal through the Revolut Merchant API. Follow established Odoo addon conventions and keep changes focused on this integration.
 
 The finished integration must:
 
@@ -18,6 +18,7 @@ The finished integration must:
 6. Support full and partial refunds.
 7. Store Revolut transaction references in Odoo for reconciliation and support.
 8. Keep all Revolut API credentials on the Odoo server; never expose secrets to the POS browser.
+9. Install cleanly in a new Odoo environment and include complete installation instructions.
 
 ## Planned Project Structure
 
@@ -26,10 +27,11 @@ Place the addon under `addons/`, keeping models, views, security rules, static P
 ## Development and Testing Principles
 
 - Treat the Odoo server as the only trusted boundary for Revolut API calls and credentials.
-- Make payment operations idempotent and persist external references before relying on callbacks or polling.
+- Make payment operations idempotent, persist each attempt and its external references, and reconcile an uncertain attempt before allowing a retry.
+- Never treat a completed payment intent as proof of payment; confirm the underlying payment reached a successful final state before completing the Odoo sale.
 - Model payment states explicitly and link refunds to their original transaction.
 - Never log access tokens, secrets, or sensitive cardholder data.
 - Mock Revolut HTTP calls in automated tests; tests must never contact a real terminal or Merchant API.
-- Cover success, failure, cancellation, timeout, retry, and full/partial refund paths.
+- Cover success, decline, failure, cancellation, interruption, timeout, safe retry, and full/partial refund paths.
 
 Run the narrowest relevant tests before submission. Use short, imperative commit subjects. Pull requests should explain payment-flow impact, tests performed, configuration changes, and deployment or credential-rotation steps.
