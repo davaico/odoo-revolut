@@ -49,6 +49,11 @@ Amounts sent to Revolut use minor currency units. Each attempt must be persisted
 
 The project is ready when the addon installs in a new Odoo environment, a cashier can complete an end-to-end terminal payment, unsuccessful payments remain unpaid, retries cannot duplicate charges, references are recorded, refunds work, and setup is documented here.
 
+## Development Documents
+
+- [Odoo 19 and Revolut API validation](docs/api-validation-2026-09-22.md) records the verified extension points, API operations, and remaining contract uncertainties that implementation must respect.
+- [Development environment](docs/development-environment.md) describes the live staging target, repository boundaries, and the intended local development and deployment workflow.
+
 ## Implementation References
 
 ### Revolut
