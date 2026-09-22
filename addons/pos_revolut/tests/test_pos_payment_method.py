@@ -21,6 +21,7 @@ class TestRevolutPaymentMethod(TransactionCase):
             "revolut_environment": "sandbox",
             "revolut_location_id": self.LOCATION_ID,
             "revolut_terminal_id": self.TERMINAL_ID,
+            "revolut_fulfilment_type": "eat_in",
             "revolut_secret_reference": "ODOO_REVOLUT_SECRET_TEST_TERMINAL",
         }
         values.update(overrides)
@@ -59,6 +60,10 @@ class TestRevolutPaymentMethod(TransactionCase):
                         revolut_location_id=location_id,
                         revolut_terminal_id=terminal_id,
                     )
+
+    def test_revolut_configuration_requires_supported_fulfilment(self):
+        with self.assertRaises(ValidationError):
+            self._create_revolut_payment_method(revolut_fulfilment_type=False)
 
     @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.get")
     def test_manager_can_check_an_online_terminal_without_a_payment(self, request_get):
