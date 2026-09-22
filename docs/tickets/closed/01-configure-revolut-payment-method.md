@@ -43,3 +43,5 @@ method in the manager form, saved it, and completed a mocked non-payment
 terminal check. Separate browser tours reached the retail product screen and,
 after `pos_restaurant` was installed, the Restaurant floor screen. The Compose
 runtime network is internal-only and all expected Revolut requests were mocked.
+The project owner approved the checksum-pinned Chrome package on 2026-09-22 as
+a test-only dependency for these browser acceptance tours.
