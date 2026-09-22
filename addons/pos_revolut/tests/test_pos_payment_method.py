@@ -41,16 +41,8 @@ class TestRevolutPaymentMethod(TransactionCase):
 
     def test_revolut_configuration_rejects_unrelated_secret_reference(self):
         with self.assertRaises(ValidationError):
-            self.env["pos.payment.method"].create(
-                {
-                    "name": "Revolut",
-                    "payment_method_type": "terminal",
-                    "use_payment_terminal": "revolut",
-                    "revolut_environment": "sandbox",
-                    "revolut_location_id": self.LOCATION_ID,
-                    "revolut_terminal_id": self.TERMINAL_ID,
-                    "revolut_secret_reference": "DATABASE_PASSWORD",
-                }
+            self._create_revolut_payment_method(
+                revolut_secret_reference="DATABASE_PASSWORD"
             )
 
     def test_revolut_configuration_requires_uuid_identifiers(self):
@@ -63,18 +55,9 @@ class TestRevolutPaymentMethod(TransactionCase):
         for location_id, terminal_id in invalid_identifiers:
             with self.subTest(location_id=location_id, terminal_id=terminal_id):
                 with self.assertRaises(ValidationError):
-                    self.env["pos.payment.method"].create(
-                        {
-                            "name": "Revolut",
-                            "payment_method_type": "terminal",
-                            "use_payment_terminal": "revolut",
-                            "revolut_environment": "sandbox",
-                            "revolut_location_id": location_id,
-                            "revolut_terminal_id": terminal_id,
-                            "revolut_secret_reference": (
-                                "ODOO_REVOLUT_SECRET_TEST_TERMINAL"
-                            ),
-                        }
+                    self._create_revolut_payment_method(
+                        revolut_location_id=location_id,
+                        revolut_terminal_id=terminal_id,
                     )
 
     @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.get")
