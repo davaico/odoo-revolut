@@ -2,7 +2,7 @@
 
 **Work branch:** `codex/02-confirm-terminal-contract`
 
-Before starting, confirm this ticket’s blockers are closed and merge the latest reviewed `feat/project-definition` into this branch. Verify it includes the completed blocker implementations; do not start from the initial branch snapshot alone. Use a separate worktree when another agent is working in this repository.
+Before starting, confirm this ticket’s blockers are closed and merge the latest reviewed `main` into this branch. Verify it includes the completed blocker implementations; do not start from the initial branch snapshot alone. Use a separate worktree when another agent is working in this repository.
 
 **Status:** ready-for-agent
 

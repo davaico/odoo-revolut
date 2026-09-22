@@ -17,7 +17,7 @@ Numbers are stable identifiers, assigned in dependency order. They do not requir
 
 Each ticket declares its local `codex/<ticket-number>-<slug>` work branch immediately below the title. All 12 branches were created from the same committed ticket baseline; blocked branches do not yet contain future prerequisite implementations.
 
-Use `feat/project-definition` as the shared integration branch for this ticket set. Integrate reviewed, verified ticket work there, including its status update. Before starting a ticket, merge the latest integration branch into its assigned branch and confirm every declared blocker is closed and its implementation is present. Never treat branch existence as permission to skip blockers. Do not reset or overwrite a branch that already contains work.
+Use `main` as the shared integration branch for this ticket set. Integrate reviewed, verified ticket work there, including its status update. Before starting a ticket, merge the latest integration branch into its assigned branch and confirm every declared blocker is closed and its implementation is present. Never treat branch existence as permission to skip blockers. Do not reset or overwrite a branch that already contains work.
 
 Use separate worktrees for concurrent agents, within the project's designated worktree area. Keep each ticket's changes on its assigned branch. Resolve overlaps against the integration branch and run the affected tests before integration. These branches are local; publishing them to a remote is a separate action.
 
