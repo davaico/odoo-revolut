@@ -4,9 +4,9 @@
 
 Before starting, confirm this ticket’s blockers are closed and merge the latest reviewed `main` into this branch. Verify it includes the completed blocker implementations; do not start from the initial branch snapshot alone. Use a separate worktree when another agent is working in this repository.
 
-**Status:** ready-for-agent
+**State:** open
 
-**Category:** Ready to implement
+**Triage:** ready-for-agent
 
 ## What to build
 

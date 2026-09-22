@@ -53,6 +53,7 @@ The project is ready when the addon installs in a new Odoo environment, a cashie
 
 - [Installation and configuration](docs/installation.md) covers secret provisioning, terminal setup, rotation, and the pinned disposable test environment.
 - [Odoo 19 and Revolut API validation](docs/api-validation-2026-09-22.md) records the verified extension points, API operations, and remaining contract uncertainties that implementation must respect.
+- [Revolut terminal contract and testing readiness](docs/revolut-terminal-contract-2026-09-22.md) reconciles the terminal guide with API version `2026-08-17`, records the sandbox route and idempotency limits, and names the external prerequisites that remain unresolved.
 - [Development environment](docs/development-environment.md) describes the live staging target, repository boundaries, and the intended local development and deployment workflow.
 
 ## Implementation References
