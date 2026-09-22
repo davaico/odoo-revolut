@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+project_name="odoo-revolut-tests"
+database_name="odoo_revolut_tests"
+test_tags="/pos_revolut"
+verify_install_upgrade=false
+
+while (($#)); do
+    case "$1" in
+        --test-tags)
+            test_tags="$2"
+            shift 2
+            ;;
+        --verify-install-upgrade)
+            verify_install_upgrade=true
+            shift
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            exit 2
+            ;;
+    esac
+done
+
+compose=(docker compose --project-name "$project_name" --file "$repository_root/compose.yaml")
+
+cleanup() {
+    "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+cleanup
+"${compose[@]}" build odoo
+"${compose[@]}" up --detach --wait db
+
+installed_version="$(
+    "${compose[@]}" run --rm --no-deps --entrypoint dpkg-query odoo \
+        --show --showformat='${Version}' odoo
+)"
+if [[ "$installed_version" != "19.0.20260908" ]]; then
+    echo "Expected Odoo 19.0.20260908, found $installed_version" >&2
+    exit 1
+fi
+
+run_odoo() {
+    "${compose[@]}" run --rm odoo \
+        --database "$database_name" \
+        --stop-after-init \
+        --workers 0 \
+        --log-level warn \
+        "$@"
+}
+
+run_odoo \
+    --init pos_revolut \
+    --test-tags "$test_tags"
+
+if [[ "$verify_install_upgrade" == true ]]; then
+    run_odoo \
+        --update pos_revolut \
+        --test-tags "$test_tags"
+    run_odoo --init pos_restaurant
+    run_odoo \
+        --update pos_revolut \
+        --test-tags pos_revolut_restaurant
+fi
