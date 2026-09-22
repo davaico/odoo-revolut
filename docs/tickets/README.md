@@ -9,7 +9,10 @@ Approved implementation breakdown for the Odoo–Revolut addon. Source: the thre
 - **Blocked:** prerequisite tickets or explicitly recorded external prerequisites remain outstanding; status `blocked`.
 - **Closed:** acceptance criteria have been demonstrated and evidence recorded; status `closed`.
 
-Initially tickets 01 and 02 are ready, 03–12 are blocked, and the other folders are empty. Placeholder files preserve empty folders in Git.
+Tickets 01 and 02 started ready while 03–12 were blocked. Ticket 01 is now
+closed, ticket 03 is ready, and ticket 02 is externally blocked after its
+contract review identified unresolved provider and access prerequisites.
+Placeholder files preserve empty folders in Git.
 
 Numbers are stable identifiers, assigned in dependency order. They do not require a linear execution order: work any ticket whose blockers are all closed. Move its existing file to the appropriate folder and update its Status and Category; do not renumber, duplicate or erase its dependency history. Record external blockers when discovered. On closure, record verification commands/results and promote newly unblocked tickets. Update the links below whenever files move.
 
@@ -26,7 +29,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | Ticket | Category | Blocked by |
 | --- | --- | --- |
 | [01 — Configure and verify a Revolut payment method](closed/01-configure-revolut-payment-method.md) | Closed | None |
-| [02 — Resolve the Revolut terminal contract and testing prerequisites](ready-to-implement/02-confirm-terminal-contract.md) | Ready to implement | None |
+| [02 — Resolve the Revolut terminal contract and testing prerequisites](blocked/02-confirm-terminal-contract.md) | Blocked | External: provider clarification and test access |
 | [03 — Complete one verified Revolut terminal payment](ready-to-implement/03-verified-terminal-payment.md) | Ready to implement | 01 (closed) |
 | [04 — Handle unsuccessful payments and safe retries](blocked/04-unsuccessful-payments-safe-retries.md) | Blocked | 03 |
 | [05 — Recover payments after interruption or late success](blocked/05-recover-interrupted-payments.md) | Blocked | 04 |

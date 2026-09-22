@@ -63,8 +63,14 @@ The runtime environment has no external network route. Expected Revolut calls
 are mocked; any accidental outbound API traffic fails. The browser-test image
 adds a checksum-verified Chrome package to the exact pinned Odoo base image.
 
+The official Revolut terminal guide now documents a controlled sandbox route
+using a virtual terminal and amount-driven simulated payment outcomes. The
+project has not authenticated to that environment or observed its behavior.
+
 Still unavailable:
 
 - a local staging deployment script
 - non-production Revolut Merchant credentials
-- confirmed terminal access and location identifiers
+- an assigned operator for sandbox and later physical-terminal acceptance
+- confirmed production terminal access and matching physical location
+  identifiers
