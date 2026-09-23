@@ -97,6 +97,24 @@ class TestRevolutPayment(TransactionCase):
         {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only-not-a-credential"},
     )
     @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_deployment_guard_tracks_active_and_uncertain_operations(self, request):
+        request.side_effect = self._start_responses()
+        started = self._start(str(uuid4()), str(uuid4()))
+        operation = self.env["pos.revolut.payment.operation"].browse(
+            started["operation_id"]
+        )
+
+        self.assertTrue(operation.deployment_blocking)
+        operation.write({"state": "failed"})
+        self.assertFalse(operation.deployment_blocking)
+        operation.write({"state": "unresolved"})
+        self.assertTrue(operation.deployment_blocking)
+
+    @patch.dict(
+        os.environ,
+        {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only-not-a-credential"},
+    )
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
     def test_success_is_idempotent_and_uses_currency_exponent(
         self, request
     ):

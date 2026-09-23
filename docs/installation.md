@@ -67,6 +67,11 @@ odoo --database DATABASE_NAME --init pos_revolut \
 For an upgrade, replace `--init` with `--update`. Take the normal database and
 filestore backups before upgrading.
 
+For the existing managed staging environment, do not copy working-tree files or
+run these commands by hand. Use the reviewed-revision deployment tool and its
+financial-operation guard in the [staging deployment and recovery
+runbook](staging-deployment.md).
+
 ## Configure and check a terminal
 
 As a Point of Sale administrator:

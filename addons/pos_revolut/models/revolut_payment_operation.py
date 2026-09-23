@@ -6,6 +6,7 @@ from odoo.exceptions import UserError, ValidationError
 
 class PosRevolutPaymentOperation(models.Model):
     _name = "pos.revolut.payment.operation"
+    _inherit = ["pos.revolut.financial.operation.mixin"]
     _description = "Revolut POS Payment Operation"
     _order = "id desc"
 
@@ -121,6 +122,9 @@ class PosRevolutPaymentOperation(models.Model):
         "fulfilment_type",
         "secret_reference",
     }
+
+    def _revolut_deployment_terminal_states(self):
+        return {"verified", "declined", "failed", "cancelled"}
 
     def write(self, values):
         if self._IMMUTABLE_FIELDS.intersection(values):
