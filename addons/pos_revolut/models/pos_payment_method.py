@@ -331,6 +331,10 @@ class PosPaymentMethod(models.Model):
                 operations = owned_env["pos.revolut.payment.operation"].sudo()
                 try:
                     operations.lock_order(values["company_id"], values["order_uuid"])
+                    if owned_env["pos.revolut.refund.operation"].sudo().search_count([
+                        ("company_id", "=", values["company_id"]), ("order_uuid", "=", values["order_uuid"]),
+                    ]):
+                        raise UserError(_("A Revolut refund already exists for this order. Reconcile it first."))
                     previous = operations.browse()
                     if previous_operation_id:
                         previous = operations.search(
@@ -640,6 +644,7 @@ class PosPaymentMethod(models.Model):
         secret = os.environ.get(operation["secret_reference"])
         if not secret:
             raise UserError(_("The Revolut credential is not available on the Odoo server."))
+        idempotency_key = kwargs.pop("idempotency_key", None)
         response = requests.request(
             method,
             f"{REVOLUT_API_HOSTS[operation['environment']]}{path}",
@@ -647,6 +652,7 @@ class PosPaymentMethod(models.Model):
                 "Authorization": f"Bearer {secret}",
                 "Revolut-Api-Version": REVOLUT_API_VERSION,
                 "Content-Type": "application/json",
+                **({"Idempotency-Key": idempotency_key} if idempotency_key else {}),
             },
             timeout=REVOLUT_REQUEST_TIMEOUT_SECONDS,
             **kwargs,

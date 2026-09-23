@@ -545,3 +545,80 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
 
     def test_cancel_racing_with_capture_preserves_successful_payment(self):
         self._run_unsuccessful_checkout("cancel_race", "pos_revolut_cancel_race")
+
+    REFUND_ID = "6c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf"
+
+    def _run_full_refund(self, tour, outcome="completed"):
+        self._configure_revolut_checkout()
+        refund_polls = 0
+        refund_posts = []
+
+        def request(method, url, **kwargs):
+            nonlocal refund_polls
+            if method == "GET" and url.endswith("/api/terminals"):
+                return self._response({"terminals": [{
+                    "id": self.TERMINAL_ID, "online": True,
+                    "operation_mode": "pos", "location_id": self.LOCATION_ID,
+                }]})
+            if method == "POST" and url.endswith("/api/orders"):
+                return self._response({"id": self.ORDER_ID})
+            if method == "POST" and url.endswith("/payment-intents"):
+                return self._response({"id": self.INTENT_ID, "state": "pending"})
+            if method == "GET" and "/api/payment-intents/" in url:
+                return self._response({
+                    "id": self.INTENT_ID, "order_id": self.ORDER_ID,
+                    "state": "completed", "payment_id": self.PAYMENT_ID,
+                })
+            if method == "GET" and "/api/payments/" in url:
+                return self._response({
+                    "id": self.PAYMENT_ID, "order_id": self.ORDER_ID,
+                    "state": "captured", "amount": 1234,
+                    "currency": self.main_pos_config.currency_id.name,
+                })
+            if method == "POST" and url.endswith("/refund"):
+                refund_posts.append(kwargs)
+                if outcome == "lost_response":
+                    raise requests.ConnectionError("Refund accepted but response lost")
+                return self._response({
+                    "id": self.REFUND_ID, "state": "pending", "type": "refund",
+                    "amount": 1234, "currency": self.main_pos_config.currency_id.name,
+                    "related_order_id": self.ORDER_ID,
+                })
+            if method == "GET" and url.endswith(f"/orders/{self.ORDER_ID}"):
+                return self._response({
+                    "id": self.ORDER_ID, "state": "completed", "type": "payment",
+                    "amount": 1234, "currency": self.main_pos_config.currency_id.name,
+                    "payments": [{"id": self.PAYMENT_ID, "state": "captured"}],
+                })
+            if method == "GET" and url.endswith("/api/orders"):
+                return self._response({"orders": [{
+                    "id": self.REFUND_ID, "type": "refund", "state": "pending",
+                    "amount": 1234, "currency": self.main_pos_config.currency_id.name,
+                    "related_order_id": self.ORDER_ID,
+                    "merchant_order_data": refund_posts[0]["json"]["merchant_order_data"],
+                }]})
+            if method == "GET" and url.endswith(f"/orders/{self.REFUND_ID}"):
+                refund_polls += 1
+                return self._response({
+                    "id": self.REFUND_ID, "type": "refund",
+                    "state": "pending" if refund_polls < 3 else ("failed" if outcome == "failed" else "completed"),
+                    "amount": 1234, "currency": self.main_pos_config.currency_id.name,
+                    "related_order_id": self.ORDER_ID,
+                })
+            raise AssertionError(f"Unexpected Revolut request: {method} {url}")
+
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+            side_effect=request,
+        ):
+            self.start_pos_tour(tour, login="pos_admin")
+        self.assertEqual(len(refund_posts), 1)
+
+    def test_manager_returns_full_revolut_sale_in_normal_pos_flow(self):
+        self._run_full_refund("pos_revolut_full_refund")
+
+    def test_lost_refund_response_recovers_after_reload_without_second_refund(self):
+        self._run_full_refund("pos_revolut_refund_reload", "lost_response")
+
+    def test_failed_refund_stays_unpaid_and_cannot_be_substituted(self):
+        self._run_full_refund("pos_revolut_refund_failed", "failed")

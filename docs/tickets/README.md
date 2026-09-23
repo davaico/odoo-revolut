@@ -51,8 +51,8 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [05 — Recover payments after interruption or late success](closed/05-recover-interrupted-payments.md) | `ready-for-agent` at closure | Closed | 04 (closed) |
 | [06 — Resolve uncertain payments from a manager worklist](closed/06-manager-reconciliation-worklist.md) | `ready-for-agent` at closure | Closed | 05 (closed) |
 | [07 — Use Revolut with split tender and restaurant checkout](closed/07-split-tender-restaurant-checkout.md) | `ready-for-agent` at closure | Closed | 05 (closed) |
-| [08 — Issue and reconcile a full Revolut refund](ready-for-agent/08-full-revolut-refund.md) | `ready-for-agent` | Open | 05 (closed) |
-| [09 — Issue partial refunds across original payment allocations](ready-for-agent/09-partial-allocated-refunds.md) | `ready-for-agent` | Open | 07, 08 |
+| [08 — Issue and reconcile a full Revolut refund](closed/08-full-revolut-refund.md) | `ready-for-agent` at closure | Closed | 05 (closed) |
+| [09 — Issue partial refunds across original payment allocations](ready-for-agent/09-partial-allocated-refunds.md) | `ready-for-agent` | Open | 07 (closed), 08 (closed) |
 | [10 — Install and upgrade a reviewed revision on staging](ready-for-human/10-staging-install-upgrade.md) | `ready-for-human` | Open | 03 |
 | [11 — Verify the complete addon on the target Odoo version](ready-for-agent/11-target-version-acceptance.md) | `ready-for-agent` | Open | 06, 09, 10 |
 | [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11 |
