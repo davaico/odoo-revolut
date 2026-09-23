@@ -18,13 +18,34 @@ function isRevolut(line) {
     return line?.payment_method_id?.use_payment_terminal === "revolut";
 }
 
+function isRevolutRefund(line) {
+    return isRevolut(line) && line.amount < 0;
+}
+
+function isRevolutReturn(order) {
+    return order.lines.some((line) =>
+        line.refunded_orderline_id?.order_id?.payment_ids?.some(isRevolut)
+    );
+}
+
+async function restoreRefundOriginals(pos, order) {
+    // Paid originals may leave the POS cache on reload. Restore the relation
+    // before Odoo serializes the return for settlement.
+    const missingOriginals = order.lines
+        .filter((line) => !line.refunded_orderline_id && line.raw.refunded_orderline_id)
+        .map((line) => line.raw.refunded_orderline_id);
+    if (missingOriginals.length) {
+        await pos.data.read("pos.order.line", missingOriginals);
+    }
+}
+
 function isLocked(line) {
     return isRevolut(line) && !line.uiState?.revolutSnapshot?.retry_safe &&
         (line.uiState?.revolutStarted || ["retry", "waiting", "waitingCard", "waitingCancel"].includes(line.getPaymentStatus()));
 }
 
 function needsReconciliation(line) {
-    return isLocked(line) && line.uiState?.revolutSnapshot?.state !== "verified";
+    return (isLocked(line) || isRevolutRefund(line)) && line.uiState?.revolutSnapshot?.state !== "verified";
 }
 
 export function hasRevolutExposure(order) {
@@ -48,6 +69,7 @@ function financialSnapshot(order) {
             price_unit: line.price_unit,
             discount: line.discount || 0,
             tax_ids: (line.tax_ids || []).map((tax) => tax.id),
+            ...(line.refunded_orderline_id ? { refunded_orderline_id: line.refunded_orderline_id.id } : {}),
         })),
     };
 }
@@ -88,20 +110,25 @@ export class PaymentRevolut extends PaymentInterface {
 
     async _waitForPayment(order, line) {
         const deadline = Date.now() + PAYMENT_TIMEOUT_MS;
+        const refund = isRevolutRefund(line);
+        const pollMethod = refund ? "revolut_poll_refund" : "revolut_poll_payment";
         const started = line.uiState.revolutStarted;
         line.uiState.revolutStarted = true;
         line.setPaymentStatus("waiting");
         try {
+            if (refund) {
+                await beforeDeadline(restoreRefundOriginals(this.pos, order), deadline);
+            }
             let result = line.uiState.revolutSnapshot;
             let discovered = false;
             if (!started && !result?.operation_id) {
                 result = await beforeDeadline(this.pos.data.call(
-                    "pos.payment.method", "revolut_find_payment",
+                    "pos.payment.method", refund ? "revolut_find_refund" : "revolut_find_payment",
                     [[this.payment_method_id.id], order.uuid, line.uuid]
                 ), deadline);
                 discovered = Boolean(result);
             }
-            if (!result || (result.retry_safe && !discovered)) {
+            if (!result || (!refund && result.retry_safe && !discovered)) {
                 const previousOperationId = result?.retry_safe ? result.operation_id : false;
                 line.uiState.revolutPreviousOperationId = previousOperationId;
                 line.uiState.revolutSnapshot = false;
@@ -109,10 +136,10 @@ export class PaymentRevolut extends PaymentInterface {
                 line.uiState.revolutStarting = true;
                 try {
                     result = await beforeDeadline(this.pos.data.call(
-                        "pos.payment.method", "revolut_start_payment", [
+                        "pos.payment.method", refund ? "revolut_start_refund" : "revolut_start_payment", [
                             [this.payment_method_id.id], this.pos.session.id,
                             order.uuid, line.uuid, line.amount, this.pos.currency.id,
-                            previousOperationId, financialSnapshot(order),
+                            ...(!refund ? [previousOperationId] : []), financialSnapshot(order),
                         ]
                     ), deadline);
                 } finally {
@@ -123,7 +150,7 @@ export class PaymentRevolut extends PaymentInterface {
                 return false;
             } else if (result.state !== "verified" && !result.retry_safe) {
                 line.uiState.revolutOperationId = result.operation_id;
-                result = await beforeDeadline(this._operationCall("revolut_poll_payment", order, line), deadline);
+                result = await beforeDeadline(this._operationCall(pollMethod, order, line), deadline);
             }
             this._remember(line, result);
             while (Date.now() < deadline) {
@@ -144,7 +171,7 @@ export class PaymentRevolut extends PaymentInterface {
                 await beforeDeadline(new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS)), deadline);
                 if (!this.cancellations.has(line.uuid)) {
                     this._remember(line, await beforeDeadline(
-                        this._operationCall("revolut_poll_payment", order, line), deadline
+                        this._operationCall(pollMethod, order, line), deadline
                     ));
                 }
             }
@@ -158,7 +185,7 @@ export class PaymentRevolut extends PaymentInterface {
             line.uiState.revolutLocalOutcome = outcome;
             if (outcome === "timed_out" && line.uiState.revolutOperationId) {
                 // Do not extend the foreground limit by waiting for this RPC.
-                this._operationCall("revolut_mark_timeout", order, line).catch(() => {});
+                this._operationCall(refund ? "revolut_mark_refund_timeout" : "revolut_mark_timeout", order, line).catch(() => {});
             }
             this._showResultError(line, outcome);
             return false;
@@ -188,7 +215,9 @@ export class PaymentRevolut extends PaymentInterface {
         line.transaction_id = result.payment_id;
         line.payment_ref_no = result.order_id;
         if (!line.uiState.revolutReceiptSet) {
-            line.setReceiptInfo(_t("Revolut payment: %s", result.payment_id));
+            line.setReceiptInfo(isRevolutRefund(line)
+                ? _t("Revolut refund: %s; original order: %s", result.order_id, result.original_order_id)
+                : _t("Revolut payment: %s", result.payment_id));
             line.uiState.revolutReceiptSet = true;
         }
     }
@@ -198,6 +227,10 @@ export class PaymentRevolut extends PaymentInterface {
             return this.cancellations.get(uuid);
         }
         const line = order.getPaymentlineByUuid(uuid);
+        if (isRevolutRefund(line)) {
+            this._showResultError(line, "unresolved");
+            return Promise.resolve(false);
+        }
         const cancellation = this._cancelPayment(order, line).finally(() => this.cancellations.delete(uuid));
         this.cancellations.set(uuid, cancellation);
         return cancellation;
@@ -251,6 +284,19 @@ export class PaymentRevolut extends PaymentInterface {
             return;
         }
         line.uiState.revolutMessage = messageKey;
+        if (isRevolutRefund(line)) {
+            const messages = {
+                failed: _t("The Revolut refund failed. Ask a POS manager to review its references. Do not issue another refund or substitute another payment method."),
+                interrupted: _t("Communication with Revolut was interrupted. The refund may have succeeded. Choose Check status to reconcile the existing refund."),
+                timed_out: _t("The 60-second Revolut waiting limit expired. The refund remains unresolved. Choose Check status to reconcile the existing refund."),
+                unresolved: _t("The Revolut refund is unresolved and cannot be cancelled. Choose Check status to reconcile the existing refund; do not issue another refund or substitute another payment method."),
+            };
+            this.env.services.dialog.add(AlertDialog, {
+                title: _t("Revolut refund"),
+                body: messages[state] || messages.unresolved,
+            });
+            return;
+        }
         const messages = {
             terminal_unavailable: _t("The Revolut terminal is unavailable. No charge was sent. Check the terminal before retrying."),
             terminal_check_failed: _t("The Revolut terminal connection check failed. No charge was sent. Check the connection before retrying."),
@@ -310,6 +356,13 @@ patch(PosPayment.prototype, {
 
 patch(PosOrder.prototype, {
     addPaymentline(paymentMethod) {
+        if ((isRevolutReturn(this) || this.payment_ids.some(isRevolutRefund)) &&
+            paymentMethod.use_payment_terminal !== "revolut") {
+            return {
+                status: false,
+                data: _t("Return this Revolut sale using its original Revolut payment method. Cash or another tender cannot replace the linked refund."),
+            };
+        }
         if (this.payment_ids.some(needsReconciliation)) {
             return {
                 status: false,
@@ -329,12 +382,17 @@ patch(PosOrder.prototype, {
 
 patch(PaymentScreen.prototype, {
     async validateOrder() {
-        if (this.currentOrder.payment_ids.some(needsReconciliation)) {
+        if (this.currentOrder.payment_ids.some(needsReconciliation) ||
+            (isRevolutReturn(this.currentOrder) &&
+                !this.currentOrder.payment_ids.some((line) => isRevolutRefund(line) && line.uiState.revolutSnapshot?.state === "verified"))) {
             this.dialog.add(AlertDialog, {
                 title: _t("Revolut reconciliation required"),
                 body: _t("This order has an unresolved Revolut payment. Check its status before completing checkout."),
             });
             return false;
+        }
+        if (this.currentOrder.payment_ids.some(isRevolutRefund)) {
+            await restoreRefundOriginals(this.pos, this.currentOrder);
         }
         return super.validateOrder(...arguments);
     },
@@ -409,6 +467,16 @@ patch(PaymentScreen.prototype, {
 patch(PaymentScreenPaymentLines.prototype, {
     revolutPaymentStatus(line) {
         const snapshot = line.uiState.revolutSnapshot;
+        if (isRevolutRefund(line)) {
+            const outcome = line.uiState.revolutLocalOutcome || snapshot?.local_outcome || snapshot?.state;
+            const messages = {
+                failed: _t("Refund failed — manager review required"),
+                pending: _t("Refund pending"),
+                interrupted: _t("Communication interrupted — refund unresolved"),
+                timed_out: _t("Waiting limit expired — refund unresolved"),
+            };
+            return messages[outcome] || _t("Refund unresolved");
+        }
         const outcome = ["terminal_unavailable", "terminal_check_failed"].includes(snapshot?.provider_state)
             ? snapshot.provider_state
             : line.uiState.revolutLocalOutcome || snapshot?.local_outcome || snapshot?.state;
