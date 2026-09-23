@@ -691,7 +691,11 @@ class PosPaymentMethod(models.Model):
                     "location_id": operation["location_id"],
                     "fulfilment_type": operation["fulfilment_type"],
                     "capture_mode": "manual",
-                    "metadata": {"pos_partner_name": operation["config_name"]},
+                    "metadata": {
+                        "pos_partner_name": operation["config_name"],
+                        "pos_order_uuid": order_uuid,
+                        "pos_payment_line_uuid": payment_line_uuid,
+                    },
                 },
             )
             revolut_order_id = order_payload.get("id")

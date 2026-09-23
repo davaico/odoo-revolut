@@ -159,8 +159,8 @@ tender or terminal charge for the same sale, and select **Check status**. **Retr
 intent references can be queried again; a local timeout never proves that the
 customer was not charged. If a creation response was lost and its reference is
 missing, ask support to reconcile it with Revolut. Do not clear database locks,
-force the line paid, or delete audit records. The manager worklist remains
-a follow-up ticket, as do refunds, split tender and retail fulfilment.
+force the line paid, or delete audit records. Refunds, split tender and retail
+fulfilment remain separate tickets.
 
 ### Recovery after reload, server restart, or late success
 
@@ -190,12 +190,45 @@ An attempt missing an external order or intent ID is intentionally excluded from
 scheduled polling. The provider may have accepted a request whose response was
 lost, so Odoo cannot safely repeat it. Keep the order and terminal blocked and
 have a manager or support associate the attempt with authoritative Revolut
-records. Until the manager worklist is delivered, support can inspect the
-server-side `pos.revolut.payment.operation` record by order/payment UUID and
-its recorded `state`, `next_reconcile_at`, `reconcile_failures`, and external
-references through an authorized Odoo shell. Do not clear blocking fields by
-hand. No new credential or credential rotation is required for this upgrade;
+records. Use the manager worklist and procedure below. Do not clear blocking
+fields by hand. No new credential or credential rotation is required for this upgrade;
 the scheduled action uses the same server environment variable as checkout.
+
+### Manager reconciliation of uncertain attempts
+
+Upgrade to `19.0.1.4.0` before using the worklist. A Point of Sale manager opens
+**Point of Sale → Orders → Revolut Reconciliation**. The list is limited to
+allowed companies and shows the original POS session and order UUID, amount,
+currency, age, current state, known provider references, a sanitized error
+summary and a support explanation. Cashiers continue to see the status of their own payment line in
+POS, but cannot associate references or run manager actions.
+
+1. Keep the original POS order and payment line. Find the matching order and
+   payment intent in the **same Revolut Merchant account** using the original
+   amount, currency, creation time, terminal/location and POS UUIDs.
+2. Open the attempt. If an order or intent reference was lost, select
+   **Associate References** and enter the UUIDs. Odoo retrieves the order with
+   the attempt's server-side Merchant credential. It accepts an order only when
+   the provider's amount, currency, location and saved POS order/payment-line
+   UUIDs match. For an intent, its order, amount, currency and terminal must
+   also match. A reference already owned by another attempt is rejected.
+3. Select **Request Reconciliation**. Odoo retrieves the intent and underlying
+   payment using the same server verification path as POS and the scheduled
+   action. Only a captured or completed **payment** becomes verified. The
+   audit tab records who associated or reconciled, when, which UUID evidence
+   was used and the resulting state.
+4. If the result remains unresolved, keep the order and terminal blocked.
+   Check the provider again later or send the shown references and POS UUIDs
+   to support. A timeout, missing reference or empty response does not prove
+   that another charge is safe.
+
+The worklist does not offer a mark-paid or unlock control. A verified result
+still follows the normal POS finalization rules when the unchanged original
+order is reopened and fully paid. Orders created before this version lack the
+new POS UUID metadata at Revolut; a lost reference for those attempts cannot
+be safely associated through the worklist. Keep them blocked and escalate for
+provider-backed investigation. Do not enter credentials, card data or raw API
+responses as evidence; the audit stores only reference UUIDs.
 
 ## Disposable verification environment
 
