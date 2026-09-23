@@ -91,15 +91,21 @@ class PosOrder(models.Model):
             raise UserError(_("The verified Revolut payment line is missing."))
         payment = matches[0]
         operation_model = self.env["pos.revolut.payment.operation"]
-        if operation.financial_snapshot:
-            current_snapshot = operation_model.normalize_financial_snapshot(order)
-            if current_snapshot != operation.financial_snapshot:
-                raise UserError(
-                    _(
-                        "The order changed while Revolut payment was pending. "
-                        "Reconcile it before completing the sale."
-                    )
+        if not operation.financial_snapshot:
+            raise UserError(
+                _(
+                    "The original Revolut order contents are unavailable. "
+                    "Reconcile this payment before completing the sale."
                 )
+            )
+        current_snapshot = operation_model.normalize_financial_snapshot(order)
+        if current_snapshot != operation.financial_snapshot:
+            raise UserError(
+                _(
+                    "The order changed while Revolut payment was pending. "
+                    "Reconcile it before completing the sale."
+                )
+            )
         if (
             payment.get("payment_method_id") != operation.payment_method_id.id
             or payment.get("payment_status") != "done"

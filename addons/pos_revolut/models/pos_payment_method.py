@@ -546,10 +546,12 @@ class PosPaymentMethod(models.Model):
             )
             if operation.state != "verified" and not operation.retry_safe:
                 failures = operation.reconcile_failures + bool(local_outcome == "interrupted")
-                delay = (
-                    30 if local_outcome == "timed_out" else
-                    min(60 * 2 ** min(failures - 1, 5), 1800) if failures else 300
-                )
+                if local_outcome == "timed_out":
+                    delay = 30
+                elif failures:
+                    delay = min(60 * 2 ** min(failures - 1, 5), 1800)
+                else:
+                    delay = 300
                 operation.write({
                     "state": "unresolved",
                     "local_outcome": local_outcome,

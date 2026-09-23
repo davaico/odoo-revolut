@@ -1048,17 +1048,16 @@ class TestRevolutOrderSettlement(CommonPosTest):
     def test_verified_payment_settles_once_and_stores_references(self):
         order_uuid = str(uuid4())
         payment_line_uuid = str(uuid4())
-        operation = self._operation(order_uuid, payment_line_uuid)
-
-        result = self.env["pos.order"].sync_from_ui(
-            [
-                self._order_payload(
-                    order_uuid,
-                    payment_line_uuid,
-                    transaction_id=operation.revolut_payment_id,
-                )
-            ]
+        payload = self._order_payload(order_uuid, payment_line_uuid)
+        snapshot = self.env[
+            "pos.revolut.payment.operation"
+        ].normalize_financial_snapshot(payload)
+        operation = self._operation(
+            order_uuid, payment_line_uuid, financial_snapshot=snapshot
         )
+        payload["payment_ids"][0][2]["transaction_id"] = operation.revolut_payment_id
+
+        result = self.env["pos.order"].sync_from_ui([payload])
 
         order = self.env["pos.order"].browse(result["pos.order"][0]["id"])
         operation.invalidate_recordset()
@@ -1074,6 +1073,21 @@ class TestRevolutOrderSettlement(CommonPosTest):
         self.assertEqual(operation.pos_order_id, order)
         self.assertEqual(operation.pos_payment_id, order.payment_ids)
         self.assertFalse(operation.blocking_order_key)
+
+    def test_pre_upgrade_verified_payment_requires_manager_reconciliation(self):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        operation = self._operation(order_uuid, line_uuid)
+        payload = self._order_payload(
+            order_uuid, line_uuid, transaction_id=operation.revolut_payment_id
+        )
+        # A pre-upgrade attempt has no original cart snapshot. Matching totals
+        # cannot establish that the product, tax, or destination is unchanged.
+        self.assertFalse(operation.financial_snapshot)
+        with self.assertRaisesRegex(UserError, "Reconcile"):
+            self.env["pos.order"].sync_from_ui([payload])
+        self.assertFalse(self.env["pos.order"].search_count([
+            ("uuid", "=", order_uuid), ("state", "=", "paid"),
+        ]))
 
     def test_late_success_cannot_settle_edited_financial_content(self):
         order_uuid, line_uuid = str(uuid4()), str(uuid4())

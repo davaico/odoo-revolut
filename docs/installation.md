@@ -181,8 +181,10 @@ payment. Once the unchanged original order is reopened and fully paid, the
 normal POS checkout finalizes it and stores the order, intent and payment
 references. Scheduled reconciliation only records the payment result; it never
 creates or finalizes a POS sale in the background. An edited order is rejected
-at finalization even when the total still matches. Keep the original order and
-request manager reconciliation in that case.
+at finalization even when the total still matches. Attempts created before
+this upgrade lack an original cart snapshot; their late success also requires
+manager reconciliation before the sale can be completed. Keep the original
+order for that reconciliation.
 
 An attempt missing an external order or intent ID is intentionally excluded from
 scheduled polling. The provider may have accepted a request whose response was
@@ -216,5 +218,13 @@ upgrade, and retail/Restaurant POS startup tours:
 ./scripts/test-addon --verify-install-upgrade
 ```
 
-The script verifies the Odoo package version before starting and removes its
-disposable containers, network, database, and filestore when it exits.
+Run the separate-process recovery check to start a payment, stop Odoo, and
+reconcile the same persisted attempt from a fresh Odoo process:
+
+```bash
+./scripts/test-restart-recovery
+```
+
+The addon suite verifies the Odoo package version before starting. Both
+scripts remove their disposable containers, networks, databases, and
+filestores when they exit.
