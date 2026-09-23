@@ -27,10 +27,13 @@ An operator deploys an identified reviewed addon revision to the existing stagin
 - Local deployment tests cover dirty and unreviewed revisions, financial
   blockers, the post-stop race check, install and upgrade commands, immutable
   releases, backup/update/health failures, locking, cleanup, and revision
-  reporting.
+  reporting. On 2026-09-23, all 14 tests passed with 81% branch coverage across
+  the two deployment scripts.
 - The shared financial-operation guard is covered in the Odoo addon suite.
 - The disposable Odoo environment is the install/upgrade verification target:
-  `./scripts/test-addon --verify-install-upgrade`.
+  `./scripts/test-addon --verify-install-upgrade`. It passed on 2026-09-23,
+  including fresh installation, the full addon suite, module upgrade, and
+  retail and Restaurant POS startup checks.
 - Human gate: after this revision is reviewed and integrated, an operator must
   follow `docs/staging-deployment.md`, record the deployed SHA and configuration
   backup, complete the no-charge cash POS smoke check, and attach the operator,
