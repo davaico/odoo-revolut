@@ -344,6 +344,11 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
                 / "pos_revolut"
             )
             self.assertEqual((release / "REVISION").read_text().strip(), revision)
+            self.assertEqual(release.parent.stat().st_mode & 0o222, 0)
+            self.assertEqual(release.stat().st_mode & 0o222, 0)
+            self.assertEqual(
+                (release / "__manifest__.py").stat().st_mode & 0o222, 0
+            )
             self.assertTrue(current.is_symlink())
             self.assertEqual(current.resolve(), release)
             self.assertIn(f"Deployed POS Revolut revision {revision}", report)
@@ -354,6 +359,7 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             )
             self.assertEqual(len(backup_files), 1)
             backup = backup_files[0].parents[2]
+            self.assertEqual(backup.stat().st_mode & 0o777, 0o700)
             copied_secret = backup / "etc" / "odoo-revolut" / "revolut.env"
             self.assertEqual(copied_secret.read_text(), secret_file.read_text())
             manifest = json.loads((backup / "deployment.json").read_text())
