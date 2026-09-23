@@ -76,6 +76,64 @@ registry.category("web_tour.tours").add("pos_revolut_restaurant_starts", {
     ],
 });
 
+registry.category("web_tour.tours").add("pos_revolut_restaurant_guards", {
+    steps: () => [
+        {
+            content: "Open Restaurant PoS when the register is closed",
+            trigger: ".screen-login .btn.open-register-btn, .floor-screen .floor-map",
+            run() {
+                if (this.anchor.matches(".screen-login .btn.open-register-btn")) {
+                    this.anchor.click();
+                }
+            },
+        },
+        { trigger: ".floor-screen .floor-map" },
+        {
+            content: "A settled Revolut line cannot move into another order",
+            trigger: ".floor-screen .floor-map",
+            async run() {
+                const pos = window.posmodel;
+                const method = pos.models["pos.payment.method"].find(
+                    (item) => item.use_payment_terminal === "revolut"
+                );
+                if (!method) {
+                    throw new Error("Revolut method was not loaded in Restaurant POS");
+                }
+                const source = pos.createNewOrder();
+                const destination = pos.createNewOrder();
+                const payment = source.addPaymentline(method);
+                if (!payment.status) {
+                    throw new Error("Could not add a Revolut line to the test order");
+                }
+                payment.data.setPaymentStatus("done");
+                const merged = await pos.mergeOrders(source, destination);
+                if (merged !== false || !source.getPaymentlineByUuid(payment.data.uuid)) {
+                    throw new Error("Restaurant merge moved a protected Revolut payment");
+                }
+                window.revolutRestaurantGuardOrders = { source, destination };
+            },
+        },
+        { trigger: ".modal:contains('Revolut payment attached to this order')" },
+        Dialog.confirm(),
+        {
+            content: "A transfer into another order is also guarded",
+            trigger: ".floor-screen .floor-map",
+            async run() {
+                const { source, destination } = window.revolutRestaurantGuardOrders;
+                const transferred = await window.posmodel.transferOrder(
+                    source.uuid, null, destination
+                );
+                if (transferred !== false || !source.payment_ids.length) {
+                    throw new Error("Restaurant transfer moved a protected Revolut payment");
+                }
+                delete window.revolutRestaurantGuardOrders;
+            },
+        },
+        { trigger: ".modal:contains('Revolut payment attached to this order')" },
+        Dialog.confirm(),
+    ],
+});
+
 registry.category("web_tour.tours").add("pos_revolut_verified_checkout", {
     steps: () =>
         [
@@ -100,6 +158,22 @@ registry.category("web_tour.tours").add("pos_revolut_verified_checkout", {
             ReceiptScreen.paymentLineContains("Revolut", "12.34"),
             ReceiptScreen.totalAmountContains("12.34"),
         ].flat(),
+});
+
+registry.category("web_tour.tours").add("pos_revolut_split_cash_checkout", {
+    steps: () => [
+        Chrome.startPoS(),
+        ProductScreen.addOrderline("Desk Pad"),
+        ProductScreen.clickPayButton(),
+        PaymentScreen.clickPaymentMethod("Cash"),
+        PaymentScreen.enterPaymentLineAmount("Cash", "8"),
+        PaymentScreen.selectedPaymentlineHas("Cash", "8.00"),
+        PaymentScreen.clickPaymentMethod("Revolut"),
+        { trigger: ".payment-screen .electronic_status:contains('Waiting for card')" },
+        ReceiptScreen.isShown(),
+        ReceiptScreen.paymentLineContains("Cash", "8.00"),
+        ReceiptScreen.paymentLineContains("Revolut", "4.34"),
+    ].flat(),
 });
 
 registry.category("web_tour.tours").add("pos_revolut_reload_late_success", {

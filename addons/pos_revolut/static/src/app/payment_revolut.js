@@ -23,10 +23,24 @@ function isLocked(line) {
         (line.uiState?.revolutStarted || ["retry", "waiting", "waitingCard", "waitingCancel"].includes(line.getPaymentStatus()));
 }
 
+function needsReconciliation(line) {
+    return isLocked(line) && line.uiState?.revolutSnapshot?.state !== "verified";
+}
+
+export function hasRevolutExposure(order) {
+    return order?.payment_ids?.some((line) => isRevolut(line) &&
+        (isLocked(line) || line.uiState?.revolutStarting || line.transaction_id ||
+            line.getPaymentStatus() === "done"));
+}
+
 function financialSnapshot(order) {
     return {
         pricelist_id: order.pricelist_id?.id || false,
         fiscal_position_id: order.fiscal_position_id?.id || false,
+        restaurant: order.config?.module_pos_restaurant ? {
+            preset_id: order.preset_id?.id || false,
+            table_id: order.table_id?.id || false,
+        } : false,
         lines: order.lines.map((line) => ({
             uuid: line.uuid,
             product_id: line.product_id.id,
@@ -295,6 +309,16 @@ patch(PosPayment.prototype, {
 });
 
 patch(PosOrder.prototype, {
+    addPaymentline(paymentMethod) {
+        if (this.payment_ids.some(needsReconciliation)) {
+            return {
+                status: false,
+                data: _t("Reconcile the unresolved Revolut payment before adding another tender."),
+            };
+        }
+        return super.addPaymentline(...arguments);
+    },
+
     removePaymentline(line) {
         if (isLocked(line)) {
             return false;
@@ -304,6 +328,17 @@ patch(PosOrder.prototype, {
 });
 
 patch(PaymentScreen.prototype, {
+    async validateOrder() {
+        if (this.currentOrder.payment_ids.some(needsReconciliation)) {
+            this.dialog.add(AlertDialog, {
+                title: _t("Revolut reconciliation required"),
+                body: _t("This order has an unresolved Revolut payment. Check its status before completing checkout."),
+            });
+            return false;
+        }
+        return super.validateOrder(...arguments);
+    },
+
     async sendPaymentRequest(line) {
         if (!isRevolut(line)) {
             return super.sendPaymentRequest(...arguments);

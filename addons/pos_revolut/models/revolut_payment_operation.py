@@ -143,6 +143,20 @@ class PosRevolutPaymentOperation(models.Model):
     }
 
     @api.model
+    def lock_order(self, company_id, order_uuid):
+        # The row is updated by both payment start and POS checkout. Under
+        # Odoo's repeatable-read isolation, a competing stale transaction gets
+        # a serialization failure and must retry with a fresh snapshot.
+        self.env.cr.execute(
+            "INSERT INTO pos_revolut_order_lock "
+            "(company_id, order_uuid, create_uid, write_uid, create_date, write_date) "
+            "VALUES (%s, %s, %s, %s, NOW() AT TIME ZONE 'UTC', NOW() AT TIME ZONE 'UTC') "
+            "ON CONFLICT (company_id, order_uuid) DO UPDATE "
+            "SET write_date = NOW() AT TIME ZONE 'UTC'",
+            [company_id, order_uuid, self.env.uid, self.env.uid],
+        )
+
+    @api.model
     def _cron_reconcile_payments(self, batch_size=50):
         # Missing provider IDs require authoritative manual association. They
         # must never cause a replacement order or intent dispatch.
@@ -295,3 +309,16 @@ class PosRevolutPaymentDispatch(models.Model):
         if {"operation_id", "action", "claimed_at"}.intersection(values):
             raise UserError(_("Revolut dispatch claims are immutable."))
         return super().write(values)
+
+
+class PosRevolutOrderLock(models.Model):
+    _name = "pos.revolut.order.lock"
+    _description = "Revolut POS Order Transaction Lock"
+
+    company_id = fields.Many2one("res.company", required=True, ondelete="cascade")
+    order_uuid = fields.Char(required=True)
+
+    _unique_order = models.Constraint(
+        "UNIQUE(company_id, order_uuid)",
+        "A POS order can only have one Revolut transaction lock.",
+    )

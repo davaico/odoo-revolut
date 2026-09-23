@@ -1,6 +1,8 @@
 import os
+from copy import deepcopy
 from datetime import timedelta
 from threading import Barrier, Thread
+from unittest import SkipTest
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
@@ -443,6 +445,135 @@ class TestRevolutPayment(TransactionCase):
         self.assertFalse(operation.deployment_blocking)
         operation.write({"state": "unresolved"})
         self.assertTrue(operation.deployment_blocking)
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_verified_partial_line_allows_a_second_revolut_allocation(self, request):
+        order_uuid, first_uuid, second_uuid = str(uuid4()), str(uuid4()), str(uuid4())
+        second_order_id, second_intent_id = str(uuid4()), str(uuid4())
+        request.side_effect = [
+            *self._start_responses(),
+            self._response({
+                "id": self.revolut_intent_id, "order_id": self.revolut_order_id,
+                "state": "completed", "payment_id": self.revolut_payment_id,
+            }),
+            self._response({
+                "id": self.revolut_payment_id, "order_id": self.revolut_order_id,
+                "state": "captured", "amount": 434,
+                "currency": self.config.currency_id.name,
+            }),
+            self._eligible_terminal(),
+            self._response({"id": second_order_id}),
+            self._response({"id": second_intent_id, "state": "pending"}),
+        ]
+        first = self._start(order_uuid, first_uuid, amount=4.34)
+        verified = self.payment_method.revolut_poll_payment(
+            first["operation_id"], order_uuid, first_uuid
+        )
+        second = self._start(order_uuid, second_uuid, amount=8.00)
+
+        self.assertEqual(verified["state"], "verified")
+        self.assertEqual(second["state"], "pending")
+        posts = [call for call in request.call_args_list if call.args[0] == "POST"]
+        self.assertEqual([call.kwargs["json"]["amount"] for call in posts],
+                         [434, 434, 800, 800])
+        self.assertEqual(posts[2].kwargs["json"]["metadata"]["pos_order_uuid"], order_uuid)
+        self.assertEqual(posts[3].kwargs["json"]["terminal_id"], self.TERMINAL_ID)
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_second_terminal_waits_for_first_line_then_starts(self, request):
+        order_uuid, first_uuid, second_uuid = str(uuid4()), str(uuid4()), str(uuid4())
+        second_terminal_id = str(uuid4())
+        second_method = self.env["pos.payment.method"].create({
+            "name": "Second split-tender terminal",
+            "payment_method_type": "terminal",
+            "use_payment_terminal": "revolut",
+            "revolut_environment": "sandbox",
+            "revolut_location_id": self.LOCATION_ID,
+            "revolut_terminal_id": second_terminal_id,
+            "revolut_fulfilment_type": "eat_in",
+            "revolut_secret_reference": "ODOO_REVOLUT_SECRET_PAYMENT_TEST",
+        })
+        self.config = self.env["pos.config"].create({
+            "name": "Split tender with two Revolut terminals",
+            "payment_method_ids": [
+                Command.link(self.payment_method.id), Command.link(second_method.id),
+            ],
+            "auto_validate_terminal_payment": True,
+        })
+        self.session = self.env["pos.session"].create({
+            "config_id": self.config.id, "state": "opened",
+        })
+        request.side_effect = [
+            *self._start_responses(),
+            self._response({
+                "id": self.revolut_intent_id, "order_id": self.revolut_order_id,
+                "state": "completed", "payment_id": self.revolut_payment_id,
+            }),
+            self._response({
+                "id": self.revolut_payment_id, "order_id": self.revolut_order_id,
+                "state": "captured", "amount": 434,
+                "currency": self.config.currency_id.name,
+            }),
+            self._response({"terminals": [{
+                "id": second_terminal_id, "online": True,
+                "operation_mode": "pos", "location_id": self.LOCATION_ID,
+            }]}),
+            self._response({"id": str(uuid4())}),
+            self._response({"id": str(uuid4()), "state": "pending"}),
+        ]
+        first = self._start(order_uuid, first_uuid, amount=4.34)
+        with self.assertRaisesRegex(UserError, "blocks this order"):
+            second_method.revolut_start_payment(
+                self.session.id, order_uuid, second_uuid, 8.00,
+                self.config.currency_id.id, False,
+                self._financial_snapshot(order_uuid),
+            )
+        self.assertEqual(request.call_count, 3)
+        verified = self.payment_method.revolut_poll_payment(
+            first["operation_id"], order_uuid, first_uuid
+        )
+        second = second_method.revolut_start_payment(
+            self.session.id, order_uuid, second_uuid, 8.00,
+            self.config.currency_id.id, False,
+            self._financial_snapshot(order_uuid),
+        )
+        self.assertEqual(verified["state"], "verified")
+        self.assertEqual(second["state"], "pending")
+        self.assertNotEqual(first["operation_id"], second["operation_id"])
+        posts = [call for call in request.call_args_list if call.args[0] == "POST"]
+        self.assertEqual([call.kwargs["json"]["amount"] for call in posts],
+                         [434, 434, 800, 800])
+        self.assertEqual(posts[-1].kwargs["json"]["terminal_id"], second_terminal_id)
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_verified_line_blocks_new_charge_after_cart_edit(self, request):
+        order_uuid, first_uuid = str(uuid4()), str(uuid4())
+        request.side_effect = [
+            *self._start_responses(),
+            self._response({
+                "id": self.revolut_intent_id, "order_id": self.revolut_order_id,
+                "state": "completed", "payment_id": self.revolut_payment_id,
+            }),
+            self._response({
+                "id": self.revolut_payment_id, "order_id": self.revolut_order_id,
+                "state": "captured", "amount": 434,
+                "currency": self.config.currency_id.name,
+            }),
+        ]
+        first = self._start(order_uuid, first_uuid, amount=4.34)
+        self.payment_method.revolut_poll_payment(first["operation_id"], order_uuid, first_uuid)
+        changed = self._financial_snapshot(order_uuid)
+        changed["lines"][0]["qty"] = 2
+
+        with self.assertRaisesRegex(UserError, "order changed"):
+            self.payment_method.revolut_start_payment(
+                self.session.id, order_uuid, str(uuid4()), 8.00,
+                self.config.currency_id.id, False, changed,
+            )
+        self.assertEqual(request.call_count, 5)
 
     @patch.dict(
         os.environ,
@@ -1127,6 +1258,192 @@ class TestRevolutOrderSettlement(CommonPosTest):
         self.assertEqual(operation.pos_payment_id, order.payment_ids)
         self.assertFalse(operation.blocking_order_key)
 
+    def test_verified_revolut_line_and_cash_settle_exact_allocations(self):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        payload = self._order_payload(order_uuid, line_uuid)
+        payload["payment_ids"][0][2]["amount"] = 4.34
+        payload["payment_ids"].append(Command.create({
+            "amount": 8.00,
+            "name": fields.Datetime.now(),
+            "payment_method_id": self.cash_payment_method.id,
+            "uuid": str(uuid4()),
+        }))
+        operation = self._operation(
+            order_uuid, line_uuid, amount=4.34, amount_minor=434,
+            financial_snapshot=self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload),
+        )
+        payload["payment_ids"][0][2]["transaction_id"] = operation.revolut_payment_id
+
+        result = self.env["pos.order"].sync_from_ui([payload])
+
+        order = self.env["pos.order"].browse(result["pos.order"][0]["id"])
+        operation.invalidate_recordset()
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(len(order.payment_ids), 2)
+        self.assertEqual(operation.pos_payment_id.amount, 4.34)
+        self.assertEqual(operation.pos_payment_id.uuid, line_uuid)
+        self.assertEqual(operation.pos_payment_id.revolut_order_id, operation.revolut_order_id)
+        self.assertEqual(order.payment_ids.filtered(
+            lambda payment: payment.payment_method_id == self.cash_payment_method
+        ).amount, 8.00)
+
+    def test_two_verified_revolut_lines_keep_separate_references(self):
+        order_uuid = str(uuid4())
+        first_uuid, second_uuid = str(uuid4()), str(uuid4())
+        payload = self._order_payload(order_uuid, first_uuid)
+        payload["payment_ids"][0][2]["amount"] = 4.00
+        payload["payment_ids"].append(Command.create({
+            "amount": 8.34,
+            "name": fields.Datetime.now(),
+            "payment_method_id": self.revolut_method.id,
+            "payment_status": "done",
+            "uuid": second_uuid,
+        }))
+        snapshot = self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload)
+        first = self._operation(order_uuid, first_uuid, amount=4.00, amount_minor=400,
+                                blocking_order_key=False, financial_snapshot=snapshot)
+        second = self._operation(order_uuid, second_uuid, amount=8.34, amount_minor=834,
+                                 blocking_order_key=False, financial_snapshot=snapshot)
+        payload["payment_ids"][0][2]["transaction_id"] = first.revolut_payment_id
+        payload["payment_ids"][1][2]["transaction_id"] = second.revolut_payment_id
+
+        result = self.env["pos.order"].sync_from_ui([payload])
+
+        order = self.env["pos.order"].browse(result["pos.order"][0]["id"])
+        first.invalidate_recordset()
+        second.invalidate_recordset()
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(first.pos_payment_id.uuid, first_uuid)
+        self.assertEqual(second.pos_payment_id.uuid, second_uuid)
+        self.assertEqual(first.pos_payment_id.amount, 4.00)
+        self.assertEqual(second.pos_payment_id.amount, 8.34)
+        self.assertEqual(first.pos_payment_id.revolut_order_id, first.revolut_order_id)
+        self.assertEqual(second.pos_payment_id.revolut_order_id, second.revolut_order_id)
+
+    def test_each_revolut_line_checks_amount_currency_and_reference(self):
+        other_currency = self.env.ref("base.EUR")
+        if other_currency == self.session.currency_id:
+            other_currency = self.env.ref("base.USD")
+        for mismatch in ("amount", "currency", "reference"):
+            with self.subTest(mismatch=mismatch):
+                order_uuid = str(uuid4())
+                first_uuid, second_uuid = str(uuid4()), str(uuid4())
+                payload = self._order_payload(order_uuid, first_uuid)
+                payload["payment_ids"][0][2]["amount"] = 4.00
+                payload["payment_ids"].append(Command.create({
+                    "amount": 8.34, "name": fields.Datetime.now(),
+                    "payment_method_id": self.revolut_method.id,
+                    "payment_status": "done", "uuid": second_uuid,
+                }))
+                snapshot = self.env[
+                    "pos.revolut.payment.operation"
+                ].normalize_financial_snapshot(payload)
+                first = self._operation(order_uuid, first_uuid, amount=4.00,
+                                        amount_minor=400, blocking_order_key=False,
+                                        financial_snapshot=snapshot)
+                second_values = {
+                    "amount": 8.34, "amount_minor": 834,
+                    "blocking_order_key": False, "financial_snapshot": snapshot,
+                }
+                if mismatch == "currency":
+                    second_values.update({
+                        "currency_id": other_currency.id,
+                        "currency_code": other_currency.name,
+                    })
+                second = self._operation(order_uuid, second_uuid, **second_values)
+                payload["payment_ids"][0][2]["transaction_id"] = first.revolut_payment_id
+                payload["payment_ids"][1][2]["transaction_id"] = second.revolut_payment_id
+                if mismatch == "amount":
+                    payload["payment_ids"][1][2]["amount"] = 8.35
+                elif mismatch == "reference":
+                    payload["payment_ids"][1][2]["transaction_id"] = str(uuid4())
+
+                with self.assertRaises(UserError):
+                    self.env["pos.order"].sync_from_ui([payload])
+
+    def test_unresolved_second_line_cannot_be_replaced_with_cash(self):
+        order_uuid = str(uuid4())
+        first_uuid, second_uuid = str(uuid4()), str(uuid4())
+        payload = self._order_payload(order_uuid, first_uuid)
+        payload["payment_ids"][0][2]["amount"] = 4.00
+        payload["payment_ids"].append(Command.create({
+            "amount": 8.34,
+            "name": fields.Datetime.now(),
+            "payment_method_id": self.cash_payment_method.id,
+            "uuid": str(uuid4()),
+        }))
+        snapshot = self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload)
+        first = self._operation(order_uuid, first_uuid, amount=4.00, amount_minor=400,
+                                blocking_order_key=False, financial_snapshot=snapshot)
+        self._operation(order_uuid, second_uuid, state="unresolved", amount=8.34,
+                        amount_minor=834, revolut_payment_id=False,
+                        financial_snapshot=snapshot)
+        payload["payment_ids"][0][2]["transaction_id"] = first.revolut_payment_id
+
+        with self.assertRaisesRegex(UserError, "unresolved"):
+            self.env["pos.order"].sync_from_ui([payload])
+
+    def test_copied_verified_line_cannot_pay_another_order_as_cash(self):
+        original_uuid, line_uuid = str(uuid4()), str(uuid4())
+        operation = self._operation(original_uuid, line_uuid)
+        copied = self._order_payload(str(uuid4()), line_uuid,
+                                     payment_method=self.cash_payment_method,
+                                     payment_status=False,
+                                     transaction_id=operation.revolut_payment_id)
+        with self.assertRaisesRegex(UserError, "another POS order"):
+            self.env["pos.order"].sync_from_ui([copied])
+
+    def test_partially_paid_draft_keeps_payment_for_later_checkout(self):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        payload = self._order_payload(order_uuid, line_uuid)
+        payload["payment_ids"][0][2]["amount"] = 4.34
+        payload["amount_paid"] = 4.34
+        snapshot = self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload)
+        operation = self._operation(order_uuid, line_uuid, amount=4.34,
+                                    amount_minor=434, financial_snapshot=snapshot)
+        payload["payment_ids"][0][2]["transaction_id"] = operation.revolut_payment_id
+        final_payload = deepcopy(payload)
+        final_payload["state"] = "paid"
+        final_payload["lines"] = [list(command) for command in final_payload["lines"]]
+        final_payload["payment_ids"] = [list(command) for command in final_payload["payment_ids"]]
+        final_payload["amount_paid"] = 12.34
+        final_payload["payment_ids"].append(Command.create({
+            "amount": 8.00,
+            "name": fields.Datetime.now(),
+            "payment_method_id": self.cash_payment_method.id,
+            "uuid": str(uuid4()),
+        }))
+        payload["state"] = "draft"
+
+        draft_result = self.env["pos.order"].sync_from_ui([payload])
+        draft = self.env["pos.order"].browse(draft_result["pos.order"][0]["id"])
+        operation.invalidate_recordset()
+        self.assertEqual(draft.state, "draft")
+        self.assertEqual(operation.pos_order_id, draft)
+        self.assertEqual(operation.pos_payment_id.uuid, line_uuid)
+
+        final_result = self.env["pos.order"].sync_from_ui([final_payload])
+        final = self.env["pos.order"].browse(final_result["pos.order"][0]["id"])
+        self.assertEqual(final, draft)
+        self.assertEqual(final.state, "paid")
+        self.assertEqual(len(final.payment_ids), 2)
+
+    def test_partially_paid_draft_rejects_financial_edit(self):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        payload = self._order_payload(order_uuid, line_uuid)
+        payload["payment_ids"][0][2]["amount"] = 4.34
+        payload["amount_paid"] = 4.34
+        snapshot = self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload)
+        operation = self._operation(order_uuid, line_uuid, amount=4.34,
+                                    amount_minor=434, financial_snapshot=snapshot)
+        payload["payment_ids"][0][2]["transaction_id"] = operation.revolut_payment_id
+        payload["state"] = "draft"
+        self.env["pos.order"].sync_from_ui([deepcopy(payload)])
+        payload["lines"][0][2]["qty"] = 2
+
+        with self.assertRaisesRegex(UserError, "order changed"):
+            self.env["pos.order"].sync_from_ui([payload])
+
     def test_pre_upgrade_verified_payment_requires_manager_reconciliation(self):
         order_uuid, line_uuid = str(uuid4()), str(uuid4())
         operation = self._operation(order_uuid, line_uuid)
@@ -1235,6 +1552,33 @@ class TestRevolutOrderSettlement(CommonPosTest):
                 ]
             )
 
+    def test_retry_safe_failed_line_cannot_count_as_paid(self):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        self._operation(order_uuid, line_uuid, state="failed", retry_safe=True,
+                        provider_state="failed", blocking_order_key=False)
+        payload = self._order_payload(order_uuid, line_uuid, payment_status="retry")
+        with self.assertRaisesRegex(UserError, "not been verified"):
+            self.env["pos.order"].sync_from_ui([payload])
+
+    def test_revolut_reference_cannot_be_copied_to_a_cash_line(self):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        payload = self._order_payload(order_uuid, line_uuid)
+        payload["payment_ids"][0][2]["amount"] = 4.34
+        operation = self._operation(order_uuid, line_uuid, amount=4.34,
+                                    amount_minor=434,
+                                    financial_snapshot=self.env[
+                                        "pos.revolut.payment.operation"
+                                    ].normalize_financial_snapshot(payload))
+        payload["payment_ids"][0][2]["transaction_id"] = operation.revolut_payment_id
+        payload["payment_ids"].append(Command.create({
+            "amount": 8.00, "name": fields.Datetime.now(),
+            "payment_method_id": self.cash_payment_method.id,
+            "transaction_id": operation.revolut_payment_id,
+            "uuid": str(uuid4()),
+        }))
+        with self.assertRaisesRegex(UserError, "another payment line"):
+            self.env["pos.order"].sync_from_ui([payload])
+
     def test_revolut_payment_reference_cannot_be_reused(self):
         payment_id = str(uuid4())
         self._operation(
@@ -1243,3 +1587,212 @@ class TestRevolutOrderSettlement(CommonPosTest):
 
         with mute_logger("odoo.sql_db"), self.assertRaises(IntegrityError):
             self._operation(str(uuid4()), str(uuid4()), revolut_payment_id=payment_id)
+
+
+@tagged("post_install", "-at_install", "pos_revolut_restaurant")
+class TestRevolutRestaurantContext(TransactionCase):
+    LOCATION_ID = TestRevolutPayment.LOCATION_ID
+    TERMINAL_ID = TestRevolutPayment.TERMINAL_ID
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        restaurant = cls.env["ir.module.module"].search(
+            [("name", "=", "pos_restaurant")], limit=1
+        )
+        if restaurant.state != "installed":
+            raise SkipTest("pos_restaurant is not installed in this test phase")
+        bridge = cls.env["ir.module.module"].search(
+            [("name", "=", "pos_revolut_restaurant")], limit=1
+        )
+        if bridge.state != "installed":
+            raise AssertionError("The optional Revolut Restaurant bridge was not installed")
+        cls.method = cls.env["pos.payment.method"].create({
+            "name": "Restaurant Revolut test",
+            "payment_method_type": "terminal",
+            "use_payment_terminal": "revolut",
+            "revolut_environment": "sandbox",
+            "revolut_location_id": cls.LOCATION_ID,
+            "revolut_terminal_id": cls.TERMINAL_ID,
+            "revolut_fulfilment_type": "eat_in",
+            "revolut_secret_reference": "ODOO_REVOLUT_SECRET_RESTAURANT_TEST",
+        })
+        cls.config = cls.env["pos.config"].create({
+            "name": "Restaurant Revolut test",
+            "payment_method_ids": [Command.link(cls.method.id)],
+            "auto_validate_terminal_payment": True,
+        })
+        cls.config.write({"module_pos_restaurant": True})
+        cls.session = cls.env["pos.session"].create({
+            "config_id": cls.config.id, "state": "opened",
+        })
+        floor = cls.env["restaurant.floor"].create({
+            "name": "Revolut test floor",
+            "pos_config_ids": [Command.link(cls.config.id)],
+        })
+        cls.table = cls.env["restaurant.table"].create({
+            "table_number": 1, "floor_id": floor.id, "seats": 2,
+        })
+
+    def setUp(self):
+        super().setUp()
+        registry_test_mode = self.enter_registry_test_mode()
+        registry_test_mode.__enter__()
+        self.addCleanup(registry_test_mode.__exit__, None, None, None)
+
+    def _response(self, payload):
+        response = Mock()
+        response.json.return_value = payload
+        return response
+
+    def _start(self, preset_id, table_id):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        snapshot = {
+            "pricelist_id": self.config.pricelist_id.id,
+            "fiscal_position_id": False,
+            "restaurant": {"preset_id": preset_id, "table_id": table_id},
+            "lines": [{
+                "uuid": str(uuid4()), "product_id": 1,
+                "qty": 1, "price_unit": 12.34,
+                "discount": 0, "tax_ids": [],
+            }],
+        }
+        return self.method.revolut_start_payment(
+            self.session.id, order_uuid, line_uuid, 4.34,
+            self.config.currency_id.id, False, snapshot,
+        )
+
+    def test_verified_draft_keeps_order_identity_across_table_change(self):
+        other_table = self.env["restaurant.table"].create({
+            "table_number": 2, "floor_id": self.table.floor_id.id, "seats": 2,
+        })
+        product = self.env["product.product"].create({
+            "name": "Restaurant Revolut product",
+            "available_in_pos": True,
+            "list_price": 12.34,
+            "taxes_id": [Command.clear()],
+        })
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        payload = {
+            "amount_paid": 4.34,
+            "amount_return": 0,
+            "amount_tax": 0,
+            "amount_total": 12.34,
+            "date_order": fields.Datetime.to_string(fields.Datetime.now()),
+            "fiscal_position_id": False,
+            "pricelist_id": self.config.pricelist_id.id,
+            "lines": [list(Command.create({
+                "discount": 0, "pack_lot_ids": [], "price_unit": 12.34,
+                "product_id": product.id, "price_subtotal": 12.34,
+                "price_subtotal_incl": 12.34, "qty": 1,
+                "tax_ids": [[6, False, []]], "uuid": str(uuid4()),
+            }))],
+            "name": f"Order {order_uuid}",
+            "session_id": self.session.id,
+            "sequence_number": 1,
+            "payment_ids": [list(Command.create({
+                "amount": 4.34, "name": fields.Datetime.now(),
+                "payment_method_id": self.method.id,
+                "payment_status": "done", "uuid": line_uuid,
+            }))],
+            "table_id": self.table.id,
+            "uuid": order_uuid,
+            "user_id": self.env.uid,
+            "to_invoice": False,
+            "state": "draft",
+        }
+        operation = self.env["pos.revolut.payment.operation"].sudo().create({
+            "payment_method_id": self.method.id,
+            "company_id": self.env.company.id,
+            "pos_config_id": self.config.id,
+            "pos_session_id": self.session.id,
+            "order_uuid": order_uuid,
+            "payment_line_uuid": line_uuid,
+            "amount": 4.34,
+            "amount_minor": 434,
+            "currency_id": self.session.currency_id.id,
+            "currency_code": self.session.currency_id.name,
+            "environment": "sandbox",
+            "location_id": self.LOCATION_ID,
+            "terminal_id": self.TERMINAL_ID,
+            "fulfilment_type": "eat_in",
+            "secret_reference": "ODOO_REVOLUT_SECRET_RESTAURANT_TEST",
+            "state": "verified",
+            "revolut_order_id": str(uuid4()),
+            "revolut_payment_intent_id": str(uuid4()),
+            "revolut_payment_id": str(uuid4()),
+            "financial_snapshot": self.env[
+                "pos.revolut.payment.operation"
+            ].normalize_financial_snapshot(payload),
+        })
+        payload["payment_ids"][0][2]["transaction_id"] = operation.revolut_payment_id
+        moved = deepcopy(payload)
+        moved["table_id"] = other_table.id
+        edited = deepcopy(moved)
+        edited["lines"][0][2]["qty"] = 2
+
+        first = self.env["pos.order"].sync_from_ui([payload])
+        draft = self.env["pos.order"].browse(first["pos.order"][0]["id"])
+        second = self.env["pos.order"].sync_from_ui([moved])
+        operation.invalidate_recordset()
+        self.assertEqual(draft.id, second["pos.order"][0]["id"])
+        self.assertEqual(draft.table_id, other_table)
+        self.assertEqual(operation.pos_order_id, draft)
+        self.assertEqual(operation.pos_payment_id.uuid, line_uuid)
+        with self.assertRaisesRegex(UserError, "order changed"):
+            self.env["pos.order"].sync_from_ui([edited])
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_RESTAURANT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_unknown_restaurant_context_does_not_dispatch(self, request):
+        with self.assertRaisesRegex(UserError, "Dine In or Takeout"):
+            self._start(False, False)
+        request.assert_not_called()
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_RESTAURANT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_unknown_preset_with_table_does_not_dispatch(self, request):
+        with self.assertRaisesRegex(UserError, "Dine In or Takeout"):
+            self._start(False, self.table.id)
+        request.assert_not_called()
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_RESTAURANT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_dine_in_uses_eat_in_provisional_payload(self, request):
+        request.side_effect = [
+            self._response({"terminals": [{
+                "id": self.TERMINAL_ID, "online": True,
+                "operation_mode": "pos", "location_id": self.LOCATION_ID,
+            }]}),
+            self._response({"id": str(uuid4())}),
+            self._response({"id": str(uuid4()), "state": "pending"}),
+        ]
+        started = self._start(
+            self.env.ref("pos_restaurant.pos_takein_preset").id, self.table.id
+        )
+        self.assertEqual(started["state"], "pending")
+        order_post = [call for call in request.call_args_list
+                      if call.args[0] == "POST"][0]
+        self.assertEqual(order_post.kwargs["json"]["fulfilment_type"], "eat_in")
+        self.assertEqual(order_post.kwargs["json"]["amount"], 434)
+        self.assertEqual(order_post.kwargs["json"]["currency"], self.config.currency_id.name)
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_RESTAURANT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_takeaway_uses_take_away_provisional_payload(self, request):
+        request.side_effect = [
+            self._response({"terminals": [{
+                "id": self.TERMINAL_ID, "online": True,
+                "operation_mode": "pos", "location_id": self.LOCATION_ID,
+            }]}),
+            self._response({"id": str(uuid4())}),
+            self._response({"id": str(uuid4()), "state": "pending"}),
+        ]
+        started = self._start(
+            self.env.ref("pos_restaurant.pos_takeout_preset").id, False
+        )
+        self.assertEqual(started["state"], "pending")
+        order_post = [call for call in request.call_args_list
+                      if call.args[0] == "POST"][0]
+        self.assertEqual(order_post.kwargs["json"]["fulfilment_type"], "take_away")
+        self.assertEqual(order_post.kwargs["json"]["amount"], 434)

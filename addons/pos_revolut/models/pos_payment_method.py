@@ -264,6 +264,31 @@ class PosPaymentMethod(models.Model):
         # The caller's POS permissions and ownership have already been checked.
         # Configuration stays manager-only; only the server reads it for dispatch.
         configuration = self.sudo()
+        fulfilment_type = configuration.revolut_fulfilment_type
+        if ("module_pos_restaurant" in session.config_id._fields
+                and session.config_id.module_pos_restaurant):
+            context = financial_snapshot.get("restaurant") if isinstance(financial_snapshot, dict) else None
+            if not isinstance(context, dict):
+                raise UserError(_("Restaurant order context is required for Revolut payment."))
+            try:
+                preset_id = int(context.get("preset_id") or 0)
+            except (TypeError, ValueError):
+                raise UserError(_("The restaurant order preset is invalid.")) from None
+            takeout = self.env.ref("pos_restaurant.pos_takeout_preset", raise_if_not_found=False)
+            takein = self.env.ref("pos_restaurant.pos_takein_preset", raise_if_not_found=False)
+            delivery = self.env.ref("pos_restaurant.pos_delivery_preset", raise_if_not_found=False)
+            if delivery and preset_id == delivery.id:
+                raise UserError(_("Delivery orders are not supported by the Revolut terminal contract."))
+            if takeout and preset_id == takeout.id:
+                if context.get("table_id"):
+                    raise UserError(_("A takeaway payment cannot be attached to a table."))
+                fulfilment_type = "take_away"
+            elif takein and preset_id == takein.id:
+                fulfilment_type = "eat_in"
+            else:
+                raise UserError(_(
+                    "Select a Dine In or Takeout preset before starting a Revolut payment."
+                ))
         return {
             "payment_method_id": self.id,
             "company_id": self.company_id.id,
@@ -278,7 +303,7 @@ class PosPaymentMethod(models.Model):
             "environment": configuration.revolut_environment,
             "location_id": configuration.revolut_location_id,
             "terminal_id": configuration.revolut_terminal_id,
-            "fulfilment_type": configuration.revolut_fulfilment_type,
+            "fulfilment_type": fulfilment_type,
             "secret_reference": configuration.revolut_secret_reference,
             "blocking_order_key": f"{self.company_id.id}:{order_uuid}",
             "financial_snapshot": (
@@ -305,6 +330,7 @@ class PosPaymentMethod(models.Model):
                 owned_env = api.Environment(cursor, self.env.uid, dict(self.env.context))
                 operations = owned_env["pos.revolut.payment.operation"].sudo()
                 try:
+                    operations.lock_order(values["company_id"], values["order_uuid"])
                     previous = operations.browse()
                     if previous_operation_id:
                         previous = operations.search(
@@ -337,6 +363,13 @@ class PosPaymentMethod(models.Model):
                         snapshot = operations.operation_snapshot(operation)
                         cursor.commit()
                         return snapshot, False
+                    paid_order = owned_env["pos.order"].sudo().search([
+                        ("company_id", "=", values["company_id"]),
+                        ("uuid", "=", values["order_uuid"]),
+                        ("state", "!=", "draft"),
+                    ], limit=1)
+                    if paid_order:
+                        raise UserError(_("This POS order has already been completed."))
                     if previous:
                         if not previous.retry_safe:
                             raise UserError(_("Reconcile the previous Revolut attempt before retrying."))
@@ -345,6 +378,25 @@ class PosPaymentMethod(models.Model):
                             "previous_operation_id": previous.id,
                             "attempt_number": previous.attempt_number + 1,
                         }
+                    # Earlier verified lines release the order lock so another
+                    # allocation can start, but their cart and POS ownership
+                    # remain bound to the original order.
+                    earlier = operations.search([
+                        ("company_id", "=", values["company_id"]),
+                        ("order_uuid", "=", values["order_uuid"]),
+                        ("state", "=", "verified"),
+                    ])
+                    if any(
+                        not item.financial_snapshot
+                        or item.financial_snapshot != values["financial_snapshot"]
+                        or item.pos_session_id.id != values["pos_session_id"]
+                        or item.currency_id.id != values["currency_id"]
+                        for item in earlier
+                    ):
+                        raise UserError(_(
+                            "The order changed after a Revolut payment. "
+                            "Reconcile it before another charge."
+                        ))
                     blocker = operations.search(
                         [
                             "|",
@@ -510,6 +562,10 @@ class PosPaymentMethod(models.Model):
             # Intent-only failure cannot release a payment awaiting verification.
             if intent_only and operation.revolut_payment_id:
                 return owned_env["pos.revolut.payment.operation"].operation_snapshot(operation)
+            if values.get("state") == "verified":
+                # The original allocation is settled. Its immutable snapshot
+                # still binds later allocations to the same financial order.
+                values = {**values, "blocking_order_key": False}
             if values.get("state") in {"declined", "failed", "cancelled"}:
                 values = {**values, "retry_safe": True, "blocking_order_key": False}
             if values.get("state") != "unresolved":
