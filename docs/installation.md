@@ -123,8 +123,8 @@ guarded, and mutating requests are never automatically replayed.
 
 ### Unsuccessful payments and retries
 
-Upgrade the addon to `19.0.1.2.0` before using this flow so Odoo creates the
-attempt-history and retry-eligibility fields. Follow the normal stopped-service
+Upgrade the addon to `19.0.1.3.0` before using this flow so Odoo has the
+attempt-history, retry-eligibility, and recovery fields. Follow the normal stopped-service
 module upgrade in the staging deployment runbook. No credential rotation or new
 production Python dependency is required. For earlier unsuccessful attempts,
 **Check status** recognizes the recorded provider-final evidence (or a terminal
@@ -159,9 +159,41 @@ tender or terminal charge for the same sale, and select **Check status**. **Retr
 intent references can be queried again; a local timeout never proves that the
 customer was not charged. If a creation response was lost and its reference is
 missing, ask support to reconcile it with Revolut. Do not clear database locks,
-force the line paid, or delete audit records. Restart recovery and the manager
-worklist remain follow-up tickets, as do refunds, split tender and retail
-fulfilment.
+force the line paid, or delete audit records. The manager worklist remains
+a follow-up ticket, as do refunds, split tender and retail fulfilment.
+
+### Recovery after reload, server restart, or late success
+
+Upgrade to `19.0.1.3.0` and keep Odoo scheduled actions running. The addon installs
+**Reconcile Revolut POS payments**, a one-minute scheduled action. Each run checks
+at most 50 due attempts with both an order ID and intent ID. Transitional or
+uncertain results are checked again; a provider or network error backs off from
+one minute to at most 30 minutes. A local 60-second timeout is due for the
+next scheduled run; a non-network invalid response is checked no sooner than
+five minutes later. The cashier's **Check status** action can still
+query the original attempt immediately. It uses the same server-side outcome
+rules as the scheduled action.
+
+A browser reload restores the attempt by the original order UUID and payment-line
+UUID. It does not create another Revolut order or intent. The POS line displays
+its pending or unresolved status, and **Check status** can restore a late verified
+payment. Once the unchanged original order is reopened and fully paid, the
+normal POS checkout finalizes it and stores the order, intent and payment
+references. Scheduled reconciliation only records the payment result; it never
+creates or finalizes a POS sale in the background. An edited order is rejected
+at finalization even when the total still matches. Keep the original order and
+request manager reconciliation in that case.
+
+An attempt missing an external order or intent ID is intentionally excluded from
+scheduled polling. The provider may have accepted a request whose response was
+lost, so Odoo cannot safely repeat it. Keep the order and terminal blocked and
+have a manager or support associate the attempt with authoritative Revolut
+records. Until the manager worklist is delivered, support can inspect the
+server-side `pos.revolut.payment.operation` record by order/payment UUID and
+its recorded `state`, `next_reconcile_at`, `reconcile_failures`, and external
+references through an authorized Odoo shell. Do not clear blocking fields by
+hand. No new credential or credential rotation is required for this upgrade;
+the scheduled action uses the same server environment variable as checkout.
 
 ## Disposable verification environment
 
