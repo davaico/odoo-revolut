@@ -30,7 +30,8 @@ Development can begin entirely with mocked Revolut HTTP behavior; Merchant crede
 The intended workflow is:
 
 1. Build and test the addon locally in this repository.
-2. Use a local deployment script to copy a reviewed revision to the staging VM. That script does not exist yet.
+2. Use the local deployment script to copy a reviewed revision to the staging
+   VM, following [the staging deployment runbook](staging-deployment.md).
 3. Install or upgrade the addon in the staging database.
 4. Validate the POS behavior in the browser and inspect server logs through Tailscale SSH.
 5. Perform real terminal tests only after non-production Merchant access, a matching Revolut location, and a Pay at Counter terminal are available.
@@ -69,7 +70,6 @@ project has not authenticated to that environment or observed its behavior.
 
 Still unavailable:
 
-- a local staging deployment script
 - non-production Revolut Merchant credentials
 - an assigned operator for sandbox and later physical-terminal acceptance
 - confirmed production terminal access and matching physical location

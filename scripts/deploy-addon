@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""Deploy an identified POS Revolut revision to an existing Odoo host."""
+
+import argparse
+import hashlib
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+class DeploymentError(RuntimeError):
+    """An expected deployment refusal or command failure."""
+
+
+class CommandRunner:
+    """Run local deployment commands without invoking a shell."""
+
+    def run(self, command, **kwargs):
+        return subprocess.run(command, check=True, text=True, **kwargs)
+
+
+def parse_arguments(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    subparsers = parser.add_subparsers(dest="action", required=True)
+    deploy = subparsers.add_parser("deploy")
+    deploy.add_argument("--repository", type=Path, default=Path(__file__).parents[1])
+    deploy.add_argument("--revision", required=True)
+    deploy.add_argument("--reviewed-ref", default="origin/main")
+    deploy.add_argument("--ssh-target", required=True)
+    deploy.add_argument("--database", required=True)
+    deploy.add_argument("--customer", required=True)
+    deploy.add_argument("--environment", required=True)
+    deploy.add_argument("--mode", choices=("install", "upgrade"), required=True)
+    return parser.parse_args(argv)
+
+
+def validate_clean_repository(repository, runner):
+    result = run_checked(
+        runner,
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        "Repository cleanliness check",
+        cwd=repository,
+        capture_output=True,
+    )
+    if result.stdout:
+        raise DeploymentError("The working tree is not clean; deployment refused.")
+
+
+def validate_arguments(args):
+    patterns = {
+        "revision": r"[0-9a-f]{40}",
+        "ssh_target": r"[A-Za-z0-9._-]+@[A-Za-z0-9.-]+",
+        "database": r"[a-z][a-z0-9_]{0,62}",
+        "customer": r"[a-z][a-z0-9-]{1,30}",
+        "environment": r"[a-z][a-z0-9-]{1,30}",
+    }
+    for name, pattern in patterns.items():
+        if not re.fullmatch(pattern, str(getattr(args, name))):
+            raise DeploymentError(f"Invalid {name.replace('_', ' ')}.")
+    if (
+        not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", args.reviewed_ref)
+        or ".." in args.reviewed_ref
+        or "@{" in args.reviewed_ref
+    ):
+        raise DeploymentError("Invalid reviewed ref.")
+    if not args.repository.is_dir():
+        raise DeploymentError(f"Repository does not exist: {args.repository}")
+
+
+def run_checked(runner, command, step, **kwargs):
+    try:
+        return runner.run(command, **kwargs)
+    except subprocess.CalledProcessError as error:
+        detail = (error.stderr or error.stdout or "").strip()
+        suffix = f": {detail}" if detail else ""
+        raise DeploymentError(
+            f"{step} failed with exit {error.returncode}{suffix}"
+        ) from error
+
+
+def deploy(args, runner):
+    validate_arguments(args)
+    validate_clean_repository(args.repository, runner)
+    resolved = run_checked(
+        runner,
+        ["git", "rev-parse", "--verify", f"{args.revision}^{{commit}}"],
+        "Revision lookup",
+        cwd=args.repository,
+        capture_output=True,
+    ).stdout.strip()
+    if resolved != args.revision:
+        raise DeploymentError(
+            f"Revision resolved to {resolved or 'nothing'}, not {args.revision}."
+        )
+    run_checked(
+        runner,
+        ["git", "rev-parse", "--verify", f"{args.reviewed_ref}^{{commit}}"],
+        "Reviewed ref lookup",
+        cwd=args.repository,
+        capture_output=True,
+    )
+    try:
+        runner.run(
+            [
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                args.revision,
+                args.reviewed_ref,
+            ],
+            cwd=args.repository,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as error:
+        if error.returncode == 1:
+            raise DeploymentError(
+                f"Revision {args.revision} is not contained in reviewed ref "
+                f"{args.reviewed_ref}."
+            ) from error
+        raise DeploymentError(
+            f"Reviewed ancestry check failed with exit {error.returncode}."
+        ) from error
+
+    with tempfile.TemporaryDirectory(prefix="pos-revolut-deploy-") as directory:
+        archive = Path(directory) / f"pos-revolut-{args.revision}.tar.gz"
+        run_checked(
+            runner,
+            [
+                "git",
+                "archive",
+                "--format=tar.gz",
+                "--output",
+                str(archive),
+                args.revision,
+                "--",
+                "addons/pos_revolut",
+            ],
+            "Revision archive",
+            cwd=args.repository,
+            capture_output=True,
+        )
+        digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+        remote_script = run_checked(
+            runner,
+            ["git", "show", f"{args.revision}:scripts/deploy-addon-remote"],
+            "Remote deployer lookup",
+            cwd=args.repository,
+            capture_output=True,
+        ).stdout
+        remote_archive = f"/var/tmp/pos-revolut-{args.revision}.tar.gz"
+        ssh_options = [
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            "-o",
+            "ConnectTimeout=10",
+        ]
+        run_checked(
+            runner,
+            ["scp", *ssh_options, str(archive), f"{args.ssh_target}:{remote_archive}"],
+            "Artifact upload",
+            capture_output=True,
+        )
+        result = run_checked(
+            runner,
+            [
+                "ssh",
+                *ssh_options,
+                args.ssh_target,
+                "python3",
+                "-",
+                "--archive",
+                remote_archive,
+                "--expected-sha256",
+                digest,
+                "--revision",
+                args.revision,
+                "--database",
+                args.database,
+                "--customer",
+                args.customer,
+                "--environment",
+                args.environment,
+                "--mode",
+                args.mode,
+            ],
+            "Remote deployment",
+            input=remote_script,
+            capture_output=True,
+        )
+    expected_report = f"Deployed POS Revolut revision {args.revision}"
+    if expected_report not in result.stdout:
+        raise DeploymentError("Remote deployment did not report its deployed revision.")
+    return result.stdout
+
+
+def main(argv=None, *, runner=None, stdout=None, stderr=None):
+    runner = runner or CommandRunner()
+    stdout = stdout or sys.stdout
+    stderr = stderr or sys.stderr
+    args = parse_arguments(argv)
+    try:
+        result = deploy(args, runner)
+    except (DeploymentError, OSError) as error:
+        print(f"Deployment failed: {error}", file=stderr)
+        return 1
+    print(result, end="" if result.endswith("\n") else "\n", file=stdout)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
