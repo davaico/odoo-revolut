@@ -11,7 +11,7 @@ from psycopg2.errors import SerializationFailure
 from odoo import SUPERUSER_ID, Command, api, fields
 from odoo.addons.point_of_sale.tests.common import CommonPosTest
 from odoo.exceptions import AccessError, UserError, ValidationError
-from odoo.tests.common import TransactionCase, tagged
+from odoo.tests.common import TransactionCase, new_test_user, tagged
 from odoo.tools import mute_logger
 
 
@@ -780,6 +780,59 @@ class TestRevolutPayment(TransactionCase):
             ).revolut_poll_payment(
                 operation.id, order_uuid, payment_line_uuid
             )
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_manager_associates_lost_references_and_verifies_payment(self, request):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        request.side_effect = [self._eligible_terminal(), requests.Timeout()]
+        started = self._start(order_uuid, line_uuid)
+        self.assertEqual(started["state"], "unresolved")
+        operation = self.env["pos.revolut.payment.operation"].browse(
+            started["operation_id"]
+        )
+        request.side_effect = [
+            self._response({
+                "id": self.revolut_order_id, "amount": 1234,
+                "currency": self.config.currency_id.name,
+                "location_id": self.LOCATION_ID,
+                "metadata": {
+                    "pos_order_uuid": order_uuid,
+                    "pos_payment_line_uuid": line_uuid,
+                },
+            }),
+            self._response({
+                "id": self.revolut_intent_id, "order_id": self.revolut_order_id,
+                "amount": 1234, "currency": self.config.currency_id.name,
+                "terminal_id": self.TERMINAL_ID, "state": "completed",
+                "payment_id": self.revolut_payment_id,
+            }),
+            self._response({
+                "id": self.revolut_intent_id, "order_id": self.revolut_order_id,
+                "state": "completed", "payment_id": self.revolut_payment_id,
+            }),
+            self._response({
+                "id": self.revolut_payment_id, "order_id": self.revolut_order_id,
+                "amount": 1234, "currency": self.config.currency_id.name,
+                "state": "captured",
+            }),
+        ]
+        manager = new_test_user(
+            self.env, login="revolut_lost_id_manager",
+            groups="point_of_sale.group_pos_manager",
+            company_id=self.env.company.id,
+        )
+        operation.with_user(manager).action_revolut_associate(
+            self.revolut_order_id, self.revolut_intent_id
+        )
+        operation.with_user(manager).action_revolut_reconcile()
+        operation.invalidate_recordset()
+        self.assertEqual(operation.state, "verified")
+        self.assertEqual(operation.revolut_payment_id, self.revolut_payment_id)
+        self.assertEqual(
+            operation.audit_ids.mapped("action"), ["associate", "reconcile"]
+        )
+        self.assertEqual(operation.audit_ids.mapped("actor_id"), manager)
 
 
 @tagged("post_install", "-at_install")
