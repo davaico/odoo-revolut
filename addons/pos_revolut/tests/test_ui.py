@@ -85,6 +85,38 @@ class TestRevolutRetailPosStarts(TestPointOfSaleHttpCommon):
 
 @tagged("post_install", "-at_install", "pos_revolut_restaurant")
 class TestRevolutRestaurantPosStarts(TestPointOfSaleHttpCommon):
+    def test_restaurant_merge_and_transfer_preserve_revolut_order(self):
+        restaurant_module = self.env["ir.module.module"].search(
+            [("name", "=", "pos_restaurant")], limit=1
+        )
+        if restaurant_module.state != "installed":
+            self.skipTest("pos_restaurant is not installed in this test phase")
+        method = self.env["pos.payment.method"].create({
+            "name": "Revolut",
+            "journal_id": self.bank_journal.id,
+            "payment_method_type": "terminal",
+            "use_payment_terminal": "revolut",
+            "revolut_environment": "sandbox",
+            "revolut_location_id": TestRevolutManagerUi.LOCATION_ID,
+            "revolut_terminal_id": TestRevolutManagerUi.TERMINAL_ID,
+            "revolut_fulfilment_type": "eat_in",
+            "revolut_secret_reference": "ODOO_REVOLUT_SECRET_TEST_TERMINAL",
+        })
+        self.main_pos_config.write({
+            "module_pos_restaurant": True,
+            "payment_method_ids": [Command.link(method.id)],
+        })
+        floor = self.env["restaurant.floor"].create({
+            "name": "Guard Floor",
+            "pos_config_ids": [Command.link(self.main_pos_config.id)],
+        })
+        self.env["restaurant.table"].create({
+            "table_number": 1, "floor_id": floor.id, "seats": 2,
+        })
+        self.main_pos_config.with_user(self.pos_user).open_ui()
+        self.main_pos_config.current_session_id.set_opening_control(0, "")
+        self.start_pos_tour("pos_revolut_restaurant_guards")
+
     def test_restaurant_pos_starts_with_addon_installed(self):
         restaurant_module = self.env["ir.module.module"].search(
             [("name", "=", "pos_restaurant")], limit=1
@@ -223,6 +255,53 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.assertEqual(order.payment_ids.transaction_id, self.PAYMENT_ID)
         mutating_calls = [call for call in calls if call[0] == "POST"]
         self.assertEqual(len(mutating_calls), 2)
+
+    def test_split_cash_and_revolut_checkout_uses_remaining_line_amount(self):
+        revolut_method = self._configure_revolut_checkout()
+        calls = []
+
+        def request(method, url, **kwargs):
+            calls.append((method, url, kwargs))
+            if method == "GET" and url.endswith("/api/terminals"):
+                return self._response({"terminals": [{
+                    "id": self.TERMINAL_ID, "online": True,
+                    "operation_mode": "pos", "location_id": self.LOCATION_ID,
+                }]})
+            if method == "POST" and url.endswith("/api/orders"):
+                return self._response({"id": self.ORDER_ID})
+            if method == "POST" and url.endswith("/payment-intents"):
+                return self._response({"id": self.INTENT_ID, "state": "pending"})
+            if method == "GET" and "/api/payment-intents/" in url:
+                return self._response({
+                    "id": self.INTENT_ID, "order_id": self.ORDER_ID,
+                    "state": "completed", "payment_id": self.PAYMENT_ID,
+                })
+            if method == "GET" and "/api/payments/" in url:
+                return self._response({
+                    "id": self.PAYMENT_ID, "order_id": self.ORDER_ID,
+                    "state": "captured", "amount": 434,
+                    "currency": self.main_pos_config.currency_id.name,
+                })
+            raise AssertionError(f"Unexpected Revolut request: {method} {url}")
+
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+            side_effect=request,
+        ):
+            self.start_pos_tour("pos_revolut_split_cash_checkout")
+
+        self.env.invalidate_all()
+        operation = self.env["pos.revolut.payment.operation"].search(
+            [("payment_method_id", "=", revolut_method.id)]
+        )
+        order = operation.pos_order_id
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(operation.amount_minor, 434)
+        self.assertEqual(len(order.payment_ids), 2)
+        self.assertEqual(operation.pos_payment_id.amount, 4.34)
+        posts = [call for call in calls if call[0] == "POST"]
+        self.assertEqual(posts[0][2]["json"]["amount"], 434)
+        self.assertEqual(posts[1][2]["json"]["amount"], 434)
 
     def test_reload_recovers_late_success_without_new_charge(self):
         revolut_method = self._configure_revolut_checkout()
