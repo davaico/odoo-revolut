@@ -44,12 +44,17 @@ if [[ "$installed_version" != "19.0.20260908" ]]; then
     exit 1
 fi
 
+# HttpCase otherwise skips every browser tour when this dependency is missing.
+"${compose[@]}" run --rm --no-deps --entrypoint python3 odoo \
+    -c 'import websocket'
+
 run_odoo() {
     "${compose[@]}" run --rm odoo \
         --database "$database_name" \
         --stop-after-init \
         --workers 0 \
         --log-level warn \
+        --log-handler odoo.tests.result:INFO \
         "$@"
 }
 

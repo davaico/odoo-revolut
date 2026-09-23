@@ -10,7 +10,7 @@ RUN curl --fail --location --show-error \
         "https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb" \
     && echo "${CHROME_SHA256}  /tmp/google-chrome-stable.deb" | sha256sum --check --strict \
     && apt-get update \
-    && apt-get install --yes --no-install-recommends /tmp/google-chrome-stable.deb \
+    && apt-get install --yes --no-install-recommends /tmp/google-chrome-stable.deb python3-websocket \
     && rm -f /tmp/google-chrome-stable.deb \
     && rm -rf /var/lib/apt/lists/*
 
