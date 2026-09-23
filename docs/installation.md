@@ -1,10 +1,10 @@
 # Install and configure POS Revolut
 
-This release supports one full Revolut terminal payment per POS order. Odoo
-persists and claims the operation before each mutating Merchant API request,
-pushes the amount to the configured terminal, polls through the Odoo server,
-and completes the sale only after the underlying Revolut payment is verified as
-`captured` or `completed`.
+This release supports cash plus Revolut and multiple Revolut payment lines on
+one POS order. Odoo persists each line's operation before Merchant API dispatch,
+sends only that line's amount to its configured terminal, and verifies the
+underlying payment as `captured` or `completed`. A partial payment leaves the
+order open; normal automatic checkout runs only after the full order is paid.
 
 ## Requirements
 
@@ -16,10 +16,14 @@ and completes the sale only after the underlying Revolut payment is verified as
 - a restaurant fulfilment selection supported by the published terminal guide:
   `eat_in` or `take_away`
 
-`pos_restaurant` is optional at the module level. However, live retail payments
-are currently blocked because Revolut has not published or confirmed a retail
-`fulfilment_type`. Do not map a retail sale to a restaurant value. Mocked and
-controlled testing must select the actual `eat_in` or `take_away` context.
+`pos_restaurant` is optional. When it is installed alongside `pos_revolut`, the
+small `pos_revolut_restaurant` bridge installs automatically and guards bill
+splits, merges and transfers after a Revolut payment starts. The terminal guide
+provides the provisional restaurant `eat_in` and `take_away` payloads; their
+acceptance by the pinned Merchant API still needs controlled testing. Revolut
+has not confirmed a retail `fulfilment_type`, so this addon does not claim live
+retail compatibility. A manager-configured value in a retail POS is for mocked
+or controlled contract testing only.
 
 ## Provision the secret
 
@@ -82,7 +86,11 @@ As a Point of Sale administrator:
 4. Select **Sandbox** or **Production**.
 5. Enter the Revolut location UUID and the single terminal UUID assigned to this
    payment method.
-6. Select the restaurant fulfilment that this payment method represents.
+6. Select the guide-documented fulfilment for this payment method. In a
+   Restaurant POS, the active table and standard Dine In/Takeout preset select
+   `eat_in` or `take_away` for each payment. Delivery and unknown no-table
+   presets are guarded because the provisional terminal contract does not
+   define their mapping.
 7. Enter the environment-variable name, not its value, in **Revolut Secret
    Reference** and save.
 8. Select **Check Connection**.
@@ -159,8 +167,35 @@ tender or terminal charge for the same sale, and select **Check status**. **Retr
 intent references can be queried again; a local timeout never proves that the
 customer was not charged. If a creation response was lost and its reference is
 missing, ask support to reconcile it with Revolut. Do not clear database locks,
-force the line paid, or delete audit records. Refunds, split tender and retail
-fulfilment remain separate tickets.
+force the line paid, or delete audit records. Refunds and live retail
+fulfilment remain separate acceptance work.
+
+### Split tender and Restaurant checkout
+
+Set the cash or other normal payment line to its intended amount, then select
+Revolut for the remainder. The POS sends the selected Revolut line amount, not
+the full sale total. A successful partial Revolut line stays on the open order;
+add another Revolut line or normal tender to settle the remaining balance. Each
+Revolut line has its own order, intent and payment references and is checked
+against its own amount and the POS currency. Odoo completes the sale automatically
+only when every required tender is paid. A draft Restaurant order can retain a
+verified partial payment while the cashier navigates away or reloads.
+
+Restaurant uses the standard Dine In/Takeout preset and table context to choose
+`eat_in` or `take_away` at dispatch. Moving the **same** draft order to another
+table keeps its order UUID and verified payment association. Splitting a bill,
+merging orders or transferring into a different order after a Revolut payment
+has started is guarded in POS. Keep the original order and use the manager
+reconciliation worklist if a financial edit, copied payment line, or changed
+order identity is detected. The server rejects a changed cart or an operation
+linked to another order, even when the displayed total is unchanged. It also
+rejects checkout through cash or another terminal while any Revolut attempt for
+that order is unresolved. Wait for a verified or provider-final result before
+continuing; never use another tender to cover uncertain exposure.
+
+The Restaurant bridge adds no Merchant credentials or direct browser API calls.
+If Restaurant is installed later, upgrade the addons and reopen POS to load its
+assets. Installation of `pos_revolut` alone remains supported without Restaurant.
 
 ### Recovery after reload, server restart, or late success
 
