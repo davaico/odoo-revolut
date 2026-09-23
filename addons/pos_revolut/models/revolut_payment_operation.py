@@ -30,6 +30,10 @@ class PosRevolutPaymentOperation(models.Model):
     )
     order_uuid = fields.Char(required=True, readonly=True, index=True)
     payment_line_uuid = fields.Char(required=True, readonly=True, index=True)
+    attempt_number = fields.Integer(required=True, default=1, readonly=True)
+    previous_operation_id = fields.Many2one(
+        "pos.revolut.payment.operation", readonly=True, ondelete="restrict"
+    )
     amount = fields.Monetary(
         required=True, readonly=True, currency_field="currency_id"
     )
@@ -73,13 +77,20 @@ class PosRevolutPaymentOperation(models.Model):
     revolut_payment_intent_id = fields.Char(readonly=True, index=True)
     revolut_payment_id = fields.Char(readonly=True, index=True)
     provider_state = fields.Char(readonly=True)
+    retry_safe = fields.Boolean(readonly=True)
+    local_outcome = fields.Selection(
+        [("interrupted", "Interrupted"), ("timed_out", "Timed Out")], readonly=True
+    )
     verified_at = fields.Datetime(readonly=True)
     blocking_order_key = fields.Char(readonly=True)
     blocking_terminal_key = fields.Char(readonly=True)
 
     _unique_logical_start = models.Constraint(
-        "UNIQUE(company_id, order_uuid, payment_line_uuid)",
-        "A Revolut payment line can only have one operation.",
+        "UNIQUE(company_id, order_uuid, payment_line_uuid, attempt_number)",
+        "A Revolut payment attempt can only be created once.",
+    )
+    _unique_replacement = models.Constraint(
+        "UNIQUE(previous_operation_id)", "A Revolut attempt can only be replaced once."
     )
     _unique_blocking_order = models.Constraint(
         "UNIQUE(blocking_order_key)",
@@ -106,6 +117,8 @@ class PosRevolutPaymentOperation(models.Model):
     )
 
     _IMMUTABLE_FIELDS = {
+        "attempt_number",
+        "previous_operation_id",
         "payment_method_id",
         "company_id",
         "pos_config_id",
@@ -171,6 +184,8 @@ class PosRevolutPaymentOperation(models.Model):
             "payment_intent_id": operation.revolut_payment_intent_id or False,
             "payment_id": operation.revolut_payment_id or False,
             "provider_state": operation.provider_state or False,
+            "retry_safe": operation.retry_safe,
+            "local_outcome": operation.local_outcome or False,
         }
 
 class PosRevolutPaymentDispatch(models.Model):
@@ -186,7 +201,8 @@ class PosRevolutPaymentDispatch(models.Model):
         index=True,
     )
     action = fields.Selection(
-        [("create_order", "Create Order"), ("create_intent", "Create Intent")],
+        [("create_order", "Create Order"), ("create_intent", "Create Intent"),
+         ("cancel_intent", "Cancel Intent")],
         required=True,
         readonly=True,
     )

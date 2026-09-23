@@ -119,10 +119,49 @@ Intent completion or payment authorisation is not success. Declined, failed and
 cancelled results remain explicit. A timeout, malformed/lost response, unknown
 state, reference mismatch, or process crash after dispatch leaves an unresolved
 operation. The affected order and terminal stay blocked, the force-done path is
-guarded, and mutating requests are never automatically replayed. Recovery,
-manager reconciliation, safe retries, cancellation, refunds, split tender and
-retail fulfilment are follow-up tickets; until those land, an unresolved payment
-requires support review and must not be retried on that order or terminal.
+guarded, and mutating requests are never automatically replayed.
+
+### Unsuccessful payments and retries
+
+Upgrade the addon to `19.0.1.2.0` before using this flow so Odoo creates the
+attempt-history and retry-eligibility fields. Follow the normal stopped-service
+module upgrade in the staging deployment runbook. No credential rotation or new
+production Python dependency is required. For earlier unsuccessful attempts,
+**Check status** recognizes the recorded provider-final evidence (or a terminal
+check failure with no dispatch claims) and enables retry. Old pending or uncertain
+attempts remain blocked until reconciled.
+
+The foreground checkout waits for up to 60 seconds, polling approximately once
+per second. Cashier outcomes have distinct meanings:
+
+| Outcome | Meaning and cashier action |
+| --- | --- |
+| Declined | Revolut confirmed the card payment was declined. Retry is allowed. |
+| Failed | Revolut confirmed failure, or the initial terminal check stopped the attempt before any charge dispatch. Retry is allowed. |
+| Cancelled | Revolut confirmed cancellation. Retry is allowed. |
+| Interrupted | Communication was interrupted; payment may still succeed. Check status, without starting another charge. |
+| Timed out | The local waiting limit expired; this is not provider failure. Check status, without starting another charge. |
+| Unresolved | Missing or inconsistent evidence prevents a final decision. Keep the line and contact support if status checks cannot resolve it. |
+
+Cancel requests first check the intent. Only a pending intent can be cancelled;
+processing cannot. Odoo reads the result again after the cancel request, including
+when the response is lost or rejected. If payment won the race, verified success
+is preserved and the normal checkout can complete. An unresolved cancellation
+does not remove the line or unlock the amount.
+
+Only a server-confirmed safe outcome enables a new charge. Each explicit retry
+creates a new persisted attempt and a fresh Revolut order and intent; previous
+references remain for audit. Duplicate starts or cancellations do not repeat
+financial operations. A changed amount cannot alter an active attempt.
+
+For unresolved payments, keep the original order and payment line, avoid another
+tender or terminal charge for the same sale, and select **Check status**. **Retry** is available only after a safe outcome. Known
+intent references can be queried again; a local timeout never proves that the
+customer was not charged. If a creation response was lost and its reference is
+missing, ask support to reconcile it with Revolut. Do not clear database locks,
+force the line paid, or delete audit records. Restart recovery and the manager
+worklist remain follow-up tickets, as do refunds, split tender and retail
+fulfilment.
 
 ## Disposable verification environment
 

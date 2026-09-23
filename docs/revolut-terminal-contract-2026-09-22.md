@@ -195,3 +195,15 @@ This verification slice remains open pending all of the following:
 Mocked development may proceed with the restaurant payloads clearly marked as
 provisional, with retail behavior left unimplemented or explicitly blocked,
 and with ambiguous create-order/create-intent outcomes never auto-replayed.
+
+## Retry and cancellation implementation check — 23 September 2026
+
+Rechecked the official terminal guide and API reference linked above. Only
+pending intents are cancellable. The guide requires a new order after an intent
+is cancelled; it permits retry after a final unsuccessful payment and a new
+intent after a failed intent. This addon uses a fresh order and intent for every
+safe replacement attempt, preserving the previous attempt and references.
+
+Cancellation acknowledgements are followed by retrieval and payment verification
+when a payment reference exists. Local transport failure and the 60-second POS
+waiting limit do not authorize a replacement. No live calls were made.

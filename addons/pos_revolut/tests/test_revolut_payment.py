@@ -92,6 +92,202 @@ class TestRevolutPayment(TransactionCase):
             self._response({"id": self.revolut_intent_id, "state": "pending"}),
         ]
 
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_pending_cancellation_is_reconciled_and_not_repeated(self, request):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        intent = {"id": self.revolut_intent_id,
+                  "order_id": self.revolut_order_id, "state": "pending"}
+        request.side_effect = [
+            *self._start_responses(), self._response(intent),
+            self._response({}),
+            self._response({**intent, "state": "cancelled"}),
+        ]
+        started = self._start(order_uuid, line_uuid)
+        result = self.payment_method.revolut_cancel_payment(
+            started["operation_id"], order_uuid, line_uuid
+        )
+        repeated = self.payment_method.revolut_cancel_payment(
+            started["operation_id"], order_uuid, line_uuid
+        )
+        self.assertEqual(result["state"], "cancelled")
+        self.assertTrue(result["retry_safe"])
+        self.assertEqual(repeated, result)
+        cancellations = [call for call in request.call_args_list
+                         if call.args[1].endswith("/cancel")]
+        self.assertEqual(len(cancellations), 1)
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_safe_retry_retains_attempt_and_deduplicates_start(self, request):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        request.side_effect = [
+            *self._start_responses(),
+            self._response({"id": self.revolut_intent_id,
+                            "order_id": self.revolut_order_id, "state": "cancelled"}),
+        ]
+        first = self._start(order_uuid, line_uuid)
+        failed = self.payment_method.revolut_poll_payment(
+            first["operation_id"], order_uuid, line_uuid
+        )
+        old_order = self.revolut_order_id
+        self.revolut_order_id, self.revolut_intent_id = str(uuid4()), str(uuid4())
+        request.side_effect = self._start_responses()
+        retry = self.payment_method.revolut_start_payment(
+            self.session.id, order_uuid, line_uuid, 12.34,
+            self.config.currency_id.id, first["operation_id"]
+        )
+        repeated = self.payment_method.revolut_start_payment(
+            self.session.id, order_uuid, line_uuid, 12.34,
+            self.config.currency_id.id, first["operation_id"]
+        )
+        self.assertTrue(failed["retry_safe"])
+        self.assertNotEqual(retry["operation_id"], first["operation_id"])
+        self.assertEqual(repeated, retry)
+        self.assertNotEqual(retry["order_id"], old_order)
+        self.assertEqual(self.payment_method.revolut_poll_payment(
+            first["operation_id"], order_uuid, line_uuid
+        ), failed)
+        self.assertEqual(len([call for call in request.call_args_list
+                              if call.args[0] == "POST"]), 4)
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_processing_cancellation_and_unsafe_retry_do_not_dispatch(self, request):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        request.side_effect = [*self._start_responses(), self._response({
+            "id": self.revolut_intent_id, "order_id": self.revolut_order_id,
+            "state": "processing",
+        })]
+        first = self._start(order_uuid, line_uuid)
+        result = self.payment_method.revolut_cancel_payment(
+            first["operation_id"], order_uuid, line_uuid
+        )
+        self.assertEqual(result["provider_state"], "processing")
+        self.assertFalse(result["retry_safe"])
+        with self.assertRaises(UserError):
+            self.payment_method.revolut_start_payment(
+                self.session.id, order_uuid, line_uuid, 12.34,
+                self.config.currency_id.id, first["operation_id"]
+            )
+        with self.assertRaises(UserError):
+            self._start(order_uuid, line_uuid, amount=99)
+        with self.assertRaises(UserError):
+            self._start(order_uuid, str(uuid4()))
+        self.assertEqual(len([call for call in request.call_args_list
+                              if call.args[0] == "POST"]), 2)
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_lost_cancellation_is_unresolved_and_never_replayed(self, request):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        pending = {"id": self.revolut_intent_id,
+                   "order_id": self.revolut_order_id, "state": "pending"}
+        request.side_effect = [
+            *self._start_responses(), self._response(pending),
+            requests.Timeout("cancel response lost"),
+            requests.ConnectionError("status unavailable"), self._response(pending),
+        ]
+        first = self._start(order_uuid, line_uuid)
+        result = self.payment_method.revolut_cancel_payment(
+            first["operation_id"], order_uuid, line_uuid
+        )
+        self.assertEqual(result["state"], "unresolved")
+        self.assertEqual(result["local_outcome"], "interrupted")
+        self.assertFalse(result["retry_safe"])
+        repeated = self.payment_method.revolut_cancel_payment(
+            first["operation_id"], order_uuid, line_uuid
+        )
+        self.assertFalse(repeated["retry_safe"])
+        self.assertEqual(len([call for call in request.call_args_list
+                              if call.args[1].endswith("/cancel")]), 1)
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_cancel_rejection_reconciles_payment_success(self, request):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        intent = {"id": self.revolut_intent_id, "order_id": self.revolut_order_id}
+        request.side_effect = [
+            *self._start_responses(), self._response({**intent, "state": "pending"}),
+            requests.HTTPError("processing now"),
+            self._response({**intent, "state": "completed", "payment_id": self.revolut_payment_id}),
+            self._response({"id": self.revolut_payment_id, "order_id": self.revolut_order_id,
+                            "state": "captured", "amount": 1234,
+                            "currency": self.config.currency_id.name}),
+        ]
+        first = self._start(order_uuid, line_uuid)
+        result = self.payment_method.revolut_cancel_payment(
+            first["operation_id"], order_uuid, line_uuid
+        )
+        self.assertEqual(result["state"], "verified")
+        self.assertFalse(result["retry_safe"])
+        self.assertEqual(self.payment_method.revolut_mark_timeout(
+            first["operation_id"], order_uuid, line_uuid
+        ), result)
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_lost_create_response_is_interrupted_and_blocks_retry(self, request):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        request.side_effect = [self._eligible_terminal(), requests.Timeout("lost response")]
+        result = self._start(order_uuid, line_uuid)
+        self.assertEqual(result["state"], "unresolved")
+        self.assertEqual(result["local_outcome"], "interrupted")
+        self.assertFalse(result["retry_safe"])
+        with self.assertRaises(UserError):
+            self.payment_method.revolut_start_payment(
+                self.session.id, order_uuid, line_uuid, 12.34,
+                self.config.currency_id.id, result["operation_id"]
+            )
+        self.assertEqual(self._start(order_uuid, line_uuid), result)
+        self.assertEqual(request.call_count, 2)
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_pre_upgrade_unsuccessful_attempt_is_reconciled_before_retry(self, request):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        request.side_effect = self._start_responses()
+        first = self._start(order_uuid, line_uuid)
+        # Ticket 03 persisted final failure but retained the order blocker and
+        # had no retry_safe column. This is its state after a schema upgrade.
+        operation = self.env["pos.revolut.payment.operation"].browse(first["operation_id"])
+        operation.write({"state": "cancelled", "provider_state": "cancelled",
+                         "blocking_terminal_key": False, "retry_safe": False})
+        operation.flush_recordset()
+        request.side_effect = [self._response({
+            "id": self.revolut_intent_id, "order_id": self.revolut_order_id,
+            "state": "cancelled",
+        })]
+        result = self.payment_method.revolut_poll_payment(
+            first["operation_id"], order_uuid, line_uuid
+        )
+        self.assertTrue(result["retry_safe"])
+        self.revolut_order_id, self.revolut_intent_id = str(uuid4()), str(uuid4())
+        request.side_effect = self._start_responses()
+        retry = self.payment_method.revolut_start_payment(
+            self.session.id, order_uuid, line_uuid, 12.34,
+            self.config.currency_id.id, first["operation_id"]
+        )
+        self.assertNotEqual(first["operation_id"], retry["operation_id"])
+        self.assertEqual(retry["state"], "pending")
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_pre_upgrade_terminal_check_failure_remains_safe_without_dispatch(self, request):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        request.side_effect = requests.ConnectionError("terminal discovery unavailable")
+        first = self._start(order_uuid, line_uuid)
+        operation = self.env["pos.revolut.payment.operation"].browse(first["operation_id"])
+        operation.write({"retry_safe": False,
+                         "blocking_order_key": f"{self.env.company.id}:{order_uuid}"})
+        operation.flush_recordset()
+        result = self.payment_method.revolut_poll_payment(
+            first["operation_id"], order_uuid, line_uuid
+        )
+        self.assertEqual(result["state"], "failed")
+        self.assertTrue(result["retry_safe"])
+        self.assertEqual(request.call_count, 1)
+
     @patch.dict(
         os.environ,
         {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only-not-a-credential"},
@@ -276,6 +472,7 @@ class TestRevolutPayment(TransactionCase):
         )
 
         self.assertEqual(completed["state"], "unresolved")
+        self.assertFalse(completed["retry_safe"])
 
     @patch.dict(
         os.environ,
@@ -293,6 +490,7 @@ class TestRevolutPayment(TransactionCase):
         )
 
         self.assertEqual(completed["state"], "unresolved")
+        self.assertFalse(completed["retry_safe"])
 
     @patch.dict(
         os.environ,
@@ -329,6 +527,7 @@ class TestRevolutPayment(TransactionCase):
         )
 
         self.assertEqual(completed["state"], "unresolved")
+        self.assertFalse(completed["retry_safe"])
 
     @patch.dict(
         os.environ,
@@ -731,6 +930,23 @@ class TestRevolutOrderSettlement(CommonPosTest):
         self.assertEqual(operation.pos_order_id, order)
         self.assertEqual(operation.pos_payment_id, order.payment_ids)
         self.assertFalse(operation.blocking_order_key)
+
+    def test_unsuccessful_attempts_cannot_settle_a_sale(self):
+        for state in ("declined", "failed", "cancelled", "unresolved"):
+            with self.subTest(state=state):
+                order_uuid, line_uuid = str(uuid4()), str(uuid4())
+                operation = self._operation(
+                    order_uuid, line_uuid, state=state,
+                    blocking_terminal_key=False,
+                )
+                payload = self._order_payload(
+                    order_uuid, line_uuid, transaction_id=operation.revolut_payment_id
+                )
+                with self.assertRaises(UserError):
+                    self.env["pos.order"].sync_from_ui([payload])
+                self.assertFalse(self.env["pos.order"].search_count([
+                    ("uuid", "=", order_uuid), ("state", "=", "paid"),
+                ]))
 
     def test_forged_done_status_without_verified_operation_is_rejected(self):
         order_uuid = str(uuid4())
