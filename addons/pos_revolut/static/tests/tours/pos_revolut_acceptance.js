@@ -1,3 +1,4 @@
+import * as TicketScreen from "@point_of_sale/../tests/pos/tours/utils/ticket_screen_util";
 import * as Chrome from "@point_of_sale/../tests/pos/tours/utils/chrome_util";
 import * as Dialog from "@point_of_sale/../tests/generic_helpers/dialog_util";
 import * as PaymentScreen from "@point_of_sale/../tests/pos/tours/utils/payment_screen_util";
@@ -342,5 +343,87 @@ registry.category("web_tour.tours").add("pos_revolut_cancel_race", {
         PaymentScreen.clickCancelButton(),
         ReceiptScreen.isShown(),
         ReceiptScreen.paymentLineContains("Revolut", "12.34"),
+    ].flat(),
+});
+
+registry.category("web_tour.tours").add("pos_revolut_full_refund", {
+    steps: () => [
+        ...revolutCheckoutSteps(),
+        ReceiptScreen.isShown(),
+        Chrome.clickOrders(),
+        TicketScreen.selectFilter("Paid"),
+        TicketScreen.selectOrderByPrice("12.34"),
+        { trigger: ".ticket-screen .numpad button:contains('1')", run: "click" },
+        TicketScreen.confirmRefund(),
+        PaymentScreen.isShown(),
+        PaymentScreen.clickPaymentMethod("Revolut"),
+        { trigger: ".payment-screen .send_refund_request", run: "click" },
+        { trigger: ".payment-screen .electronic_status:contains('Refund in process')" },
+        ReceiptScreen.isShown(),
+        ReceiptScreen.paymentLineContains("Revolut", "-12.34"),
+    ].flat(),
+});
+
+registry.category("web_tour.tours").add("pos_revolut_refund_reload", {
+    steps: () => [
+        ...revolutCheckoutSteps(),
+        ReceiptScreen.isShown(),
+        Chrome.clickOrders(),
+        TicketScreen.selectFilter("Paid"),
+        TicketScreen.selectOrderByPrice("12.34"),
+        { trigger: ".ticket-screen .numpad button:contains('1')", run: "click" },
+        TicketScreen.confirmRefund(),
+        PaymentScreen.isShown(),
+        PaymentScreen.clickPaymentMethod("Revolut"),
+        { trigger: ".payment-screen .send_refund_request", run: "click" },
+        { trigger: ".modal:contains('The refund may have succeeded')" },
+        Dialog.confirm(),
+        refresh(),
+        { trigger: ".payment-screen .send_payment_request:contains('Check status')" },
+        PaymentScreen.clickPaymentMethod("Cash"),
+        { trigger: ".modal:contains('Cash or another tender cannot replace the linked refund')" },
+        Dialog.confirm(),
+        {
+            content: "Repeated status checks cannot dispatch another refund",
+            trigger: ".payment-screen .send_payment_request:contains('Check status')",
+            run() {
+                this.anchor.click();
+                this.anchor.click();
+            },
+        },
+        { trigger: ".payment-screen .electronic_status:contains('Refund in process')" },
+        { trigger: ".revolut-refund-reference:contains('6c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf')" },
+        ReceiptScreen.isShown(),
+        ReceiptScreen.paymentLineContains("Revolut", "-12.34"),
+    ].flat(),
+});
+
+registry.category("web_tour.tours").add("pos_revolut_refund_failed", {
+    steps: () => [
+        ...revolutCheckoutSteps(),
+        ReceiptScreen.isShown(),
+        Chrome.clickOrders(),
+        TicketScreen.selectFilter("Paid"),
+        TicketScreen.selectOrderByPrice("12.34"),
+        { trigger: ".ticket-screen .numpad button:contains('1')", run: "click" },
+        TicketScreen.confirmRefund(),
+        PaymentScreen.isShown(),
+        PaymentScreen.clickPaymentMethod("Revolut"),
+        { trigger: ".payment-screen .send_refund_request", run: "click" },
+        { trigger: ".modal:contains('The Revolut refund failed')" },
+        Dialog.confirm(),
+        { trigger: ".payment-screen .electronic_status:contains('Refund failed')" },
+        { trigger: ".revolut-refund-reference:contains('6c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf')" },
+        PaymentScreen.clickNumpad("9"),
+        PaymentScreen.selectedPaymentlineHas("Revolut", "-12.34"),
+        PaymentScreen.clickValidate(),
+        { trigger: ".modal:contains('Revolut reconciliation required')" },
+        Dialog.confirm(),
+        PaymentScreen.clickPaymentMethod("Cash"),
+        { trigger: ".modal:contains('Cash or another tender cannot replace the linked refund')" },
+        Dialog.confirm(),
+        { trigger: ".payment-screen .send_payment_request:contains('Check status')", run: "click" },
+        { trigger: ".payment-screen .electronic_status:contains('Refund failed')" },
+        PaymentScreen.selectedPaymentlineHas("Revolut", "-12.34"),
     ].flat(),
 });

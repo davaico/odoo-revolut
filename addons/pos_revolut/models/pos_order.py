@@ -5,6 +5,9 @@ from odoo.exceptions import UserError
 class PosPayment(models.Model):
     _inherit = "pos.payment"
 
+    revolut_refund_operation_id = fields.Many2one(
+        "pos.revolut.refund.operation", readonly=True, ondelete="restrict", index=True
+    )
     revolut_order_id = fields.Char(readonly=True, index=True)
     revolut_payment_intent_id = fields.Char(readonly=True, index=True)
     revolut_operation_id = fields.Many2one(
@@ -169,12 +172,85 @@ class PosOrder(models.Model):
                 raise UserError(_("The Revolut payment has not been verified."))
         return verified
 
+    def _validate_revolut_refund_settlement(self, order, existing_order):
+        session = self.env["pos.session"].browse(order["session_id"]).exists()
+        if not session:
+            raise UserError(_("The Point of Sale session does not exist."))
+        order_uuid = order.get("uuid") or (existing_order and existing_order.uuid)
+        self.env["pos.revolut.payment.operation"].sudo().lock_order(session.company_id.id, order_uuid)
+        refunds = self.env["pos.revolut.refund.operation"].sudo().search([
+            ("company_id", "=", session.company_id.id), ("order_uuid", "=", order_uuid),
+        ])
+        payments = self._revolut_payment_values(order, existing_order)
+        # Find original return relationships even before a Revolut operation
+        # exists, so selecting cash cannot bypass the verified-refund boundary.
+        original_ids = []
+        for raw in order.get("lines", []):
+            line = raw[2] if isinstance(raw, (tuple, list)) and len(raw) > 2 else raw
+            if isinstance(line, dict) and line.get("refunded_orderline_id"):
+                original_ids.append(line["refunded_orderline_id"])
+        if existing_order:
+            original_ids += existing_order.lines.refunded_orderline_id.ids
+        original_lines = self.env["pos.order.line"].sudo().browse(original_ids).exists()
+        source_revolut = original_lines.order_id.payment_ids.filtered(
+            lambda payment: payment.payment_method_id.use_payment_terminal == "revolut" or payment.revolut_operation_id
+        )
+        references = [value.get("transaction_id") for value in payments.values() if value.get("transaction_id")]
+        copied = self.env["pos.revolut.refund.operation"].sudo().search([
+            "|", ("payment_line_uuid", "in", list(payments)), ("revolut_order_id", "in", references),
+        ]) if payments else refunds.browse()
+        if any(item not in refunds for item in copied):
+            raise UserError(_("A Revolut refund belongs to another return."))
+        negative_revolut = any(
+            value.get("amount", 0) < 0 and self.env["pos.payment.method"].browse(value.get("payment_method_id")).use_payment_terminal == "revolut"
+            for value in payments.values()
+        )
+        if not refunds and not source_revolut and not negative_revolut:
+            return None
+        if not refunds:
+            if order.get("state") != "draft" or any(value.get("payment_status") == "done" for value in payments.values()):
+                raise UserError(_("The Revolut refund has not been verified. Use the original Revolut method."))
+            return refunds
+        self.env.cr.execute("SELECT id FROM pos_revolut_refund_operation WHERE id = ANY(%s) ORDER BY id FOR UPDATE", [refunds.ids])
+        refunds.invalidate_recordset()
+        if len(refunds) != 1 or len(payments) != 1:
+            raise UserError(_("A full Revolut return requires its single original refund payment."))
+        refund = refunds
+        refund.payment_method_id._check_refund_authority()
+        payment = payments.get(refund.payment_line_uuid)
+        snapshot = refunds._normalize_return(order)
+        normalize = self.env["pos.revolut.payment.operation"].normalize_amount
+        if (not payment or snapshot != refund.financial_snapshot
+                or refund.pos_session_id != session or refund.currency_id != session.currency_id
+                or (refund.pos_order_id and refund.pos_order_id != existing_order)
+                or payment.get("payment_method_id") != refund.payment_method_id.id
+                or normalize(session.currency_id, payment.get("amount"))[1] != -refund.amount_minor
+                or normalize(session.currency_id, order.get("amount_total"))[1] != -refund.amount_minor):
+            raise UserError(_("The return changed after the Revolut refund was reserved."))
+        if refund.state != "verified":
+            if order.get("state") != "draft" or payment.get("payment_status") == "done":
+                raise UserError(_("Only a completed Revolut refund can complete this return."))
+            return refunds.browse()
+        if payment.get("payment_status") != "done" or payment.get("transaction_id") != refund.revolut_order_id:
+            raise UserError(_("The refund payment details do not match Revolut verification."))
+        return refunds
+
     def _process_order(self, order, existing_order):
-        operations = self._validate_revolut_settlement(order, existing_order)
+        refunds = self._validate_revolut_refund_settlement(order, existing_order)
+        operations = self._validate_revolut_settlement(order, existing_order) if refunds is None else self.env["pos.revolut.payment.operation"].browse()
         order_id = super()._process_order(order, existing_order)
+        pos_order = self.browse(order_id)
+        if refunds:
+            payment = pos_order.payment_ids.filtered(lambda item: item.uuid == refunds.payment_line_uuid)
+            if len(payment) != 1:
+                raise UserError(_("The verified Revolut refund payment was not saved."))
+            payment.write({"revolut_refund_operation_id": refunds.id,
+                           "transaction_id": refunds.revolut_order_id,
+                           "revolut_order_id": refunds.revolut_order_id,
+                           "payment_ref_no": refunds.revolut_order_id})
+            refunds.write({"pos_order_id": pos_order.id, "pos_payment_id": payment.id})
         if not operations:
             return order_id
-        pos_order = self.browse(order_id)
         for operation in operations:
             payment = pos_order.payment_ids.filtered(
                 lambda item: item.uuid == operation.payment_line_uuid

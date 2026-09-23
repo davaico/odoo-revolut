@@ -9,4 +9,13 @@
         <field name="interval_number">1</field>
         <field name="interval_type">minutes</field>
     </record>
+    <record id="ir_cron_reconcile_refunds" model="ir.cron">
+        <field name="name">Reconcile Revolut POS refunds</field>
+        <field name="model_id" ref="model_pos_revolut_refund_operation"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_reconcile_refunds()</field>
+        <field name="user_id" ref="base.user_root"/>
+        <field name="interval_number">1</field>
+        <field name="interval_type">minutes</field>
+    </record>
 </odoo>

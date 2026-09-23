@@ -16,5 +16,13 @@
         <xpath expr="//div[@t-if=&quot;line.payment_status == 'waitingCancel'&quot;]" position="attributes">
             <attribute name="t-if">line.payment_status == 'waitingCancel' and line.payment_method_id.use_payment_terminal !== 'revolut'</attribute>
         </xpath>
+        <xpath expr="//div[hasclass('paymentline') and hasclass('electronic_payment')]" position="inside">
+            <div t-if="line.payment_method_id.use_payment_terminal === 'revolut' and line.amount &lt; 0 and line.uiState.revolutSnapshot?.order_id" class="revolut-refund-reference small text-break">
+                Refund: <t t-esc="line.uiState.revolutSnapshot.order_id"/>
+                <t t-if="line.uiState.revolutSnapshot.original_order_id">
+                    — Original: <t t-esc="line.uiState.revolutSnapshot.original_order_id"/>
+                </t>
+            </div>
+        </xpath>
     </t>
 </templates>
