@@ -50,7 +50,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [04 — Handle unsuccessful payments and safe retries](closed/04-unsuccessful-payments-safe-retries.md) | `ready-for-agent` at closure | Closed | 03 (closed) |
 | [05 — Recover payments after interruption or late success](closed/05-recover-interrupted-payments.md) | `ready-for-agent` at closure | Closed | 04 (closed) |
 | [06 — Resolve uncertain payments from a manager worklist](closed/06-manager-reconciliation-worklist.md) | `ready-for-agent` at closure | Closed | 05 (closed) |
-| [07 — Use Revolut with split tender and restaurant checkout](ready-for-agent/07-split-tender-restaurant-checkout.md) | `ready-for-agent` | Open | 05 (closed) |
+| [07 — Use Revolut with split tender and restaurant checkout](closed/07-split-tender-restaurant-checkout.md) | `ready-for-agent` at closure | Closed | 05 (closed) |
 | [08 — Issue and reconcile a full Revolut refund](ready-for-agent/08-full-revolut-refund.md) | `ready-for-agent` | Open | 05 (closed) |
 | [09 — Issue partial refunds across original payment allocations](ready-for-agent/09-partial-allocated-refunds.md) | `ready-for-agent` | Open | 07, 08 |
 | [10 — Install and upgrade a reviewed revision on staging](ready-for-human/10-staging-install-upgrade.md) | `ready-for-human` | Open | 03 |
