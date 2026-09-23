@@ -1,12 +1,13 @@
 {
     "name": "POS Revolut",
-    "version": "19.0.1.2.0",
+    "version": "19.0.1.3.0",
     "category": "Sales/Point of Sale",
     "summary": "Configure a Revolut payment terminal for Point of Sale",
     "author": "Davai",
     "depends": ["point_of_sale"],
     "data": [
         "security/ir.model.access.csv",
+        "data/revolut_reconciliation_cron.xml",
         "views/pos_payment_method_views.xml",
     ],
     "assets": {

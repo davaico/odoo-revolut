@@ -1,5 +1,6 @@
 import os
 import re
+from datetime import timedelta
 from uuid import UUID
 
 import requests
@@ -258,6 +259,7 @@ class PosPaymentMethod(models.Model):
         amount_minor,
         order_uuid,
         payment_line_uuid,
+        financial_snapshot=False,
     ):
         # The caller's POS permissions and ownership have already been checked.
         # Configuration stays manager-only; only the server reads it for dispatch.
@@ -279,6 +281,11 @@ class PosPaymentMethod(models.Model):
             "fulfilment_type": configuration.revolut_fulfilment_type,
             "secret_reference": configuration.revolut_secret_reference,
             "blocking_order_key": f"{self.company_id.id}:{order_uuid}",
+            "financial_snapshot": (
+                self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(
+                    financial_snapshot
+                ) if financial_snapshot else False
+            ),
             "blocking_terminal_key": (
                 f"{self.company_id.id}:{configuration.revolut_environment}:"
                 f"{configuration.revolut_terminal_id}"
@@ -321,6 +328,10 @@ class PosPaymentMethod(models.Model):
                             or operation.currency_id.id != values["currency_id"]
                             or operation.pos_session_id.id != values["pos_session_id"]
                             or operation.payment_method_id.id != self.id
+                            or (
+                                operation.financial_snapshot
+                                and operation.financial_snapshot != values["financial_snapshot"]
+                            )
                         ):
                             raise UserError(_("The existing Revolut attempt has different payment details."))
                         snapshot = operations.operation_snapshot(operation)
@@ -503,6 +514,14 @@ class PosPaymentMethod(models.Model):
                 values = {**values, "retry_safe": True, "blocking_order_key": False}
             if values.get("state") != "unresolved":
                 values = {**values, "local_outcome": False}
+            if values.get("state") in {"verified", "declined", "failed", "cancelled"}:
+                values = {**values, "next_reconcile_at": False, "reconcile_failures": 0}
+            else:
+                values = {
+                    **values,
+                    "next_reconcile_at": fields.Datetime.now() + timedelta(seconds=30),
+                    "reconcile_failures": 0,
+                }
             if release_terminal:
                 values = {**values, "blocking_terminal_key": False}
             operation.write(values)
@@ -526,7 +545,23 @@ class PosPaymentMethod(models.Model):
                 operation_id
             )
             if operation.state != "verified" and not operation.retry_safe:
-                operation.write({"state": "unresolved", "local_outcome": local_outcome})
+                failures = operation.reconcile_failures + bool(local_outcome == "interrupted")
+                if local_outcome == "timed_out":
+                    delay = 30
+                elif failures:
+                    delay = min(60 * 2 ** min(failures - 1, 5), 1800)
+                else:
+                    delay = 300
+                operation.write({
+                    "state": "unresolved",
+                    "local_outcome": local_outcome,
+                    "reconcile_failures": failures,
+                    "next_reconcile_at": (
+                        fields.Datetime.now() + timedelta(seconds=delay)
+                        if operation.revolut_order_id and operation.revolut_payment_intent_id
+                        else False
+                    ),
+                })
             if action:
                 dispatch = owned_env["pos.revolut.payment.dispatch"].sudo().search(
                     [("operation_id", "=", operation_id), ("action", "=", action)],
@@ -597,7 +632,7 @@ class PosPaymentMethod(models.Model):
 
     def revolut_start_payment(
         self, session_id, order_uuid, payment_line_uuid, amount, currency_id,
-        previous_operation_id=False,
+        previous_operation_id=False, financial_snapshot=False,
     ):
         self.ensure_one()
         (
@@ -610,6 +645,8 @@ class PosPaymentMethod(models.Model):
         ) = self._validate_revolut_pos_request(
             session_id, order_uuid, payment_line_uuid, amount, currency_id
         )
+        if not financial_snapshot:
+            raise UserError(_("The original POS order contents are required before payment."))
         operation_values = self._revolut_operation_values(
             session,
             currency,
@@ -617,6 +654,7 @@ class PosPaymentMethod(models.Model):
             amount_minor,
             order_uuid,
             payment_line_uuid,
+            financial_snapshot,
         )
         snapshot, created = self._create_revolut_operation_owned(
             operation_values, previous_operation_id

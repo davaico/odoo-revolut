@@ -3,6 +3,7 @@ import * as Dialog from "@point_of_sale/../tests/generic_helpers/dialog_util";
 import * as PaymentScreen from "@point_of_sale/../tests/pos/tours/utils/payment_screen_util";
 import * as ProductScreen from "@point_of_sale/../tests/pos/tours/utils/product_screen_util";
 import * as ReceiptScreen from "@point_of_sale/../tests/pos/tours/utils/receipt_screen_util";
+import { refresh } from "@point_of_sale/../tests/generic_helpers/utils";
 import { registry } from "@web/core/registry";
 
 registry.category("web_tour.tours").add("pos_revolut_manager_configuration", {
@@ -99,6 +100,41 @@ registry.category("web_tour.tours").add("pos_revolut_verified_checkout", {
             ReceiptScreen.paymentLineContains("Revolut", "12.34"),
             ReceiptScreen.totalAmountContains("12.34"),
         ].flat(),
+});
+
+registry.category("web_tour.tours").add("pos_revolut_reload_late_success", {
+    steps: () => [
+        Chrome.startPoS(),
+        ProductScreen.addOrderline("Desk Pad"),
+        ProductScreen.clickPayButton(),
+        PaymentScreen.clickPaymentMethod("Revolut"),
+        { trigger: ".modal:contains('Communication with Revolut was interrupted')" },
+        Dialog.confirm(),
+        refresh(),
+        {
+            content: "Lose volatile payment state after reloading the POS",
+            trigger: ".payment-screen .send_payment_request:contains('Check status')",
+            run() {
+                const line = window.posmodel.getOrder().payment_ids.find(
+                    (payment) => payment.payment_method_id.use_payment_terminal === "revolut"
+                );
+                line.uiState.revolutStarted = false;
+                line.uiState.revolutSnapshot = false;
+                line.uiState.revolutOperationId = false;
+                const order = window.posmodel.getOrder();
+                order.removePaymentline(line);
+                if (!order.getPaymentlineByUuid(line.uuid)) {
+                    throw new Error("Unresolved Revolut line was removable after reload");
+                }
+            },
+        },
+        {
+            trigger: ".payment-screen .send_payment_request:contains('Check status')",
+            run: "click",
+        },
+        ReceiptScreen.isShown(),
+        ReceiptScreen.paymentLineContains("Revolut", "12.34"),
+    ].flat(),
 });
 
 registry.category("web_tour.tours").add("pos_revolut_pending_cancel", {

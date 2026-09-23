@@ -82,6 +82,11 @@ class PosRevolutPaymentOperation(models.Model):
         [("interrupted", "Interrupted"), ("timed_out", "Timed Out")], readonly=True
     )
     verified_at = fields.Datetime(readonly=True)
+    financial_snapshot = fields.Json(readonly=True)
+    next_reconcile_at = fields.Datetime(
+        readonly=True, index=True, default=fields.Datetime.now
+    )
+    reconcile_failures = fields.Integer(readonly=True, default=0)
     blocking_order_key = fields.Char(readonly=True)
     blocking_terminal_key = fields.Char(readonly=True)
 
@@ -134,7 +139,29 @@ class PosRevolutPaymentOperation(models.Model):
         "terminal_id",
         "fulfilment_type",
         "secret_reference",
+        "financial_snapshot",
     }
+
+    @api.model
+    def _cron_reconcile_payments(self, batch_size=50):
+        # Missing provider IDs require authoritative manual association. They
+        # must never cause a replacement order or intent dispatch.
+        operations = self.sudo().search(
+            [
+                ("state", "in", ["pending", "unresolved", "dispatching_intent"]),
+                ("revolut_order_id", "!=", False),
+                ("revolut_payment_intent_id", "!=", False),
+                ("next_reconcile_at", "<=", fields.Datetime.now()),
+            ],
+            order="next_reconcile_at, id",
+            limit=max(1, min(int(batch_size), 50)),
+        )
+        for operation in operations:
+            operation.payment_method_id.sudo().with_company(
+                operation.company_id
+            ).revolut_poll_payment(
+                operation.id, operation.order_uuid, operation.payment_line_uuid
+            )
 
     def _revolut_deployment_terminal_states(self):
         return {"verified", "declined", "failed", "cancelled"}
@@ -159,6 +186,49 @@ class PosRevolutPaymentOperation(models.Model):
                         _("Persisted Revolut transaction references are immutable.")
                     )
         return super().write(values)
+
+    @api.model
+    def normalize_financial_snapshot(self, data):
+        """Compare the cart sent before dispatch with the final POS order."""
+        if not isinstance(data, dict) or not isinstance(data.get("lines"), list):
+            raise UserError(_("The Revolut order contents are unavailable."))
+
+        def decimal_text(value):
+            number = Decimal(str(value))
+            if not number.is_finite():
+                raise ValueError("non-finite POS amount")
+            return format(number.normalize(), "f")
+
+        try:
+            lines = []
+            for raw_line in data["lines"]:
+                line = raw_line[2] if isinstance(raw_line, (list, tuple)) else raw_line
+                if (
+                    not isinstance(line, dict)
+                    or not line.get("uuid")
+                    or not line.get("product_id")
+                ):
+                    raise ValueError("invalid POS line")
+                taxes = line.get("tax_ids") or []
+                if taxes and isinstance(taxes[0], (list, tuple)):
+                    taxes = taxes[0][2]
+                lines.append({
+                    "uuid": line["uuid"],
+                    "product_id": int(line["product_id"]),
+                    "qty": decimal_text(line["qty"]),
+                    "price_unit": decimal_text(line["price_unit"]),
+                    "discount": decimal_text(line.get("discount") or 0),
+                    "tax_ids": sorted(int(tax_id) for tax_id in taxes),
+                })
+            if not lines or len({line["uuid"] for line in lines}) != len(lines):
+                raise ValueError("missing or duplicate POS lines")
+            return {
+                "pricelist_id": int(data.get("pricelist_id") or 0),
+                "fiscal_position_id": int(data.get("fiscal_position_id") or 0),
+                "lines": sorted(lines, key=lambda line: line["uuid"]),
+            }
+        except (KeyError, TypeError, ValueError, ArithmeticError):
+            raise UserError(_("The Revolut order contents are invalid.")) from None
 
     @api.model
     def normalize_amount(self, currency, amount):

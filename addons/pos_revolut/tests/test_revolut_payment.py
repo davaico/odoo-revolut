@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 from threading import Barrier, Thread
 from unittest.mock import Mock, patch
 from uuid import uuid4
@@ -62,6 +63,17 @@ class TestRevolutPayment(TransactionCase):
         response.json.return_value = payload
         return response
 
+    def _financial_snapshot(self, order_uuid):
+        return {
+            "pricelist_id": self.config.pricelist_id.id,
+            "fiscal_position_id": False,
+            "lines": [{
+                "uuid": order_uuid, "product_id": 1,
+                "qty": 1, "price_unit": 12.34, "discount": 0,
+                "tax_ids": [],
+            }],
+        }
+
     def _start(self, order_uuid, payment_line_uuid, amount=12.34):
         return self.payment_method.revolut_start_payment(
             self.session.id,
@@ -69,6 +81,8 @@ class TestRevolutPayment(TransactionCase):
             payment_line_uuid,
             amount,
             self.config.currency_id.id,
+            False,
+            self._financial_snapshot(order_uuid),
         )
 
     def _eligible_terminal(self):
@@ -91,6 +105,125 @@ class TestRevolutPayment(TransactionCase):
             self._response({"id": self.revolut_order_id}),
             self._response({"id": self.revolut_intent_id, "state": "pending"}),
         ]
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_new_payment_requires_original_financial_contents(self, request):
+        with self.assertRaises(UserError):
+            self.payment_method.revolut_start_payment(
+                self.session.id, str(uuid4()), str(uuid4()), 12.34,
+                self.config.currency_id.id,
+            )
+        request.assert_not_called()
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_unresolved_order_blocks_another_terminal(self, request):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        request.side_effect = self._start_responses()
+        started = self._start(order_uuid, line_uuid)
+        second = self.env["pos.payment.method"].create({
+            "name": "Second Revolut terminal",
+            "payment_method_type": "terminal",
+            "use_payment_terminal": "revolut",
+            "revolut_environment": "sandbox",
+            "revolut_location_id": self.LOCATION_ID,
+            "revolut_terminal_id": str(uuid4()),
+            "revolut_fulfilment_type": "eat_in",
+            "revolut_secret_reference": "ODOO_REVOLUT_SECRET_PAYMENT_TEST",
+        })
+        second_config = self.env["pos.config"].create({
+            "name": "Second Revolut POS",
+            "payment_method_ids": [Command.link(second.id)],
+            "auto_validate_terminal_payment": True,
+        })
+        second_session = self.env["pos.session"].create({
+            "config_id": second_config.id, "state": "opened",
+        })
+
+        with self.assertRaises(UserError):
+            second.revolut_start_payment(
+                second_session.id, order_uuid, str(uuid4()), 12.34,
+                second_config.currency_id.id, False,
+                self._financial_snapshot(order_uuid),
+            )
+        self.assertEqual(
+            self.payment_method.revolut_find_payment(order_uuid, line_uuid),
+            started,
+        )
+        self.assertEqual(len([call for call in request.call_args_list
+                              if call.args[0] == "POST"]), 2)
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_scheduled_reconciliation_verifies_payment_without_browser(self, request):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        request.side_effect = [
+            *self._start_responses(),
+            self._response({
+                "id": self.revolut_intent_id, "order_id": self.revolut_order_id,
+                "state": "completed", "payment_id": self.revolut_payment_id,
+            }),
+            self._response({
+                "id": self.revolut_payment_id, "order_id": self.revolut_order_id,
+                "amount": 1234, "currency": self.config.currency_id.name,
+                "state": "captured",
+            }),
+        ]
+        started = self._start(order_uuid, line_uuid)
+
+        self.env.ref("pos_revolut.ir_cron_reconcile_payments").method_direct_trigger()
+
+        recovered = self.payment_method.revolut_find_payment(order_uuid, line_uuid)
+        self.assertEqual(recovered["operation_id"], started["operation_id"])
+        self.assertEqual(recovered["state"], "verified")
+        self.assertEqual(recovered["payment_id"], self.revolut_payment_id)
+        self.assertEqual(len([call for call in request.call_args_list
+                              if call.args[0] == "POST"]), 2)
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_scheduled_network_error_backs_off_without_new_dispatch(self, request):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        request.side_effect = [
+            *self._start_responses(),
+            requests.ConnectionError("temporary provider outage"),
+        ]
+        started = self._start(order_uuid, line_uuid)
+        cron = self.env.ref("pos_revolut.ir_cron_reconcile_payments")
+        cron.method_direct_trigger()
+        after_error = self.payment_method.revolut_find_payment(order_uuid, line_uuid)
+        operation = self.env["pos.revolut.payment.operation"].browse(started["operation_id"])
+        operation.invalidate_recordset()
+        self.assertEqual(after_error["state"], "unresolved")
+        self.assertEqual(operation.reconcile_failures, 1)
+        self.assertGreater(operation.next_reconcile_at, fields.Datetime.now())
+
+        cron.method_direct_trigger()
+        self.assertEqual(request.call_count, 4)
+        self.assertEqual(len([call for call in request.call_args_list
+                              if call.args[0] == "POST"]), 2)
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_scheduled_reconciliation_never_replays_lost_intent_creation(self, request):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        request.side_effect = [
+            self._eligible_terminal(),
+            self._response({"id": self.revolut_order_id}),
+            requests.ConnectionError("lost intent response"),
+        ]
+        started = self._start(order_uuid, line_uuid)
+        self.assertEqual(started["state"], "unresolved")
+
+        self.env.ref("pos_revolut.ir_cron_reconcile_payments").method_direct_trigger()
+
+        recovered = self.payment_method.revolut_find_payment(order_uuid, line_uuid)
+        self.assertEqual(recovered["operation_id"], started["operation_id"])
+        self.assertEqual(recovered["order_id"], self.revolut_order_id)
+        self.assertFalse(recovered["payment_intent_id"])
+        self.assertFalse(recovered["retry_safe"])
+        self.assertEqual(request.call_count, 3)
 
     @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
     @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
@@ -135,11 +268,13 @@ class TestRevolutPayment(TransactionCase):
         request.side_effect = self._start_responses()
         retry = self.payment_method.revolut_start_payment(
             self.session.id, order_uuid, line_uuid, 12.34,
-            self.config.currency_id.id, first["operation_id"]
+            self.config.currency_id.id, first["operation_id"],
+            self._financial_snapshot(order_uuid),
         )
         repeated = self.payment_method.revolut_start_payment(
             self.session.id, order_uuid, line_uuid, 12.34,
-            self.config.currency_id.id, first["operation_id"]
+            self.config.currency_id.id, first["operation_id"],
+            self._financial_snapshot(order_uuid),
         )
         self.assertTrue(failed["retry_safe"])
         self.assertNotEqual(retry["operation_id"], first["operation_id"])
@@ -168,7 +303,8 @@ class TestRevolutPayment(TransactionCase):
         with self.assertRaises(UserError):
             self.payment_method.revolut_start_payment(
                 self.session.id, order_uuid, line_uuid, 12.34,
-                self.config.currency_id.id, first["operation_id"]
+                self.config.currency_id.id, first["operation_id"],
+                self._financial_snapshot(order_uuid),
             )
         with self.assertRaises(UserError):
             self._start(order_uuid, line_uuid, amount=99)
@@ -237,7 +373,8 @@ class TestRevolutPayment(TransactionCase):
         with self.assertRaises(UserError):
             self.payment_method.revolut_start_payment(
                 self.session.id, order_uuid, line_uuid, 12.34,
-                self.config.currency_id.id, result["operation_id"]
+                self.config.currency_id.id, result["operation_id"],
+                self._financial_snapshot(order_uuid),
             )
         self.assertEqual(self._start(order_uuid, line_uuid), result)
         self.assertEqual(request.call_count, 2)
@@ -266,7 +403,8 @@ class TestRevolutPayment(TransactionCase):
         request.side_effect = self._start_responses()
         retry = self.payment_method.revolut_start_payment(
             self.session.id, order_uuid, line_uuid, 12.34,
-            self.config.currency_id.id, first["operation_id"]
+            self.config.currency_id.id, first["operation_id"],
+            self._financial_snapshot(order_uuid),
         )
         self.assertNotEqual(first["operation_id"], retry["operation_id"])
         self.assertEqual(retry["state"], "pending")
@@ -491,6 +629,12 @@ class TestRevolutPayment(TransactionCase):
 
         self.assertEqual(completed["state"], "unresolved")
         self.assertFalse(completed["retry_safe"])
+        operation = self.env["pos.revolut.payment.operation"].browse(started["operation_id"])
+        operation.invalidate_recordset()
+        self.assertLessEqual(
+            operation.next_reconcile_at,
+            fields.Datetime.now() + timedelta(seconds=60),
+        )
 
     @patch.dict(
         os.environ,
@@ -904,17 +1048,16 @@ class TestRevolutOrderSettlement(CommonPosTest):
     def test_verified_payment_settles_once_and_stores_references(self):
         order_uuid = str(uuid4())
         payment_line_uuid = str(uuid4())
-        operation = self._operation(order_uuid, payment_line_uuid)
-
-        result = self.env["pos.order"].sync_from_ui(
-            [
-                self._order_payload(
-                    order_uuid,
-                    payment_line_uuid,
-                    transaction_id=operation.revolut_payment_id,
-                )
-            ]
+        payload = self._order_payload(order_uuid, payment_line_uuid)
+        snapshot = self.env[
+            "pos.revolut.payment.operation"
+        ].normalize_financial_snapshot(payload)
+        operation = self._operation(
+            order_uuid, payment_line_uuid, financial_snapshot=snapshot
         )
+        payload["payment_ids"][0][2]["transaction_id"] = operation.revolut_payment_id
+
+        result = self.env["pos.order"].sync_from_ui([payload])
 
         order = self.env["pos.order"].browse(result["pos.order"][0]["id"])
         operation.invalidate_recordset()
@@ -930,6 +1073,50 @@ class TestRevolutOrderSettlement(CommonPosTest):
         self.assertEqual(operation.pos_order_id, order)
         self.assertEqual(operation.pos_payment_id, order.payment_ids)
         self.assertFalse(operation.blocking_order_key)
+
+    def test_pre_upgrade_verified_payment_requires_manager_reconciliation(self):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        operation = self._operation(order_uuid, line_uuid)
+        payload = self._order_payload(
+            order_uuid, line_uuid, transaction_id=operation.revolut_payment_id
+        )
+        # A pre-upgrade attempt has no original cart snapshot. Matching totals
+        # cannot establish that the product, tax, or destination is unchanged.
+        self.assertFalse(operation.financial_snapshot)
+        with self.assertRaisesRegex(UserError, "Reconcile"):
+            self.env["pos.order"].sync_from_ui([payload])
+        self.assertFalse(self.env["pos.order"].search_count([
+            ("uuid", "=", order_uuid), ("state", "=", "paid"),
+        ]))
+
+    def test_late_success_cannot_settle_edited_financial_content(self):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        payload = self._order_payload(order_uuid, line_uuid)
+        original_line = payload["lines"][0][2]
+        snapshot = {
+            "pricelist_id": payload["pricelist_id"],
+            "fiscal_position_id": False,
+            "lines": [{
+                "uuid": original_line["uuid"],
+                "product_id": self.product.id,
+                "qty": 1,
+                "price_unit": 12.34,
+                "discount": 0,
+                "tax_ids": [],
+            }],
+        }
+        operation = self._operation(
+            order_uuid, line_uuid, financial_snapshot=snapshot
+        )
+        payload["lines"][0][2]["price_unit"] = 15.00
+        payload["lines"][0][2]["discount"] = 17.7333333333
+        payload["payment_ids"][0][2]["transaction_id"] = operation.revolut_payment_id
+
+        with self.assertRaises(UserError):
+            self.env["pos.order"].sync_from_ui([payload])
+        self.assertFalse(self.env["pos.order"].search_count([
+            ("uuid", "=", order_uuid), ("state", "=", "paid"),
+        ]))
 
     def test_unsuccessful_attempts_cannot_settle_a_sale(self):
         for state in ("declined", "failed", "cancelled", "unresolved"):

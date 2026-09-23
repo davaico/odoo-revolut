@@ -60,10 +60,20 @@ class TestRevolutRetryConcurrency(TransactionCase):
             return result
 
     def _start(self, previous_operation_id=None):
-        args = [self.session_id, self.order_uuid, self.line_uuid, 12.34, self.currency_id]
-        if previous_operation_id is not None:
-            args.append(previous_operation_id)
-        return self._rpc("revolut_start_payment", *args)
+        snapshot = {
+            "pricelist_id": 0,
+            "fiscal_position_id": False,
+            "lines": [{
+                "uuid": self.order_uuid, "product_id": 1,
+                "qty": 1, "price_unit": 12.34, "discount": 0,
+                "tax_ids": [],
+            }],
+        }
+        return self._rpc(
+            "revolut_start_payment", self.session_id, self.order_uuid,
+            self.line_uuid, 12.34, self.currency_id,
+            previous_operation_id or False, snapshot,
+        )
 
     @staticmethod
     def _response(payload):
@@ -110,6 +120,213 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.assertFalse(any(worker.is_alive() for worker in workers), "RPC worker deadlocked")
         self.assertFalse(errors, repr(errors))
         return results
+
+    def _assert_creation_crash_keeps_dispatch(self, action, after_response):
+        def http(method, url, **kwargs):
+            if not after_response and method == "POST" and (
+                (action == "create_order" and url.endswith("/api/orders"))
+                or (action == "create_intent" and url.endswith("/payment-intents"))
+            ):
+                raise RuntimeError("simulated crash before provider request")
+            return self._start_http(method, url, **kwargs)
+
+        self.request.side_effect = http
+        original_complete = type(
+            self.env["pos.payment.method"]
+        )._complete_revolut_dispatch_owned
+
+        def crash_after_result(method, operation_id, claimed_action, *args):
+            if claimed_action == action:
+                raise RuntimeError("simulated crash after provider response")
+            return original_complete(method, operation_id, claimed_action, *args)
+
+        with patch.object(
+            type(self.env["pos.payment.method"]),
+            "_complete_revolut_dispatch_owned",
+            autospec=True,
+            side_effect=crash_after_result if after_response else original_complete,
+        ), self.assertRaises(RuntimeError):
+            self._start()
+
+        recovered = self._rpc(
+            "revolut_find_payment", self.order_uuid, self.line_uuid
+        )
+        self.assertTrue(recovered, "The committed claim vanished after the crash")
+        replay = self._start()
+        self.assertEqual(replay, recovered)
+        self.assertEqual(recovered["state"], "unresolved")
+        self.assertFalse(recovered["retry_safe"])
+        self.assertEqual(
+            bool(recovered["order_id"]), action == "create_intent"
+        )
+        self.assertFalse(recovered["payment_intent_id"])
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            dispatch = env["pos.revolut.payment.dispatch"].search([
+                ("operation_id", "=", recovered["operation_id"]),
+                ("action", "=", action),
+            ])
+            self.assertEqual(len(dispatch), 1)
+            self.assertFalse(dispatch.completed_at)
+        self.assertEqual(
+            len([call for call in self.request.call_args_list
+                 if call.args[0] == "POST"]),
+            2 if action == "create_intent" else 1,
+        )
+
+    def test_crash_before_order_request_blocks_replay(self):
+        self._assert_creation_crash_keeps_dispatch("create_order", False)
+
+    def test_crash_before_intent_request_blocks_replay(self):
+        self._assert_creation_crash_keeps_dispatch("create_intent", False)
+
+    def test_crash_after_intent_response_blocks_replay(self):
+        self._assert_creation_crash_keeps_dispatch("create_intent", True)
+
+    def test_crash_after_payment_result_recovers_verified_reference(self):
+        self.request.side_effect = self._start_http
+        started = self._start()
+
+        def http(method, url, **kwargs):
+            if url.endswith(f"/api/payment-intents/{self.provider_intent}"):
+                return self._intent("completed", payment_id=self.provider_payment)
+            if url.endswith(f"/api/payments/{self.provider_payment}"):
+                return self._response({
+                    "id": self.provider_payment, "order_id": self.provider_order,
+                    "amount": 1234, "currency": self.currency_code,
+                    "state": "captured",
+                })
+            raise AssertionError(f"Unexpected HTTP request: {method} {url}")
+
+        self.request.reset_mock()
+        self.request.side_effect = http
+        original_update = type(
+            self.env["pos.payment.method"]
+        )._update_revolut_operation_owned
+
+        def crash_before_verified_commit(method, operation_id, values, *args, **kwargs):
+            if values.get("state") == "verified":
+                raise RuntimeError("simulated crash after payment result")
+            return original_update(method, operation_id, values, *args, **kwargs)
+
+        with patch.object(
+            type(self.env["pos.payment.method"]),
+            "_update_revolut_operation_owned", autospec=True,
+            side_effect=crash_before_verified_commit,
+        ), self.assertRaises(RuntimeError):
+            self._rpc(
+                "revolut_poll_payment", started["operation_id"],
+                self.order_uuid, self.line_uuid,
+            )
+
+        recovered = self._rpc(
+            "revolut_poll_payment", started["operation_id"],
+            self.order_uuid, self.line_uuid,
+        )
+        self.assertEqual(recovered["state"], "verified")
+        self.assertEqual(recovered["payment_id"], self.provider_payment)
+        self.assertFalse([call for call in self.request.call_args_list
+                          if call.args[0] == "POST"])
+
+    def test_crash_after_cancel_response_never_replays_cancel(self):
+        self.request.side_effect = self._start_http
+        started = self._start()
+        reads = 0
+
+        def http(method, url, **kwargs):
+            nonlocal reads
+            if method == "GET" and url.endswith(
+                f"/api/payment-intents/{self.provider_intent}"
+            ):
+                reads += 1
+                return self._intent("pending" if reads == 1 else "cancelled")
+            if method == "POST" and url.endswith("/cancel"):
+                return self._response({})
+            raise AssertionError(f"Unexpected HTTP request: {method} {url}")
+
+        self.request.reset_mock()
+        self.request.side_effect = http
+        original_complete = type(
+            self.env["pos.payment.method"]
+        )._complete_revolut_dispatch_owned
+
+        def crash_after_cancel(method, operation_id, action, *args):
+            if action == "cancel_intent":
+                raise RuntimeError("simulated crash after cancel response")
+            return original_complete(method, operation_id, action, *args)
+
+        with patch.object(
+            type(self.env["pos.payment.method"]),
+            "_complete_revolut_dispatch_owned", autospec=True,
+            side_effect=crash_after_cancel,
+        ), self.assertRaises(RuntimeError):
+            self._rpc(
+                "revolut_cancel_payment", started["operation_id"],
+                self.order_uuid, self.line_uuid,
+            )
+
+        recovered = self._rpc(
+            "revolut_cancel_payment", started["operation_id"],
+            self.order_uuid, self.line_uuid,
+        )
+        self.assertEqual(recovered["state"], "cancelled")
+        self.assertTrue(recovered["retry_safe"])
+        self.assertEqual(len([call for call in self.request.call_args_list
+                              if call.args[0] == "POST"]), 1)
+
+    def test_scheduled_stale_poll_cannot_regress_foreground_success(self):
+        self.request.side_effect = self._start_http
+        started = self._start()
+        # The upgrade run can retain older committed attempts. Make this one
+        # the oldest due item and exercise a single-item scheduled batch.
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            env["pos.revolut.payment.operation"].browse(
+                started["operation_id"]
+            ).write({"next_reconcile_at": "2000-01-01 00:00:00"})
+            cursor.commit()
+        background_read, foreground_verified = Event(), Event()
+
+        def http(method, url, **kwargs):
+            if url.endswith(f"/api/payment-intents/{self.provider_intent}"):
+                if current_thread().name == "background":
+                    background_read.set()
+                    self.assertTrue(foreground_verified.wait(10))
+                    return self._intent("pending")
+                return self._intent("completed", payment_id=self.provider_payment)
+            if url.endswith(f"/api/payments/{self.provider_payment}"):
+                return self._response({
+                    "id": self.provider_payment, "order_id": self.provider_order,
+                    "amount": 1234, "currency": self.currency_code,
+                    "state": "captured",
+                })
+            raise AssertionError(f"Unexpected HTTP request: {method} {url}")
+
+        def background():
+            with self.registry.cursor() as cursor:
+                env = api.Environment(cursor, SUPERUSER_ID, self.context)
+                env["pos.revolut.payment.operation"]._cron_reconcile_payments(1)
+                cursor.commit()
+
+        def foreground():
+            self.assertTrue(background_read.wait(10))
+            try:
+                result = self._rpc(
+                    "revolut_poll_payment", started["operation_id"],
+                    self.order_uuid, self.line_uuid,
+                )
+                self.assertEqual(result["state"], "verified")
+            finally:
+                foreground_verified.set()
+
+        self.request.reset_mock()
+        self.request.side_effect = http
+        self._run_workers([("background", background), ("foreground", foreground)])
+        recovered = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
+        self.assertEqual(recovered["state"], "verified")
+        self.assertEqual(recovered["payment_id"], self.provider_payment)
+        self.assertFalse([call for call in self.request.call_args_list
+                          if call.args[0] == "POST"])
 
     def test_simultaneous_safe_retries_create_one_replacement(self):
         self.request.side_effect = self._start_http
