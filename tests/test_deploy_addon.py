@@ -1,6 +1,7 @@
 import importlib.machinery
 import importlib.util
 import io
+import json
 import subprocess
 import tarfile
 import tempfile
@@ -309,6 +310,16 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             root = Path(directory)
             archive = self._artifact(root)
             self._target_configuration(root)
+            secret_directory = root / "etc" / "odoo-revolut"
+            secret_directory.mkdir()
+            secret_file = secret_directory / "revolut.env"
+            secret_file.write_text("ODOO_REVOLUT_SECRET_TEST=not-a-real-secret\n")
+            secret_file.chmod(0o600)
+            previous_release = root / "opt" / "odoo-releases" / "previous"
+            previous_release.mkdir(parents=True)
+            current = root / "opt" / "odoo-hosting" / "addons" / "pos_revolut"
+            current.parent.mkdir(parents=True)
+            current.symlink_to(previous_release, target_is_directory=True)
             deployment = remote.RemoteDeployment(
                 runner=runner,
                 root=root,
@@ -332,7 +343,6 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
                 / revision
                 / "pos_revolut"
             )
-            current = root / "opt" / "odoo-hosting" / "addons" / "pos_revolut"
             self.assertEqual((release / "REVISION").read_text().strip(), revision)
             self.assertTrue(current.is_symlink())
             self.assertEqual(current.resolve(), release)
@@ -343,6 +353,11 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
                 )
             )
             self.assertEqual(len(backup_files), 1)
+            backup = backup_files[0].parents[2]
+            copied_secret = backup / "etc" / "odoo-revolut" / "revolut.env"
+            self.assertEqual(copied_secret.read_text(), secret_file.read_text())
+            manifest = json.loads((backup / "deployment.json").read_text())
+            self.assertEqual(manifest["previous_release"], str(previous_release))
 
         commands = [call[0] for call in runner.calls]
         self.assertIn(["systemctl", "start", "odoo-backup.service"], commands)
@@ -477,6 +492,49 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
 
             with self.assertRaisesRegex(
                 remote.DeploymentError, "artifact checksum marker"
+            ):
+                deployment.execute()
+
+        commands = [call[0] for call in runner.calls]
+        self.assertNotIn(["systemctl", "start", "odoo"], commands)
+
+    def test_existing_release_contents_must_match_uploaded_artifact(self):
+        remote = load_script("deploy-addon-remote")
+        revision = "9" * 40
+        runner = FakeRunner(
+            [
+                "pos_revolut_payment_operation\n",
+                "0\n",
+                "",
+                "",
+                "pos_revolut_payment_operation\n",
+                "0\n",
+            ]
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = self._artifact(root)
+            self._target_configuration(root)
+            release = (
+                root
+                / "opt"
+                / "odoo-releases"
+                / "revolut"
+                / "staging"
+                / revision
+                / "pos_revolut"
+            )
+            release.mkdir(parents=True)
+            (release / "__manifest__.py").write_text("{'tampered': True}\n")
+            (release / "REVISION").write_text(revision + "\n")
+            (release / "ARTIFACT_SHA256").write_text(remote.sha256(archive) + "\n")
+            deployment = self._deployment(
+                remote, runner, root, archive, revision=revision
+            )
+
+            with self.assertRaisesRegex(
+                remote.DeploymentError, "contents do not match"
             ):
                 deployment.execute()
 

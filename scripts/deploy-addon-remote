@@ -205,11 +205,26 @@ WHERE state IN (
                     drop_in_source,
                     backup / "etc" / "systemd" / "system" / "odoo.service.d",
                 )
+            secret_source = self._rooted("/etc/odoo-revolut")
+            if secret_source.is_dir():
+                shutil.copytree(
+                    secret_source,
+                    backup / "etc" / "odoo-revolut",
+                    symlinks=True,
+                )
+            current = self._rooted("/opt/odoo-hosting/addons/pos_revolut")
+            if current.is_symlink():
+                previous_release = os.readlink(current)
+            elif os.path.lexists(current):
+                previous_release = "non-symlink"
+            else:
+                previous_release = None
             manifest = {
                 "database": self.database,
                 "revision": self.revision,
                 "customer": self.customer,
                 "environment": self.environment,
+                "previous_release": previous_release,
             }
             manifest_path = backup / "deployment.json"
             manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
@@ -218,31 +233,50 @@ WHERE state IN (
             raise DeploymentError("Deployment configuration backup failed.") from error
         return backup
 
-    def _extract_release(self):
-        release = self._rooted(
-            f"/opt/odoo-releases/{self.customer}/{self.environment}/"
-            f"{self.revision}/pos_revolut"
-        )
-        if release.exists():
-            marker = release / "REVISION"
-            if not marker.is_file() or marker.read_text().strip() != self.revision:
-                raise DeploymentError(
-                    "Existing release directory has the wrong revision marker."
-                )
-            checksum_marker = release / "ARTIFACT_SHA256"
-            if (
-                not checksum_marker.is_file()
-                or checksum_marker.read_text().strip() != self.expected_sha256
-            ):
-                raise DeploymentError(
-                    "Existing release directory has no matching artifact "
-                    "checksum marker."
-                )
-            return release
+    def _release_tree_digest(self, directory, *, ignore_markers=False):
+        digest = hashlib.sha256()
+        for path in sorted(directory.rglob("*")):
+            relative = path.relative_to(directory)
+            if ignore_markers and relative.as_posix() in {
+                "ARTIFACT_SHA256",
+                "REVISION",
+            }:
+                continue
+            if path.is_symlink():
+                raise DeploymentError("Release contents include an unexpected symlink.")
+            if path.is_dir():
+                digest.update(f"directory\0{relative.as_posix()}\0".encode())
+                continue
+            if not path.is_file():
+                raise DeploymentError("Release contents include an unsupported file.")
+            executable = path.stat().st_mode & 0o111
+            digest.update(
+                f"file\0{relative.as_posix()}\0{executable:o}\0".encode()
+            )
+            with path.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+        return digest.hexdigest()
 
-        release.parent.mkdir(parents=True, exist_ok=True)
+    def _make_release_read_only(self, revision_root, release):
+        paths = sorted(
+            release.rglob("*"), key=lambda path: len(path.parts), reverse=True
+        )
+        for path in paths:
+            mode = path.stat().st_mode & 0o777
+            path.chmod(mode & ~0o222)
+        release.chmod((release.stat().st_mode & 0o777) & ~0o222)
+        revision_root.chmod(0o555)
+
+    def _extract_release(self):
+        releases = self._rooted(
+            f"/opt/odoo-releases/{self.customer}/{self.environment}"
+        )
+        revision_root = releases / self.revision
+        release = revision_root / "pos_revolut"
+        releases.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(
-            prefix=f".{self.revision[:12]}-", dir=release.parent
+            prefix=f".{self.revision[:12]}-", dir=releases
         ) as temporary:
             temporary_path = Path(temporary)
             try:
@@ -279,6 +313,32 @@ WHERE state IN (
                 raise DeploymentError(
                     "Deployment artifact does not contain the addon manifest."
                 )
+            if release.exists():
+                marker = release / "REVISION"
+                if (
+                    not marker.is_file()
+                    or marker.read_text().strip() != self.revision
+                ):
+                    raise DeploymentError(
+                        "Existing release directory has the wrong revision marker."
+                    )
+                checksum_marker = release / "ARTIFACT_SHA256"
+                if (
+                    not checksum_marker.is_file()
+                    or checksum_marker.read_text().strip() != self.expected_sha256
+                ):
+                    raise DeploymentError(
+                        "Existing release directory has no matching artifact "
+                        "checksum marker."
+                    )
+                if self._release_tree_digest(
+                    release, ignore_markers=True
+                ) != self._release_tree_digest(source):
+                    raise DeploymentError(
+                        "Existing release contents do not match the uploaded artifact."
+                    )
+                return release
+            revision_root.mkdir(mode=0o755)
             shutil.move(str(source), release)
         marker = release / "REVISION"
         marker.write_text(self.revision + "\n")
@@ -286,6 +346,7 @@ WHERE state IN (
         checksum_marker = release / "ARTIFACT_SHA256"
         checksum_marker.write_text(self.expected_sha256 + "\n")
         checksum_marker.chmod(0o444)
+        self._make_release_read_only(revision_root, release)
         return release
 
     def _activate_release(self, release):

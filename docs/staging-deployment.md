@@ -18,14 +18,18 @@ verifies the archive checksum and installs it at:
 
 The existing `/opt/odoo-hosting/addons` entry in `addons_path` is never
 rewritten. Its `pos_revolut` child is an atomic symlink to the selected release.
-The deployer refuses to replace a normal file or directory at that path.
+The deployer refuses to replace a normal file or directory at that path. Each
+release tree is made read-only. If the same revision is retried, the deployer
+extracts the uploaded artifact again and compares its file tree with the
+existing release before trusting or reporting it.
 
 Before changing code, the deployer:
 
 1. refuses active or uncertain Revolut financial operations;
 2. runs the existing encrypted database and filestore backup service;
-3. copies `/etc/odoo/odoo.conf` and the `odoo.service.d` drop-ins into a
-   root-only local configuration snapshot;
+3. copies `/etc/odoo/odoo.conf`, the `odoo.service.d` drop-ins, and the optional
+   `/etc/odoo-revolut` secret directory into a root-only local configuration
+   snapshot, recording the previously active release target;
 4. stops Odoo, which quiesces checkout and every payment/refund dispatch;
 5. repeats the financial-operation check after Odoo is fully stopped; and
 6. leaves Odoo stopped if that final check, extraction, module update, or any
