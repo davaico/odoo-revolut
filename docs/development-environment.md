@@ -62,7 +62,11 @@ retail and Restaurant POS startup:
 
 The runtime environment has no external network route. Expected Revolut calls
 are mocked; any accidental outbound API traffic fails. The browser-test image
-adds a checksum-verified Chrome package to the exact pinned Odoo base image.
+adds a checksum-verified Chrome package and Odoo's `python3-websocket` browser
+transport to the exact pinned Odoo base image. The latter was approved as a
+test-only dependency on 23 September 2026. The runner verifies it imports before
+testing: without it, Odoo silently skips browser tours after a warning, so those
+older warning-only runs are not browser acceptance evidence.
 
 The official Revolut terminal guide now documents a controlled sandbox route
 using a virtual terminal and amount-driven simulated payment outcomes. The

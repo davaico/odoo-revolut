@@ -238,7 +238,7 @@ class PosPaymentMethod(models.Model):
             payment_line_uuid = str(UUID(payment_line_uuid))
         except (TypeError, ValueError, AttributeError):
             raise UserError(_("The POS payment identifiers are invalid.")) from None
-        if not os.environ.get(self.revolut_secret_reference or ""):
+        if not os.environ.get(self.sudo().revolut_secret_reference or ""):
             raise UserError(_("The Revolut credential is not available on the Odoo server."))
         amount_decimal = self.env["pos.revolut.payment.operation"].normalize_amount(
             currency, amount
@@ -259,6 +259,9 @@ class PosPaymentMethod(models.Model):
         order_uuid,
         payment_line_uuid,
     ):
+        # The caller's POS permissions and ownership have already been checked.
+        # Configuration stays manager-only; only the server reads it for dispatch.
+        configuration = self.sudo()
         return {
             "payment_method_id": self.id,
             "company_id": self.company_id.id,
@@ -270,77 +273,91 @@ class PosPaymentMethod(models.Model):
             "amount_minor": amount_minor,
             "currency_id": currency.id,
             "currency_code": currency.name,
-            "environment": self.revolut_environment,
-            "location_id": self.revolut_location_id,
-            "terminal_id": self.revolut_terminal_id,
-            "fulfilment_type": self.revolut_fulfilment_type,
-            "secret_reference": self.revolut_secret_reference,
+            "environment": configuration.revolut_environment,
+            "location_id": configuration.revolut_location_id,
+            "terminal_id": configuration.revolut_terminal_id,
+            "fulfilment_type": configuration.revolut_fulfilment_type,
+            "secret_reference": configuration.revolut_secret_reference,
             "blocking_order_key": f"{self.company_id.id}:{order_uuid}",
             "blocking_terminal_key": (
-                f"{self.company_id.id}:{self.revolut_environment}:"
-                f"{self.revolut_terminal_id}"
+                f"{self.company_id.id}:{configuration.revolut_environment}:"
+                f"{configuration.revolut_terminal_id}"
             ),
         }
 
-    def _create_revolut_operation_owned(self, values):
-        registry = self.env.registry
-        context = dict(self.env.context)
-        user_id = self.env.uid
+    def _create_revolut_operation_owned(self, values, previous_operation_id=False):
         logical_domain = [
             ("company_id", "=", values["company_id"]),
             ("order_uuid", "=", values["order_uuid"]),
             ("payment_line_uuid", "=", values["payment_line_uuid"]),
         ]
-        conflicted = False
-        with registry.cursor() as cursor:
-            owned_env = api.Environment(cursor, user_id, context)
-            operations = owned_env["pos.revolut.payment.operation"].sudo()
-            operation = operations.search(logical_domain, limit=1)
-            created = False
-            if not operation:
+        # Fresh owned transactions observe the winner after uniqueness or
+        # repeatable-read serialization conflicts. Nothing is dispatched here.
+        for _attempt in range(3):
+            with self.env.registry.cursor() as cursor:
+                owned_env = api.Environment(cursor, self.env.uid, dict(self.env.context))
+                operations = owned_env["pos.revolut.payment.operation"].sudo()
                 try:
-                    with cursor.savepoint():
-                        operation = operations.create(values)
-                        created = True
-                except IntegrityError:
-                    conflicted = True
-            if conflicted:
-                cursor.rollback()
-            else:
-                snapshot = operations.operation_snapshot(operation)
-                cursor.commit()
-                return snapshot, created
-
-        # A uniqueness conflict may have waited for another owned transaction.
-        # Read from a fresh transaction so PostgreSQL's repeatable-read snapshot
-        # can see the winner that just committed.
-        with registry.cursor() as cursor:
-            owned_env = api.Environment(cursor, user_id, context)
-            operations = owned_env["pos.revolut.payment.operation"].sudo()
-            operation = operations.search(logical_domain, limit=1)
-            if operation:
-                snapshot = operations.operation_snapshot(operation)
-                cursor.commit()
-                return snapshot, False
-            blocker = operations.search(
-                [
-                    "|",
-                    ("blocking_order_key", "=", values["blocking_order_key"]),
-                    ("blocking_terminal_key", "=", values["blocking_terminal_key"]),
-                ],
-                limit=1,
-            )
-            if blocker.blocking_order_key == values["blocking_order_key"]:
-                raise UserError(
-                    _("Another Revolut payment already blocks this order.")
-                )
-            raise UserError(
-                _("The Revolut terminal has an unresolved payment.")
-            )
+                    previous = operations.browse()
+                    if previous_operation_id:
+                        previous = operations.search(
+                            logical_domain + [("id", "=", previous_operation_id)], limit=1
+                        )
+                        if not previous or previous.payment_method_id.id != self.id:
+                            raise AccessError(_("The prior Revolut attempt is not accessible."))
+                        cursor.execute(
+                            "SELECT id FROM pos_revolut_payment_operation WHERE id = %s FOR UPDATE",
+                            [previous.id],
+                        )
+                        previous.invalidate_recordset()
+                        operation = operations.search(
+                            [("previous_operation_id", "=", previous.id)], limit=1
+                        )
+                    else:
+                        operation = operations.search(logical_domain, limit=1)
+                    if operation:
+                        if (
+                            operation.amount_minor != values["amount_minor"]
+                            or operation.currency_id.id != values["currency_id"]
+                            or operation.pos_session_id.id != values["pos_session_id"]
+                            or operation.payment_method_id.id != self.id
+                        ):
+                            raise UserError(_("The existing Revolut attempt has different payment details."))
+                        snapshot = operations.operation_snapshot(operation)
+                        cursor.commit()
+                        return snapshot, False
+                    if previous:
+                        if not previous.retry_safe:
+                            raise UserError(_("Reconcile the previous Revolut attempt before retrying."))
+                        values = {
+                            **values,
+                            "previous_operation_id": previous.id,
+                            "attempt_number": previous.attempt_number + 1,
+                        }
+                    blocker = operations.search(
+                        [
+                            "|",
+                            ("blocking_order_key", "=", values["blocking_order_key"]),
+                            ("blocking_terminal_key", "=", values["blocking_terminal_key"]),
+                        ],
+                        limit=1,
+                    )
+                    if blocker:
+                        raise UserError(_("An existing Revolut payment blocks this order or terminal."))
+                    operation = operations.create(values)
+                    snapshot = operations.operation_snapshot(operation)
+                    cursor.commit()
+                    return snapshot, True
+                except (IntegrityError, SerializationFailure):
+                    cursor.rollback()
+        raise UserError(_("Another Revolut request is in progress. Check its status."))
 
     def _read_revolut_operation_owned(
         self, operation_id, order_uuid=None, payment_line_uuid=None
     ):
+        if not self.env.user.has_group("point_of_sale.group_pos_user"):
+            raise AccessError(_("Only Point of Sale users can access terminal payments."))
+        self.check_access("read")
         registry = self.env.registry
         context = dict(self.env.context)
         user_id = self.env.uid
@@ -357,8 +374,14 @@ class PosPaymentMethod(models.Model):
                 or (payment_line_uuid and operation.payment_line_uuid != payment_line_uuid)
             ):
                 raise AccessError(_("The Revolut payment operation is not accessible."))
+            has_dispatch = False
+            if operation.state == "failed" and not operation.retry_safe:
+                has_dispatch = bool(owned_env["pos.revolut.payment.dispatch"].sudo().search_count(
+                    [("operation_id", "=", operation.id)], limit=1
+                ))
             data = {
                 "id": operation.id,
+                "has_dispatch": has_dispatch,
                 "state": operation.state,
                 "environment": operation.environment,
                 "location_id": operation.location_id,
@@ -393,6 +416,12 @@ class PosPaymentMethod(models.Model):
                 operation = owned_env["pos.revolut.payment.operation"].sudo().browse(
                     operation_id
                 )
+                if action == "cancel_intent" and (
+                    operation.state != "pending"
+                    or operation.provider_state != "pending"
+                    or operation.revolut_payment_id
+                ):
+                    return False
                 dispatches = owned_env["pos.revolut.payment.dispatch"].sudo()
                 if dispatches.search_count(
                     [("operation_id", "=", operation_id), ("action", "=", action)]
@@ -446,7 +475,9 @@ class PosPaymentMethod(models.Model):
             cursor.commit()
         return snapshot
 
-    def _update_revolut_operation_owned(self, operation_id, values, release_terminal=False):
+    def _update_revolut_operation_owned(
+        self, operation_id, values, release_terminal=False, intent_only=False
+    ):
         registry = self.env.registry
         context = dict(self.env.context)
         user_id = self.env.uid
@@ -459,6 +490,19 @@ class PosPaymentMethod(models.Model):
             operation = owned_env["pos.revolut.payment.operation"].sudo().browse(
                 operation_id
             )
+            # A slower poll, timeout or cancellation must never overwrite an
+            # authoritative final outcome committed by another request.
+            if operation.state == "verified" or operation.retry_safe:
+                return owned_env["pos.revolut.payment.operation"].operation_snapshot(operation)
+            # The HTTP read used an earlier snapshot. A competing poll may have
+            # saved a payment reference while this intent response was in flight.
+            # Intent-only failure cannot release a payment awaiting verification.
+            if intent_only and operation.revolut_payment_id:
+                return owned_env["pos.revolut.payment.operation"].operation_snapshot(operation)
+            if values.get("state") in {"declined", "failed", "cancelled"}:
+                values = {**values, "retry_safe": True, "blocking_order_key": False}
+            if values.get("state") != "unresolved":
+                values = {**values, "local_outcome": False}
             if release_terminal:
                 values = {**values, "blocking_terminal_key": False}
             operation.write(values)
@@ -468,7 +512,7 @@ class PosPaymentMethod(models.Model):
             cursor.commit()
         return snapshot
 
-    def _mark_revolut_unresolved_owned(self, operation_id, action=None):
+    def _mark_revolut_unresolved_owned(self, operation_id, action=None, local_outcome=False):
         registry = self.env.registry
         context = dict(self.env.context)
         user_id = self.env.uid
@@ -481,7 +525,8 @@ class PosPaymentMethod(models.Model):
             operation = owned_env["pos.revolut.payment.operation"].sudo().browse(
                 operation_id
             )
-            operation.write({"state": "unresolved"})
+            if operation.state != "verified" and not operation.retry_safe:
+                operation.write({"state": "unresolved", "local_outcome": local_outcome})
             if action:
                 dispatch = owned_env["pos.revolut.payment.dispatch"].sudo().search(
                     [("operation_id", "=", operation_id), ("action", "=", action)],
@@ -551,7 +596,8 @@ class PosPaymentMethod(models.Model):
         )
 
     def revolut_start_payment(
-        self, session_id, order_uuid, payment_line_uuid, amount, currency_id
+        self, session_id, order_uuid, payment_line_uuid, amount, currency_id,
+        previous_operation_id=False,
     ):
         self.ensure_one()
         (
@@ -572,7 +618,9 @@ class PosPaymentMethod(models.Model):
             order_uuid,
             payment_line_uuid,
         )
-        snapshot, created = self._create_revolut_operation_owned(operation_values)
+        snapshot, created = self._create_revolut_operation_owned(
+            operation_values, previous_operation_id
+        )
         if not created:
             return snapshot
         operation = self._read_revolut_operation_owned(snapshot["operation_id"])
@@ -617,9 +665,10 @@ class PosPaymentMethod(models.Model):
                 revolut_order_id,
                 {"state": "order_created", "revolut_order_id": revolut_order_id},
             )
-        except (requests.RequestException, ValueError, UserError):
+        except (requests.RequestException, ValueError, UserError) as error:
             return self._mark_revolut_unresolved_owned(
-                operation["id"], "create_order"
+                operation["id"], "create_order",
+                local_outcome="interrupted" if isinstance(error, requests.RequestException) else False,
             )
         operation = self._read_revolut_operation_owned(operation["id"])
         if not self._claim_revolut_dispatch_owned(
@@ -649,9 +698,10 @@ class PosPaymentMethod(models.Model):
                     "revolut_payment_intent_id": payment_intent_id,
                 },
             )
-        except (requests.RequestException, ValueError, UserError):
+        except (requests.RequestException, ValueError, UserError) as error:
             return self._mark_revolut_unresolved_owned(
-                operation["id"], "create_intent"
+                operation["id"], "create_intent",
+                local_outcome="interrupted" if isinstance(error, requests.RequestException) else False,
             )
 
     def revolut_find_payment(self, order_uuid, payment_line_uuid):
@@ -693,14 +743,36 @@ class PosPaymentMethod(models.Model):
         operation = self._read_revolut_operation_owned(
             operation_id, order_uuid, payment_line_uuid
         )
-        if operation["state"] in {
-            "verified",
-            "declined",
-            "failed",
-            "cancelled",
-            "unresolved",
-        }:
+        if operation["state"] == "verified" or operation["snapshot"]["retry_safe"]:
             return operation["snapshot"]
+        # Ticket 03 recorded authoritative final outcomes but had no retry_safe
+        # field. Recognize that evidence on status checks after upgrade. A lost
+        # response or absent reference alone can never qualify as a safe failure.
+        provider_state = operation["snapshot"]["provider_state"]
+        if operation["state"] in {"declined", "failed", "cancelled"}:
+            confirmed_failure = (
+                provider_state == operation["state"]
+                and operation["order_id"]
+                and (operation["payment_id"] or (
+                    operation["state"] in {"failed", "cancelled"}
+                    and operation["payment_intent_id"]
+                ))
+            )
+            pre_dispatch_failure = (
+                operation["state"] == "failed"
+                and provider_state in {"terminal_unavailable", "terminal_check_failed"}
+                and not operation["has_dispatch"]
+                and not operation["order_id"]
+                and not operation["payment_intent_id"]
+                and not operation["payment_id"]
+            )
+            if confirmed_failure or pre_dispatch_failure:
+                return self._update_revolut_operation_owned(
+                    operation_id,
+                    {"state": operation["state"], "provider_state": provider_state},
+                    release_terminal=True,
+                    intent_only=not operation["payment_id"],
+                )
         if not operation["payment_intent_id"] or not operation["order_id"]:
             return self._mark_revolut_unresolved_owned(operation_id)
         try:
@@ -714,22 +786,21 @@ class PosPaymentMethod(models.Model):
                 raise ValueError("payment intent reference mismatch")
             if intent.get("order_id") != operation["order_id"]:
                 raise ValueError("payment intent order mismatch")
-            if intent_state in {"pending", "processing"}:
+            payment_id = intent.get("payment_id") or operation["payment_id"]
+            if intent_state in {"pending", "processing"} and not payment_id:
                 return self._update_revolut_operation_owned(
                     operation_id,
                     {"state": "pending", "provider_state": intent_state},
                 )
-            if intent_state in {"cancelled", "failed"}:
+            if intent_state in {"cancelled", "failed"} and not payment_id:
                 return self._update_revolut_operation_owned(
                     operation_id,
                     {"state": intent_state, "provider_state": intent_state},
                     release_terminal=True,
+                    intent_only=True,
                 )
-            if intent_state != "completed" or not isinstance(
-                intent.get("payment_id"), str
-            ):
+            if not isinstance(payment_id, str) or not payment_id:
                 return self._mark_revolut_unresolved_owned(operation_id)
-            payment_id = intent["payment_id"]
             self._update_revolut_operation_owned(
                 operation_id,
                 {
@@ -772,14 +843,40 @@ class PosPaymentMethod(models.Model):
                     {"state": "pending", "provider_state": payment_state},
                 )
             return self._mark_revolut_unresolved_owned(operation_id)
-        except (requests.RequestException, ValueError, UserError):
+        except requests.RequestException:
+            return self._mark_revolut_unresolved_owned(operation_id, local_outcome="interrupted")
+        except (ValueError, UserError):
             return self._mark_revolut_unresolved_owned(operation_id)
+
+    def revolut_cancel_payment(self, operation_id, order_uuid, payment_line_uuid):
+        # A fresh read decides eligibility. A POST result alone never means the
+        # line can be removed: cancellation can race with customer payment.
+        result = self.revolut_poll_payment(operation_id, order_uuid, payment_line_uuid)
+        if result["state"] != "pending" or result["provider_state"] != "pending":
+            return result
+        if not self._claim_revolut_dispatch_owned(operation_id, "cancel_intent", "pending"):
+            return self._read_revolut_operation_owned(operation_id)["snapshot"]
+        operation = self._read_revolut_operation_owned(operation_id)
+        try:
+            self._revolut_api_request(
+                operation, "POST",
+                f"/api/payment-intents/{operation['payment_intent_id']}/cancel",
+            )
+            self._complete_revolut_dispatch_owned(
+                operation_id, "cancel_intent", operation["payment_intent_id"], {}
+            )
+        except (requests.RequestException, ValueError, UserError):
+            self._mark_revolut_unresolved_owned(
+                operation_id, "cancel_intent", local_outcome="interrupted"
+            )
+        # Even a rejection or lost response must be reconciled, never replayed.
+        return self.revolut_poll_payment(operation_id, order_uuid, payment_line_uuid)
 
     def revolut_mark_timeout(self, operation_id, order_uuid, payment_line_uuid):
         self.ensure_one()
         operation = self._read_revolut_operation_owned(
             operation_id, str(UUID(order_uuid)), str(UUID(payment_line_uuid))
         )
-        if operation["state"] == "pending":
-            return self._mark_revolut_unresolved_owned(operation_id)
+        if operation["state"] not in {"verified", "declined", "failed", "cancelled"}:
+            return self._mark_revolut_unresolved_owned(operation_id, local_outcome="timed_out")
         return operation["snapshot"]

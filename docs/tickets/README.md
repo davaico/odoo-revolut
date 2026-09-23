@@ -47,8 +47,8 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [01 — Configure and verify a Revolut payment method](closed/01-configure-revolut-payment-method.md) | `ready-for-agent` at closure | Closed | None |
 | [02 — Resolve the Revolut terminal contract and testing prerequisites](needs-info/02-confirm-terminal-contract.md) | `needs-info` | Open | External: provider clarification and test access |
 | [03 — Complete one verified Revolut terminal payment](closed/03-verified-terminal-payment.md) | `ready-for-agent` at closure | Closed | 01 (closed) |
-| [04 — Handle unsuccessful payments and safe retries](ready-for-agent/04-unsuccessful-payments-safe-retries.md) | `ready-for-agent` | Open | 03 |
-| [05 — Recover payments after interruption or late success](ready-for-agent/05-recover-interrupted-payments.md) | `ready-for-agent` | Open | 04 |
+| [04 — Handle unsuccessful payments and safe retries](closed/04-unsuccessful-payments-safe-retries.md) | `ready-for-agent` at closure | Closed | 03 (closed) |
+| [05 — Recover payments after interruption or late success](ready-for-agent/05-recover-interrupted-payments.md) | `ready-for-agent` | Open | 04 (closed) |
 | [06 — Resolve uncertain payments from a manager worklist](ready-for-agent/06-manager-reconciliation-worklist.md) | `ready-for-agent` | Open | 05 |
 | [07 — Use Revolut with split tender and restaurant checkout](ready-for-agent/07-split-tender-restaurant-checkout.md) | `ready-for-agent` | Open | 05 |
 | [08 — Issue and reconcile a full Revolut refund](ready-for-agent/08-full-revolut-refund.md) | `ready-for-agent` | Open | 05 |
