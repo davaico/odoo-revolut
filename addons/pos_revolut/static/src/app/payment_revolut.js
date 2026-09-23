@@ -5,6 +5,7 @@ import { PaymentScreenPaymentLines } from "@point_of_sale/app/screens/payment_sc
 import { PaymentScreen } from "@point_of_sale/app/screens/payment_screen/payment_screen";
 import { register_payment_method } from "@point_of_sale/app/services/pos_store";
 import { PosPayment } from "@point_of_sale/app/models/pos_payment";
+import { PosOrder } from "@point_of_sale/app/models/pos_order";
 import { PaymentInterface } from "@point_of_sale/app/utils/payment/payment_interface";
 
 const POLL_INTERVAL_MS = 1000;
@@ -18,7 +19,23 @@ function isRevolut(line) {
 }
 
 function isLocked(line) {
-    return isRevolut(line) && line.uiState?.revolutStarted && !line.uiState.revolutSnapshot?.retry_safe;
+    return isRevolut(line) && !line.uiState?.revolutSnapshot?.retry_safe &&
+        (line.uiState?.revolutStarted || ["retry", "waiting", "waitingCard", "waitingCancel"].includes(line.getPaymentStatus()));
+}
+
+function financialSnapshot(order) {
+    return {
+        pricelist_id: order.pricelist_id?.id || false,
+        fiscal_position_id: order.fiscal_position_id?.id || false,
+        lines: order.lines.map((line) => ({
+            uuid: line.uuid,
+            product_id: line.product_id.id,
+            qty: line.qty,
+            price_unit: line.price_unit,
+            discount: line.discount || 0,
+            tax_ids: (line.tax_ids || []).map((tax) => tax.id),
+        })),
+    };
 }
 
 // Bound the whole foreground wait, including slow or disconnected RPCs. A late
@@ -62,7 +79,15 @@ export class PaymentRevolut extends PaymentInterface {
         line.setPaymentStatus("waiting");
         try {
             let result = line.uiState.revolutSnapshot;
-            if (!started || result?.retry_safe) {
+            let discovered = false;
+            if (!started && !result?.operation_id) {
+                result = await beforeDeadline(this.pos.data.call(
+                    "pos.payment.method", "revolut_find_payment",
+                    [[this.payment_method_id.id], order.uuid, line.uuid]
+                ), deadline);
+                discovered = Boolean(result);
+            }
+            if (!result || (result.retry_safe && !discovered)) {
                 const previousOperationId = result?.retry_safe ? result.operation_id : false;
                 line.uiState.revolutPreviousOperationId = previousOperationId;
                 line.uiState.revolutSnapshot = false;
@@ -73,22 +98,17 @@ export class PaymentRevolut extends PaymentInterface {
                         "pos.payment.method", "revolut_start_payment", [
                             [this.payment_method_id.id], this.pos.session.id,
                             order.uuid, line.uuid, line.amount, this.pos.currency.id,
-                            previousOperationId,
+                            previousOperationId, financialSnapshot(order),
                         ]
                     ), deadline);
                 } finally {
                     line.uiState.revolutStarting = false;
                 }
             } else if (!result?.operation_id) {
-                result = await beforeDeadline(this.pos.data.call(
-                    "pos.payment.method", "revolut_find_payment",
-                    [[this.payment_method_id.id], order.uuid, line.uuid]
-                ), deadline);
-                if (!result || result.operation_id === line.uiState.revolutPreviousOperationId) {
-                    this._showResultError(line, "interrupted");
-                    return false;
-                }
-            } else if (result.state !== "verified") {
+                this._showResultError(line, "interrupted");
+                return false;
+            } else if (result.state !== "verified" && !result.retry_safe) {
+                line.uiState.revolutOperationId = result.operation_id;
                 result = await beforeDeadline(this._operationCall("revolut_poll_payment", order, line), deadline);
             }
             this._remember(line, result);
@@ -264,6 +284,22 @@ patch(PosPayment.prototype, {
             return;
         }
         return super.setAmount(...arguments);
+    },
+
+    delete() {
+        if (isLocked(this)) {
+            return false;
+        }
+        return super.delete(...arguments);
+    },
+});
+
+patch(PosOrder.prototype, {
+    removePaymentline(line) {
+        if (isLocked(line)) {
+            return false;
+        }
+        return super.removePaymentline(...arguments);
     },
 });
 

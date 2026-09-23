@@ -224,6 +224,54 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         mutating_calls = [call for call in calls if call[0] == "POST"]
         self.assertEqual(len(mutating_calls), 2)
 
+    def test_reload_recovers_late_success_without_new_charge(self):
+        revolut_method = self._configure_revolut_checkout()
+        calls = []
+        intent_polls = 0
+
+        def request(method, url, **kwargs):
+            nonlocal intent_polls
+            calls.append((method, url))
+            if method == "GET" and url.endswith("/api/terminals"):
+                return self._response({"terminals": [{
+                    "id": self.TERMINAL_ID, "online": True,
+                    "operation_mode": "pos", "location_id": self.LOCATION_ID,
+                }]})
+            if method == "POST" and url.endswith("/api/orders"):
+                return self._response({"id": self.ORDER_ID})
+            if method == "POST" and url.endswith("/payment-intents"):
+                return self._response({"id": self.INTENT_ID, "state": "pending"})
+            if method == "GET" and "/api/payment-intents/" in url:
+                intent_polls += 1
+                if intent_polls == 1:
+                    raise requests.ConnectionError("test interruption")
+                return self._response({
+                    "id": self.INTENT_ID, "order_id": self.ORDER_ID,
+                    "state": "completed", "payment_id": self.PAYMENT_ID,
+                })
+            if method == "GET" and "/api/payments/" in url:
+                return self._response({
+                    "id": self.PAYMENT_ID, "order_id": self.ORDER_ID,
+                    "amount": 1234, "currency": self.main_pos_config.currency_id.name,
+                    "state": "captured",
+                })
+            raise AssertionError(f"Unexpected Revolut request: {method} {url}")
+
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+            side_effect=request,
+        ):
+            self.start_pos_tour("pos_revolut_reload_late_success")
+
+        self.env.invalidate_all()
+        operation = self.env["pos.revolut.payment.operation"].search([
+            ("payment_method_id", "=", revolut_method.id),
+        ])
+        self.assertEqual(operation.state, "verified")
+        self.assertEqual(operation.pos_order_id.state, "paid")
+        self.assertEqual(operation.revolut_payment_id, self.PAYMENT_ID)
+        self.assertEqual(len([call for call in calls if call[0] == "POST"]), 2)
+
     def test_pending_cancellation_preserves_unpaid_order(self):
         revolut_method = self._configure_revolut_checkout()
         cancelled = False
@@ -387,7 +435,13 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                 "cancelled": "cancelled",
                 "processing": "pending",
             }.get(outcome, "unresolved")
-            self.assertEqual(operations.state, expected_state)
+            if outcome == "timed_out":
+                # The browser deliberately does not wait for the timeout-marking
+                # RPC; either server state remains financially unresolved.
+                self.assertIn(operations.state, {"pending", "unresolved"})
+                self.assertFalse(operations.retry_safe)
+            else:
+                self.assertEqual(operations.state, expected_state)
         return operations, calls
 
     def test_declined_payment_can_retry_once_without_duplicate_charge(self):
