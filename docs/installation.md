@@ -297,15 +297,30 @@ The addon suite verifies the Odoo package version before starting. Both
 scripts remove their disposable containers, networks, databases, and
 filestores when they exit.
 
-## Full Revolut returns (POS manager)
+## Partial and allocated Revolut returns (POS manager)
 
 Sign in with an Odoo POS-manager account. Open **Orders**, select the original
-paid sale, and use Odoo's **Refund** flow for all its lines. On the payment
-screen choose the original Revolut method and click **Refund**. This release
-supports a complete sale originally paid by one verified Revolut payment;
-partial returns and split-payment allocations are reserved for ticket 09.
-Prices, quantities, discounts, taxes, currency and original-line relationships
-must remain unchanged apart from the negative return quantities.
+paid sale, and use Odoo's **Refund** flow for the products and quantities being
+returned. On the payment screen choose a Revolut method used on the original
+sale and click **Refund**. The allocation dialog shows each verified original
+Revolut payment and its remaining refundable balance. Select the source payment
+and confirm the amount. When the original sale used several Revolut payments,
+the source selection is required. Add a separate return payment line for each
+additional Revolut allocation. For a mixed-tender sale, refund its non-Revolut
+portion using the same original non-Revolut tender; it is never sent to
+Revolut automatically. A cash-only partial return is possible up to the
+original cash share. Return prices, discounts, taxes, currency and original-line
+relationships must remain unchanged, and returned quantities cannot exceed the
+original lines.
+
+For each original Revolut payment, remaining balance is its verified paid amount
+minus all completed, pending, dispatching and uncertain local refunds. Failed
+refunds release their reservation. The server locks the original payment while
+reserving each allocation and checks that the sum of allocations does not exceed
+the requested return total. Other refunds already reported by Revolut block a
+new dispatch until a manager resolves the difference. The original sale is
+also locked while checking quantities already returned or reserved by another
+active return; a later return cannot refund more units than were sold.
 
 The request creates a separate refund order at Revolut. An accepted request is
 pending, not proof of completion. Only a server-verified completed refund can
@@ -315,9 +330,15 @@ with the completed return for support and reconciliation.
 
 If communication fails or the wait expires, keep the existing return and use
 **Check status**, including after reloading POS. Never create a replacement
-refund to bypass an uncertain outcome. Pending and uncertain operations reserve
-the original paid amount. Duplicate submissions reuse the existing operation
-and key; simultaneous returns cannot reserve the same amount twice.
+refund to bypass an uncertain outcome. Duplicate submissions of the same
+payment line reuse its operation and key. Simultaneous returns cannot reserve
+more than the original paid amount. A completed allocation stays completed if
+another allocation fails or remains uncertain; the return cannot finish until
+every active Revolut allocation is verified. For a provider-confirmed failed
+allocation, remove only its failed payment line, add a new line, select the
+same eligible source and confirm the amount. This creates a new operation for
+that line without repeating completed refunds. Keep uncertain lines in place
+and reconcile them before changing tender.
 
 Managers can also open **Point of Sale → Revolut Refunds** to inspect pending,
 failed, uncertain and completed refunds, their original sale, return UUID,
@@ -333,7 +354,7 @@ remains unresolved. Contact Revolut support with the original order ID and
 idempotency key when the association cannot be established. Do not refund
 outside Odoo while an Odoo refund is pending or uncertain.
 
-Upgrade the addon to install the refund operation model, manager worklist and
-scheduled reconciliation job. No new credentials or configuration fields are
-required; refunds use the original payment's server-side credential reference
+Upgrade the addon to `19.0.1.7.0` to enable partial allocations and the revised
+refund uniqueness constraint. No new credentials or configuration fields are
+required; refunds use each original payment's server-side credential reference
 and environment.
