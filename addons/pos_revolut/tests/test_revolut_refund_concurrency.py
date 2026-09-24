@@ -77,6 +77,7 @@ class TestRevolutRefundConcurrency(TransactionCase):
             self.method_id, self.session_id = method.id, session.id
             self.currency_id, self.currency_code = config.currency_id.id, config.currency_id.name
             self.snapshot = {
+                "amount_total": -12.34,
                 "pricelist_id": order.pricelist_id.id or 0, "fiscal_position_id": False,
                 "lines": [{"uuid": str(uuid4()), "product_id": product.id,
                            "qty": -1, "price_unit": 12.34, "discount": 0,
@@ -193,6 +194,40 @@ class TestRevolutRefundConcurrency(TransactionCase):
 
         self.request.side_effect = http
         results = self._run_workers([("first-return", start), ("second-return", start)])
+        self.assertEqual(results.count("rejected"), 1)
+        self.assertEqual(len(self._posts()), 1)
+
+    def test_concurrent_partial_allocations_cannot_exceed_original_balance(self):
+        barrier = Barrier(2)
+
+        def http(method, url, **kwargs):
+            if method == "POST" and url.endswith(f"/api/orders/{self.provider_order}/refund"):
+                return self._response({
+                    "id": self.provider_refund, "type": "refund", "state": "pending",
+                    "related_order_id": self.provider_order,
+                    "amount": kwargs["json"]["amount"], "currency": self.currency_code,
+                })
+            return self._http(method, url, **kwargs)
+
+        def start(qty, amount):
+            snapshot = {
+                **self.snapshot, "amount_total": amount,
+                "lines": [{**self.snapshot["lines"][0], "qty": qty, "uuid": str(uuid4())}],
+            }
+            barrier.wait(timeout=10)
+            try:
+                return self._rpc(
+                    "revolut_start_refund", self.session_id, str(uuid4()), str(uuid4()),
+                    amount, self.currency_id, snapshot,
+                )
+            except UserError:
+                return "rejected"
+
+        self.request.side_effect = http
+        results = self._run_workers([
+            ("partial-a", lambda: start(-0.5, -6.17)),
+            ("partial-b", lambda: start(-0.501, -6.18)),
+        ])
         self.assertEqual(results.count("rejected"), 1)
         self.assertEqual(len(self._posts()), 1)
 

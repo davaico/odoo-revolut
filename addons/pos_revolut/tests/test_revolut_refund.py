@@ -73,7 +73,7 @@ class TestRevolutRefund(CommonPosTest):
     def _start(self):
         return self.revolut_method.revolut_start_refund(
             self.session.id, self.payload["uuid"],
-            self.payload["payment_ids"][0][2]["uuid"], -12.34,
+            self.payload["payment_ids"][0][2]["uuid"], self.payload["payment_ids"][0][2]["amount"],
             self.session.currency_id.id, self.payload,
         )
 
@@ -82,10 +82,253 @@ class TestRevolutRefund(CommonPosTest):
         response.json.return_value = payload
         return response
 
-    def _refund_response(self, state="pending"):
+    def _refund_response(self, state="pending", amount=1234, source=None):
         return self._response(id=self.refund_id, type="refund", state=state,
-                              related_order_id=self.source.revolut_order_id,
-                              amount=1234, currency=self.session.currency_id.name)
+                              related_order_id=(source or self.source).revolut_order_id,
+                              amount=amount, currency=self.session.currency_id.name)
+
+    def _split_original(self, second_revolut=False):
+        original = self._order_payload(str(uuid4()), str(uuid4()))
+        first_payment = original["payment_ids"][0][2]
+        first_payment["amount"] = 6.17
+        second_payment = dict(first_payment, uuid=str(uuid4()), amount=6.17,
+                              payment_method_id=self.revolut_method.id if second_revolut else self.cash_payment_method.id)
+        original["payment_ids"].append(Command.create(second_payment))
+        financial = self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(original)
+        first = self._operation(original["uuid"], first_payment["uuid"], amount=6.17,
+                                amount_minor=617, financial_snapshot=financial)
+        first_payment["transaction_id"] = first.revolut_payment_id
+        second = False
+        if second_revolut:
+            second = self._operation(original["uuid"], second_payment["uuid"], amount=6.17,
+                                     amount_minor=617, financial_snapshot=financial,
+                                     blocking_order_key=False)
+            second_payment["transaction_id"] = second.revolut_payment_id
+        else:
+            second_payment["transaction_id"] = False
+        self.env["pos.order"].sync_from_ui([original])
+        self.env.flush_all()
+        first.invalidate_recordset()
+        if second:
+            second.invalidate_recordset()
+        self.source = first
+        self.original = first.pos_order_id
+        self.assertTrue(self.original)
+        self.assertEqual(first.pos_payment_id.revolut_operation_id, first)
+        self.assertEqual(first.pos_payment_id.transaction_id, first.revolut_payment_id)
+        self.payload["lines"][0][2]["refunded_orderline_id"] = self.original.lines.id
+        return first, second
+
+    def test_repeated_partial_refunds_can_use_full_remaining_balance(self):
+        self.payload["amount_total"] = self.payload["amount_paid"] = -6.17
+        self.payload["lines"][0][2].update(qty=-0.5, price_subtotal=-6.17, price_subtotal_incl=-6.17)
+        self.payload["payment_ids"][0][2]["amount"] = -6.17
+        self.request.side_effect = [
+            self._response(id=self.source.revolut_order_id, state="completed",
+                           amount=1234, currency=self.session.currency_id.name, refunded_amount=0),
+            self._refund_response(amount=617),
+        ]
+        first = self._start()
+        self.assertEqual(first["state"], "pending")
+        self.request.side_effect = [self._refund_response("completed", amount=617)]
+        self.assertEqual(self._poll(first)["state"], "verified")
+        self.payload["uuid"] = str(uuid4())
+        self.payload["payment_ids"][0][2]["uuid"] = str(uuid4())
+        self.refund_id = str(uuid4())
+        self.request.side_effect = [
+            self._response(id=self.source.revolut_order_id, state="completed",
+                           amount=1234, currency=self.session.currency_id.name, refunded_amount=617),
+            self._refund_response(amount=617),
+        ]
+        second = self._start()
+        self.assertEqual(second["state"], "pending")
+        self.assertNotEqual(first["operation_id"], second["operation_id"])
+        self.payload["uuid"] = str(uuid4())
+        self.payload["payment_ids"][0][2].update(uuid=str(uuid4()), amount=-0.01)
+        self.payload["lines"][0][2].update(qty=-0.001, price_subtotal=-0.01, price_subtotal_incl=-0.01)
+        self.payload["amount_total"] = self.payload["amount_paid"] = -0.01
+        self.request.reset_mock()
+        with self.assertRaises(UserError):
+            self._start()
+        self.request.assert_not_called()
+
+    def test_mixed_tender_return_refunds_only_original_revolut_share(self):
+        self._split_original()
+        self.payload["payment_ids"][0][2]["amount"] = -6.17
+        self.payload["payment_ids"].append(Command.create({
+            "uuid": str(uuid4()), "payment_method_id": self.cash_payment_method.id,
+            "amount": -6.17, "payment_status": "done", "transaction_id": False,
+        }))
+        sources = self.revolut_method.revolut_refund_sources(
+            self.session.id, self.session.currency_id.id, self.payload,
+        )
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(sources[0]["remaining_minor"], 617)
+        self.request.side_effect = [
+            self._response(id=self.source.revolut_order_id, state="completed",
+                           amount=617, currency=self.session.currency_id.name),
+            self._refund_response(amount=617),
+        ]
+        started = self._start()
+        self.request.side_effect = [self._refund_response("completed", amount=617)]
+        self.assertEqual(self._poll(started)["state"], "verified")
+        self.payload["payment_ids"][0][2].update(payment_status="done", transaction_id=self.refund_id)
+        saved = self.env["pos.order"].sync_from_ui([self.payload])
+        order = self.env["pos.order"].browse(next(item["id"] for item in saved["pos.order"] if item["uuid"] == self.payload["uuid"]))
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(order.payment_ids.filtered(lambda item: item.payment_method_id == self.revolut_method).revolut_refund_operation_id.original_operation_id, self.source)
+        self.assertFalse(order.payment_ids.filtered(lambda item: item.payment_method_id == self.cash_payment_method).revolut_refund_operation_id)
+
+    def test_cash_only_partial_return_uses_only_original_cash_balance(self):
+        self._split_original()
+        self.payload["amount_total"] = self.payload["amount_paid"] = -6.17
+        self.payload["lines"][0][2].update(qty=-0.5, price_subtotal=-6.17, price_subtotal_incl=-6.17)
+        self.payload["payment_ids"][0][2].update(
+            payment_method_id=self.cash_payment_method.id, amount=-6.17,
+            payment_status="done", transaction_id=False,
+        )
+        saved = self.env["pos.order"].sync_from_ui([self.payload])
+        order = self.env["pos.order"].browse(next(item["id"] for item in saved["pos.order"] if item["uuid"] == self.payload["uuid"]))
+        self.assertEqual(order.state, "paid")
+        self.assertFalse(order.payment_ids.revolut_refund_operation_id)
+        self.payload["uuid"] = str(uuid4())
+        self.payload["payment_ids"][0][2]["uuid"] = str(uuid4())
+        with self.assertRaises(UserError):
+            self.env["pos.order"].sync_from_ui([self.payload])
+        self.request.assert_not_called()
+
+    def test_positive_tender_cannot_hide_overallocated_refund(self):
+        self._split_original()
+        self.payload["amount_total"] = self.payload["amount_paid"] = -6.17
+        self.payload["lines"][0][2].update(qty=-0.5, price_subtotal=-6.17, price_subtotal_incl=-6.17)
+        self.payload["payment_ids"][0][2]["amount"] = -6.17
+        self.request.side_effect = [
+            self._response(id=self.source.revolut_order_id, state="completed", amount=617,
+                           currency=self.session.currency_id.name),
+            self._refund_response(amount=617),
+        ]
+        started = self._start()
+        self.request.side_effect = [self._refund_response("completed", amount=617)]
+        self.assertEqual(self._poll(started)["state"], "verified")
+        self.payload["payment_ids"][0][2].update(payment_status="done", transaction_id=self.refund_id)
+        for amount in (-6.17, 6.17):
+            self.payload["payment_ids"].append(Command.create({
+                "uuid": str(uuid4()), "payment_method_id": self.cash_payment_method.id,
+                "amount": amount, "payment_status": "done", "transaction_id": False,
+            }))
+        with self.assertRaises(UserError):
+            self.env["pos.order"].sync_from_ui([self.payload])
+
+    def test_completed_return_reserves_original_product_quantity(self):
+        original = self._order_payload(str(uuid4()), str(uuid4()))
+        original["lines"][0][2].update(price_unit=1.0, price_subtotal=1.0, price_subtotal_incl=1.0)
+        expensive = self.env["product.product"].create({
+            "name": "Other refund product", "available_in_pos": True,
+            "list_price": 11.34, "taxes_id": [Command.clear()],
+        })
+        original["lines"].append(Command.create({
+            "uuid": str(uuid4()), "product_id": expensive.id, "qty": 1,
+            "price_unit": 11.34, "price_subtotal": 11.34, "price_subtotal_incl": 11.34,
+            "discount": 0, "tax_ids": [[6, False, []]], "pack_lot_ids": [],
+        }))
+        financial = self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(original)
+        source = self._operation(
+            original["uuid"], original["payment_ids"][0][2]["uuid"],
+            financial_snapshot=financial,
+        )
+        original["payment_ids"][0][2]["transaction_id"] = source.revolut_payment_id
+        self.env["pos.order"].sync_from_ui([original])
+        self.env.flush_all()
+        source.invalidate_recordset()
+        self.source = source
+        self.original = source.pos_order_id
+        cheap_line = self.original.lines.filtered(lambda line: line.product_id == self.product)
+        self.payload["lines"][0][2].update(
+            price_unit=1.0, price_subtotal=-1.0, price_subtotal_incl=-1.0,
+            refunded_orderline_id=cheap_line.id,
+        )
+        self.payload["amount_total"] = self.payload["amount_paid"] = -1.0
+        self.payload["payment_ids"][0][2]["amount"] = -1.0
+        self.request.side_effect = [
+            self._response(id=source.revolut_order_id, state="completed", amount=1234,
+                           currency=self.session.currency_id.name),
+            self._refund_response(amount=100),
+        ]
+        started = self._start()
+        self.request.side_effect = [self._refund_response("completed", amount=100)]
+        self.assertEqual(self._poll(started)["state"], "verified")
+        self.payload["payment_ids"][0][2].update(payment_status="done", transaction_id=self.refund_id)
+        self.env["pos.order"].sync_from_ui([self.payload])
+        self.env.flush_all()
+        self.payload["uuid"] = str(uuid4())
+        self.payload["payment_ids"][0][2].update(uuid=str(uuid4()), payment_status="waiting", transaction_id=False)
+        self.request.reset_mock()
+        with self.assertRaises(UserError):
+            self._start()
+        self.request.assert_not_called()
+
+    def test_two_original_allocations_preserve_success_when_other_fails(self):
+        first_source, second_source = self._split_original(second_revolut=True)
+        first_line = self.payload["payment_ids"][0][2]
+        first_line["amount"] = -6.17
+        second_line = dict(first_line, uuid=str(uuid4()))
+        self.payload["payment_ids"].append(Command.create(second_line))
+        sources = self.revolut_method.revolut_refund_sources(
+            self.session.id, self.session.currency_id.id, self.payload,
+        )
+        self.assertEqual({item["operation_id"] for item in sources}, {first_source.id, second_source.id})
+        with self.assertRaises(UserError):
+            self._start()
+        self.request.assert_not_called()
+        self.request.side_effect = [
+            self._response(id=first_source.revolut_order_id, state="completed", amount=617,
+                           currency=self.session.currency_id.name),
+            self._refund_response(amount=617),
+        ]
+        first = self.revolut_method.revolut_start_refund(
+            self.session.id, self.payload["uuid"], first_line["uuid"], -6.17,
+            self.session.currency_id.id, self.payload, first_source.id,
+        )
+        self.request.side_effect = [self._refund_response("completed", amount=617)]
+        self.assertEqual(self.revolut_method.revolut_poll_refund(first["operation_id"], self.payload["uuid"], first_line["uuid"])["state"], "verified")
+        first_line.update(payment_status="done", transaction_id=self.refund_id)
+        self.refund_id = str(uuid4())
+        self.request.side_effect = [
+            self._response(id=second_source.revolut_order_id, state="completed", amount=617,
+                           currency=self.session.currency_id.name),
+            self._refund_response(amount=617, source=second_source),
+        ]
+        second = self.revolut_method.revolut_start_refund(
+            self.session.id, self.payload["uuid"], second_line["uuid"], -6.17,
+            self.session.currency_id.id, self.payload, second_source.id,
+        )
+        self.request.side_effect = [self._refund_response("failed", amount=617, source=second_source)]
+        self.assertEqual(self.revolut_method.revolut_poll_refund(second["operation_id"], self.payload["uuid"], second_line["uuid"])["state"], "failed")
+        second_line.update(payment_status="done", transaction_id=self.refund_id)
+        with self.assertRaises(UserError):
+            self.env["pos.order"].sync_from_ui([self.payload])
+        self.assertEqual(self.revolut_method.revolut_find_refund(self.payload["uuid"], first_line["uuid"])["state"], "verified")
+        self.payload["payment_ids"].pop()
+        replacement = dict(second_line, uuid=str(uuid4()), transaction_id=False, payment_status="waiting")
+        self.payload["payment_ids"].append(Command.create(replacement))
+        self.refund_id = str(uuid4())
+        self.request.side_effect = [
+            self._response(id=second_source.revolut_order_id, state="completed", amount=617,
+                           currency=self.session.currency_id.name),
+            self._refund_response(amount=617, source=second_source),
+        ]
+        retried = self.revolut_method.revolut_start_refund(
+            self.session.id, self.payload["uuid"], replacement["uuid"], -6.17,
+            self.session.currency_id.id, self.payload, second_source.id,
+        )
+        self.assertNotEqual(retried["operation_id"], second["operation_id"])
+        self.request.side_effect = [self._refund_response("completed", amount=617, source=second_source)]
+        self.assertEqual(self.revolut_method.revolut_poll_refund(retried["operation_id"], self.payload["uuid"], replacement["uuid"])["state"], "verified")
+        replacement.update(payment_status="done", transaction_id=self.refund_id)
+        saved = self.env["pos.order"].sync_from_ui([self.payload])
+        order = self.env["pos.order"].browse(next(item["id"] for item in saved["pos.order"] if item["uuid"] == self.payload["uuid"]))
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(set(order.payment_ids.revolut_refund_operation_id.ids), {first["operation_id"], retried["operation_id"]})
 
     def test_full_refund_requires_verified_completion(self):
         self.request.side_effect = [
@@ -158,8 +401,14 @@ class TestRevolutRefund(CommonPosTest):
             self._start()
         self.request.assert_not_called()
 
-    def test_unrelated_or_partial_return_cannot_be_refunded(self):
-        self.payload["lines"][0][2]["qty"] = -0.5
+    def test_missing_return_total_cannot_dispatch_refund(self):
+        self.payload.pop("amount_total")
+        with self.assertRaises(UserError):
+            self._start()
+        self.request.assert_not_called()
+
+    def test_unrelated_or_excessive_return_cannot_be_refunded(self):
+        self.payload["lines"][0][2]["qty"] = -2
         with self.assertRaises(UserError):
             self._start()
         self.payload["lines"][0][2]["qty"] = -1
