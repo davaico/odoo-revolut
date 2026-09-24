@@ -24,5 +24,10 @@ reservation and uncertainty. Provider retention/replay guarantees remain a
 live-contract question for ticket 02, not an invented retry guarantee.
 
 Mocked tests exercise these contracts; this is not live Merchant API or physical
-terminal acceptance. Full single-payment returns are ticket 08's boundary;
-partial and allocated refunds remain ticket 09.
+terminal acceptance. Ticket 09 extends the ticket 08 full-refund flow with one
+persisted operation and idempotency key per return payment line. Its reservation
+includes verified, pending, dispatching and unresolved operations. A failed
+operation releases its reservation; its key is never reused for a replacement
+payment line. The original order's `refunded_amount` is checked against locally
+verified refunds before another dispatch. Any provider refund not represented by
+verified local operations blocks dispatch for manager investigation.
