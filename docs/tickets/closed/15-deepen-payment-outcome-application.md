@@ -94,14 +94,21 @@ cannot cause a serialization failure or erase a verified payment.
 
 Focused Odoo results on `19.0.20260908`:
 
-- `TestRevolutRetryConcurrency`: 12 passed. Includes stale scheduled and
+- `TestRevolutRetryConcurrency`: 15 passed. Includes stale scheduled and
   foreground polling, stale cancellation, cancellation during payment
-  verification, dispatch crash recovery, delayed acknowledgement after manager
-  association and reconciliation, and both audit failure transaction guarantees.
+  verification, provisional polls during order and intent dispatch,
+  a stale missing-reference poll after manager association, dispatch crash
+  recovery, delayed acknowledgement after manager association and
+  reconciliation, and both audit failure transaction guarantees.
 - `TestRevolutReconciliation`: 7 passed.
 - `TestRevolutPayment`: 31 passed.
-- Full `scripts/test-addon`: 133 passed, 0 failed and 0 errors, including
+- Full `scripts/test-addon`: 136 passed, 0 failed and 0 errors, including
   browser tours. `python3 -m compileall` and `git diff --check` passed.
+
+The two in-flight poll tests first failed on the review-discovered race and
+passed after missing-reference observations stopped changing durable state. A
+separate stale-poll test first showed that manager reconciliation was delayed;
+it now preserves the manager-scheduled time.
 
 The delayed acknowledgement test recovers the same operation through the POS
 lookup, preserves its order, intent, and payment references and released locks,

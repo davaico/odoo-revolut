@@ -657,3 +657,110 @@ class TestRevolutRetryConcurrency(TransactionCase):
             self.assertEqual(dispatches.mapped("action"), ["create_order"])
             self.assertEqual(dispatches.outcome, "succeeded")
             self.assertEqual(dispatches.provider_reference, self.provider_order)
+
+    def _assert_poll_during_creation_dispatch(self, action):
+        dispatch_started, poll_finished = Event(), Event()
+
+        def http(method, url, **kwargs):
+            is_target = (
+                method == "POST" and (
+                    (action == "create_order" and url.endswith("/api/orders"))
+                    or (action == "create_intent" and url.endswith("/payment-intents"))
+                )
+            )
+            if is_target:
+                dispatch_started.set()
+                self.assertTrue(poll_finished.wait(10))
+            return self._start_http(method, url, **kwargs)
+
+        def poll():
+            self.assertTrue(dispatch_started.wait(10))
+            try:
+                current = self._rpc(
+                    "revolut_find_payment", self.order_uuid, self.line_uuid
+                )
+                result = self._rpc(
+                    "revolut_poll_payment", current["operation_id"],
+                    self.order_uuid, self.line_uuid,
+                )
+                self.assertEqual(result["state"], "unresolved")
+            finally:
+                poll_finished.set()
+
+        self.request.side_effect = http
+        self._run_workers([("start", self._start), ("poll", poll)])
+        final = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
+        self.assertEqual(final["state"], "pending")
+        self.assertEqual(final["order_id"], self.provider_order)
+        self.assertEqual(final["payment_intent_id"], self.provider_intent)
+        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        self.assertEqual(len(posts), 2)
+
+    def test_poll_during_order_dispatch_does_not_strand_valid_acknowledgement(self):
+        self._assert_poll_during_creation_dispatch("create_order")
+
+    def test_poll_during_intent_dispatch_does_not_strand_valid_acknowledgement(self):
+        self._assert_poll_during_creation_dispatch("create_intent")
+
+    def test_stale_missing_reference_poll_keeps_manager_reconciliation_due(self):
+        def interrupted_order(method, url, **kwargs):
+            if method == "POST" and url.endswith("/api/orders"):
+                raise requests.Timeout()
+            return self._start_http(method, url, **kwargs)
+
+        self.request.side_effect = interrupted_order
+        started = self._start()
+        read_finished, associated = Event(), Event()
+        scheduled = []
+
+        def evidence(method, url, **kwargs):
+            if url.endswith(f"/api/orders/{self.provider_order}"):
+                return self._manager_order()
+            if url.endswith(f"/api/payment-intents/{self.provider_intent}"):
+                return self._manager_intent()
+            raise AssertionError(f"Unexpected HTTP request: {method} {url}")
+
+        self.request.side_effect = evidence
+        method_type = type(self.env["pos.payment.method"])
+        original_read = method_type._read_revolut_operation_owned
+
+        def paused_read(method, operation_id, *args, **kwargs):
+            result = original_read(method, operation_id, *args, **kwargs)
+            if current_thread().name == "poll" and not result["order_id"]:
+                read_finished.set()
+                self.assertTrue(associated.wait(10))
+            return result
+
+        def associate():
+            self.assertTrue(read_finished.wait(10))
+            try:
+                self._manager_rpc(
+                    started["operation_id"], "action_revolut_associate",
+                    self.provider_order, self.provider_intent,
+                )
+                with self.registry.cursor() as cursor:
+                    env = api.Environment(cursor, SUPERUSER_ID, self.context)
+                    operation = env["pos.revolut.payment.operation"].browse(
+                        started["operation_id"]
+                    )
+                    scheduled.append(operation.next_reconcile_at)
+            finally:
+                associated.set()
+
+        with patch.object(method_type, "_read_revolut_operation_owned",
+                          autospec=True, side_effect=paused_read):
+            self._run_workers([
+                ("poll", lambda: self._rpc(
+                    "revolut_poll_payment", started["operation_id"],
+                    self.order_uuid, self.line_uuid,
+                )),
+                ("associate", associate),
+            ])
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            operation = env["pos.revolut.payment.operation"].browse(
+                started["operation_id"]
+            )
+            self.assertEqual(operation.next_reconcile_at, scheduled[0])
+            self.assertEqual(operation.revolut_order_id, self.provider_order)
+            self.assertEqual(operation.revolut_payment_intent_id, self.provider_intent)
