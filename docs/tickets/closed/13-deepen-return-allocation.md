@@ -10,6 +10,43 @@
 
 Preserve the complete manager return workflow—from choosing original payment allocations through refund reservation, reconciliation, and return checkout—while concentrating quantities, refundable balances, reservation consistency, and original tender rules in one Return allocation module. A change to those rules should have one owner across source discovery, reservation, and settlement.
 
+## Approved design clarifications
+
+The owner confirmed these decisions during the follow-up architecture discussion:
+
+- **Q1 — Reserve quantities for the whole return.** Each refund allocation
+  reserves its own amount against its original payment. Product quantities are
+  reserved for the complete unchanged return, counted once per return even
+  when it has several allocations. The quantity reservation remains while any
+  allocation is pending, dispatching, unresolved, or verified but the POS
+  return is not yet complete. A failed sibling releases its monetary
+  reservation without releasing quantities protected by another allocation.
+  If every allocation definitively fails, the reservation stops consuming
+  quantities; after successful return settlement, completed return lines
+  account for the quantities instead. Reusing the same return still requires
+  unchanged contents, session, and total. Resume a partially refunded return
+  rather than creating another return for the same goods.
+- **Q2 — Keep source discovery advisory.** The picker previews remaining
+  monetary balances without holding them or promising that the selected
+  product quantities remain available. Another return can consume availability
+  before submission, and refundable money can remain after product quantities
+  are exhausted. Reservation checks quantities and balances authoritatively
+  under the module's locks before dispatch; stale or ineligible selections are
+  rejected. Earlier explanations of unavailable quantities are outside this
+  refactor's scope and would still require reservation-time checks.
+- **Q3 — Keep transaction ownership with callers.** The Return allocation
+  module owns return invariants, lock ordering, reservation decisions, and
+  settlement checks. The refund caller owns the dedicated reservation
+  transaction, retries, and commit before provider dispatch. The checkout
+  caller validates, saves the Odoo return, and links verified refunds within
+  one surrounding transaction. This preserves distinct transaction lifetimes:
+  a failed checkout can roll back without erasing the durable record of a
+  refund already sent. Provider dispatch stays outside the module.
+
+These clarifications describe the current implementation and do not add new
+behavior or reopen the ticket. Existing verification evidence below is retained;
+this documentation update did not rerun application tests.
+
 ## Acceptance criteria
 
 - [x] Source discovery, refund reservation, and return settlement share ownership of the applicable return invariants. Callers no longer assemble the repeated original-sale locking and quantity-validation protocol themselves; source discovery remains advisory and reservation performs authoritative checks.
