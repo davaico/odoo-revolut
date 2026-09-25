@@ -32,8 +32,8 @@ immediately below the title. The original 12 branches were created from the
 same committed ticket baseline; branch existence does not satisfy a dependency.
 Branches for tickets 13–15 are created from the committed ticket definitions
 on reviewed `main`. Update the assigned branch from `main` before claiming work.
-Tickets 16–18 declare their work-branch names; create those branches from the
-latest reviewed `main` when starting, or update them if they already exist.
+Branches for tickets 16–18 are created from their committed definitions on
+`main`. Update the assigned branch from reviewed `main` before starting.
 
 Use `main` as the shared integration branch for this ticket set. Integrate
 reviewed, verified ticket work there, including its state and triage updates.
