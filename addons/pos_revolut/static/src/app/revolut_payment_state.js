@@ -183,7 +183,12 @@ export class RevolutPaymentState {
             if (refund) {
                 try {
                     await this.clock.before(this.adapter.restoreRefundOriginals(order), deadline);
-                } catch {
+                } catch (error) {
+                    if (started || line.uiState.revolutOperationId ||
+                        line.uiState.revolutSnapshot || line.uiState.revolutOriginalOperationId ||
+                        line.transaction_id || line.payment_ref_no) {
+                        throw error;
+                    }
                     this.adapter.discardRefund(line);
                     this.adapter.showPreparationError(line, "originals");
                     return false;

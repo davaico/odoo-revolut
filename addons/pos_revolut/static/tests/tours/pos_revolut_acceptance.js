@@ -503,9 +503,60 @@ registry.category("web_tour.tours").add("pos_revolut_refund_reload", {
         { trigger: ".modal:contains('The refund may have succeeded')" },
         Dialog.confirm(),
         refresh(),
-        { trigger: ".payment-screen .send_payment_request:contains('Check status')" },
+        {
+            content: "Fail the first original-sale read after refund reload",
+            trigger: ".payment-screen .send_payment_request:contains('Check status')",
+            run() {
+                const pos = window.posmodel;
+                const order = pos.getOrder();
+                const payment = order.payment_ids.find((line) =>
+                    line.payment_method_id.use_payment_terminal === "revolut"
+                );
+                const missingOriginal = order.lines.find((line) =>
+                    !line.refunded_orderline_id && line.raw.refunded_orderline_id
+                );
+                if (!payment || !missingOriginal) {
+                    throw new Error("Refund or missing original sale was not restored after reload");
+                }
+                window.revolutRefundRecovery = { orderUuid: order.uuid, lineUuid: payment.uuid };
+                payment.uiState.revolutStarted = true;
+                payment.uiState.revolutSnapshot = false;
+                payment.uiState.revolutOperationId = false;
+                const read = pos.data.read.bind(pos.data);
+                let failed = false;
+                pos.data.read = async (model, ids, ...args) => {
+                    if (!failed && model === "pos.order.line" &&
+                        ids.includes(missingOriginal.raw.refunded_orderline_id)) {
+                        failed = true;
+                        throw new Error("Simulated original-sale read failure");
+                    }
+                    return read(model, ids, ...args);
+                };
+            },
+        },
+        { trigger: ".payment-screen .send_payment_request:contains('Check status')", run: "click" },
+        { trigger: ".modal:contains('The refund may have succeeded')" },
+        Dialog.confirm(),
+        {
+            content: "Uncertain refund keeps its identity and financial guards",
+            trigger: ".payment-screen .send_payment_request:contains('Check status')",
+            run() {
+                const order = window.posmodel.getOrder();
+                const { orderUuid, lineUuid } = window.revolutRefundRecovery;
+                const payment = order.getPaymentlineByUuid(lineUuid);
+                if (order.uuid !== orderUuid || !payment ||
+                    payment.uiState.revolutLocalOutcome !== "interrupted" ||
+                    order.removePaymentline(payment) !== false ||
+                    !order.getPaymentlineByUuid(lineUuid)) {
+                    throw new Error("Uncertain refund was lost or became removable");
+                }
+            },
+        },
         PaymentScreen.clickPaymentMethod("Cash"),
         { trigger: ".modal:contains('Reconcile the unresolved Revolut payment')" },
+        Dialog.confirm(),
+        PaymentScreen.clickValidate(),
+        { trigger: ".modal:contains('Revolut reconciliation required')" },
         Dialog.confirm(),
         {
             content: "Repeated status checks cannot dispatch another refund",
@@ -520,6 +571,18 @@ registry.category("web_tour.tours").add("pos_revolut_refund_reload", {
         ReceiptScreen.isShown(),
         ReceiptScreen.paymentLineContains("Revolut", "-12.34"),
         receiptContainsReference(REFUND_REFERENCE),
+        {
+            content: "The recovered refund retained the return and payment identities",
+            trigger: ".receipt-screen",
+            run() {
+                const order = window.posmodel.getOrder();
+                const { orderUuid, lineUuid } = window.revolutRefundRecovery;
+                if (order.uuid !== orderUuid || !order.getPaymentlineByUuid(lineUuid)) {
+                    throw new Error("Recovered refund changed its return or payment identity");
+                }
+                delete window.revolutRefundRecovery;
+            },
+        },
     ].flat(),
 });
 
