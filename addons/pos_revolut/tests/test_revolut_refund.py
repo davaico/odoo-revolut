@@ -390,6 +390,14 @@ class TestRevolutRefund(CommonPosTest):
         self.assertEqual(post.kwargs["json"]["merchant_order_data"]["reference"],
                          post.kwargs["headers"]["Idempotency-Key"])
 
+    def test_duplicate_submit_rejects_changed_return_total(self):
+        self._pending()
+        self.request.reset_mock()
+        self.payload["amount_total"] = -12.35
+        with self.assertRaises(UserError):
+            self._start()
+        self.request.assert_not_called()
+
     def test_cashier_cannot_issue_or_reconcile_refund(self):
         cashier = new_test_user(self.env, login="refund_cashier", groups="point_of_sale.group_pos_user")
         with self.assertRaises(AccessError):
