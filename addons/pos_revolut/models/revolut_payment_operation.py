@@ -388,10 +388,13 @@ class PosRevolutPaymentOperation(models.Model):
                              else "dispatching_intent")
             if (self.state == claimed_state
                     or (self.state == "unresolved" and not already_linked
-                        and self.local_outcome == "timed_out")):
+                        and self.local_outcome == "timed_out")
+                    or (action == "create_order" and self.state == "unresolved"
+                        and already_linked and not self.revolut_payment_intent_id)):
                 # A local timeout does not refute this claimed request. Its
-                # first valid acknowledgement may continue the original
-                # sequence, but a reference linked by a manager may not.
+                # valid acknowledgement may continue the original sequence.
+                # A manager's matching order-only association is likewise
+                # incomplete evidence and cannot stop the first intent.
                 values = {
                     "state": "order_created" if action == "create_order" else "pending",
                     **({"provider_state": evidence.get("state") or "pending"}
@@ -436,14 +439,25 @@ class PosRevolutPaymentOperation(models.Model):
             or intent.get("terminal_id") != self.terminal_id
         ):
             raise UserError(_("The Revolut intent does not match the original POS payment."))
-        owned = self.sudo().search([
-            ("id", "!=", self.id), "|",
-            ("revolut_order_id", "=", order_reference),
-            ("revolut_payment_intent_id", "=", intent_reference or ""),
-        ], limit=1)
+        ownership_domain = [("id", "!=", self.id)]
+        if intent_reference:
+            ownership_domain.append("|")
+        ownership_domain.append(("revolut_order_id", "=", order_reference))
+        if intent_reference:
+            ownership_domain.append(
+                ("revolut_payment_intent_id", "=", intent_reference)
+            )
+        owned = self.sudo().search(ownership_domain, limit=1)
         if owned:
             raise UserError(_("A Revolut reference is already owned by another attempt."))
-        values = {"revolut_order_id": order_reference, "state": "unresolved"}
+        # An order-only association confirms the order reference but does not
+        # invalidate this request's already claimed creation sequence.
+        state = self.state if (
+            not intent_reference
+            and self.state in {"dispatching_order", "order_created",
+                               "dispatching_intent"}
+        ) else "unresolved"
+        values = {"revolut_order_id": order_reference, "state": state}
         if intent_reference:
             values.update({"revolut_payment_intent_id": intent_reference,
                            "next_reconcile_at": fields.Datetime.now()})

@@ -658,6 +658,112 @@ class TestRevolutRetryConcurrency(TransactionCase):
             self.assertEqual(dispatches.outcome, "succeeded")
             self.assertEqual(dispatches.provider_reference, self.provider_order)
 
+    def test_order_only_association_during_ack_allows_first_intent_dispatch(self):
+        order_sent, associated = Event(), Event()
+
+        def http(method, url, **kwargs):
+            if method == "POST" and url.endswith("/api/orders"):
+                order_sent.set()
+                self.assertTrue(associated.wait(10))
+                return self._response({"id": self.provider_order})
+            if url.endswith(f"/api/orders/{self.provider_order}"):
+                return self._manager_order()
+            return self._start_http(method, url, **kwargs)
+
+        def associate():
+            self.assertTrue(order_sent.wait(10))
+            try:
+                pending = self._rpc(
+                    "revolut_find_payment", self.order_uuid, self.line_uuid
+                )
+                self._manager_rpc(
+                    pending["operation_id"], "action_revolut_associate",
+                    self.provider_order,
+                )
+            finally:
+                associated.set()
+
+        self.request.side_effect = http
+        self._run_workers([("start", self._start), ("associate", associate)])
+        final = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
+        self.assertEqual(final["state"], "pending")
+        self.assertEqual(final["order_id"], self.provider_order)
+        self.assertEqual(final["payment_intent_id"], self.provider_intent)
+        self.assertFalse(final["retry_safe"])
+        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        self.assertEqual(len(posts), 2, "Only the original order and one intent may dispatch")
+
+    def test_order_only_association_before_intent_claim_allows_first_dispatch(self):
+        claim_started, associated = Event(), Event()
+        method_type = type(self.env["pos.payment.method"])
+        original_claim = method_type._claim_revolut_dispatch_owned
+
+        def paused_claim(method, operation_id, action):
+            if action == "create_intent":
+                claim_started.set()
+                self.assertTrue(associated.wait(10))
+            return original_claim(method, operation_id, action)
+
+        def associate():
+            self.assertTrue(claim_started.wait(10))
+            try:
+                current = self._rpc(
+                    "revolut_find_payment", self.order_uuid, self.line_uuid
+                )
+                self._manager_rpc(
+                    current["operation_id"], "action_revolut_associate",
+                    self.provider_order,
+                )
+            finally:
+                associated.set()
+
+        def http(method, url, **kwargs):
+            if url.endswith(f"/api/orders/{self.provider_order}"):
+                return self._manager_order()
+            return self._start_http(method, url, **kwargs)
+
+        self.request.side_effect = http
+        with patch.object(method_type, "_claim_revolut_dispatch_owned",
+                          autospec=True, side_effect=paused_claim):
+            self._run_workers([("start", self._start), ("associate", associate)])
+        final = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
+        self.assertEqual(final["state"], "pending")
+        self.assertEqual(final["payment_intent_id"], self.provider_intent)
+        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        self.assertEqual(len(posts), 2)
+
+    def test_order_only_association_during_intent_dispatch_keeps_ack(self):
+        intent_sent, associated = Event(), Event()
+
+        def http(method, url, **kwargs):
+            if method == "POST" and url.endswith("/payment-intents"):
+                intent_sent.set()
+                self.assertTrue(associated.wait(10))
+            if url.endswith(f"/api/orders/{self.provider_order}"):
+                return self._manager_order()
+            return self._start_http(method, url, **kwargs)
+
+        def associate():
+            self.assertTrue(intent_sent.wait(10))
+            try:
+                current = self._rpc(
+                    "revolut_find_payment", self.order_uuid, self.line_uuid
+                )
+                self._manager_rpc(
+                    current["operation_id"], "action_revolut_associate",
+                    self.provider_order,
+                )
+            finally:
+                associated.set()
+
+        self.request.side_effect = http
+        self._run_workers([("start", self._start), ("associate", associate)])
+        final = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
+        self.assertEqual(final["state"], "pending")
+        self.assertEqual(final["payment_intent_id"], self.provider_intent)
+        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        self.assertEqual(len(posts), 2)
+
     def _assert_observation_during_creation_dispatch(self, action, observation):
         dispatch_started, observation_finished = Event(), Event()
 
