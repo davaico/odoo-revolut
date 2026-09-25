@@ -204,6 +204,9 @@ class TestRevolutRestaurantPosStarts(TestPointOfSaleHttpCommon):
         self.env["restaurant.table"].create({
             "table_number": 1, "floor_id": floor.id, "seats": 2,
         })
+        self.env["restaurant.table"].create({
+            "table_number": 2, "floor_id": floor.id, "seats": 2,
+        })
         self.main_pos_config.with_user(self.pos_user).open_ui()
         self.main_pos_config.current_session_id.set_opening_control(0, "")
         self.start_pos_tour("pos_revolut_restaurant_guards")
