@@ -343,6 +343,35 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             )
             self.assertFalse(revision_root.exists())
 
+    def test_permission_failure_removes_published_release_before_retry(self):
+        remote = load_script("deploy-addon-remote")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = self._artifact(root)
+            deployment = self._deployment(remote, FakeRunner([]), root, archive)
+            with mock.patch.object(
+                deployment, "_make_release_read_only", side_effect=OSError("chmod failed")
+            ):
+                with self.assertRaisesRegex(remote.DeploymentError, "extraction failed"):
+                    deployment._extract_release()
+            revision_root = (
+                root / "opt" / "odoo-releases" / "revolut" / "staging" / ("4" * 40)
+            )
+            self.assertFalse(revision_root.exists())
+            self.assertEqual(deployment._extract_release(), revision_root)
+            self.assertEqual(revision_root.stat().st_mode & 0o222, 0)
+
+    def test_repeat_deployment_restores_read_only_permissions(self):
+        remote = load_script("deploy-addon-remote")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = self._artifact(root)
+            deployment = self._deployment(remote, FakeRunner([]), root, archive)
+            release = deployment._extract_release()
+            release.chmod(0o755)
+            self.assertEqual(deployment._extract_release(), release)
+            self.assertEqual(release.stat().st_mode & 0o222, 0)
+
     def test_non_symlink_bridge_blocks_activation_before_base_changes(self):
         remote = load_script("deploy-addon-remote")
         with tempfile.TemporaryDirectory() as directory:
@@ -360,6 +389,31 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             with self.assertRaisesRegex(remote.DeploymentError, "not a release symlink"):
                 deployment._activate_release(release)
             self.assertEqual(base_link.resolve(), previous)
+
+    def test_failed_bridge_activation_keeps_odoo_stopped(self):
+        remote = load_script("deploy-addon-remote")
+        runner = FakeRunner([
+            "pos_revolut_payment_operation\n", "0\n", "", "",
+            "pos_revolut_payment_operation\n", "0\n",
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = self._artifact(root)
+            self._target_configuration(root)
+            deployment = self._deployment(remote, runner, root, archive)
+            replace = remote.os.replace
+
+            def fail_bridge_activation(source, destination):
+                if Path(destination).name == "pos_revolut_restaurant":
+                    raise OSError("simulated activation failure")
+                return replace(source, destination)
+
+            with mock.patch.object(remote.os, "replace", side_effect=fail_bridge_activation):
+                with self.assertRaisesRegex(remote.DeploymentError, "activate"):
+                    deployment.execute()
+        commands = [call[0] for call in runner.calls]
+        self.assertIn(["systemctl", "stop", "odoo"], commands)
+        self.assertNotIn(["systemctl", "start", "odoo"], commands)
 
     def test_addons_parent_must_be_a_directory(self):
         remote = load_script("deploy-addon-remote")

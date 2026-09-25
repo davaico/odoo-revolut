@@ -122,7 +122,8 @@ checks retail installation, later Restaurant installation, base-only migration,
 bridge upgrade, and the mocked POS browser tours:
 
 ```bash
-./scripts/test-delivered-addon --revision "$REVISION"
+./scripts/test-delivered-addon --revision "$REVISION" --scenario retail
+./scripts/test-delivered-addon --revision "$REVISION" --scenario migration
 ```
 
 `git status --short` must be empty. For the first installation, run:

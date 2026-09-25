@@ -349,9 +349,11 @@ WHERE state IN (
                     raise DeploymentError(
                         "Existing release contents do not match the uploaded artifact."
                     )
+                self._make_release_read_only(revision_root)
                 return revision_root
             staged = temporary_path / "release"
             staged.mkdir()
+            published = False
             try:
                 for addon in ADDONS:
                     shutil.move(str(source / addon), staged / addon)
@@ -360,12 +362,22 @@ WHERE state IN (
                     self.expected_sha256 + "\n"
                 )
                 os.replace(staged, revision_root)
+                published = True
                 self._make_release_read_only(revision_root)
             except OSError as error:
-                for path in sorted(staged.rglob("*"), key=lambda item: len(item.parts)):
-                    if path.is_dir():
-                        path.chmod(0o755)
-                staged.chmod(0o755)
+                cleanup = revision_root if published else staged
+                try:
+                    for path in sorted(cleanup.rglob("*"), key=lambda item: len(item.parts)):
+                        if path.is_dir():
+                            path.chmod(0o755)
+                    cleanup.chmod(0o755)
+                    if published:
+                        shutil.rmtree(cleanup)
+                except OSError as cleanup_error:
+                    raise DeploymentError(
+                        f"Deployment artifact extraction failed; remove incomplete "
+                        f"release {revision_root} while Odoo remains stopped."
+                    ) from cleanup_error
                 raise DeploymentError("Deployment artifact extraction failed.") from error
         return revision_root
 
