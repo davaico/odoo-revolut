@@ -9,30 +9,10 @@ import { register_payment_method } from "@point_of_sale/app/services/pos_store";
 import { PosPayment } from "@point_of_sale/app/models/pos_payment";
 import { PosOrder } from "@point_of_sale/app/models/pos_order";
 import { PaymentInterface } from "@point_of_sale/app/utils/payment/payment_interface";
-
-const POLL_INTERVAL_MS = 1000;
-const PAYMENT_TIMEOUT_MS = 60000;
-const FINAL_FAILURE_STATES = new Set(["declined", "failed", "cancelled", "unresolved"]);
-
-class ForegroundTimeout extends Error {}
-
-function isRevolut(line) {
-    return line?.payment_method_id?.use_payment_terminal === "revolut";
-}
-
-function isRevolutRefund(line) {
-    return isRevolut(line) && (line.amount < 0 || line.pos_order_id?.isRefund);
-}
-
-function isUnstartedRefund(line) {
-    return isRevolutRefund(line) && !line.uiState?.revolutStarted &&
-        !line.uiState?.revolutOperationId && !line.uiState?.revolutSnapshot &&
-        !line.uiState?.revolutStarting;
-}
-
-function isFailedRefund(line) {
-    return isRevolutRefund(line) && line.uiState?.revolutSnapshot?.state === "failed";
-}
+import {
+    RevolutPaymentState, isRevolut, isRevolutRefund, orderActions,
+    paymentActions, paymentOutcome, paymentResponseSuccessful, restorePaymentLine,
+} from "./revolut_payment_state";
 
 async function restoreRefundOriginals(pos, order) {
     // Paid originals may leave the POS cache on reload. Restore the relation
@@ -45,27 +25,6 @@ async function restoreRefundOriginals(pos, order) {
     }
 }
 
-function isLocked(line) {
-    if (isUnstartedRefund(line) || isFailedRefund(line)) {
-        // A cancelled allocation or failed operation can be removed. A failed
-        // operation remains immutable; retry creates a new payment line.
-        return false;
-    }
-    return isRevolut(line) && !line.uiState?.revolutSelectingAllocation &&
-        !line.uiState?.revolutSnapshot?.retry_safe &&
-        (line.uiState?.revolutStarted || ["retry", "waiting", "waitingCard", "waitingCancel"].includes(line.getPaymentStatus()));
-}
-
-function needsReconciliation(line) {
-    return !isUnstartedRefund(line) && !isFailedRefund(line) &&
-        (isLocked(line) || isRevolutRefund(line)) &&
-        line.uiState?.revolutSnapshot?.state !== "verified";
-}
-
-function blocksCheckout(line) {
-    return needsReconciliation(line) || isFailedRefund(line);
-}
-
 function discardUnstartedRefund(order, line) {
     line.uiState.revolutStarted = false;
     // This line never reached the server. Remove it so a different tender can
@@ -74,9 +33,7 @@ function discardUnstartedRefund(order, line) {
 }
 
 export function hasRevolutExposure(order) {
-    return order?.payment_ids?.some((line) => isRevolut(line) &&
-        (isLocked(line) || line.uiState?.revolutStarting || line.transaction_id ||
-            line.getPaymentStatus() === "done"));
+    return orderActions(order).hasExposure;
 }
 
 function financialSnapshot(order) {
@@ -98,22 +55,6 @@ function financialSnapshot(order) {
             ...(line.refunded_orderline_id ? { refunded_orderline_id: line.refunded_orderline_id.id } : {}),
         })),
     };
-}
-
-// Bound the whole foreground wait, including slow or disconnected RPCs. A late
-// server response remains durable and is reconciled on the next cashier action.
-async function beforeDeadline(promise, deadline) {
-    let timer;
-    try {
-        return await Promise.race([
-            promise,
-            new Promise((resolve, reject) => {
-                timer = setTimeout(() => reject(new ForegroundTimeout()), Math.max(0, deadline - Date.now()));
-            }),
-        ]);
-    } finally {
-        clearTimeout(timer);
-    }
 }
 
 class RefundAllocationDialog extends Component {
@@ -193,179 +134,41 @@ function chooseRefundAllocation(dialog, sources, paymentMethodId, amount, curren
 export class PaymentRevolut extends PaymentInterface {
     setup() {
         super.setup(...arguments);
-        this.requests = new Map();
-        this.cancellations = new Map();
-    }
-
-    sendPaymentRequest(uuid) {
-        if (this.requests.has(uuid)) {
-            return this.requests.get(uuid);
-        }
-        const order = this.pos.getOrder();
-        const line = order.getPaymentlineByUuid(uuid);
-        const request = this._waitForPayment(order, line).finally(() => this.requests.delete(uuid));
-        this.requests.set(uuid, request);
-        return request;
-    }
-
-    async _waitForPayment(order, line) {
-        let deadline = Date.now() + PAYMENT_TIMEOUT_MS;
-        const refund = isRevolutRefund(line);
-        const pollMethod = refund ? "revolut_poll_refund" : "revolut_poll_payment";
-        const started = line.uiState.revolutStarted;
-        line.uiState.revolutStarted = true;
-        line.setPaymentStatus("waiting");
-        try {
-            if (refund) {
-                try {
-                    await beforeDeadline(restoreRefundOriginals(this.pos, order), deadline);
-                } catch {
-                    discardUnstartedRefund(order, line);
-                    this.env.services.dialog.add(AlertDialog, {
-                        title: _t("Revolut refund"),
-                        body: _t("Could not load the original sale. No refund was sent. Check the return and try again."),
-                    });
-                    return false;
-                }
-            }
-            let result = line.uiState.revolutSnapshot;
-            let discovered = false;
-            if ((!started || refund) && !result?.operation_id) {
-                result = await beforeDeadline(this.pos.data.call(
-                    "pos.payment.method", refund ? "revolut_find_refund" : "revolut_find_payment",
-                    [[this.payment_method_id.id], order.uuid, line.uuid]
-                ), deadline);
-                discovered = Boolean(result);
-            }
-            if (!result || (!refund && result.retry_safe && !discovered)) {
-                const previousOperationId = result?.retry_safe ? result.operation_id : false;
-                let originalOperationId = false;
-                if (refund) {
-                    line.uiState.revolutOperationId = false;
-                    // A return can contain several original Revolut charges. The
-                    // manager confirms the source and amount before any dispatch.
-                    let sources;
-                    try {
-                        sources = await beforeDeadline(this.pos.data.call(
-                            "pos.payment.method", "revolut_refund_sources", [
-                                [this.payment_method_id.id], this.pos.session.id,
-                                this.pos.currency.id, financialSnapshot(order),
-                            ]
-                        ), deadline);
-                    } catch {
-                        discardUnstartedRefund(order, line);
-                        this.env.services.dialog.add(AlertDialog, {
-                            title: _t("Revolut refund"),
-                            body: _t("Could not load the original payment balances. No refund was sent. Check the return and try again."),
-                        });
-                        return false;
-                    }
-                    if (!Array.isArray(sources) || !sources.length) {
-                        discardUnstartedRefund(order, line);
-                        this.env.services.dialog.add(AlertDialog, {
-                            title: _t("No Revolut refund balance"),
-                            body: _t("No original Revolut payment has a remaining balance for this return. Review prior refunds."),
-                        });
-                        return false;
-                    }
-                    const allocation = await chooseRefundAllocation(
-                        this.env.services.dialog, sources, this.payment_method_id.id,
-                        line.amount, this.pos.currency
-                    );
-                    if (!allocation) {
-                        discardUnstartedRefund(order, line);
-                        return false;
-                    }
-                    originalOperationId = allocation.operationId;
-                    deadline = Date.now() + PAYMENT_TIMEOUT_MS;
+        this.paymentState = new RevolutPaymentState({
+            methodId: this.payment_method_id.id,
+            sessionId: this.pos.session.id,
+            currencyId: this.pos.currency.id,
+            adapter: {
+                call: (method, args) => this.pos.data.call("pos.payment.method", method, args),
+                financialSnapshot,
+                restoreRefundOriginals: (order) => restoreRefundOriginals(this.pos, order),
+                chooseAllocation: (sources, line) => chooseRefundAllocation(
+                    this.env.services.dialog, sources, this.payment_method_id.id,
+                    line.amount, this.pos.currency
+                ),
+                setRefundAmount: (line, amount) => {
                     line.uiState.revolutSelectingAllocation = true;
                     try {
-                        line.setAmount(-allocation.amount);
+                        line.setAmount(-amount);
                     } finally {
                         line.uiState.revolutSelectingAllocation = false;
                     }
-                    line.uiState.revolutOriginalOperationId = originalOperationId;
-                }
-                line.uiState.revolutPreviousOperationId = previousOperationId;
-                line.uiState.revolutSnapshot = false;
-                line.uiState.revolutOperationId = false;
-                line.uiState.revolutStarting = true;
-                try {
-                    result = await beforeDeadline(this.pos.data.call(
-                        "pos.payment.method", refund ? "revolut_start_refund" : "revolut_start_payment", [
-                            [this.payment_method_id.id], this.pos.session.id,
-                            order.uuid, line.uuid, line.amount, this.pos.currency.id,
-                            ...(!refund ? [previousOperationId] : []), financialSnapshot(order),
-                            ...(refund ? [originalOperationId] : []),
-                        ]
-                    ), deadline);
-                } finally {
-                    line.uiState.revolutStarting = false;
-                }
-            } else if (!result?.operation_id) {
-                this._showResultError(line, "interrupted");
-                return false;
-            } else if (result.state !== "verified" && !result.retry_safe) {
-                line.uiState.revolutOperationId = result.operation_id;
-                result = await beforeDeadline(this._operationCall(pollMethod, order, line), deadline);
-            }
-            this._remember(line, result);
-            while (Date.now() < deadline) {
-                // Cancellation and polling share the authoritative latest result.
-                if (this.cancellations.has(line.uuid)) {
-                    await beforeDeadline(this.cancellations.get(line.uuid), deadline);
-                }
-                result = line.uiState.revolutSnapshot;
-                if (result.state === "verified") {
-                    this._setVerified(line, result);
-                    return true;
-                }
-                if (FINAL_FAILURE_STATES.has(result.state)) {
-                    this._showResultError(line, result.local_outcome || result.state);
-                    return false;
-                }
-                line.setPaymentStatus("waitingCard");
-                await beforeDeadline(new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS)), deadline);
-                if (!this.cancellations.has(line.uuid)) {
-                    this._remember(line, await beforeDeadline(
-                        this._operationCall(pollMethod, order, line), deadline
-                    ));
-                }
-            }
-            throw new ForegroundTimeout();
-        } catch (error) {
-            if (line.uiState.revolutSnapshot?.state === "verified") {
-                this._setVerified(line, line.uiState.revolutSnapshot);
-                return true;
-            }
-            const outcome = error instanceof ForegroundTimeout ? "timed_out" : "interrupted";
-            line.uiState.revolutLocalOutcome = outcome;
-            if (outcome === "timed_out" && line.uiState.revolutOperationId) {
-                // Do not extend the foreground limit by waiting for this RPC.
-                this._operationCall(refund ? "revolut_mark_refund_timeout" : "revolut_mark_timeout", order, line).catch(() => {});
-            }
-            this._showResultError(line, outcome);
-            return false;
-        }
+                },
+                discardRefund: (line) => discardUnstartedRefund(line.pos_order_id, line),
+                setVerified: (line, result) => this._setVerified(line, result),
+                showError: (line, state) => this._showResultError(line, state),
+                showPreparationError: (line, reason) => this._showPreparationError(reason),
+            },
+        });
     }
 
-    _operationCall(method, order, line) {
-        return this.pos.data.call("pos.payment.method", method, [
-            [this.payment_method_id.id], line.uiState.revolutOperationId,
-            order.uuid, line.uuid,
-        ]);
+    sendPaymentRequest(uuid) {
+        const order = this.pos.getOrder();
+        return this.paymentState.request(order, order.getPaymentlineByUuid(uuid));
     }
 
-    _remember(line, result) {
-        const previous = line.uiState.revolutSnapshot;
-        // An older poll must never overwrite a cancellation or verified payment.
-        if (previous?.operation_id === result.operation_id &&
-            (previous.state === "verified" || (previous.retry_safe && !result.retry_safe && result.state !== "verified"))) {
-            return;
-        }
-        line.uiState.revolutSnapshot = result;
-        line.uiState.revolutOperationId = result.operation_id;
-        line.uiState.revolutLocalOutcome = result.local_outcome || false;
+    sendPaymentCancel(order, uuid) {
+        return this.paymentState.cancel(order, order.getPaymentlineByUuid(uuid));
     }
 
     _setVerified(line, result) {
@@ -379,68 +182,25 @@ export class PaymentRevolut extends PaymentInterface {
         }
     }
 
-    sendPaymentCancel(order, uuid) {
-        if (this.cancellations.has(uuid)) {
-            return this.cancellations.get(uuid);
-        }
-        const line = order.getPaymentlineByUuid(uuid);
-        if (isRevolutRefund(line)) {
-            this._showResultError(line, "unresolved");
-            return Promise.resolve(false);
-        }
-        const cancellation = this._cancelPayment(order, line).finally(() => this.cancellations.delete(uuid));
-        this.cancellations.set(uuid, cancellation);
-        return cancellation;
-    }
-
-    async _cancelPayment(order, line) {
-        const deadline = Date.now() + PAYMENT_TIMEOUT_MS;
-        try {
-            if (line.uiState.revolutStarting) {
-                this._showResultError(line, "unresolved");
-                return false;
-            }
-            if (!line.uiState.revolutOperationId) {
-                const result = await beforeDeadline(this.pos.data.call(
-                    "pos.payment.method", "revolut_find_payment",
-                    [[this.payment_method_id.id], order.uuid, line.uuid]
-                ), deadline);
-                if (!result || result.operation_id === line.uiState.revolutPreviousOperationId) {
-                    this._showResultError(line, "interrupted");
-                    return false;
-                }
-                this._remember(line, result);
-            }
-            this._remember(line, await beforeDeadline(
-                this._operationCall("revolut_cancel_payment", order, line), deadline
-            ));
-            const result = line.uiState.revolutSnapshot;
-            if (result.state === "verified") {
-                this._setVerified(line, result);
-                line.setPaymentStatus("done");
-                return false;
-            }
-            this._showResultError(line, result.provider_state === "processing" ? "processing" : result.local_outcome || result.state);
-            return result.retry_safe === true;
-        } catch (error) {
-            this._showResultError(line, error instanceof ForegroundTimeout ? "timed_out" : "interrupted");
-            return false;
-        }
+    _showPreparationError(reason) {
+        const messages = {
+            originals: {
+                title: _t("Revolut refund"),
+                body: _t("Could not load the original sale. No refund was sent. Check the return and try again."),
+            },
+            sources: {
+                title: _t("Revolut refund"),
+                body: _t("Could not load the original payment balances. No refund was sent. Check the return and try again."),
+            },
+            balance: {
+                title: _t("No Revolut refund balance"),
+                body: _t("No original Revolut payment has a remaining balance for this return. Review prior refunds."),
+            },
+        };
+        this.env.services.dialog.add(AlertDialog, messages[reason]);
     }
 
     _showResultError(line, state) {
-        if (["interrupted", "timed_out"].includes(state)) {
-            line.uiState.revolutLocalOutcome = state;
-        }
-        const providerState = line.uiState.revolutSnapshot?.provider_state;
-        if (state === "failed" && ["terminal_unavailable", "terminal_check_failed"].includes(providerState)) {
-            state = providerState;
-        }
-        const messageKey = `${line.uiState.revolutOperationId}:${state}`;
-        if (line.uiState.revolutMessage === messageKey) {
-            return;
-        }
-        line.uiState.revolutMessage = messageKey;
         if (isRevolutRefund(line)) {
             const messages = {
                 failed: _t("The Revolut refund failed. A POS manager can remove this failed line and add a new refund line for the same remaining amount. Keep completed allocations unchanged."),
@@ -480,31 +240,22 @@ patch(PosPayment.prototype, {
 
     restoreState() {
         super.restoreState(...arguments);
-        this.uiState.revolutScreenRequest = false;
-        this.uiState.revolutStarting = false;
-        if (isRevolut(this) && this.uiState.revolutStarted && this.getPaymentStatus() !== "done") {
-            // Foreground promises do not survive a reload. Resume through reconciliation.
-            this.setPaymentStatus("retry");
-        }
+        restorePaymentLine(this);
     },
 
     handlePaymentResponse(isPaymentSuccessful) {
-        if (isRevolut(this) && this.uiState.revolutSnapshot?.state === "verified") {
-            // A late foreground failure must not undo cancellation's verified result.
-            isPaymentSuccessful = true;
-        }
-        return super.handlePaymentResponse(isPaymentSuccessful);
+        return super.handlePaymentResponse(paymentResponseSuccessful(this, isPaymentSuccessful));
     },
 
     setAmount() {
-        if (isLocked(this) || isFailedRefund(this)) {
+        if (!paymentActions(this).canEditAmount) {
             return;
         }
         return super.setAmount(...arguments);
     },
 
     delete() {
-        if (isLocked(this)) {
+        if (!paymentActions(this).canDelete) {
             return false;
         }
         return super.delete(...arguments);
@@ -513,16 +264,15 @@ patch(PosPayment.prototype, {
 
 patch(PosOrder.prototype, {
     electronicPaymentInProgress() {
-        if (!this.payment_ids.some((line) => isFailedRefund(line) || isUnstartedRefund(line))) {
+        const actions = orderActions(this);
+        if (!actions.hasRefundException) {
             return super.electronicPaymentInProgress(...arguments);
         }
-        return this.payment_ids.some((line) => line.payment_status &&
-            !["done", "reversed"].includes(line.payment_status) &&
-            !isFailedRefund(line) && !isUnstartedRefund(line));
+        return actions.electronicPaymentInProgress;
     },
 
     addPaymentline(paymentMethod) {
-        if (this.payment_ids.some(needsReconciliation)) {
+        if (orderActions(this).blocksAlternativeTender) {
             return {
                 status: false,
                 data: _t("Reconcile the unresolved Revolut payment before adding another tender."),
@@ -532,7 +282,7 @@ patch(PosOrder.prototype, {
     },
 
     removePaymentline(line) {
-        if (isLocked(line)) {
+        if (!paymentActions(line).canDelete) {
             return false;
         }
         return super.removePaymentline(...arguments);
@@ -541,7 +291,7 @@ patch(PosOrder.prototype, {
 
 patch(PaymentScreen.prototype, {
     async validateOrder() {
-        if (this.currentOrder.payment_ids.some(blocksCheckout)) {
+        if (orderActions(this.currentOrder).blocksCheckout) {
             this.dialog.add(AlertDialog, {
                 title: _t("Revolut reconciliation required"),
                 body: _t("This order has an unresolved Revolut payment. Check its status before completing checkout."),
@@ -558,19 +308,13 @@ patch(PaymentScreen.prototype, {
         if (!isRevolut(line)) {
             return super.sendPaymentRequest(...arguments);
         }
-        if (line.uiState.revolutScreenRequest) {
-            return;
-        }
-        line.uiState.revolutScreenRequest = true;
-        try {
-            return await super.sendPaymentRequest(...arguments);
-        } finally {
-            line.uiState.revolutScreenRequest = false;
-        }
+        return line.payment_method_id.payment_terminal.paymentState.screenRequest(
+            this.currentOrder, line, () => super.sendPaymentRequest(line)
+        );
     },
 
     updateSelectedPaymentline() {
-        if (isLocked(this.selectedPaymentLine)) {
+        if (!paymentActions(this.selectedPaymentLine).canEditAmount) {
             this.numberBuffer.reset();
             return;
         }
@@ -581,26 +325,18 @@ patch(PaymentScreen.prototype, {
         if (!isRevolut(line)) {
             return super.sendPaymentCancel(...arguments);
         }
-        line.setPaymentStatus("waitingCancel");
-        const safe = await line.payment_method_id.payment_terminal.sendPaymentCancel(this.currentOrder, line.uuid);
-        if (line.uiState.revolutSnapshot?.state === "verified") {
-            line.setPaymentStatus("done");
-            if (!line.uiState.revolutScreenRequest) {
-                await this.sendPaymentRequest(line);
-            }
-        } else if (safe || !line.uiState.revolutScreenRequest) {
-            line.setPaymentStatus("retry");
-            this.pos.paymentTerminalInProgress = false;
-        } else {
-            line.setPaymentStatus("waitingCard");
-        }
-        return safe;
+        return line.payment_method_id.payment_terminal.paymentState.screenCancel(
+            this.currentOrder, line,
+            () => this.sendPaymentRequest(line),
+            () => { this.pos.paymentTerminalInProgress = false; }
+        );
     },
 
     async deletePaymentLine(uuid) {
         const line = this.paymentLines.find((payment) => payment.uuid === uuid);
-        if (isLocked(line)) {
-            if (line.uiState.revolutSnapshot?.state !== "verified" && await this.sendPaymentCancel(line)) {
+        const actions = paymentActions(line);
+        if (!actions.canDelete) {
+            if (actions.shouldCancelBeforeDelete && await this.sendPaymentCancel(line)) {
                 this.currentOrder.removePaymentline(line);
                 this.numberBuffer.reset();
             }
@@ -623,9 +359,8 @@ patch(PaymentScreen.prototype, {
 
 patch(PaymentScreenPaymentLines.prototype, {
     revolutPaymentStatus(line) {
-        const snapshot = line.uiState.revolutSnapshot;
+        const outcome = paymentOutcome(line);
         if (isRevolutRefund(line)) {
-            const outcome = line.uiState.revolutLocalOutcome || snapshot?.local_outcome || snapshot?.state;
             const messages = {
                 failed: _t("Refund failed — remove this line to retry"),
                 pending: _t("Refund pending"),
@@ -634,9 +369,6 @@ patch(PaymentScreenPaymentLines.prototype, {
             };
             return messages[outcome] || _t("Refund unresolved");
         }
-        const outcome = ["terminal_unavailable", "terminal_check_failed"].includes(snapshot?.provider_state)
-            ? snapshot.provider_state
-            : line.uiState.revolutLocalOutcome || snapshot?.local_outcome || snapshot?.state;
         const messages = {
             terminal_unavailable: _t("Terminal unavailable — no charge sent"),
             terminal_check_failed: _t("Terminal connection check failed — no charge sent"),
@@ -647,6 +379,10 @@ patch(PaymentScreenPaymentLines.prototype, {
             timed_out: _t("Waiting limit expired — payment unresolved"),
         };
         return messages[outcome] || _t("Payment unresolved");
+    },
+
+    revolutCanRetry(line) {
+        return paymentActions(line).retrySafe;
     },
 });
 
