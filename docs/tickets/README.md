@@ -60,7 +60,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11 |
 | [13 — Deepen Return allocation](closed/13-deepen-return-allocation.md) | `ready-for-agent` at closure | Closed | None |
 | [14 — Deepen POS payment state](ready-for-agent/14-deepen-pos-payment-state.md) | `ready-for-agent` | Open | None |
-| [15 — Deepen payment outcome application](ready-for-agent/15-deepen-payment-outcome-application.md) | `ready-for-agent` | Open | None |
+| [15 — Deepen payment outcome application](closed/15-deepen-payment-outcome-application.md) | `ready-for-agent` at closure | Closed | None |
 
 ## Architecture triage — 2026-09-25
 
