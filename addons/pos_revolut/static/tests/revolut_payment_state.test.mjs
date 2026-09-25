@@ -302,6 +302,45 @@ test("lost refund response and failed original read keep the same line for recov
     ]);
 });
 
+test("surviving refund reference protects a line without a local start snapshot", async () => {
+    let originalReads = 0;
+    let finds = 0;
+    const { state, order, line, calls, errors } = fixture({
+        refund: true,
+        async restoreRefundOriginals() {
+            if (++originalReads === 1) {
+                throw new Error("original sale unavailable");
+            }
+        },
+        call(method) {
+            if (method === "revolut_find_refund") {
+                return ++finds === 1 ? false : { operation_id: 43, state: "pending" };
+            }
+            if (method === "revolut_poll_refund") {
+                return { operation_id: 43, state: "verified", payment_id: "refund-43",
+                    order_id: "rev-refund-43" };
+            }
+            return false;
+        },
+    });
+    line.uiState.revolutOriginalOperationId = 12;
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(orderActions(order).blocksAlternativeTender, true);
+    assert.equal(orderActions(order).blocksCheckout, true);
+    assert.equal(await state.request(order, line), false);
+    assert.deepEqual(order.payment_ids, [line]);
+    assert.equal(paymentOutcome(line), "interrupted");
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(await state.request(order, line), false);
+    assert.deepEqual(errors, ["interrupted"]);
+    assert.equal(calls.some(({ method }) => method === "revolut_start_refund"), false);
+    assert.equal(await state.request(order, line), true);
+    assert.equal(line.payment_ref_no, "rev-refund-43");
+    assert.deepEqual(calls.map(({ method }) => method), [
+        "revolut_find_refund", "revolut_find_refund", "revolut_poll_refund",
+    ]);
+});
+
 test("known refund reference survives an original-read timeout and is polled on retry", async () => {
     let originalReads = 0;
     const { state, order, line, calls, errors, preparationErrors } = fixture({
