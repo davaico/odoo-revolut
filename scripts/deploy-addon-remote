@@ -289,10 +289,16 @@ WHERE state IN (
                     total_size = 0
                     for member in members:
                         path = Path(member.name)
+                        is_addons_parent = (
+                            member.isdir() and path.parts == ("addons",)
+                        )
+                        is_addon_content = (
+                            path.parts[:2] == ("addons", "pos_revolut")
+                        )
                         if (
                             path.is_absolute()
                             or ".." in path.parts
-                            or path.parts[:2] != ("addons", "pos_revolut")
+                            or not (is_addons_parent or is_addon_content)
                             or not (member.isfile() or member.isdir())
                         ):
                             raise DeploymentError(
@@ -368,14 +374,20 @@ WHERE state IN (
 
     def _update_module(self):
         operation = "--init" if self.mode == "install" else "--update"
+        venv_python = self._rooted("/opt/odoo-hosting/venv/bin/python")
+        odoo_command = ["/usr/bin/odoo"]
+        if venv_python.is_file() and os.access(venv_python, os.X_OK):
+            odoo_command = [
+                "/opt/odoo-hosting/venv/bin/python",
+                "/usr/bin/odoo",
+            ]
         self._run(
             [
                 "runuser",
                 "-u",
                 "odoo",
                 "--",
-                "/opt/odoo-hosting/venv/bin/python",
-                "/usr/bin/odoo",
+                *odoo_command,
                 "--config",
                 "/etc/odoo/odoo.conf",
                 "--database",

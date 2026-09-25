@@ -224,6 +224,19 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             bundle.add(source, arcname="addons/pos_revolut")
         return archive
 
+    def _git_shaped_artifact(self, root):
+        source = root / "source" / "addons" / "pos_revolut"
+        source.mkdir(parents=True)
+        (source / "__manifest__.py").write_text("{'name': 'POS Revolut'}\n")
+        archive = root / "git-shaped-artifact.tar.gz"
+        with tarfile.open(archive, "w:gz") as bundle:
+            parent = tarfile.TarInfo("addons/")
+            parent.type = tarfile.DIRTYPE
+            parent.mode = 0o755
+            bundle.addfile(parent)
+            bundle.add(source, arcname="addons/pos_revolut")
+        return archive
+
     def _target_configuration(self, root):
         config = root / "etc" / "odoo" / "odoo.conf"
         config.parent.mkdir(parents=True)
@@ -249,6 +262,50 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             customer="revolut",
             environment="staging",
             mode=mode,
+        )
+
+    def test_git_archive_parent_directory_is_accepted(self):
+        remote = load_script("deploy-addon-remote")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = self._git_shaped_artifact(root)
+            deployment = self._deployment(remote, FakeRunner([]), root, archive)
+
+            release = deployment._extract_release()
+
+            self.assertTrue((release / "__manifest__.py").is_file())
+
+    def test_addons_parent_must_be_a_directory(self):
+        remote = load_script("deploy-addon-remote")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "unsafe-artifact.tar.gz"
+            with tarfile.open(archive, "w:gz") as bundle:
+                parent = tarfile.TarInfo("addons")
+                parent.size = 0
+                bundle.addfile(parent, io.BytesIO())
+            deployment = self._deployment(remote, FakeRunner([]), root, archive)
+
+            with self.assertRaisesRegex(remote.DeploymentError, "unsafe path"):
+                deployment._extract_release()
+
+    def test_update_uses_system_odoo_when_optional_venv_is_absent(self):
+        remote = load_script("deploy-addon-remote")
+        runner = FakeRunner([""])
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "artifact.tar.gz"
+            archive.write_bytes(b"unused")
+            deployment = self._deployment(remote, runner, root, archive)
+
+            deployment._update_module()
+
+        self.assertEqual(
+            runner.calls[0][0][:5],
+            ["runuser", "-u", "odoo", "--", "/usr/bin/odoo"],
         )
 
     def test_financial_blocker_aborts_before_backup_or_service_stop(self):
