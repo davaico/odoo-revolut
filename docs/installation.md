@@ -295,9 +295,17 @@ reconcile the same persisted attempt from a fresh Odoo process:
 ./scripts/test-restart-recovery
 ```
 
-The addon suite verifies the Odoo package version before starting. Both
-scripts remove their disposable containers, networks, databases, and
-filestores when they exit.
+Run the remote deployment preflight SQL against pending payment and refund
+records in a disposable Odoo database, then verify each blocker clears only
+after its operation settles:
+
+```bash
+./scripts/test-deployment-guard
+```
+
+The addon suite verifies the Odoo package version before starting. All three
+checks remove their disposable containers, networks, databases, and filestores
+when they exit.
 
 ## Partial and allocated Revolut returns (POS manager)
 

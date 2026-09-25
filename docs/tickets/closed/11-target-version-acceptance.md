@@ -31,9 +31,17 @@ against disposable databases or local command mocks:
 | Command | Result |
 | --- | --- |
 | `./scripts/test-addon --verify-install-upgrade` | Odoo Community package `19.0.20260908`: 129 tests passed on fresh install, 129 after addon upgrade, and 8 after Restaurant activation; zero failures/errors in every phase. |
+| Targeted final-code install/upgrade run (command below) | Three browser tours passed on fresh install and again after upgrade; all 8 Restaurant tests passed. These included the verified checkout security scan, full refund, and pending cancellation tours. |
 | `./scripts/test-restart-recovery` | A committed pending payment recovered as verified in a second Odoo process; no charge replay. |
 | `python3 -m unittest discover -s tests -p 'test_deploy_addon.py'` | 19 deployment tests passed, including sale and refund preflight blockers and the post-stop guard. |
+| `./scripts/test-deployment-guard` | The remote deployment preflight SQL, run against actual Odoo 19 payment and refund rows in a disposable PostgreSQL database, found both blockers; after the payment settled it found only the refund; after the refund settled it found none. |
 | `bash -n scripts/test-addon scripts/test-restart-recovery` and `node --input-type=module --check < addons/pos_revolut/static/tests/tours/pos_revolut_acceptance.js` | Passed. Python test and guard files also passed `ast.parse`. |
+
+The targeted final-code command was:
+
+```bash
+./scripts/test-addon --verify-install-upgrade --test-tags /pos_revolut:TestRevolutVerifiedCheckout.test_manager_returns_full_revolut_sale_in_normal_pos_flow,/pos_revolut:TestRevolutVerifiedCheckout.test_pending_cancellation_preserves_unpaid_order,/pos_revolut:TestRevolutVerifiedCheckout.test_successful_payment_is_verified_before_automatic_checkout
+```
 
 The fresh-install phase runs retail without Restaurant installed. Browser tours
 exercise verified payment, split Cash/Revolut payment, decline, failure,
@@ -46,11 +54,14 @@ without a browser, forged settlement, cross-company/session checks and
 manager-only refund authority. The two-process check covers persisted restart
 recovery. Deployment tests exercise both payment and refund blocker states.
 
-Both disposable runners assert that unmocked `requests` calls to the sandbox or
+All three disposable runners assert that unmocked `requests` calls to the sandbox or
 production Merchant hosts raise before Odoo starts; the Compose network also
 has no external route. A synthetic cardholder/PAN response was discarded from
-the stored operation and POS model data. The full suite log was scanned for
-those canaries and the test credential canary; none appeared.
+the stored operation and POS model data. The checkout browser tour scans the
+payment method, payment, order and in-memory payment RPC snapshot values,
+including nested plain data, for sensitive fields and those canaries. The full
+suite log was scanned for the canaries and the test credential canary; none
+appeared.
 
 ## Remaining limits
 
@@ -59,8 +70,16 @@ physical terminal charge, or live refund was performed. The provisional
 Merchant payload and actual terminal behavior remain subject to ticket 02 and
 the controlled release evidence in ticket 12. The staging Cash smoke from
 ticket 10 remains the only live checkout evidence; this ticket's payment and
-refund deployment guards were exercised with disposable Odoo records and
-mocked deployment commands. These results are not live terminal certification.
+refund deployment guards were exercised with the production preflight SQL on
+disposable Odoo records, plus mocked remote deployment commands. These results
+are not live terminal certification.
+
+A later full-suite rerun after the final browser assertion change passed all
+129 fresh-install tests, but its upgrade phase had two browser-tour timeouts and
+one Chrome debugger timeout. At that point the shared host had about 688 MiB
+available memory and its 4 GiB swap was full. Each affected tour passed in the
+targeted install/upgrade rerun above, as did all Restaurant tests. This
+environment-sensitive retry remains a limit on the repeatability evidence.
 
 ## Blocked by
 

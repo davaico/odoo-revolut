@@ -219,12 +219,45 @@ registry.category("web_tour.tours").add("pos_revolut_verified_checkout", {
                     if (!payment) {
                         throw new Error("Verified Revolut payment is missing from the receipt order");
                     }
-                    const browserData = payment?.data || payment;
-                    if (Object.keys(browserData).some((field) =>
-                        /cardholder|card_number|\bpan\b|cvv|secret/i.test(field)
-                    )) {
-                        throw new Error("Sensitive cardholder field reached POS payment data");
+                    const canaries = [
+                        "CARDHOLDER_CANARY_TICKET_11", "PAN_CANARY_TICKET_11",
+                        "test-only-not-a-credential",
+                    ];
+                    const seen = new WeakSet();
+                    let visited = 0;
+                    function checkBrowserData(value, path) {
+                        if (typeof value === "string" && canaries.some((item) => value.includes(item))) {
+                            throw new Error(`Sensitive value reached POS data at ${path}`);
+                        }
+                        if (!value || typeof value !== "object" || seen.has(value)) {
+                            return;
+                        }
+                        if (++visited > 5000) {
+                            throw new Error("POS data scan exceeded its safety limit");
+                        }
+                        seen.add(value);
+                        for (const field of Object.keys(value)) {
+                            const child = value[field];
+                            if (/cardholder|card_number|^pan$|cvv|secret/i.test(field) && child) {
+                                throw new Error(`Sensitive field reached POS data at ${path}.${field}`);
+                            }
+                            // Odoo relation fields point to reactive records, not POS payload data.
+                            if (/_ids?$/.test(field)) {
+                                if (typeof child === "string") {
+                                    checkBrowserData(child, `${path}.${field}`);
+                                }
+                                continue;
+                            }
+                            if (typeof child !== "object" || !child ||
+                                    Array.isArray(child) || Object.getPrototypeOf(child) === Object.prototype) {
+                                checkBrowserData(child, `${path}.${field}`);
+                            }
+                        }
                     }
+                    checkBrowserData(method.data || method, "payment method");
+                    checkBrowserData(payment.data || payment, "payment");
+                    checkBrowserData(payment.uiState.revolutSnapshot, "payment RPC snapshot");
+                    checkBrowserData(pos.getOrder().data || pos.getOrder(), "order");
                 },
             },
         ].flat(),
