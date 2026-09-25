@@ -363,6 +363,12 @@ same eligible source and confirm the amount. This creates a new operation for
 that line without repeating completed refunds. Keep uncertain lines in place
 and reconcile them before changing tender.
 
+If **Check status** reports an interruption because the original sale could
+not be loaded, leave the same refund line in place. Its return and payment-line
+identities remain reserved. Restore the POS connection and choose **Check
+status** again; it looks up the existing refund operation and its final result.
+Do not remove the line or select another tender while the refund is uncertain.
+
 Managers can also open **Point of Sale → Revolut Refunds** to inspect pending,
 failed, uncertain and completed refunds, their original sale, return UUID,
 provider references, and idempotency key. **Check status** and the scheduled
