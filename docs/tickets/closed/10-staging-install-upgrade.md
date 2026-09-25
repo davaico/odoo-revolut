@@ -4,9 +4,9 @@
 
 Before starting, confirm this ticket’s blockers are closed and merge the latest reviewed `main` into this branch. Verify it includes the completed blocker implementations; do not start from the initial branch snapshot alone. Use a separate worktree when another agent is working in this repository.
 
-**State:** open
+**State:** closed
 
-**Triage:** ready-for-human
+**Triage:** ready-for-human (at closure)
 
 ## What to build
 
@@ -19,7 +19,7 @@ An operator deploys an identified reviewed addon revision to the existing stagin
 - [x] Preflight active or uncertain financial operations and abort an unsafe upgrade. Quiesce checkout/dispatch so no new operation races the final check; later refund operations must participate in the same guard.
 - [x] Back up the database and relevant deployment configuration; stop Odoo for installation/upgrade, use stop-after-init, no-http and workers=0, and restart only after a successful update. Report update or health-check failures clearly.
 - [x] Document recovery that reconciles external financial activity before any database restoration. Never automatically restore stale payment state over newer provider activity.
-- [ ] Exercise tooling with mocked command failures and disposable install/upgrade checks, then perform an operator-controlled staging smoke check without terminal charges. Verify existing cash POS still works.
+- [x] Exercise tooling with mocked command failures and disposable install/upgrade checks, then perform an operator-controlled staging smoke check without terminal charges. Verify existing cash POS still works.
 - [x] Document prerequisites, exact commands, secret configuration, revision identification and operator recovery steps. Leave infrastructure ownership in odoo-hosting.
 
 ## Verification evidence
@@ -34,22 +34,24 @@ An operator deploys an identified reviewed addon revision to the existing stagin
   `./scripts/test-addon --verify-install-upgrade`. It passed on 2026-09-23,
   including fresh installation, the full addon suite, module upgrade, and
   retail and Restaurant POS startup checks.
-- Human gate: after this revision is reviewed and integrated, an operator must
-  follow `docs/staging-deployment.md`, record the deployed SHA and configuration
-  backup, complete the no-charge cash POS smoke check, and attach the operator,
-  UTC time, and cash order reference here before closure.
-- Staging install evidence, 2026-09-25: revision
-  `d3d3513a1911c31f872d966e96ac2a3e7ee29615` was installed from the immutable
+- Staging install and upgrade evidence, 2026-09-25: final reviewed revision
+  `b96aad6b226684ad479708cc877c901a87570ae7` was deployed from the immutable
   release at
-  `/opt/odoo-releases/revolut/staging/d3d3513a1911c31f872d966e96ac2a3e7ee29615/pos_revolut`.
+  `/opt/odoo-releases/revolut/staging/b96aad6b226684ad479708cc877c901a87570ae7/pos_revolut`.
   The deployment configuration backup is
-  `/var/backups/odoo-revolut-deploy/20260925T081330Z-d3d3513a1911`. Odoo was
-  active, the HTTP login endpoint was healthy after startup, the module state
-  was `installed`, and the last 300 Odoo log lines contained no error,
-  critical, or traceback entries. The original one-shot HTTP probe reported a
-  false failure during startup; the follow-up regression requires bounded
-  connection-refused retries. The no-charge operator smoke check remains open.
+  `/var/backups/odoo-revolut-deploy/20260925T081740Z-b96aad6b2266`. Odoo was
+  active, the HTTP login endpoint was healthy, the module state was `installed`,
+  and recent Odoo logs contained no error, critical, or traceback entries. An
+  initial one-shot HTTP probe reported a false failure during normal startup;
+  the final reviewed deployer passed with bounded connection-refused retries.
+- Operator-controlled cash smoke check passed on 2026-09-25. Operator:
+  `Administrator`. UTC time: `2026-09-25 09:10:01`. Cash order reference:
+  `261-1-000002`. The order was paid for `11.50 EUR` using `Cash`, the receipt
+  showed payment successful, and the matching server record was in `paid`
+  state. No Revolut payment method was selected and no terminal or Merchant API
+  charge was initiated. The pre-existing draft refund `260-1-000001` remained
+  separate from the smoke-test order.
 
 ## Blocked by
 
-- 03 — Complete one verified Revolut terminal payment
+- 03 — Complete one verified Revolut terminal payment (closed)
