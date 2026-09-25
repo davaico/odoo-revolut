@@ -140,16 +140,16 @@ class PosPaymentMethod(models.Model):
                         env["res.currency"].browse(currency.id),
                         financial_snapshot, original_operation_id,
                     )
-                    if "snapshot" in reservation:
-                        return reservation["snapshot"]
+                    if reservation.existing_status is not None:
+                        return reservation.existing_status
                     cursor.commit()
                 break
             except (IntegrityError, SerializationFailure):
                 if attempt == 2:
                     raise UserError(_("Another refund request is in progress. Check status.")) from None
-        operation_id = reservation["operation_id"]
-        source_amount_minor = reservation["source_amount_minor"]
-        verified_before_claim = reservation["verified_before_claim"]
+        operation_id = reservation.operation_id
+        source_amount_minor = reservation.source_amount_minor
+        verified_before_claim = reservation.verified_before_claim
         operation = self._read_refund_owned(operation_id, order_uuid, payment_line_uuid)
         try:
             original = self._revolut_api_request(operation, "GET", f"/api/orders/{operation['original_order_id']}")

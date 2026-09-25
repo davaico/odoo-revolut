@@ -1,9 +1,18 @@
 """Return invariants shared by source discovery, reservation, and checkout."""
 
+from dataclasses import dataclass
 from decimal import Decimal
 
 from odoo import _
 from odoo.exceptions import AccessError, UserError
+
+
+@dataclass(frozen=True)
+class ReservationClaim:
+    operation_id: int
+    existing_status: dict | None = None
+    source_amount_minor: int | None = None
+    verified_before_claim: int | None = None
 
 
 class ReturnAllocation:
@@ -183,6 +192,8 @@ class ReturnAllocation:
                 original_operation_id = int(original_operation_id)
             except (ValueError, TypeError):
                 raise UserError(_("Select a valid original Revolut payment.")) from None
+        original = self._return_original(snapshot, session)
+        self._check_total(snapshot, original, currency, return_total_minor)
 
         refunds = self.env["pos.revolut.refund.operation"].sudo()
         charges = self.env["pos.revolut.payment.operation"].sudo()
@@ -201,11 +212,9 @@ class ReturnAllocation:
                     or existing.pos_session_id.id != session.id or existing.financial_snapshot != snapshot
                     or (original_operation_id and existing.original_operation_id.id != original_operation_id)):
                 raise UserError(_("The existing refund has different return details."))
-            return {"snapshot": existing._snapshot()}
+            return ReservationClaim(existing.id, existing_status=existing._snapshot())
 
         source = self._validate_original(snapshot, method, session, minor, original_operation_id)
-        original = source.pos_order_id
-        self._check_total(snapshot, original, currency, return_total_minor)
         self._lock_original_return(snapshot, original, order_uuid)
         # Lock the selected source after the original sale, in the same order
         # for every contender. It serializes refundable balance decisions.
@@ -241,10 +250,10 @@ class ReturnAllocation:
             "return_total_minor": return_total_minor,
             "currency_id": currency.id, "financial_snapshot": snapshot,
         })
-        return {
-            "operation_id": refund.id, "source_amount_minor": source.amount_minor,
-            "verified_before_claim": verified_before_claim,
-        }
+        return ReservationClaim(
+            refund.id, source_amount_minor=source.amount_minor,
+            verified_before_claim=verified_before_claim,
+        )
 
     def validate_settlement(self, order, existing_order, payments):
         session = self.env["pos.session"].browse(order["session_id"]).exists()
