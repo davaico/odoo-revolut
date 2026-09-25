@@ -6,7 +6,7 @@ project_name="${ODOO_REVOLUT_TEST_PROJECT:-odoo-revolut-tests}"
 database_name="odoo_revolut_tests"
 test_tags="/pos_revolut"
 verify_install_upgrade=false
-verify_delivered_release=false
+delivered_scenario=""
 base_only_dir=""
 
 while (($#)); do
@@ -19,9 +19,9 @@ while (($#)); do
             verify_install_upgrade=true
             shift
             ;;
-        --verify-delivered-release)
-            verify_delivered_release=true
-            shift
+        --delivered-scenario)
+            delivered_scenario="$2"
+            shift 2
             ;;
         --addons-dir)
             export ODOO_REVOLUT_ADDONS_DIR="$(realpath "$2")"
@@ -38,8 +38,12 @@ while (($#)); do
     esac
 done
 
-if [[ "$verify_delivered_release" == true && -z "$base_only_dir" ]]; then
-    echo "--verify-delivered-release requires --base-only-dir" >&2
+if [[ "$delivered_scenario" != "" && "$delivered_scenario" != retail && "$delivered_scenario" != migration ]]; then
+    echo "--delivered-scenario must be retail or migration" >&2
+    exit 2
+fi
+if [[ "$delivered_scenario" == migration && -z "$base_only_dir" ]]; then
+    echo "Migration acceptance requires --base-only-dir" >&2
     exit 2
 fi
 
@@ -79,20 +83,6 @@ run_odoo() {
         "$@"
 }
 
-run_odoo \
-    --init pos_revolut \
-    --test-tags "$test_tags"
-
-if [[ "$verify_install_upgrade" == true ]]; then
-    run_odoo \
-        --update pos_revolut \
-        --test-tags "$test_tags"
-    run_odoo --init pos_restaurant
-    run_odoo \
-        --update pos_revolut \
-        --test-tags pos_revolut_restaurant
-fi
-
 module_state() {
     local module="$1"
     "${compose[@]}" exec -T db psql -U odoo -d "$database_name" -Atc \
@@ -111,15 +101,16 @@ require_state() {
     fi
 }
 
-if [[ "$verify_delivered_release" == true ]]; then
+if [[ "$delivered_scenario" == retail ]]; then
+    run_odoo --init pos_revolut \
+        --test-tags "/pos_revolut:TestRevolutRetailPosStarts,/pos_revolut:TestRevolutVerifiedCheckout.test_cash_and_bank_still_checkout_without_revolut_dispatch"
     require_state pos_revolut installed
     require_state pos_revolut_restaurant not-installed
-    run_odoo --update pos_revolut --test-tags /pos_revolut
     run_odoo --init pos_restaurant
     require_state pos_revolut_restaurant installed
     run_odoo --update pos_revolut,pos_revolut_restaurant \
         --test-tags pos_revolut_restaurant
-
+elif [[ "$delivered_scenario" == migration ]]; then
     database_name="odoo_revolut_base_only_migration"
     delivered_addons_dir="$ODOO_REVOLUT_ADDONS_DIR"
     export ODOO_REVOLUT_ADDONS_DIR="$base_only_dir"
@@ -133,4 +124,17 @@ if [[ "$verify_delivered_release" == true ]]; then
     require_state pos_revolut_restaurant installed
     run_odoo --update pos_revolut,pos_revolut_restaurant \
         --test-tags pos_revolut_restaurant
+else
+    run_odoo \
+        --init pos_revolut \
+        --test-tags "$test_tags"
+    if [[ "$verify_install_upgrade" == true ]]; then
+        run_odoo \
+            --update pos_revolut \
+            --test-tags "$test_tags"
+        run_odoo --init pos_restaurant
+        run_odoo \
+            --update pos_revolut \
+            --test-tags pos_revolut_restaurant
+    fi
 fi

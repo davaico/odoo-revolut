@@ -17,6 +17,7 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--revision", required=True)
+    parser.add_argument("--scenario", choices=("retail", "migration"), required=True)
     args = parser.parse_args()
     if not re.fullmatch(r"[0-9a-f]{40}", args.revision):
         parser.error("--revision must be a full commit SHA")
@@ -60,7 +61,7 @@ def main():
         subprocess.run(
             [str(REPOSITORY / "scripts" / "test-addon"),
              "--addons-dir", str(release), "--base-only-dir", str(base_only),
-             "--verify-delivered-release"],
+             "--delivered-scenario", args.scenario],
             cwd=REPOSITORY, check=True,
         )
 

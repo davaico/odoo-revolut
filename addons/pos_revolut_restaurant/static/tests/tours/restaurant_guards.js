@@ -57,6 +57,24 @@ registry.category("web_tour.tours").add("pos_revolut_restaurant_guards", {
         { trigger: ".modal:contains('Revolut payment attached to this order')" },
         Dialog.confirm(),
         {
+            content: "Merging into an occupied table is guarded",
+            trigger: ".floor-screen .floor-map",
+            async run() {
+                const pos = window.posmodel;
+                const { source, destination } = window.revolutRestaurantGuardOrders;
+                const table = pos.models["restaurant.table"].find(
+                    (item) => item.table_number === 1
+                );
+                destination.table_id = table;
+                const merged = await pos.mergeTableOrders(source.uuid, table);
+                if (merged !== false || !source.payment_ids.length) {
+                    throw new Error("Restaurant table merge moved a protected Revolut line");
+                }
+            },
+        },
+        { trigger: ".modal:contains('Revolut payment attached to this order')" },
+        Dialog.confirm(),
+        {
             content: "Splitting the exposed order to pay is guarded",
             trigger: ".floor-screen .floor-map",
             async run() {
@@ -111,4 +129,3 @@ registry.category("web_tour.tours").add("pos_revolut_restaurant_guards", {
         },
     ],
 });
-
