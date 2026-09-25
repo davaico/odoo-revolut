@@ -32,8 +32,8 @@ immediately below the title. The original 12 branches were created from the
 same committed ticket baseline; branch existence does not satisfy a dependency.
 Branches for tickets 13–15 are created from the committed ticket definitions
 on reviewed `main`. Update the assigned branch from `main` before claiming work.
-Tickets 16–18 declare their work-branch names; create those branches from the
-latest reviewed `main` when starting, or update them if they already exist.
+Branches for tickets 16–18 are created from their committed definitions on
+`main`. Update the assigned branch from reviewed `main` before starting.
 
 Use `main` as the shared integration branch for this ticket set. Integrate
 reviewed, verified ticket work there, including its state and triage updates.
@@ -63,7 +63,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [13 — Deepen Return allocation](closed/13-deepen-return-allocation.md) | `ready-for-agent` at closure | Closed | None |
 | [14 — Deepen POS payment state](closed/14-deepen-pos-payment-state.md) | `ready-for-agent` at closure | Closed | None |
 | [15 — Deepen payment outcome application](closed/15-deepen-payment-outcome-application.md) | `ready-for-agent` at closure | Closed | None |
-| [16 — Preserve uncertain refunds when original-sale recovery fails](ready-for-agent/16-preserve-uncertain-refund-recovery.md) | `ready-for-agent` | Open | None |
+| [16 — Preserve uncertain refunds when original-sale recovery fails](closed/16-preserve-uncertain-refund-recovery.md) | `ready-for-agent` at closure | Closed | None |
 | [17 — Deliver the Restaurant bridge with the reviewed addon release](ready-for-agent/17-deliver-restaurant-bridge.md) | `ready-for-agent` | Open | None |
 | [18 — Isolate internal payment records by allowed company](ready-for-agent/18-isolate-internal-payment-records.md) | `ready-for-agent` | Open | None |
 

@@ -46,9 +46,8 @@ Blocks ticket 12 — Validate real terminal payments and publish release evidenc
 2026-09-25: The owner approved the three-ticket breakdown, requested publication
 directly under ready-for-agent, and required all three corrections before
 ticket 12. This ticket is independently actionable with mocked provider calls.
-Create its declared work branch from the latest reviewed main when starting,
-or update that branch if it already exists; use an isolated worktree for
-concurrent implementation.
+Its declared work branch has been created. Update it from the latest reviewed
+main before starting; use an isolated worktree for concurrent implementation.
 
 ## Verification evidence
 
