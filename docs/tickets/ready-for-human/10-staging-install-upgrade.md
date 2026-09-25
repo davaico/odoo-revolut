@@ -27,8 +27,8 @@ An operator deploys an identified reviewed addon revision to the existing stagin
 - Local deployment tests cover dirty and unreviewed revisions, financial
   blockers, the post-stop race check, install and upgrade commands, immutable
   releases, backup/update/health failures, locking, cleanup, and revision
-  reporting. On 2026-09-23, all 14 tests passed with 81% branch coverage across
-  the two deployment scripts.
+  reporting. On 2026-09-25, all 18 tests passed with 82% branch coverage across
+  the two deployment scripts (81% for the remote helper).
 - The shared financial-operation guard is covered in the Odoo addon suite.
 - The disposable Odoo environment is the install/upgrade verification target:
   `./scripts/test-addon --verify-install-upgrade`. It passed on 2026-09-23,
@@ -38,6 +38,17 @@ An operator deploys an identified reviewed addon revision to the existing stagin
   follow `docs/staging-deployment.md`, record the deployed SHA and configuration
   backup, complete the no-charge cash POS smoke check, and attach the operator,
   UTC time, and cash order reference here before closure.
+- Staging install evidence, 2026-09-25: revision
+  `d3d3513a1911c31f872d966e96ac2a3e7ee29615` was installed from the immutable
+  release at
+  `/opt/odoo-releases/revolut/staging/d3d3513a1911c31f872d966e96ac2a3e7ee29615/pos_revolut`.
+  The deployment configuration backup is
+  `/var/backups/odoo-revolut-deploy/20260925T081330Z-d3d3513a1911`. Odoo was
+  active, the HTTP login endpoint was healthy after startup, the module state
+  was `installed`, and the last 300 Odoo log lines contained no error,
+  critical, or traceback entries. The original one-shot HTTP probe reported a
+  false failure during startup; the follow-up regression requires bounded
+  connection-refused retries. The no-charge operator smoke check remains open.
 
 ## Blocked by
 
