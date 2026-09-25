@@ -44,7 +44,7 @@
         </xpath>
         <xpath expr="//t[@t-elif=&quot;line.payment_status == 'retry'&quot;]/div[hasclass('send_payment_request')]" position="replace">
             <div class="button send_payment_request highlight text-bg-primary" role="button" title="Send Payment Request" t-on-click="() => this.props.sendPaymentRequest(line)">
-                <t t-if="line.payment_method_id.use_payment_terminal === 'revolut' and !line.uiState.revolutSnapshot?.retry_safe">Check status</t>
+                <t t-if="line.payment_method_id.use_payment_terminal === 'revolut' and !this.revolutCanRetry(line)">Check status</t>
                 <t t-else="">Retry</t>
             </div>
         </xpath>

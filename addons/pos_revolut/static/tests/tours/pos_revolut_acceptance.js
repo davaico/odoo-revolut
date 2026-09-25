@@ -7,6 +7,13 @@ import * as ReceiptScreen from "@point_of_sale/../tests/pos/tours/utils/receipt_
 import { refresh } from "@point_of_sale/../tests/generic_helpers/utils";
 import { registry } from "@web/core/registry";
 
+const PAYMENT_REFERENCE = "2c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf";
+const REFUND_REFERENCE = "6c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf";
+
+function receiptContainsReference(reference) {
+    return { trigger: `.receipt-screen .pos-payment-terminal-receipt:contains('${reference}')` };
+}
+
 registry.category("web_tour.tours").add("pos_revolut_manager_configuration", {
     steps: () => [
         {
@@ -193,6 +200,7 @@ registry.category("web_tour.tours").add("pos_revolut_verified_checkout", {
             Dialog.confirm(),
             ReceiptScreen.isShown(),
             ReceiptScreen.paymentLineContains("Revolut", "12.34"),
+            receiptContainsReference(PAYMENT_REFERENCE),
             ReceiptScreen.totalAmountContains("12.34"),
             {
                 content: "Merchant credentials and card data are absent from POS models",
@@ -311,6 +319,7 @@ registry.category("web_tour.tours").add("pos_revolut_reload_late_success", {
         },
         ReceiptScreen.isShown(),
         ReceiptScreen.paymentLineContains("Revolut", "12.34"),
+        receiptContainsReference(PAYMENT_REFERENCE),
     ].flat(),
 });
 
@@ -445,6 +454,7 @@ registry.category("web_tour.tours").add("pos_revolut_cancel_race", {
         PaymentScreen.clickCancelButton(),
         ReceiptScreen.isShown(),
         ReceiptScreen.paymentLineContains("Revolut", "12.34"),
+        receiptContainsReference(PAYMENT_REFERENCE),
     ].flat(),
 });
 
@@ -473,6 +483,7 @@ registry.category("web_tour.tours").add("pos_revolut_full_refund", {
         { trigger: ".payment-screen .electronic_status:contains('Refund in process')" },
         ReceiptScreen.isShown(),
         ReceiptScreen.paymentLineContains("Revolut", "-12.34"),
+        receiptContainsReference(REFUND_REFERENCE),
     ].flat(),
 });
 
@@ -508,6 +519,7 @@ registry.category("web_tour.tours").add("pos_revolut_refund_reload", {
         { trigger: ".revolut-refund-reference:contains('6c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf')" },
         ReceiptScreen.isShown(),
         ReceiptScreen.paymentLineContains("Revolut", "-12.34"),
+        receiptContainsReference(REFUND_REFERENCE),
     ].flat(),
 });
 
