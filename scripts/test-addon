@@ -47,6 +47,8 @@ fi
 # HttpCase otherwise skips every browser tour when this dependency is missing.
 "${compose[@]}" run --rm --no-deps --entrypoint python3 odoo \
     -c 'import websocket'
+"${compose[@]}" run --rm --no-deps --entrypoint python3 odoo \
+    /opt/odoo-test-guard/verify_merchant_http_guard.py
 
 run_odoo() {
     "${compose[@]}" run --rm odoo \
