@@ -721,7 +721,9 @@ class PosPaymentMethod(models.Model):
         if snapshot["state"] == "verified" or snapshot["retry_safe"]:
             return snapshot
         if not operation["payment_intent_id"] or not operation["order_id"]:
-            return self._apply_revolut_observation_owned(operation_id, "unknown")
+            return self._apply_revolut_observation_owned(
+                operation_id, "references_unavailable"
+            )
         try:
             intent = self._revolut_api_request(
                 operation, "GET",

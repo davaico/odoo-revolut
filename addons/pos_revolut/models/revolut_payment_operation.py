@@ -224,6 +224,11 @@ class PosRevolutPaymentOperation(models.Model):
         if kind == "legacy_final":
             self._recover_legacy_final()
             return self.operation_snapshot(self)
+        if kind == "references_unavailable":
+            # Missing references were seen before this lock. A dispatch may
+            # still be in flight, or a manager may have just linked them and
+            # scheduled reconciliation. That earlier read proves no outcome.
+            return self.operation_snapshot(self)
         if (self.state == "verified" or self.retry_safe
                 or (kind == "timed_out"
                     and self.state in {"declined", "failed", "cancelled"})):
