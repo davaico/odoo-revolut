@@ -1,6 +1,7 @@
 const POLL_INTERVAL_MS = 1000;
 const PAYMENT_TIMEOUT_MS = 60000;
 const FINAL_FAILURE_STATES = new Set(["declined", "failed", "cancelled", "unresolved"]);
+const TERMINAL_FAILURE_STATES = new Set(["terminal_unavailable", "terminal_check_failed"]);
 
 export class ForegroundTimeout extends Error {}
 
@@ -58,10 +59,13 @@ export function orderActions(order) {
 
 export function paymentOutcome(line) {
     const snapshot = line.uiState?.revolutSnapshot;
+    if (snapshot?.state === "verified") {
+        return "verified";
+    }
     if (isRevolutRefund(line)) {
         return line.uiState?.revolutLocalOutcome || snapshot?.local_outcome || snapshot?.state;
     }
-    return ["terminal_unavailable", "terminal_check_failed"].includes(snapshot?.provider_state)
+    return TERMINAL_FAILURE_STATES.has(snapshot?.provider_state)
         ? snapshot.provider_state
         : line.uiState?.revolutLocalOutcome || snapshot?.local_outcome || snapshot?.state;
 }
@@ -361,18 +365,26 @@ export class RevolutPaymentState {
                 result.local_outcome || result.state);
             return result.retry_safe === true;
         } catch (error) {
+            if (line.uiState.revolutSnapshot?.state === "verified") {
+                this.adapter.setVerified(line, line.uiState.revolutSnapshot);
+                line.setPaymentStatus("done");
+                return false;
+            }
             this.showError(line, error instanceof ForegroundTimeout ? "timed_out" : "interrupted");
             return false;
         }
     }
 
     showError(line, outcome) {
+        if (line.uiState.revolutSnapshot?.state === "verified") {
+            return;
+        }
         if (["interrupted", "timed_out"].includes(outcome)) {
             line.uiState.revolutLocalOutcome = outcome;
         }
         const providerState = line.uiState.revolutSnapshot?.provider_state;
         const state = outcome === "failed" &&
-            ["terminal_unavailable", "terminal_check_failed"].includes(providerState)
+            TERMINAL_FAILURE_STATES.has(providerState)
             ? providerState : outcome;
         const messageKey = `${line.uiState.revolutOperationId}:${state}`;
         if (line.uiState.revolutMessage !== messageKey) {

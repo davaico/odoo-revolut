@@ -59,7 +59,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [11 — Verify the complete addon on the target Odoo version](closed/11-target-version-acceptance.md) | `ready-for-agent` at closure | Closed | 06, 09, 10 |
 | [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11 |
 | [13 — Deepen Return allocation](closed/13-deepen-return-allocation.md) | `ready-for-agent` at closure | Closed | None |
-| [14 — Deepen POS payment state](ready-for-agent/14-deepen-pos-payment-state.md) | `ready-for-agent` | Claimed | None |
+| [14 — Deepen POS payment state](closed/14-deepen-pos-payment-state.md) | `ready-for-agent` at closure | Closed | None |
 | [15 — Deepen payment outcome application](ready-for-agent/15-deepen-payment-outcome-application.md) | `ready-for-agent` | Open | None |
 
 ## Architecture triage — 2026-09-25
