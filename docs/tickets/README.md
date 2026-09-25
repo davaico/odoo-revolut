@@ -1,6 +1,6 @@
 # Odoo–Revolut tickets
 
-Approved implementation breakdown for the Odoo–Revolut addon. Source: the three project tickets pasted into the planning conversation and the subsequently approved implementation plan. No tracker issue URLs were supplied, so no parent issue is invented or modified.
+Approved implementation and architecture work for the Odoo–Revolut addon. Tickets 01–12 come from the original project planning conversation and approved implementation plan. Tickets 13–15 come from the architecture review and breakdown approved on 2026-09-25. No tracker issue URLs were supplied, so no parent issue is invented or modified.
 
 ## Triage folders and state
 
@@ -28,8 +28,10 @@ verification evidence, set state to `closed`, and move the ticket to `closed/`.
 ## Branch workflow
 
 Each ticket declares its local `codex/<ticket-number>-<slug>` work branch
-immediately below the title. All 12 branches were created from the same
-committed ticket baseline; branch existence does not satisfy a dependency.
+immediately below the title. The original 12 branches were created from the
+same committed ticket baseline; branch existence does not satisfy a dependency.
+Branches for tickets 13–15 are created from the committed ticket definitions
+on reviewed `main`. Update the assigned branch from `main` before claiming work.
 
 Use `main` as the shared integration branch for this ticket set. Integrate
 reviewed, verified ticket work there, including its state and triage updates.
@@ -56,12 +58,23 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [10 — Install and upgrade a reviewed revision on staging](closed/10-staging-install-upgrade.md) | `ready-for-human` at closure | Closed | 03 (closed) |
 | [11 — Verify the complete addon on the target Odoo version](closed/11-target-version-acceptance.md) | `ready-for-agent` at closure | Closed | 06, 09, 10 |
 | [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11 |
+| [13 — Deepen Return allocation](ready-for-agent/13-deepen-return-allocation.md) | `ready-for-agent` | Open | None |
+| [14 — Deepen POS payment state](ready-for-agent/14-deepen-pos-payment-state.md) | `ready-for-agent` | Open | None |
+| [15 — Deepen payment outcome application](ready-for-agent/15-deepen-payment-outcome-application.md) | `ready-for-agent` | Open | None |
+
+## Architecture triage — 2026-09-25
+
+Tickets 13–15 are approved, fully scoped, and `ready-for-agent`. Each can start
+independently against the existing implementation. Suggested priority is 13,
+then 14, then 15; this is not a dependency chain. Coordinate overlapping model
+and acceptance-test edits during integration. Mocked development does not
+require ticket 02 or live-terminal acceptance to finish first.
 
 ## Shared implementation contract
 
 - The addon, tests, documentation and local deployment tooling belong to odoo-revolut. Hosting provisioning is complete for this scope; do not edit odoo-hosting or develop source on the server.
 - Target Odoo Community 19.0.20260908. Use existing Odoo conventions and runtime facilities; a new framework or dependency requires approval.
-- Every product ticket includes the persistence, server behavior, UI, tests and documentation needed to demonstrate its stated outcome. Ticket 02 is an external-contract verification slice; tickets 10–12 are delivery/acceptance slices. No prefactoring is needed in this documentation-only repository.
+- Every product ticket includes the persistence, server behavior, UI, tests and documentation needed to demonstrate its stated outcome. Ticket 02 is an external-contract verification slice; tickets 10–12 are delivery/acceptance slices. Tickets 13–15 are behavior-preserving architecture refactors of the implemented addon, each verified through its complete affected workflow.
 - Support retail and restaurant, a configured terminal per payment method, server-managed secrets and manager-only refunds. Late successful payments finalize when the unchanged original order resumes, rather than through unattended background order finalization.
 - Persist operations before external dispatch. Verify the underlying payment, never intent completion alone. Unknown outcomes remain unresolved; local timeouts, empty payment lists and missing IDs do not prove retry safety.
 - Never expose credentials to POS or logs. All automated Merchant API calls are mocked; actual terminal testing belongs to the explicitly controlled acceptance session.
