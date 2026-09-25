@@ -85,6 +85,97 @@ class TestRevolutRetailPosStarts(TestPointOfSaleHttpCommon):
 
 @tagged("post_install", "-at_install", "pos_revolut_restaurant")
 class TestRevolutRestaurantPosStarts(TestPointOfSaleHttpCommon):
+    def test_restaurant_table_checkout_verifies_revolut_payment(self):
+        restaurant_module = self.env["ir.module.module"].search(
+            [("name", "=", "pos_restaurant")], limit=1
+        )
+        if restaurant_module.state != "installed":
+            self.skipTest("pos_restaurant is not installed in this test phase")
+        method = self.env["pos.payment.method"].create({
+            "name": "Revolut",
+            "journal_id": self.bank_journal.id,
+            "payment_method_type": "terminal",
+            "use_payment_terminal": "revolut",
+            "revolut_environment": "sandbox",
+            "revolut_location_id": TestRevolutManagerUi.LOCATION_ID,
+            "revolut_terminal_id": TestRevolutManagerUi.TERMINAL_ID,
+            "revolut_fulfilment_type": "eat_in",
+            "revolut_secret_reference": "ODOO_REVOLUT_SECRET_TEST_TERMINAL",
+        })
+        self.main_pos_config.write({
+            "module_pos_restaurant": True,
+            "payment_method_ids": [Command.link(method.id)],
+            "auto_validate_terminal_payment": True,
+            "use_presets": True,
+            "default_preset_id": self.env.ref(
+                "pos_restaurant.pos_takein_preset"
+            ).id,
+            "available_preset_ids": [Command.link(self.env.ref(
+                "pos_restaurant.pos_takein_preset"
+            ).id)],
+        })
+        floor = self.env["restaurant.floor"].create({
+            "name": "Checkout Floor",
+            "pos_config_ids": [Command.link(self.main_pos_config.id)],
+        })
+        self.env["restaurant.table"].create({
+            "table_number": 1, "floor_id": floor.id, "seats": 2,
+        })
+        self.desk_pad.write({"list_price": 12.34, "taxes_id": [Command.clear()]})
+        self.main_pos_config.with_user(self.pos_user).open_ui()
+        self.main_pos_config.current_session_id.set_opening_control(0, "")
+        provider_order_id = "d40466e0-2188-41d0-bebb-aa3a930663a8"
+        provider_intent_id = "4ca74d24-7b42-451a-91fb-8aca308e2630"
+        provider_payment_id = "2c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf"
+        calls = []
+
+        def response(payload):
+            result = Mock()
+            result.json.return_value = payload
+            return result
+
+        def request(http_method, url, **kwargs):
+            calls.append((http_method, url, kwargs))
+            if http_method == "GET" and url.endswith("/api/terminals"):
+                return response({"terminals": [{
+                    "id": TestRevolutManagerUi.TERMINAL_ID,
+                    "online": True, "operation_mode": "pos",
+                    "location_id": TestRevolutManagerUi.LOCATION_ID,
+                }]})
+            if http_method == "POST" and url.endswith("/api/orders"):
+                return response({"id": provider_order_id})
+            if http_method == "POST" and url.endswith("/payment-intents"):
+                return response({"id": provider_intent_id, "state": "pending"})
+            if http_method == "GET" and "/api/payment-intents/" in url:
+                return response({
+                    "id": provider_intent_id, "order_id": provider_order_id,
+                    "state": "completed", "payment_id": provider_payment_id,
+                })
+            if http_method == "GET" and "/api/payments/" in url:
+                return response({
+                    "id": provider_payment_id, "order_id": provider_order_id,
+                    "state": "captured", "amount": 1234,
+                    "currency": self.main_pos_config.currency_id.name,
+                })
+            raise AssertionError(f"Unexpected Revolut request: {http_method} {url}")
+
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+            side_effect=request,
+        ):
+            self.start_pos_tour("pos_revolut_restaurant_checkout")
+
+        self.env.invalidate_all()
+        operation = self.env["pos.revolut.payment.operation"].search([
+            ("payment_method_id", "=", method.id),
+        ])
+        self.assertEqual(operation.state, "verified")
+        self.assertEqual(operation.pos_order_id.state, "paid")
+        self.assertEqual(operation.pos_order_id.table_id.table_number, 1)
+        posts = [call for call in calls if call[0] == "POST"]
+        self.assertEqual(len(posts), 2)
+        self.assertEqual(posts[0][2]["json"]["fulfilment_type"], "eat_in")
+
     def test_restaurant_merge_and_transfer_preserve_revolut_order(self):
         restaurant_module = self.env["ir.module.module"].search(
             [("name", "=", "pos_restaurant")], limit=1
@@ -156,7 +247,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         response.json.return_value = payload
         return response
 
-    def _configure_revolut_checkout(self):
+    def _configure_revolut_checkout(self, include_bank=False):
         revolut_method = self.env["pos.payment.method"].create(
             {
                 "name": "Revolut",
@@ -172,7 +263,10 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         )
         self.main_pos_config.write(
             {
-                "payment_method_ids": [Command.link(revolut_method.id)],
+                "payment_method_ids": [
+                    Command.link(revolut_method.id),
+                    *([Command.link(self.bank_payment_method.id)] if include_bank else []),
+                ],
                 "auto_validate_terminal_payment": True,
             }
         )
@@ -232,6 +326,8 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                         "state": "captured",
                         "amount": 1234,
                         "currency": self.main_pos_config.currency_id.name,
+                        "cardholder_name": "CARDHOLDER_CANARY_TICKET_11",
+                        "card": {"pan": "PAN_CANARY_TICKET_11"},
                     }
                 )
             raise AssertionError(f"Unexpected Revolut request: {method} {url}")
@@ -253,8 +349,29 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.assertEqual(operation.revolut_payment_id, self.PAYMENT_ID)
         self.assertEqual(order.state, "paid")
         self.assertEqual(order.payment_ids.transaction_id, self.PAYMENT_ID)
+        self.assertNotIn("CARDHOLDER_CANARY_TICKET_11", repr(operation.read()[0]))
+        self.assertNotIn("PAN_CANARY_TICKET_11", repr(operation.read()[0]))
         mutating_calls = [call for call in calls if call[0] == "POST"]
         self.assertEqual(len(mutating_calls), 2)
+
+    def test_cash_and_bank_still_checkout_without_revolut_dispatch(self):
+        self._configure_revolut_checkout(include_bank=True)
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request"
+        ) as request:
+            self.start_pos_tour("pos_revolut_other_tenders_checkout")
+
+        self.env.invalidate_all()
+        orders = self.env["pos.order"].search([
+            ("session_id", "=", self.main_pos_config.current_session_id.id),
+            ("state", "=", "paid"),
+        ])
+        self.assertEqual(len(orders), 2)
+        self.assertEqual(
+            {order.payment_ids.payment_method_id.name for order in orders},
+            {"Cash", "Bank"},
+        )
+        request.assert_not_called()
 
     def test_split_cash_and_revolut_checkout_uses_remaining_line_amount(self):
         revolut_method = self._configure_revolut_checkout()

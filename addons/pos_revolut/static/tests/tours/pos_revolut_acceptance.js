@@ -68,6 +68,25 @@ registry.category("web_tour.tours").add("pos_revolut_retail_starts", {
     ],
 });
 
+registry.category("web_tour.tours").add("pos_revolut_other_tenders_checkout", {
+    steps: () => [
+        Chrome.startPoS(),
+        ProductScreen.addOrderline("Desk Pad"),
+        ProductScreen.clickPayButton(),
+        PaymentScreen.clickPaymentMethod("Cash"),
+        PaymentScreen.clickValidate(),
+        ReceiptScreen.isShown(),
+        ReceiptScreen.paymentLineContains("Cash", "12.34"),
+        ReceiptScreen.clickNextOrder(),
+        ProductScreen.addOrderline("Desk Pad"),
+        ProductScreen.clickPayButton(),
+        PaymentScreen.clickPaymentMethod("Bank"),
+        PaymentScreen.clickValidate(),
+        ReceiptScreen.isShown(),
+        ReceiptScreen.paymentLineContains("Bank", "12.34"),
+    ].flat(),
+});
+
 registry.category("web_tour.tours").add("pos_revolut_restaurant_starts", {
     steps: () => [
         ...Chrome.startPoS(),
@@ -75,6 +94,23 @@ registry.category("web_tour.tours").add("pos_revolut_restaurant_starts", {
             trigger: ".floor-screen .floor-map",
         },
     ],
+});
+
+registry.category("web_tour.tours").add("pos_revolut_restaurant_checkout", {
+    steps: () => [
+        Chrome.startPoS(),
+        {
+            content: "Open the Restaurant table",
+            trigger: ".floor-map .table:has(.label:contains('1')):not(.syncing)",
+            run: "click",
+        },
+        ProductScreen.addOrderline("Desk Pad"),
+        ProductScreen.clickPayButton(),
+        PaymentScreen.clickPaymentMethod("Revolut"),
+        { trigger: ".payment-screen .electronic_status:contains('Waiting for card')" },
+        ReceiptScreen.isShown(),
+        ReceiptScreen.paymentLineContains("Revolut", "12.34"),
+    ].flat(),
 });
 
 registry.category("web_tour.tours").add("pos_revolut_restaurant_guards", {
@@ -158,6 +194,39 @@ registry.category("web_tour.tours").add("pos_revolut_verified_checkout", {
             ReceiptScreen.isShown(),
             ReceiptScreen.paymentLineContains("Revolut", "12.34"),
             ReceiptScreen.totalAmountContains("12.34"),
+            {
+                content: "Merchant credentials and card data are absent from POS models",
+                trigger: ".receipt-screen",
+                run() {
+                    const pos = window.posmodel;
+                    const method = pos.models["pos.payment.method"].find(
+                        (item) => item.use_payment_terminal === "revolut"
+                    );
+                    if (!method) {
+                        throw new Error("Revolut method is missing from POS models");
+                    }
+                    for (const field of [
+                        "revolut_secret_reference", "revolut_location_id",
+                        "revolut_terminal_id", "revolut_environment",
+                    ]) {
+                        if (method[field]) {
+                            throw new Error(`Server-only Revolut field reached POS: ${field}`);
+                        }
+                    }
+                    const payment = pos.getOrder().payment_ids.find(
+                        (item) => item.payment_method_id === method
+                    );
+                    if (!payment) {
+                        throw new Error("Verified Revolut payment is missing from the receipt order");
+                    }
+                    const browserData = payment?.data || payment;
+                    if (Object.keys(browserData).some((field) =>
+                        /cardholder|card_number|\bpan\b|cvv|secret/i.test(field)
+                    )) {
+                        throw new Error("Sensitive cardholder field reached POS payment data");
+                    }
+                },
+            },
         ].flat(),
 });
 
