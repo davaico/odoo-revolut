@@ -371,15 +371,27 @@ class PosRevolutPaymentOperation(models.Model):
                 raise UserError(_("A different Revolut reference is already linked."))
             if action == "create_intent" and not self.revolut_order_id:
                 raise UserError(_("The Revolut order reference is missing."))
-            if not self[field_name]:
+            already_linked = bool(self[field_name])
+            if not already_linked:
                 self.sudo().write({field_name: reference})
-            if self.state == ("dispatching_order" if action == "create_order"
-                              else "dispatching_intent"):
-                self.sudo().write({
+            claimed_state = ("dispatching_order" if action == "create_order"
+                             else "dispatching_intent")
+            if (self.state == claimed_state
+                    or (self.state == "unresolved" and not already_linked
+                        and self.local_outcome == "timed_out")):
+                # A local timeout does not refute this claimed request. Its
+                # first valid acknowledgement may continue the original
+                # sequence, but a reference linked by a manager may not.
+                values = {
                     "state": "order_created" if action == "create_order" else "pending",
                     **({"provider_state": evidence.get("state") or "pending"}
                        if action == "create_intent" else {}),
-                })
+                }
+                if action == "create_intent" and not self.next_reconcile_at:
+                    values["next_reconcile_at"] = (
+                        fields.Datetime.now() + timedelta(seconds=30)
+                    )
+                self.sudo().write(values)
         dispatch.write({"completed_at": fields.Datetime.now(),
                         "outcome": "succeeded", "provider_reference": reference})
         return self.operation_snapshot(self)

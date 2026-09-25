@@ -658,8 +658,8 @@ class TestRevolutRetryConcurrency(TransactionCase):
             self.assertEqual(dispatches.outcome, "succeeded")
             self.assertEqual(dispatches.provider_reference, self.provider_order)
 
-    def _assert_poll_during_creation_dispatch(self, action):
-        dispatch_started, poll_finished = Event(), Event()
+    def _assert_observation_during_creation_dispatch(self, action, observation):
+        dispatch_started, observation_finished = Event(), Event()
 
         def http(method, url, **kwargs):
             is_target = (
@@ -670,37 +670,57 @@ class TestRevolutRetryConcurrency(TransactionCase):
             )
             if is_target:
                 dispatch_started.set()
-                self.assertTrue(poll_finished.wait(10))
+                self.assertTrue(observation_finished.wait(10))
             return self._start_http(method, url, **kwargs)
 
-        def poll():
+        def observe():
             self.assertTrue(dispatch_started.wait(10))
             try:
                 current = self._rpc(
                     "revolut_find_payment", self.order_uuid, self.line_uuid
                 )
                 result = self._rpc(
-                    "revolut_poll_payment", current["operation_id"],
+                    observation, current["operation_id"],
                     self.order_uuid, self.line_uuid,
                 )
                 self.assertEqual(result["state"], "unresolved")
             finally:
-                poll_finished.set()
+                observation_finished.set()
 
         self.request.side_effect = http
-        self._run_workers([("start", self._start), ("poll", poll)])
+        self._run_workers([("start", self._start), ("observe", observe)])
         final = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
         self.assertEqual(final["state"], "pending")
         self.assertEqual(final["order_id"], self.provider_order)
         self.assertEqual(final["payment_intent_id"], self.provider_intent)
         posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
         self.assertEqual(len(posts), 2)
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            operation = env["pos.revolut.payment.operation"].browse(
+                final["operation_id"]
+            )
+            self.assertTrue(operation.next_reconcile_at)
 
     def test_poll_during_order_dispatch_does_not_strand_valid_acknowledgement(self):
-        self._assert_poll_during_creation_dispatch("create_order")
+        self._assert_observation_during_creation_dispatch(
+            "create_order", "revolut_poll_payment"
+        )
 
     def test_poll_during_intent_dispatch_does_not_strand_valid_acknowledgement(self):
-        self._assert_poll_during_creation_dispatch("create_intent")
+        self._assert_observation_during_creation_dispatch(
+            "create_intent", "revolut_poll_payment"
+        )
+
+    def test_timeout_during_order_dispatch_resumes_valid_acknowledgement(self):
+        self._assert_observation_during_creation_dispatch(
+            "create_order", "revolut_mark_timeout"
+        )
+
+    def test_timeout_during_intent_dispatch_schedules_reconciliation(self):
+        self._assert_observation_during_creation_dispatch(
+            "create_intent", "revolut_mark_timeout"
+        )
 
     def test_stale_missing_reference_poll_keeps_manager_reconciliation_due(self):
         def interrupted_order(method, url, **kwargs):
