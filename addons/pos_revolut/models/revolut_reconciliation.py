@@ -111,18 +111,6 @@ class PosRevolutPaymentOperation(models.Model):
             },
         }
 
-    def _check_association_state(self, order_reference, intent_reference):
-        if self.state == "verified" or self.retry_safe:
-            raise UserError(_("This Revolut attempt already has a final outcome."))
-        if self.revolut_order_id and self.revolut_order_id != order_reference:
-            raise UserError(_("A different Revolut order is already linked."))
-        if (
-            intent_reference
-            and self.revolut_payment_intent_id
-            and self.revolut_payment_intent_id != intent_reference
-        ):
-            raise UserError(_("A different Revolut payment intent is already linked."))
-
     def action_revolut_associate(self, order_reference=False, intent_reference=False):
         self._check_manager_reconciliation_access()
         if self.payment_method_id.company_id != self.company_id:
@@ -135,8 +123,6 @@ class PosRevolutPaymentOperation(models.Model):
             )
         except (TypeError, ValueError, AttributeError):
             raise UserError(_("Enter valid Revolut UUID references.")) from None
-        self._check_association_state(order_reference, intent_reference)
-
         # The operation's original credential selects the Merchant account.
         # No browser input can select a credential or a company.
         provider_operation = {
@@ -148,61 +134,23 @@ class PosRevolutPaymentOperation(models.Model):
             order = payment_method._revolut_api_request(
                 provider_operation, "GET", f"/api/orders/{order_reference}"
             )
-            metadata = order.get("metadata")
-            if (
-                order.get("id") != order_reference
-                or order.get("amount") != self.amount_minor
-                or order.get("currency") != self.currency_code
-                or order.get("location_id") != self.location_id
-                or not isinstance(metadata, dict)
-                or metadata.get("pos_order_uuid") != self.order_uuid
-                or metadata.get("pos_payment_line_uuid") != self.payment_line_uuid
-            ):
-                raise UserError(_(
-                    "The Revolut order does not match the original POS payment."
-                ))
             if intent_reference:
                 intent = payment_method._revolut_api_request(
                     provider_operation,
                     "GET",
                     f"/api/payment-intents/{intent_reference}",
                 )
-                if (
-                    intent.get("id") != intent_reference
-                    or intent.get("order_id") != order_reference
-                    or intent.get("amount") != self.amount_minor
-                    or intent.get("currency") != self.currency_code
-                    or intent.get("terminal_id") != self.terminal_id
-                ):
-                    raise UserError(_(
-                        "The Revolut intent does not match the original POS payment."
-                    ))
         except (requests.RequestException, ValueError):
             raise UserError(_(
                 "Revolut evidence could not be retrieved. The attempt remains blocked."
             )) from None
 
-        # Serialize association with foreground and scheduled reconciliation.
-        self.env.cr.execute(
-            "SELECT id FROM pos_revolut_payment_operation WHERE id = %s FOR UPDATE",
-            [self.id],
-        )
-        self.invalidate_recordset()
-        self._check_association_state(order_reference, intent_reference)
-        operations = self.sudo().search([
-            ("id", "!=", self.id),
-            "|",
-            ("revolut_order_id", "=", order_reference),
-            ("revolut_payment_intent_id", "=", intent_reference or ""),
-        ], limit=1)
-        if operations:
-            raise UserError(_("A Revolut reference is already owned by another attempt."))
-
-        values = {"revolut_order_id": order_reference, "state": "unresolved"}
-        if intent_reference:
-            values["revolut_payment_intent_id"] = intent_reference
-            values["next_reconcile_at"] = fields.Datetime.now()
-        self.sudo().write(values)
+        self._apply_payment_observation("association", {
+            "order_reference": order_reference,
+            "intent_reference": intent_reference,
+            "order": order,
+            "intent": intent if intent_reference else None,
+        })
         self._record_reconciliation_audit(
             "associate", ", ".join(filter(None, [order_reference, intent_reference]))
         )
@@ -211,17 +159,35 @@ class PosRevolutPaymentOperation(models.Model):
     def action_revolut_reconcile(self):
         self._check_manager_reconciliation_access()
         self.invalidate_recordset()
+        polled = False
         if self.state != "verified" and not self.retry_safe:
             if self.revolut_order_id and self.revolut_payment_intent_id:
                 self.payment_method_id.revolut_poll_payment(
                     self.id, self.order_uuid, self.payment_line_uuid
                 )
+                polled = True
             self.invalidate_recordset()
-        evidence = ", ".join(filter(None, [
-            self.revolut_order_id, self.revolut_payment_intent_id,
-            self.revolut_payment_id,
-        ]))
-        self._record_reconciliation_audit("reconcile", evidence)
+        if polled:
+            # Polling commits independently. The request's repeatable-read
+            # snapshot predates that update, so use a fresh transaction for
+            # the audit and its foreign-key check against the operation.
+            with self.env.registry.cursor() as cursor:
+                owned_env = api.Environment(
+                    cursor, self.env.uid, dict(self.env.context)
+                )
+                operation = owned_env["pos.revolut.payment.operation"].browse(self.id)
+                operation._record_reconciliation_audit("reconcile", ", ".join(
+                    filter(None, [operation.revolut_order_id,
+                                  operation.revolut_payment_intent_id,
+                                  operation.revolut_payment_id])
+                ))
+                cursor.commit()
+        else:
+            evidence = ", ".join(filter(None, [
+                self.revolut_order_id, self.revolut_payment_intent_id,
+                self.revolut_payment_id,
+            ]))
+            self._record_reconciliation_audit("reconcile", evidence)
         return {"type": "ir.actions.client", "tag": "reload"}
 
 
