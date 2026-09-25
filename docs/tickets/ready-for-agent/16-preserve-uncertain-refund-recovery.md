@@ -2,7 +2,7 @@
 
 **Work branch:** `codex/16-preserve-uncertain-refund-recovery`
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 

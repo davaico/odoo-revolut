@@ -39,7 +39,8 @@ class ControlledClock {
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
-function fixture({ refund = false, call, chooseAllocation = async () => false } = {}) {
+function fixture({ refund = false, call, chooseAllocation = async () => false,
+    restoreRefundOriginals = async () => {} } = {}) {
     const clock = new ControlledClock();
     const order = { uuid: "order-1", payment_ids: [], isRefund: refund };
     const line = {
@@ -52,13 +53,14 @@ function fixture({ refund = false, call, chooseAllocation = async () => false } 
     order.payment_ids.push(line);
     const calls = [];
     const errors = [];
+    const preparationErrors = [];
     const adapter = {
         async call(method, args) {
             calls.push({ method, args });
             return call?.(method, args, calls) ?? false;
         },
         financialSnapshot: () => ({ amount_total: 12.34 }),
-        restoreRefundOriginals: async () => {},
+        restoreRefundOriginals,
         chooseAllocation,
         setRefundAmount(payment, amount) { payment.amount = -amount; },
         discardRefund(payment) { order.payment_ids = order.payment_ids.filter((item) => item !== payment); },
@@ -67,9 +69,10 @@ function fixture({ refund = false, call, chooseAllocation = async () => false } 
             payment.payment_ref_no = result.order_id;
         },
         showError(payment, state) { errors.push(state); },
+        showPreparationError(payment, reason) { preparationErrors.push(reason); },
     };
     const state = new RevolutPaymentState({ adapter, clock, methodId: 7, sessionId: 8, currencyId: 9 });
-    return { state, clock, order, line, calls, errors };
+    return { state, clock, order, line, calls, errors, preparationErrors };
 }
 
 test("verified cancellation result survives an older failed poll", async () => {
@@ -251,6 +254,102 @@ test("reloaded refund reconciles its existing operation and preserves its refere
     assert.equal(line.payment_ref_no, "rev-refund-31");
     assert.equal(paymentActions(line).blocksCheckout, false);
     assert.equal(calls.some(({ method }) => method === "revolut_start_refund"), false);
+});
+
+test("lost refund response and failed original read keep the same line for recovery", async () => {
+    let originalReads = 0;
+    const { state, order, line, calls, errors, preparationErrors } = fixture({
+        refund: true,
+        async restoreRefundOriginals() {
+            if (++originalReads === 1) {
+                throw new Error("original sale temporarily unavailable");
+            }
+        },
+        call(method) {
+            if (method === "revolut_find_refund") {
+                return { operation_id: 32, state: "unresolved", original_order_id: "sale-32" };
+            }
+            if (method === "revolut_poll_refund") {
+                return { operation_id: 32, state: "verified", payment_id: "refund-32",
+                    order_id: "rev-refund-32", original_order_id: "sale-32" };
+            }
+            return false;
+        },
+    });
+    line.uiState.revolutStarted = true;
+    line.uiState.revolutOriginalOperationId = 12;
+    restorePaymentLine(line);
+    assert.equal(await state.request(order, line), false);
+    assert.deepEqual(order.payment_ids, [line]);
+    assert.equal(order.uuid, "order-1");
+    assert.equal(line.uuid, "line-1");
+    assert.equal(line.uiState.revolutOriginalOperationId, 12);
+    assert.equal(paymentOutcome(line), "interrupted");
+    assert.deepEqual(errors, ["interrupted"]);
+    assert.deepEqual(preparationErrors, []);
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(orderActions(order).blocksAlternativeTender, true);
+    assert.equal(orderActions(order).blocksCheckout, true);
+    assert.deepEqual(calls, []);
+
+    assert.equal(await state.request(order, line), true);
+    assert.equal(line.transaction_id, "refund-32");
+    assert.equal(line.payment_ref_no, "rev-refund-32");
+    assert.equal(line.uiState.revolutOperationId, 32);
+    assert.deepEqual(calls.map(({ method }) => method), ["revolut_find_refund", "revolut_poll_refund"]);
+    assert.deepEqual(calls.map(({ args }) => args.slice(1, 4)), [
+        ["order-1", "line-1"], [32, "order-1", "line-1"],
+    ]);
+});
+
+test("known refund reference survives an original-read timeout and is polled on retry", async () => {
+    let originalReads = 0;
+    const { state, order, line, calls, errors, preparationErrors } = fixture({
+        refund: true,
+        async restoreRefundOriginals() {
+            if (++originalReads === 1) {
+                throw new ForegroundTimeout();
+            }
+        },
+        call(method) {
+            if (method === "revolut_poll_refund") {
+                return { operation_id: 44, state: "verified", payment_id: "refund-44",
+                    order_id: "rev-refund-44", original_order_id: "sale-44" };
+            }
+            return false;
+        },
+    });
+    line.uiState.revolutStarted = true;
+    line.uiState.revolutOperationId = 44;
+    line.uiState.revolutSnapshot = { operation_id: 44, state: "unresolved",
+        order_id: "rev-refund-44", original_order_id: "sale-44" };
+    assert.equal(await state.request(order, line), false);
+    assert.deepEqual(order.payment_ids, [line]);
+    assert.equal(line.uiState.revolutSnapshot.order_id, "rev-refund-44");
+    assert.equal(line.uiState.revolutOperationId, 44);
+    assert.equal(paymentOutcome(line), "timed_out");
+    assert.deepEqual(errors, ["timed_out"]);
+    assert.deepEqual(preparationErrors, []);
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(orderActions(order).blocksCheckout, true);
+    assert.equal(await state.request(order, line), true);
+    assert.equal(line.payment_ref_no, "rev-refund-44");
+    assert.deepEqual(calls.map(({ method }) => method), [
+        "revolut_mark_refund_timeout", "revolut_poll_refund",
+    ]);
+    assert.equal(calls.some(({ method }) => method === "revolut_start_refund"), false);
+});
+
+test("original-read failure before refund dispatch dismisses the allocation", async () => {
+    const { state, order, line, calls, errors, preparationErrors } = fixture({
+        refund: true,
+        async restoreRefundOriginals() { throw new Error("original sale unavailable"); },
+    });
+    assert.equal(await state.request(order, line), false);
+    assert.deepEqual(order.payment_ids, []);
+    assert.deepEqual(preparationErrors, ["originals"]);
+    assert.deepEqual(errors, []);
+    assert.deepEqual(calls, []);
 });
 
 test("a failed refund can be removed for replacement but cannot be edited or settled", () => {
