@@ -2,7 +2,7 @@
 
 **Work branch:** `codex/14-deepen-pos-payment-state`
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 
