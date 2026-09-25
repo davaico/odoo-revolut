@@ -7,18 +7,21 @@ tailnet access, and service ownership remain in `../odoo-hosting`.
 
 ## Safety model
 
-`scripts/deploy-addon` creates the addon archive from an exact Git commit, not
+`scripts/deploy-addon` creates both addon directories in one archive from an exact Git commit, not
 from working-tree files. It requires a clean checkout and proves that the SHA
 is contained in an explicit reviewed ref (`origin/main` by default). The target
 verifies the archive checksum and installs it at:
 
 ```text
-/opt/odoo-releases/revolut/staging/REVISION/pos_revolut
+/opt/odoo-releases/revolut/staging/REVISION/
+├── pos_revolut/
+└── pos_revolut_restaurant/
 ```
 
 The existing `/opt/odoo-hosting/addons` entry in `addons_path` is never
-rewritten. Its `pos_revolut` child is an atomic symlink to the selected release.
-The deployer refuses to replace a normal file or directory at that path. Each
+rewritten. Its `pos_revolut` and `pos_revolut_restaurant` children are symlinks
+to the same selected release. Odoo is stopped before either link changes. The
+deployer refuses to replace a normal file or directory at either path. Each
 release tree is made read-only. If the same revision is retried, the deployer
 extracts the uploaded artifact again and compares its file tree with the
 existing release before trusting or reporting it.
@@ -29,7 +32,7 @@ Before changing code, the deployer:
 2. runs the existing encrypted database and filestore backup service;
 3. copies `/etc/odoo/odoo.conf`, the `odoo.service.d` drop-ins, and the optional
    `/etc/odoo-revolut` secret directory into a root-only local configuration
-   snapshot, recording the previously active release target;
+   snapshot, recording both previously active release targets;
 4. stops Odoo, which quiesces checkout and every payment/refund dispatch;
 5. repeats the financial-operation check after Odoo is fully stopped; and
 6. leaves Odoo stopped if that final check, extraction, module update, or any
@@ -44,7 +47,10 @@ from a revision without the mixin, the deployer uses the known payment-state
 fallback.
 
 The offline install/update always uses `--stop-after-init --no-http
---workers=0`. Odoo is started only after that command succeeds. The deployer
+--workers=0`. It initializes the bridge when Restaurant is installed but the
+bridge is missing, updates it when already installed, and leaves it available
+but uninstalled in a retail-only database. Odoo is started only after the
+command and module-state checks succeed. The deployer
 then verifies the systemd service and the local `/web/login` endpoint. A failed
 health check is reported as a deployment failure, although the service may
 already be running and must be inspected.
@@ -109,6 +115,16 @@ git show --no-patch --format=fuller "$REVISION"
 STAGING_SSH_TARGET="root@approved-tailnet-hostname"
 ```
 
+Before a staging change, exercise the exact committed artifact in disposable
+Odoo 19 databases. This builds the same two-addon Git archive, feeds it through
+the production extractor, and mounts only the extracted release into Odoo. It
+checks retail installation, later Restaurant installation, base-only migration,
+bridge upgrade, and the mocked POS browser tours:
+
+```bash
+./scripts/test-delivered-addon --revision "$REVISION"
+```
+
 `git status --short` must be empty. For the first installation, run:
 
 ```bash
@@ -123,8 +139,8 @@ STAGING_SSH_TARGET="root@approved-tailnet-hostname"
 ```
 
 For an existing installation, use the same command with `--mode upgrade`.
-Success output includes the exact revision, immutable release path, and the
-configuration-backup path. Record all three in the change record. The uploaded
+Success output includes the exact revision, immutable release path for both
+addons, and the configuration-backup path. Record all three in the change record. The uploaded
 temporary archive is removed whether deployment succeeds or fails.
 
 ## Operator-controlled no-charge smoke check
@@ -133,7 +149,9 @@ The deployer itself never calls Revolut and cannot initiate a terminal charge.
 After it succeeds, an operator performs this staging-only check:
 
 1. Confirm the reported SHA equals the approved change and that the Apps view
-   shows **POS Revolut** installed.
+   shows **POS Revolut** installed. If Restaurant is installed, also confirm
+   **POS Revolut Restaurant** is installed. A retail-only database leaves the
+   bridge available but uninstalled.
 2. Open the existing retail POS configuration and start a session with only the
    already verified cash payment path needed for this check.
 3. Create one ordinary staging order, pay the full total with **Cash**, and
@@ -165,6 +183,7 @@ Start with non-destructive evidence collection:
 systemctl status odoo odoo-backup.service --no-pager
 journalctl -u odoo -u odoo-backup.service --since "30 minutes ago" --no-pager
 readlink -f /opt/odoo-hosting/addons/pos_revolut
+readlink -f /opt/odoo-hosting/addons/pos_revolut_restaurant
 ```
 
 Do not restore the database merely because deployment failed. First reconcile
@@ -174,7 +193,7 @@ request, or missing response is not proof that no charge/refund occurred. Keep
 Odoo stopped while an uncertain operation is reconciled, and record the final
 provider state against the current database before deciding on recovery.
 
-Prefer a reviewed forward fix. Repointing the release symlink is safe only when
+Prefer a reviewed forward fix. Repointing both release symlinks is safe only when
 the database schema and data remain compatible with the previous code; rerun
 the same offline module update and health checks before restarting. Never
 automatically restore a database or overwrite current payment state with a

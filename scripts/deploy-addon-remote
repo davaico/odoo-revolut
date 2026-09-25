@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install one reviewed POS Revolut artifact on an existing Odoo host."""
+"""Install one reviewed POS Revolut release on an existing Odoo host."""
 
 import argparse
 import configparser
@@ -19,6 +19,9 @@ from pathlib import Path
 
 class DeploymentError(RuntimeError):
     """An expected safety refusal or remote command failure."""
+
+
+ADDONS = ("pos_revolut", "pos_revolut_restaurant")
 
 
 class CommandRunner:
@@ -212,19 +215,21 @@ WHERE state IN (
                     backup / "etc" / "odoo-revolut",
                     symlinks=True,
                 )
-            current = self._rooted("/opt/odoo-hosting/addons/pos_revolut")
-            if current.is_symlink():
-                previous_release = os.readlink(current)
-            elif os.path.lexists(current):
-                previous_release = "non-symlink"
-            else:
-                previous_release = None
+            previous_releases = {}
+            for addon in ADDONS:
+                current = self._rooted(f"/opt/odoo-hosting/addons/{addon}")
+                if current.is_symlink():
+                    previous_releases[addon] = os.readlink(current)
+                elif os.path.lexists(current):
+                    previous_releases[addon] = "non-symlink"
+                else:
+                    previous_releases[addon] = None
             manifest = {
                 "database": self.database,
                 "revision": self.revision,
                 "customer": self.customer,
                 "environment": self.environment,
-                "previous_release": previous_release,
+                "previous_releases": previous_releases,
             }
             manifest_path = backup / "deployment.json"
             manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
@@ -258,14 +263,13 @@ WHERE state IN (
                     digest.update(chunk)
         return digest.hexdigest()
 
-    def _make_release_read_only(self, revision_root, release):
+    def _make_release_read_only(self, revision_root):
         paths = sorted(
-            release.rglob("*"), key=lambda path: len(path.parts), reverse=True
+            revision_root.rglob("*"), key=lambda path: len(path.parts), reverse=True
         )
         for path in paths:
             mode = path.stat().st_mode & 0o777
             path.chmod(mode & ~0o222)
-        release.chmod((release.stat().st_mode & 0o777) & ~0o222)
         revision_root.chmod(0o555)
 
     def _extract_release(self):
@@ -273,7 +277,6 @@ WHERE state IN (
             f"/opt/odoo-releases/{self.customer}/{self.environment}"
         )
         revision_root = releases / self.revision
-        release = revision_root / "pos_revolut"
         releases.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(
             prefix=f".{self.revision[:12]}-", dir=releases
@@ -293,7 +296,10 @@ WHERE state IN (
                             member.isdir() and path.parts == ("addons",)
                         )
                         is_addon_content = (
-                            path.parts[:2] == ("addons", "pos_revolut")
+                            len(path.parts) >= 2
+                            and path.parts[0] == "addons"
+                            and path.parts[1] in ADDONS
+                            and (len(path.parts) > 2 or member.isdir())
                         )
                         if (
                             path.is_absolute()
@@ -314,13 +320,13 @@ WHERE state IN (
                 raise DeploymentError(
                     "Deployment artifact extraction failed."
                 ) from error
-            source = temporary_path / "addons" / "pos_revolut"
-            if not (source / "__manifest__.py").is_file():
+            source = temporary_path / "addons"
+            if any(not (source / addon / "__manifest__.py").is_file() for addon in ADDONS):
                 raise DeploymentError(
-                    "Deployment artifact does not contain the addon manifest."
+                    "Deployment artifact does not contain both addon manifests."
                 )
-            if release.exists():
-                marker = release / "REVISION"
+            if revision_root.exists():
+                marker = revision_root / "REVISION"
                 if (
                     not marker.is_file()
                     or marker.read_text().strip() != self.revision
@@ -328,7 +334,7 @@ WHERE state IN (
                     raise DeploymentError(
                         "Existing release directory has the wrong revision marker."
                     )
-                checksum_marker = release / "ARTIFACT_SHA256"
+                checksum_marker = revision_root / "ARTIFACT_SHA256"
                 if (
                     not checksum_marker.is_file()
                     or checksum_marker.read_text().strip() != self.expected_sha256
@@ -338,42 +344,70 @@ WHERE state IN (
                         "checksum marker."
                     )
                 if self._release_tree_digest(
-                    release, ignore_markers=True
+                    revision_root, ignore_markers=True
                 ) != self._release_tree_digest(source):
                     raise DeploymentError(
                         "Existing release contents do not match the uploaded artifact."
                     )
-                return release
-            revision_root.mkdir(mode=0o755)
-            shutil.move(str(source), release)
-        marker = release / "REVISION"
-        marker.write_text(self.revision + "\n")
-        marker.chmod(0o444)
-        checksum_marker = release / "ARTIFACT_SHA256"
-        checksum_marker.write_text(self.expected_sha256 + "\n")
-        checksum_marker.chmod(0o444)
-        self._make_release_read_only(revision_root, release)
-        return release
+                return revision_root
+            staged = temporary_path / "release"
+            staged.mkdir()
+            try:
+                for addon in ADDONS:
+                    shutil.move(str(source / addon), staged / addon)
+                (staged / "REVISION").write_text(self.revision + "\n")
+                (staged / "ARTIFACT_SHA256").write_text(
+                    self.expected_sha256 + "\n"
+                )
+                os.replace(staged, revision_root)
+                self._make_release_read_only(revision_root)
+            except OSError as error:
+                for path in sorted(staged.rglob("*"), key=lambda item: len(item.parts)):
+                    if path.is_dir():
+                        path.chmod(0o755)
+                staged.chmod(0o755)
+                raise DeploymentError("Deployment artifact extraction failed.") from error
+        return revision_root
 
     def _activate_release(self, release):
-        current = self._rooted("/opt/odoo-hosting/addons/pos_revolut")
-        current.parent.mkdir(parents=True, exist_ok=True)
-        if current.exists() and not current.is_symlink():
-            raise DeploymentError(
-                "Existing POS Revolut addon is not a release symlink; "
-                "refusing to overwrite it."
-            )
-        temporary = current.with_name(f".{current.name}.{os.getpid()}")
+        currents = [self._rooted(f"/opt/odoo-hosting/addons/{addon}") for addon in ADDONS]
+        currents[0].parent.mkdir(parents=True, exist_ok=True)
+        for current in currents:
+            if os.path.lexists(current) and not current.is_symlink():
+                raise DeploymentError(
+                    f"Existing {current.name} addon is not a release symlink; "
+                    "refusing to overwrite it."
+                )
+        temporaries = [current.with_name(f".{current.name}.{os.getpid()}") for current in currents]
         try:
-            temporary.unlink(missing_ok=True)
-            temporary.symlink_to(release, target_is_directory=True)
-            os.replace(temporary, current)
+            for temporary, addon in zip(temporaries, ADDONS):
+                temporary.unlink(missing_ok=True)
+                temporary.symlink_to(release / addon, target_is_directory=True)
+            for temporary, current in zip(temporaries, currents):
+                os.replace(temporary, current)
         except OSError as error:
-            temporary.unlink(missing_ok=True)
             raise DeploymentError("Could not activate the reviewed release.") from error
+        finally:
+            for temporary in temporaries:
+                temporary.unlink(missing_ok=True)
 
     def _update_module(self):
-        operation = "--init" if self.mode == "install" else "--update"
+        before = self._module_states()
+        restaurant_installed = before.get("pos_restaurant") == "installed"
+        bridge_installed = before.get("pos_revolut_restaurant") == "installed"
+        if bridge_installed and not restaurant_installed:
+            raise DeploymentError("Restaurant bridge is installed without Restaurant.")
+        if self.mode == "install":
+            operations = ["--init", "pos_revolut"]
+        else:
+            operations = ["--update", "pos_revolut"]
+        if restaurant_installed:
+            if bridge_installed:
+                operations[1] += ",pos_revolut_restaurant"
+            elif self.mode == "install":
+                operations[1] += ",pos_revolut_restaurant"
+            else:
+                operations += ["--init", "pos_revolut_restaurant"]
         venv_python = self._rooted("/opt/odoo-hosting/venv/bin/python")
         odoo_command = ["/usr/bin/odoo"]
         if venv_python.is_file() and os.access(venv_python, os.X_OK):
@@ -392,8 +426,7 @@ WHERE state IN (
                 "/etc/odoo/odoo.conf",
                 "--database",
                 self.database,
-                operation,
-                "pos_revolut",
+                *operations,
                 "--stop-after-init",
                 "--no-http",
                 "--workers=0",
@@ -401,6 +434,26 @@ WHERE state IN (
             "Odoo module update",
             capture_output=True,
         )
+        after = self._module_states()
+        if after.get("pos_revolut") != "installed":
+            raise DeploymentError("POS Revolut base addon is not installed after update.")
+        if restaurant_installed and after.get("pos_revolut_restaurant") != "installed":
+            raise DeploymentError("Restaurant bridge is not installed after update.")
+
+    def _module_states(self):
+        rows = self._psql(
+            "SELECT name || '|' || state FROM ir_module_module "
+            "WHERE name IN ('pos_revolut', 'pos_restaurant', "
+            "'pos_revolut_restaurant') ORDER BY name",
+            "Odoo module state check",
+        ).splitlines()
+        states = {}
+        for row in rows:
+            name, separator, state = row.strip().partition("|")
+            if not separator or name not in {*ADDONS, "pos_restaurant"} or not state:
+                raise DeploymentError("Odoo module state check returned invalid data.")
+            states[name] = state
+        return states
 
     def _health_check(self):
         self._run(

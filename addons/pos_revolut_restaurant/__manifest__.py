@@ -9,6 +9,9 @@
         "point_of_sale._assets_pos": [
             "pos_revolut_restaurant/static/src/app/**/*.js",
         ],
+        "web.assets_tests": [
+            "pos_revolut_restaurant/static/tests/tours/**/*.js",
+        ],
     },
     "license": "LGPL-3",
     "installable": True,
