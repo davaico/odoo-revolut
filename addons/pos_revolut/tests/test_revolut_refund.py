@@ -476,6 +476,13 @@ class TestRevolutRefund(CommonPosTest):
         with self.assertRaises(UserError):
             self.env["pos.order"].sync_from_ui([self.payload])
 
+    def test_missing_active_refund_allocation_cannot_settle_return(self):
+        self._pending()
+        self.payload["payment_ids"] = []
+        self.payload["state"] = "paid"
+        with self.assertRaises(UserError):
+            self.env["pos.order"].sync_from_ui([self.payload])
+
     def test_lost_response_recovered_by_reference_without_replay(self):
         self.request.side_effect = [
             self._response(id=self.source.revolut_order_id, state="completed", amount=1234,
