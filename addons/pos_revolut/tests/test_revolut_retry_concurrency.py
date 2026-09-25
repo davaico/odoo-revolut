@@ -722,6 +722,55 @@ class TestRevolutRetryConcurrency(TransactionCase):
             "create_intent", "revolut_mark_timeout"
         )
 
+    def _assert_timeout_before_creation_claim(self, action):
+        claim_started, timed_out = Event(), Event()
+        method_type = type(self.env["pos.payment.method"])
+        original_claim = method_type._claim_revolut_dispatch_owned
+
+        def paused_claim(method, operation_id, claimed_action):
+            if claimed_action == action:
+                claim_started.set()
+                self.assertTrue(timed_out.wait(10))
+            return original_claim(method, operation_id, claimed_action)
+
+        def timeout():
+            self.assertTrue(claim_started.wait(10))
+            try:
+                current = self._rpc(
+                    "revolut_find_payment", self.order_uuid, self.line_uuid
+                )
+                result = self._rpc(
+                    "revolut_mark_timeout", current["operation_id"],
+                    self.order_uuid, self.line_uuid,
+                )
+                self.assertEqual(result["state"], "unresolved")
+                self.assertEqual(result["local_outcome"], "timed_out")
+            finally:
+                timed_out.set()
+
+        self.request.side_effect = self._start_http
+        with patch.object(method_type, "_claim_revolut_dispatch_owned",
+                          autospec=True, side_effect=paused_claim):
+            self._run_workers([("start", self._start), ("timeout", timeout)])
+        final = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
+        self.assertEqual(final["state"], "pending")
+        self.assertEqual(final["order_id"], self.provider_order)
+        self.assertEqual(final["payment_intent_id"], self.provider_intent)
+        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        self.assertEqual(len(posts), 2)
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            operation = env["pos.revolut.payment.operation"].browse(
+                final["operation_id"]
+            )
+            self.assertTrue(operation.next_reconcile_at)
+
+    def test_timeout_before_order_claim_keeps_first_dispatch_claimable(self):
+        self._assert_timeout_before_creation_claim("create_order")
+
+    def test_timeout_before_intent_claim_keeps_first_dispatch_claimable(self):
+        self._assert_timeout_before_creation_claim("create_intent")
+
     def test_stale_missing_reference_poll_keeps_manager_reconciliation_due(self):
         def interrupted_order(method, url, **kwargs):
             if method == "POST" and url.endswith("/api/orders"):
