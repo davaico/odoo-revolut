@@ -5,6 +5,8 @@ from threading import Barrier, Event, RLock, Thread, current_thread
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
+import requests
+
 from odoo import SUPERUSER_ID, Command, api
 from odoo.exceptions import UserError
 from odoo.orm.registry import Registry
@@ -58,6 +60,30 @@ class TestRevolutRetryConcurrency(TransactionCase):
             result = getattr(env["pos.payment.method"].browse(self.method_id), name)(*args)
             cursor.commit()
             return result
+
+    def _manager_rpc(self, operation_id, name, *args):
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            result = getattr(
+                env["pos.revolut.payment.operation"].browse(operation_id), name
+            )(*args)
+            cursor.commit()
+            return result
+
+    def _manager_order(self):
+        return self._response({
+            "id": self.provider_order, "amount": 1234,
+            "currency": self.currency_code, "location_id": self.location_id,
+            "metadata": {"pos_order_uuid": self.order_uuid,
+                         "pos_payment_line_uuid": self.line_uuid},
+        })
+
+    def _manager_intent(self):
+        return self._response({
+            "id": self.provider_intent, "order_id": self.provider_order,
+            "amount": 1234, "currency": self.currency_code,
+            "terminal_id": self.terminal_id, "state": "pending",
+        })
 
     def _start(self, previous_operation_id=None, user_id=SUPERUSER_ID):
         snapshot = {
@@ -134,16 +160,16 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.request.side_effect = http
         original_complete = type(
             self.env["pos.payment.method"]
-        )._complete_revolut_dispatch_owned
+        )._apply_revolut_observation_owned
 
-        def crash_after_result(method, operation_id, claimed_action, *args):
-            if claimed_action == action:
+        def crash_after_result(method, operation_id, kind, *args):
+            if kind == f"dispatch_{action}":
                 raise RuntimeError("simulated crash after provider response")
-            return original_complete(method, operation_id, claimed_action, *args)
+            return original_complete(method, operation_id, kind, *args)
 
         with patch.object(
             type(self.env["pos.payment.method"]),
-            "_complete_revolut_dispatch_owned",
+            "_apply_revolut_observation_owned",
             autospec=True,
             side_effect=crash_after_result if after_response else original_complete,
         ), self.assertRaises(RuntimeError):
@@ -203,16 +229,16 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.request.side_effect = http
         original_update = type(
             self.env["pos.payment.method"]
-        )._update_revolut_operation_owned
+        )._apply_revolut_observation_owned
 
-        def crash_before_verified_commit(method, operation_id, values, *args, **kwargs):
-            if values.get("state") == "verified":
+        def crash_before_verified_commit(method, operation_id, kind, *args, **kwargs):
+            if kind == "payment":
                 raise RuntimeError("simulated crash after payment result")
-            return original_update(method, operation_id, values, *args, **kwargs)
+            return original_update(method, operation_id, kind, *args, **kwargs)
 
         with patch.object(
             type(self.env["pos.payment.method"]),
-            "_update_revolut_operation_owned", autospec=True,
+            "_apply_revolut_observation_owned", autospec=True,
             side_effect=crash_before_verified_commit,
         ), self.assertRaises(RuntimeError):
             self._rpc(
@@ -249,16 +275,16 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.request.side_effect = http
         original_complete = type(
             self.env["pos.payment.method"]
-        )._complete_revolut_dispatch_owned
+        )._apply_revolut_observation_owned
 
-        def crash_after_cancel(method, operation_id, action, *args):
-            if action == "cancel_intent":
+        def crash_after_cancel(method, operation_id, kind, *args):
+            if kind == "dispatch_cancel_intent":
                 raise RuntimeError("simulated crash after cancel response")
-            return original_complete(method, operation_id, action, *args)
+            return original_complete(method, operation_id, kind, *args)
 
         with patch.object(
             type(self.env["pos.payment.method"]),
-            "_complete_revolut_dispatch_owned", autospec=True,
+            "_apply_revolut_observation_owned", autospec=True,
             side_effect=crash_after_cancel,
         ), self.assertRaises(RuntimeError):
             self._rpc(
@@ -483,3 +509,151 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.assertFalse(final["retry_safe"])
         posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
         self.assertEqual(len(posts), 1, "Unsafe retry must dispatch no new payment")
+
+    def test_association_audit_failure_rolls_back_references(self):
+        def interrupted_order(method, url, **kwargs):
+            if method == "POST" and url.endswith("/api/orders"):
+                raise requests.Timeout()
+            return self._start_http(method, url, **kwargs)
+
+        self.request.side_effect = interrupted_order
+        started = self._start()
+        self.assertEqual(started["state"], "unresolved")
+
+        def evidence(method, url, **kwargs):
+            if url.endswith(f"/api/orders/{self.provider_order}"):
+                return self._manager_order()
+            if url.endswith(f"/api/payment-intents/{self.provider_intent}"):
+                return self._manager_intent()
+            raise AssertionError(f"Unexpected HTTP request: {method} {url}")
+
+        self.request.side_effect = evidence
+        audit_model = type(self.env["pos.revolut.reconciliation.audit"])
+        with patch.object(audit_model, "create", side_effect=RuntimeError("audit failed")):
+            with self.assertRaisesRegex(RuntimeError, "audit failed"):
+                self._manager_rpc(
+                    started["operation_id"], "action_revolut_associate",
+                    self.provider_order, self.provider_intent,
+                )
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            operation = env["pos.revolut.payment.operation"].browse(started["operation_id"])
+            self.assertFalse(operation.revolut_order_id)
+            self.assertFalse(operation.revolut_payment_intent_id)
+            self.assertFalse(operation.audit_ids)
+            self.assertTrue(operation.blocking_order_key)
+
+    def test_reconciliation_audit_failure_keeps_committed_payment(self):
+        def interrupted_order(method, url, **kwargs):
+            if method == "POST" and url.endswith("/api/orders"):
+                raise requests.Timeout()
+            return self._start_http(method, url, **kwargs)
+
+        self.request.side_effect = interrupted_order
+        started = self._start()
+
+        def association_evidence(method, url, **kwargs):
+            if url.endswith(f"/api/orders/{self.provider_order}"):
+                return self._manager_order()
+            if url.endswith(f"/api/payment-intents/{self.provider_intent}"):
+                return self._manager_intent()
+            raise AssertionError(f"Unexpected HTTP request: {method} {url}")
+
+        self.request.side_effect = association_evidence
+        self._manager_rpc(
+            started["operation_id"], "action_revolut_associate",
+            self.provider_order, self.provider_intent,
+        )
+
+        def payment_evidence(method, url, **kwargs):
+            if url.endswith(f"/api/payment-intents/{self.provider_intent}"):
+                return self._intent("completed", payment_id=self.provider_payment)
+            if url.endswith(f"/api/payments/{self.provider_payment}"):
+                return self._response({
+                    "id": self.provider_payment, "order_id": self.provider_order,
+                    "amount": 1234, "currency": self.currency_code,
+                    "state": "captured",
+                })
+            raise AssertionError(f"Unexpected HTTP request: {method} {url}")
+
+        self.request.side_effect = payment_evidence
+        audit_model = type(self.env["pos.revolut.reconciliation.audit"])
+        with patch.object(audit_model, "create", side_effect=RuntimeError("audit failed")):
+            with self.assertRaisesRegex(RuntimeError, "audit failed"):
+                self._manager_rpc(started["operation_id"], "action_revolut_reconcile")
+        recovered = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
+        self.assertEqual(recovered["state"], "verified")
+        self.assertEqual(recovered["payment_id"], self.provider_payment)
+        self.assertFalse(recovered["retry_safe"])
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            operation = env["pos.revolut.payment.operation"].browse(started["operation_id"])
+            self.assertFalse(operation.blocking_order_key)
+            self.assertFalse(operation.blocking_terminal_key)
+            self.assertEqual(operation.audit_ids.mapped("action"), ["associate"])
+
+    def test_delayed_order_acknowledgement_preserves_manager_verified_result(self):
+        order_sent, reconciled = Event(), Event()
+        intent_reads = 0
+
+        def http(method, url, **kwargs):
+            nonlocal intent_reads
+            if method == "POST" and url.endswith("/api/orders"):
+                order_sent.set()
+                self.assertTrue(reconciled.wait(10))
+                return self._response({"id": self.provider_order})
+            if url.endswith(f"/api/orders/{self.provider_order}"):
+                return self._manager_order()
+            if url.endswith(f"/api/payment-intents/{self.provider_intent}"):
+                intent_reads += 1
+                if intent_reads == 1:
+                    return self._manager_intent()
+                return self._intent("completed", payment_id=self.provider_payment)
+            if url.endswith(f"/api/payments/{self.provider_payment}"):
+                return self._response({
+                    "id": self.provider_payment, "order_id": self.provider_order,
+                    "amount": 1234, "currency": self.currency_code,
+                    "state": "completed",
+                })
+            return self._start_http(method, url, **kwargs)
+
+        def recovery():
+            self.assertTrue(order_sent.wait(10))
+            try:
+                pending = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
+                self._manager_rpc(
+                    pending["operation_id"], "action_revolut_associate",
+                    self.provider_order, self.provider_intent,
+                )
+                self._manager_rpc(pending["operation_id"], "action_revolut_reconcile")
+                verified = self._rpc(
+                    "revolut_find_payment", self.order_uuid, self.line_uuid
+                )
+                self.assertEqual(verified["state"], "verified")
+            finally:
+                reconciled.set()
+
+        self.request.side_effect = http
+        self._run_workers([("start", self._start), ("recovery", recovery)])
+        final = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
+        self.assertEqual(final["state"], "verified")
+        self.assertEqual(final["order_id"], self.provider_order)
+        self.assertEqual(final["payment_intent_id"], self.provider_intent)
+        self.assertEqual(final["payment_id"], self.provider_payment)
+        self.assertFalse(final["retry_safe"])
+        self.assertEqual(self._start(), final)
+        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        self.assertEqual(len(posts), 1, "Recovery must not dispatch another intent")
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            dispatches = env["pos.revolut.payment.dispatch"].search([
+                ("operation_id", "=", final["operation_id"]),
+            ])
+            operation = env["pos.revolut.payment.operation"].browse(
+                final["operation_id"]
+            )
+            self.assertFalse(operation.blocking_order_key)
+            self.assertFalse(operation.blocking_terminal_key)
+            self.assertEqual(dispatches.mapped("action"), ["create_order"])
+            self.assertEqual(dispatches.outcome, "succeeded")
+            self.assertEqual(dispatches.provider_reference, self.provider_order)
