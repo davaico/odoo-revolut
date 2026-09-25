@@ -2,7 +2,7 @@
 
 **Work branch:** `codex/13-deepen-return-allocation`
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 
