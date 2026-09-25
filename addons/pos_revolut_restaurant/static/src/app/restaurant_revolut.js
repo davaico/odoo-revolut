@@ -23,6 +23,9 @@ patch(PosStore.prototype, {
 
     async transferOrder(orderUuid, destinationTable, destinationOrder) {
         const sourceOrder = this.models["pos.order"].getBy("uuid", orderUuid);
+        if (destinationTable && !destinationOrder && !this.tableHasOrders(destinationTable)) {
+            return super.transferOrder(...arguments);
+        }
         if (hasRevolutExposure(sourceOrder) || hasRevolutExposure(destinationOrder)) {
             explainGuard(this.dialog);
             return false;
@@ -32,6 +35,9 @@ patch(PosStore.prototype, {
 
     async mergeTableOrders(orderUuid, destinationTable) {
         const sourceOrder = this.models["pos.order"].getBy("uuid", orderUuid);
+        if (!this.tableHasOrders(destinationTable)) {
+            return super.mergeTableOrders(...arguments);
+        }
         if (hasRevolutExposure(sourceOrder)) {
             explainGuard(this.dialog);
             return false;

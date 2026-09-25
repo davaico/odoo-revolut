@@ -2,10 +2,12 @@
 set -euo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-project_name="odoo-revolut-tests"
+project_name="${ODOO_REVOLUT_TEST_PROJECT:-odoo-revolut-tests}"
 database_name="odoo_revolut_tests"
 test_tags="/pos_revolut"
 verify_install_upgrade=false
+delivered_scenario=""
+base_only_dir=""
 
 while (($#)); do
     case "$1" in
@@ -17,12 +19,33 @@ while (($#)); do
             verify_install_upgrade=true
             shift
             ;;
+        --delivered-scenario)
+            delivered_scenario="$2"
+            shift 2
+            ;;
+        --addons-dir)
+            export ODOO_REVOLUT_ADDONS_DIR="$(realpath "$2")"
+            shift 2
+            ;;
+        --base-only-dir)
+            base_only_dir="$(realpath "$2")"
+            shift 2
+            ;;
         *)
             echo "Unknown argument: $1" >&2
             exit 2
             ;;
     esac
 done
+
+if [[ "$delivered_scenario" != "" && "$delivered_scenario" != retail && "$delivered_scenario" != migration ]]; then
+    echo "--delivered-scenario must be retail or migration" >&2
+    exit 2
+fi
+if [[ "$delivered_scenario" == migration && -z "$base_only_dir" ]]; then
+    echo "Migration acceptance requires --base-only-dir" >&2
+    exit 2
+fi
 
 compose=(docker compose --project-name "$project_name" --file "$repository_root/compose.yaml")
 
@@ -60,16 +83,58 @@ run_odoo() {
         "$@"
 }
 
-run_odoo \
-    --init pos_revolut \
-    --test-tags "$test_tags"
+module_state() {
+    local module="$1"
+    "${compose[@]}" exec -T db psql -U odoo -d "$database_name" -Atc \
+        "SELECT COALESCE((SELECT state FROM ir_module_module WHERE name = '$module'), 'absent')"
+}
 
-if [[ "$verify_install_upgrade" == true ]]; then
-    run_odoo \
-        --update pos_revolut \
-        --test-tags "$test_tags"
+require_state() {
+    local module="$1" expected="$2" actual
+    actual="$(module_state "$module")"
+    if [[ "$expected" == not-installed && ( "$actual" == absent || "$actual" == uninstalled ) ]]; then
+        return
+    fi
+    if [[ "$actual" != "$expected" ]]; then
+        echo "Expected $module to be $expected, found $actual" >&2
+        exit 1
+    fi
+}
+
+if [[ "$delivered_scenario" == retail ]]; then
+    run_odoo --init pos_revolut \
+        --test-tags "/pos_revolut:TestRevolutRetailPosStarts,/pos_revolut:TestRevolutVerifiedCheckout.test_cash_and_bank_still_checkout_without_revolut_dispatch"
+    require_state pos_revolut installed
+    require_state pos_revolut_restaurant not-installed
     run_odoo --init pos_restaurant
-    run_odoo \
-        --update pos_revolut \
+    require_state pos_revolut_restaurant installed
+    run_odoo --update pos_revolut,pos_revolut_restaurant \
         --test-tags pos_revolut_restaurant
+elif [[ "$delivered_scenario" == migration ]]; then
+    database_name="odoo_revolut_base_only_migration"
+    delivered_addons_dir="$ODOO_REVOLUT_ADDONS_DIR"
+    export ODOO_REVOLUT_ADDONS_DIR="$base_only_dir"
+    run_odoo --init pos_revolut,pos_restaurant
+    require_state pos_revolut installed
+    require_state pos_restaurant installed
+    require_state pos_revolut_restaurant absent
+    export ODOO_REVOLUT_ADDONS_DIR="$delivered_addons_dir"
+    run_odoo --update pos_revolut --init pos_revolut_restaurant \
+        --test-tags pos_revolut_restaurant
+    require_state pos_revolut_restaurant installed
+    run_odoo --update pos_revolut,pos_revolut_restaurant \
+        --test-tags pos_revolut_restaurant
+else
+    run_odoo \
+        --init pos_revolut \
+        --test-tags "$test_tags"
+    if [[ "$verify_install_upgrade" == true ]]; then
+        run_odoo \
+            --update pos_revolut \
+            --test-tags "$test_tags"
+        run_odoo --init pos_restaurant
+        run_odoo \
+            --update pos_revolut \
+            --test-tags pos_revolut_restaurant
+    fi
 fi

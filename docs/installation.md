@@ -59,17 +59,30 @@ Every request sends `Revolut-Api-Version: 2026-08-17`.
 
 ## Install or upgrade
 
-Copy `addons/pos_revolut` into a directory on the Odoo `addons_path`, restart
-Odoo, and install the module from Apps. The equivalent non-interactive install
-is:
+Place **both** `addons/pos_revolut` and `addons/pos_revolut_restaurant` from the
+same reviewed release in one directory on Odoo's `addons_path`. Refresh the
+Apps list, stop Odoo after taking database and filestore backups, and install
+the base module offline:
 
 ```bash
 odoo --database DATABASE_NAME --init pos_revolut \
   --stop-after-init --no-http --workers=0
 ```
 
-For an upgrade, replace `--init` with `--update`. Take the normal database and
-filestore backups before upgrading.
+On a retail database without `pos_restaurant`, the bridge stays uninstalled.
+When Restaurant is already installed, its auto-install bridge is installed with
+the base module. If Restaurant is installed later, refresh the Apps list and
+install Restaurant; verify `pos_revolut_restaurant` is installed before opening
+POS. Reopen existing POS sessions to load the bridge assets.
+
+For a base-only upgrade, deliver both addon directories before the offline
+update. If Restaurant is installed and the bridge is missing, run
+`--update pos_revolut --init pos_revolut_restaurant`. If the bridge is already
+installed, run `--update pos_revolut,pos_revolut_restaurant`. A retail-only
+upgrade uses `--update pos_revolut`. Use the same `--stop-after-init --no-http
+--workers=0` flags shown above, verify the expected module states, and restart
+only after every update succeeds. Keep Odoo stopped and reconcile uncertain
+payments or refunds before recovering a failed update.
 
 For the existing managed staging environment, do not copy working-tree files or
 run these commands by hand. Use the reviewed-revision deployment tool and its

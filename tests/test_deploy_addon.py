@@ -7,6 +7,7 @@ import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -169,6 +170,9 @@ class TestLocalDeploymentCli(unittest.TestCase):
         )
         self.assertEqual(commands[4][:3], ["git", "archive", "--format=tar.gz"])
         self.assertIn(revision, commands[4])
+        self.assertEqual(
+            commands[4][-2:], ["addons/pos_revolut", "addons/pos_revolut_restaurant"]
+        )
         self.assertEqual(commands[6][0], "scp")
         self.assertEqual(commands[7][0], "ssh")
         self.assertIn("root@staging.example.test", commands[7])
@@ -215,19 +219,52 @@ class TestLocalDeploymentCli(unittest.TestCase):
 
 
 class TestRemoteDeploymentWorkflow(unittest.TestCase):
+    def test_reviewed_archive_extracts_both_delivered_addons(self):
+        remote = load_script("deploy-addon-remote")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "reviewed.tar.gz"
+            revision = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=REPOSITORY_ROOT, text=True
+            ).strip()
+            subprocess.run(
+                [
+                    "git", "archive", "--format=tar.gz", "--output", str(archive),
+                    revision, "--", "addons/pos_revolut", "addons/pos_revolut_restaurant",
+                ],
+                cwd=REPOSITORY_ROOT,
+                check=True,
+            )
+            deployment = self._deployment(
+                remote, FakeRunner([]), root, archive, revision=revision
+            )
+            release = deployment._extract_release()
+            for addon in ("pos_revolut", "pos_revolut_restaurant"):
+                self.assertTrue((release / addon / "__manifest__.py").is_file())
+            self.assertTrue(
+                (release / "pos_revolut_restaurant" / "static" / "src" / "app" / "restaurant_revolut.js").is_file()
+            )
+
     def _artifact(self, root):
         source = root / "source" / "addons" / "pos_revolut"
         source.mkdir(parents=True)
         (source / "__manifest__.py").write_text("{'name': 'POS Revolut'}\n")
+        bridge = source.parent / "pos_revolut_restaurant"
+        bridge.mkdir()
+        (bridge / "__manifest__.py").write_text("{'name': 'POS Revolut Restaurant'}\n")
         archive = root / "artifact.tar.gz"
         with tarfile.open(archive, "w:gz") as bundle:
             bundle.add(source, arcname="addons/pos_revolut")
+            bundle.add(bridge, arcname="addons/pos_revolut_restaurant")
         return archive
 
     def _git_shaped_artifact(self, root):
         source = root / "source" / "addons" / "pos_revolut"
         source.mkdir(parents=True)
         (source / "__manifest__.py").write_text("{'name': 'POS Revolut'}\n")
+        bridge = source.parent / "pos_revolut_restaurant"
+        bridge.mkdir()
+        (bridge / "__manifest__.py").write_text("{'name': 'POS Revolut Restaurant'}\n")
         archive = root / "git-shaped-artifact.tar.gz"
         with tarfile.open(archive, "w:gz") as bundle:
             parent = tarfile.TarInfo("addons/")
@@ -235,6 +272,7 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             parent.mode = 0o755
             bundle.addfile(parent)
             bundle.add(source, arcname="addons/pos_revolut")
+            bundle.add(bridge, arcname="addons/pos_revolut_restaurant")
         return archive
 
     def _target_configuration(self, root):
@@ -274,7 +312,108 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
 
             release = deployment._extract_release()
 
-            self.assertTrue((release / "__manifest__.py").is_file())
+            self.assertTrue((release / "pos_revolut" / "__manifest__.py").is_file())
+            self.assertTrue((release / "pos_revolut_restaurant" / "__manifest__.py").is_file())
+
+    def test_archive_missing_restaurant_bridge_is_refused(self):
+        remote = load_script("deploy-addon-remote")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source" / "addons" / "pos_revolut"
+            source.mkdir(parents=True)
+            (source / "__manifest__.py").write_text("{'name': 'POS Revolut'}\n")
+            archive = root / "base-only.tar.gz"
+            with tarfile.open(archive, "w:gz") as bundle:
+                bundle.add(source, arcname="addons/pos_revolut")
+            deployment = self._deployment(remote, FakeRunner([]), root, archive)
+            with self.assertRaisesRegex(remote.DeploymentError, "both addon manifests"):
+                deployment._extract_release()
+
+    def test_extraction_failure_leaves_no_partial_revision(self):
+        remote = load_script("deploy-addon-remote")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = self._artifact(root)
+            deployment = self._deployment(remote, FakeRunner([]), root, archive)
+            with mock.patch.object(remote.shutil, "move", side_effect=OSError("disk full")):
+                with self.assertRaisesRegex(remote.DeploymentError, "extraction failed"):
+                    deployment._extract_release()
+            revision_root = (
+                root / "opt" / "odoo-releases" / "revolut" / "staging" / ("4" * 40)
+            )
+            self.assertFalse(revision_root.exists())
+
+    def test_permission_failure_removes_published_release_before_retry(self):
+        remote = load_script("deploy-addon-remote")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = self._artifact(root)
+            deployment = self._deployment(remote, FakeRunner([]), root, archive)
+            with mock.patch.object(
+                deployment, "_make_release_read_only", side_effect=OSError("chmod failed")
+            ):
+                with self.assertRaisesRegex(remote.DeploymentError, "extraction failed"):
+                    deployment._extract_release()
+            revision_root = (
+                root / "opt" / "odoo-releases" / "revolut" / "staging" / ("4" * 40)
+            )
+            self.assertFalse(revision_root.exists())
+            self.assertEqual(deployment._extract_release(), revision_root)
+            self.assertEqual(revision_root.stat().st_mode & 0o222, 0)
+
+    def test_repeat_deployment_restores_read_only_permissions(self):
+        remote = load_script("deploy-addon-remote")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = self._artifact(root)
+            deployment = self._deployment(remote, FakeRunner([]), root, archive)
+            release = deployment._extract_release()
+            release.chmod(0o755)
+            self.assertEqual(deployment._extract_release(), release)
+            self.assertEqual(release.stat().st_mode & 0o222, 0)
+
+    def test_non_symlink_bridge_blocks_activation_before_base_changes(self):
+        remote = load_script("deploy-addon-remote")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = self._artifact(root)
+            deployment = self._deployment(remote, FakeRunner([]), root, archive)
+            release = deployment._extract_release()
+            addons = root / "opt" / "odoo-hosting" / "addons"
+            addons.mkdir(parents=True)
+            previous = root / "previous"
+            previous.mkdir()
+            base_link = addons / "pos_revolut"
+            base_link.symlink_to(previous, target_is_directory=True)
+            (addons / "pos_revolut_restaurant").mkdir()
+            with self.assertRaisesRegex(remote.DeploymentError, "not a release symlink"):
+                deployment._activate_release(release)
+            self.assertEqual(base_link.resolve(), previous)
+
+    def test_failed_bridge_activation_keeps_odoo_stopped(self):
+        remote = load_script("deploy-addon-remote")
+        runner = FakeRunner([
+            "pos_revolut_payment_operation\n", "0\n", "", "",
+            "pos_revolut_payment_operation\n", "0\n",
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = self._artifact(root)
+            self._target_configuration(root)
+            deployment = self._deployment(remote, runner, root, archive)
+            replace = remote.os.replace
+
+            def fail_bridge_activation(source, destination):
+                if Path(destination).name == "pos_revolut_restaurant":
+                    raise OSError("simulated activation failure")
+                return replace(source, destination)
+
+            with mock.patch.object(remote.os, "replace", side_effect=fail_bridge_activation):
+                with self.assertRaisesRegex(remote.DeploymentError, "activate"):
+                    deployment.execute()
+        commands = [call[0] for call in runner.calls]
+        self.assertIn(["systemctl", "stop", "odoo"], commands)
+        self.assertNotIn(["systemctl", "start", "odoo"], commands)
 
     def test_addons_parent_must_be_a_directory(self):
         remote = load_script("deploy-addon-remote")
@@ -293,7 +432,7 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
 
     def test_update_uses_system_odoo_when_optional_venv_is_absent(self):
         remote = load_script("deploy-addon-remote")
-        runner = FakeRunner([""])
+        runner = FakeRunner(["", "", "pos_revolut|installed\n"])
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -304,9 +443,62 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             deployment._update_module()
 
         self.assertEqual(
-            runner.calls[0][0][:5],
+            runner.calls[1][0][:5],
             ["runuser", "-u", "odoo", "--", "/usr/bin/odoo"],
         )
+
+    def test_upgrade_installs_missing_bridge_when_restaurant_is_installed(self):
+        remote = load_script("deploy-addon-remote")
+        runner = FakeRunner([
+            "pos_restaurant|installed\n",
+            "",
+            "pos_revolut|installed\npos_restaurant|installed\npos_revolut_restaurant|installed\n",
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "unused.tar.gz"
+            archive.write_bytes(b"unused")
+            self._deployment(remote, runner, root, archive)._update_module()
+        update = runner.calls[1][0]
+        self.assertEqual(update[update.index("--update") + 1], "pos_revolut")
+        self.assertEqual(update[update.index("--init") + 1], "pos_revolut_restaurant")
+
+    def test_upgrade_refreshes_installed_bridge(self):
+        remote = load_script("deploy-addon-remote")
+        runner = FakeRunner([
+            "pos_restaurant|installed\npos_revolut_restaurant|installed\n",
+            "",
+            "pos_revolut|installed\npos_restaurant|installed\npos_revolut_restaurant|installed\n",
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "unused.tar.gz"
+            archive.write_bytes(b"unused")
+            self._deployment(remote, runner, root, archive)._update_module()
+        update = runner.calls[1][0]
+        self.assertEqual(
+            update[update.index("--update") + 1],
+            "pos_revolut,pos_revolut_restaurant",
+        )
+
+    def test_missing_bridge_after_update_blocks_service_restart(self):
+        remote = load_script("deploy-addon-remote")
+        runner = FakeRunner([
+            "pos_revolut_payment_operation\n", "0\n", "", "",
+            "pos_revolut_payment_operation\n", "0\n",
+            "pos_restaurant|installed\n", "",
+            "pos_revolut|installed\npos_restaurant|installed\n",
+        ])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = self._artifact(root)
+            self._target_configuration(root)
+            deployment = self._deployment(remote, runner, root, archive)
+            with self.assertRaisesRegex(remote.DeploymentError, "bridge is not installed"):
+                deployment.execute()
+        commands = [call[0] for call in runner.calls]
+        self.assertIn(["systemctl", "stop", "odoo"], commands)
+        self.assertNotIn(["systemctl", "start", "odoo"], commands)
 
     def test_financial_blocker_aborts_before_backup_or_service_stop(self):
         remote = load_script("deploy-addon-remote")
@@ -392,7 +584,9 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
                 "",
                 "pos_revolut_payment_operation\n",
                 "0\n",
+                "pos_restaurant|installed\npos_revolut_restaurant|installed\n",
                 "",
+                "pos_revolut|installed\npos_restaurant|installed\npos_revolut_restaurant|installed\n",
                 "",
                 "active\n",
                 "",
@@ -436,7 +630,7 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
                 / revision
                 / "pos_revolut"
             )
-            self.assertEqual((release / "REVISION").read_text().strip(), revision)
+            self.assertEqual((release.parent / "REVISION").read_text().strip(), revision)
             self.assertEqual(release.parent.stat().st_mode & 0o222, 0)
             self.assertEqual(release.stat().st_mode & 0o222, 0)
             self.assertEqual(
@@ -444,6 +638,8 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             )
             self.assertTrue(current.is_symlink())
             self.assertEqual(current.resolve(), release)
+            bridge = root / "opt" / "odoo-hosting" / "addons" / "pos_revolut_restaurant"
+            self.assertEqual(bridge.resolve(), release.parent / "pos_revolut_restaurant")
             self.assertIn(f"Deployed POS Revolut revision {revision}", report)
             backup_files = list(
                 (root / "var" / "backups" / "odoo-revolut-deploy").glob(
@@ -456,14 +652,15 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             copied_secret = backup / "etc" / "odoo-revolut" / "revolut.env"
             self.assertEqual(copied_secret.read_text(), secret_file.read_text())
             manifest = json.loads((backup / "deployment.json").read_text())
-            self.assertEqual(manifest["previous_release"], str(previous_release))
+            self.assertEqual(manifest["previous_releases"]["pos_revolut"], str(previous_release))
+            self.assertIsNone(manifest["previous_releases"]["pos_revolut_restaurant"])
 
         commands = [call[0] for call in runner.calls]
         self.assertIn(["systemctl", "start", "odoo-backup.service"], commands)
         self.assertIn(["systemctl", "stop", "odoo"], commands)
         update = next(command for command in commands if "/usr/bin/odoo" in command)
         self.assertIn("--update", update)
-        self.assertIn("pos_revolut", update)
+        self.assertIn("pos_revolut,pos_revolut_restaurant", update)
         self.assertIn("--stop-after-init", update)
         self.assertIn("--no-http", update)
         self.assertIn("--workers=0", update)
@@ -537,6 +734,7 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
                 "",
                 "pos_revolut_payment_operation\n",
                 "0\n",
+                "",
                 failure,
             ]
         )
@@ -581,7 +779,6 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
                 / "revolut"
                 / "staging"
                 / revision
-                / "pos_revolut"
             )
             release.mkdir(parents=True)
             (release / "REVISION").write_text(revision + "\n")
@@ -622,10 +819,10 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
                 / "revolut"
                 / "staging"
                 / revision
-                / "pos_revolut"
             )
             release.mkdir(parents=True)
-            (release / "__manifest__.py").write_text("{'tampered': True}\n")
+            (release / "pos_revolut").mkdir()
+            (release / "pos_revolut" / "__manifest__.py").write_text("{'tampered': True}\n")
             (release / "REVISION").write_text(revision + "\n")
             (release / "ARTIFACT_SHA256").write_text(remote.sha256(archive) + "\n")
             deployment = self._deployment(
@@ -652,6 +849,7 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
                 "",
                 "",
                 "",
+                "pos_revolut|installed\n",
                 "",
                 "active\n",
                 "",
@@ -689,6 +887,8 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
                 "pos_revolut_payment_operation\n",
                 "0\n",
                 "",
+                "",
+                "pos_revolut|installed\n",
                 "",
                 failure,
             ]
@@ -738,6 +938,8 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
                 "",
                 "",
                 "",
+                "",
+                "pos_revolut|installed\n",
                 "",
                 "active\n",
                 "",
