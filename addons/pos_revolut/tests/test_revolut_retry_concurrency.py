@@ -8,7 +8,7 @@ from uuid import uuid4
 from odoo import SUPERUSER_ID, Command, api
 from odoo.exceptions import UserError
 from odoo.orm.registry import Registry
-from odoo.tests.common import TransactionCase, tagged
+from odoo.tests.common import TransactionCase, new_test_user, tagged
 from odoo.tools import mute_logger
 
 
@@ -52,14 +52,14 @@ class TestRevolutRetryConcurrency(TransactionCase):
             "odoo.addons.pos_revolut.models.pos_payment_method.requests.request"
         ))
 
-    def _rpc(self, name, *args):
+    def _rpc(self, name, *args, user_id=SUPERUSER_ID):
         with self.registry.cursor() as cursor:
-            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            env = api.Environment(cursor, user_id, self.context)
             result = getattr(env["pos.payment.method"].browse(self.method_id), name)(*args)
             cursor.commit()
             return result
 
-    def _start(self, previous_operation_id=None):
+    def _start(self, previous_operation_id=None, user_id=SUPERUSER_ID):
         snapshot = {
             "pricelist_id": 0,
             "fiscal_position_id": False,
@@ -73,6 +73,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
             "revolut_start_payment", self.session_id, self.order_uuid,
             self.line_uuid, 12.34, self.currency_id,
             previous_operation_id or False, snapshot,
+            user_id=user_id,
         )
 
     @staticmethod
@@ -338,21 +339,33 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.provider_order, self.provider_intent = str(uuid4()), str(uuid4())
         self.request.reset_mock()
         barrier, replay_finished = Barrier(2), Event()
+        with self.registry.cursor() as cursor:
+            setup_env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            cashier_ids = [new_test_user(
+                setup_env,
+                login=f"revolut_concurrent_cashier_{index}_{uuid4().hex}",
+                groups="base.group_user,point_of_sale.group_pos_user",
+                company_id=setup_env.company.id,
+            ).id for index in range(2)]
+            cursor.commit()
 
         def http(method, url, **kwargs):
             if method == "POST" and url.endswith("/api/orders"):
                 self.assertTrue(replay_finished.wait(10), "Competing retry did not return")
             return self._start_http(method, url, **kwargs)
 
-        def retry():
+        def retry(user_id):
             barrier.wait(timeout=10)
             try:
-                return self._start(first["operation_id"])
+                return self._start(first["operation_id"], user_id=user_id)
             finally:
                 replay_finished.set()
 
         self.request.side_effect = http
-        results = self._run_workers([("retry-one", retry), ("retry-two", retry)])
+        results = self._run_workers([
+            ("retry-one", lambda: retry(cashier_ids[0])),
+            ("retry-two", lambda: retry(cashier_ids[1])),
+        ])
         self.assertEqual(len({result["operation_id"] for result in results}), 1)
         self.assertNotEqual(results[0]["operation_id"], first["operation_id"])
         posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]

@@ -14,4 +14,8 @@ RUN curl --fail --location --show-error \
     && rm -f /tmp/google-chrome-stable.deb \
     && rm -rf /var/lib/apt/lists/*
 
+COPY docker/sitecustomize.py /opt/odoo-test-guard/sitecustomize.py
+COPY docker/verify_merchant_http_guard.py /opt/odoo-test-guard/verify_merchant_http_guard.py
+ENV PYTHONPATH=/opt/odoo-test-guard
+
 USER odoo

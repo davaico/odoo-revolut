@@ -345,6 +345,42 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             any(command[:3] == ["systemctl", "stop", "odoo"] for command in commands)
         )
 
+    def test_pending_refund_blocks_deployment_before_backup(self):
+        remote = load_script("deploy-addon-remote")
+        runner = FakeRunner([
+            "pos_revolut_payment_operation\npos_revolut_refund_operation\n",
+            "0\n",
+            "1\n",
+        ])
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "artifact.tar.gz"
+            archive.write_bytes(b"reviewed archive")
+            deployment = remote.RemoteDeployment(
+                runner=runner,
+                root=root,
+                archive=archive,
+                expected_sha256=remote.sha256(archive),
+                revision="a" * 40,
+                database="revolut_staging",
+                customer="revolut",
+                environment="staging",
+                mode="upgrade",
+            )
+
+            with self.assertRaisesRegex(
+                remote.DeploymentError,
+                "pos_revolut_refund_operation=1",
+            ):
+                deployment.execute()
+
+        self.assertFalse(any(
+            call[0][:3] == ["systemctl", "start", "odoo-backup.service"]
+            or call[0][:3] == ["systemctl", "stop", "odoo"]
+            for call in runner.calls
+        ))
+
     def test_successful_upgrade_installs_release_then_restarts_and_checks_health(self):
         remote = load_script("deploy-addon-remote")
         revision = "3" * 40

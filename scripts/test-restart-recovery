@@ -13,6 +13,8 @@ trap cleanup EXIT
 
 cleanup
 "${compose[@]}" build odoo
+"${compose[@]}" run --rm --no-deps --entrypoint python3 odoo \
+    /opt/odoo-test-guard/verify_merchant_http_guard.py
 "${compose[@]}" up --detach --wait db
 "${compose[@]}" run --rm odoo \
     --database "$database_name" --init pos_revolut \

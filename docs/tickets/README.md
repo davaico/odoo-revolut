@@ -54,7 +54,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [08 — Issue and reconcile a full Revolut refund](closed/08-full-revolut-refund.md) | `ready-for-agent` at closure | Closed | 05 (closed) |
 | [09 — Issue partial refunds across original payment allocations](closed/09-partial-allocated-refunds.md) | `ready-for-agent` at closure | Closed | 07 (closed), 08 (closed) |
 | [10 — Install and upgrade a reviewed revision on staging](closed/10-staging-install-upgrade.md) | `ready-for-human` at closure | Closed | 03 (closed) |
-| [11 — Verify the complete addon on the target Odoo version](ready-for-agent/11-target-version-acceptance.md) | `ready-for-agent` | Open | 06, 09, 10 |
+| [11 — Verify the complete addon on the target Odoo version](closed/11-target-version-acceptance.md) | `ready-for-agent` at closure | Closed | 06, 09, 10 |
 | [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11 |
 
 ## Shared implementation contract

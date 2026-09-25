@@ -120,6 +120,37 @@ class TestRevolutPayment(TransactionCase):
 
     @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
     @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_terminal_cannot_start_from_another_pos_session(self, request):
+        other_method = self.env["pos.payment.method"].create({
+            "name": "Other POS terminal",
+            "payment_method_type": "terminal",
+            "use_payment_terminal": "revolut",
+            "revolut_environment": "sandbox",
+            "revolut_location_id": self.LOCATION_ID,
+            "revolut_terminal_id": str(uuid4()),
+            "revolut_fulfilment_type": "eat_in",
+            "revolut_secret_reference": "ODOO_REVOLUT_SECRET_PAYMENT_TEST",
+        })
+        other_config = self.env["pos.config"].create({
+            "name": "Other POS session",
+            "payment_method_ids": [Command.link(other_method.id)],
+            "auto_validate_terminal_payment": True,
+        })
+        other_session = self.env["pos.session"].create({
+            "config_id": other_config.id, "state": "opened",
+        })
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+
+        with self.assertRaises(AccessError):
+            self.payment_method.revolut_start_payment(
+                other_session.id, order_uuid, line_uuid, 12.34,
+                other_config.currency_id.id, False,
+                self._financial_snapshot(order_uuid),
+            )
+        request.assert_not_called()
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
     def test_unresolved_order_blocks_another_terminal(self, request):
         order_uuid, line_uuid = str(uuid4()), str(uuid4())
         request.side_effect = self._start_responses()
