@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
     ForegroundTimeout, RevolutPaymentState, paymentActions, orderActions,
-    paymentResponseSuccessful, restorePaymentLine,
+    paymentOutcome, paymentResponseSuccessful, restorePaymentLine,
 } from "../src/app/revolut_payment_state.js";
 
 function deferred() {
     let resolve;
-    const promise = new Promise((done) => { resolve = done; });
-    return { promise, resolve };
+    let reject;
+    const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
+    return { promise, resolve, reject };
 }
 
 class ControlledClock {
@@ -50,6 +51,7 @@ function fixture({ refund = false, call, chooseAllocation = async () => false } 
     };
     order.payment_ids.push(line);
     const calls = [];
+    const errors = [];
     const adapter = {
         async call(method, args) {
             calls.push({ method, args });
@@ -64,10 +66,10 @@ function fixture({ refund = false, call, chooseAllocation = async () => false } 
             payment.transaction_id = result.payment_id;
             payment.payment_ref_no = result.order_id;
         },
-        showError() {},
+        showError(payment, state) { errors.push(state); },
     };
     const state = new RevolutPaymentState({ adapter, clock, methodId: 7, sessionId: 8, currencyId: 9 });
-    return { state, clock, order, line, calls };
+    return { state, clock, order, line, calls, errors };
 }
 
 test("verified cancellation result survives an older failed poll", async () => {
@@ -97,6 +99,38 @@ test("verified cancellation result survives an older failed poll", async () => {
     assert.equal(line.payment_ref_no, "rev-1");
     assert.equal(paymentActions(line).blocksCheckout, false);
     assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 1);
+});
+
+test("verified poll survives a later cancellation transport failure", async () => {
+    const poll = deferred();
+    const cancellation = deferred();
+    const { state, clock, order, line, errors } = fixture({
+        call(method) {
+            if (method === "revolut_start_payment") {
+                return { operation_id: 5, state: "pending" };
+            }
+            if (method === "revolut_poll_payment") {
+                return poll.promise;
+            }
+            if (method === "revolut_cancel_payment") {
+                return cancellation.promise;
+            }
+            return false;
+        },
+    });
+    const request = state.request(order, line);
+    await tick();
+    clock.advance(1000);
+    await tick();
+    const cancel = state.cancel(order, line);
+    poll.resolve({ operation_id: 5, state: "verified", payment_id: "pay-5", order_id: "rev-5" });
+    await tick();
+    cancellation.reject(new Error("connection lost after verification"));
+    assert.equal(await cancel, false);
+    assert.equal(await request, true);
+    assert.equal(paymentOutcome(line), "verified");
+    assert.equal(line.payment_ref_no, "rev-5");
+    assert.deepEqual(errors, []);
 });
 
 test("foreground deadline keeps an uncertain start protected and reload reconciles it", async () => {
