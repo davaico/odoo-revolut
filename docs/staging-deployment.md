@@ -140,8 +140,8 @@ bridge upgrade, and the mocked POS browser tours:
 ```
 
 For an existing installation, use the same command with `--mode upgrade`.
-Success output includes the exact revision, immutable release path for both
-addons, and the configuration-backup path. Record all three in the change record. The uploaded
+Success output includes the exact revision, base addon path within the immutable
+two-addon release, and the configuration-backup path. Record all three in the change record. The uploaded
 temporary archive is removed whether deployment succeeds or fails.
 
 ## Operator-controlled no-charge smoke check
