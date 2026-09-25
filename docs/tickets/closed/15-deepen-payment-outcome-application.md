@@ -122,3 +122,19 @@ and observes only the original order POST. No replacement intent is dispatched.
 Order-only manager association now checks ownership only for references it was
 given, and preserves a matching creation sequence already claimed by the server.
 No credential or deployment configuration changed.
+
+Follow-up acceptance on 2026-09-25 at `8261fff`:
+
+- `scripts/test-addon --verify-install-upgrade`: 143 tests passed on fresh
+  install, 143 after addon upgrade, and 8 after Restaurant activation; zero
+  failures or errors in every phase, including browser tours.
+- `scripts/test-restart-recovery`: pending payment recovered across two Odoo
+  processes without charge replay.
+- `scripts/test-deployment-guard`: payment and refund blockers were found and
+  then cleared as the disposable records settled.
+- `python3 -m unittest discover -s tests -p 'test_deploy_addon.py'`: 19 passed.
+- Bash syntax for the addon and restart runners and Node syntax for the
+  acceptance tour passed.
+
+These checks used mocked provider responses and disposable databases. Live
+terminal acceptance remains gated by ticket 02 and belongs to ticket 12.
