@@ -850,7 +850,7 @@ class TestRevolutPayment(TransactionCase):
 
         with patch.object(
             type(self.payment_method),
-            "_complete_revolut_dispatch_owned",
+            "_apply_revolut_observation_owned",
             autospec=True,
             side_effect=RuntimeError("simulated crash after HTTP dispatch"),
         ):

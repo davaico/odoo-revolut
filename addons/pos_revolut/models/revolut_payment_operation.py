@@ -1,4 +1,5 @@
 from decimal import Decimal, ROUND_HALF_UP
+from datetime import timedelta
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
@@ -200,6 +201,268 @@ class PosRevolutPaymentOperation(models.Model):
                         _("Persisted Revolut transaction references are immutable.")
                     )
         return super().write(values)
+
+    def _apply_payment_observation(self, kind, evidence=None):
+        """Apply provider or local evidence to the current locked attempt.
+
+        The caller owns the transaction. In particular, manager association and
+        its audit share a transaction, while cashier observations are committed
+        by their separate transaction adapter.
+        """
+        self.ensure_one()
+        evidence = evidence or {}
+        self.env.cr.execute(
+            "SELECT id FROM pos_revolut_payment_operation WHERE id = %s FOR UPDATE",
+            [self.id],
+        )
+        self.invalidate_recordset()
+
+        if kind.startswith("dispatch_"):
+            return self._apply_dispatch_observation(kind, evidence)
+        if kind == "association":
+            return self._apply_association_observation(evidence)
+        if kind == "legacy_final":
+            self._recover_legacy_final()
+            return self.operation_snapshot(self)
+        if kind == "references_unavailable":
+            # Missing references were seen before this lock. A dispatch may
+            # still be in flight, or a manager may have just linked them and
+            # scheduled reconciliation. That earlier read proves no outcome.
+            return self.operation_snapshot(self)
+        if (self.state == "verified" or self.retry_safe
+                or (kind == "timed_out"
+                    and self.state in {"declined", "failed", "cancelled"})):
+            return self.operation_snapshot(self)
+        if kind == "timed_out" and self.state in {
+            "created", "dispatching_order", "order_created", "dispatching_intent"
+        }:
+            # A local wait limit cannot cancel a server request between its
+            # committed steps. Preserve the claimable state; the public
+            # snapshot still reports unresolved with a timed-out outcome.
+            self.sudo().write({
+                "local_outcome": "timed_out", "next_reconcile_at": False,
+            })
+            return self.operation_snapshot(self)
+
+        values = {}
+        if kind == "terminal_check_failed":
+            # This check precedes every financial dispatch. An older attempt
+            # can have a final failure without retry_safe after an upgrade.
+            if self.env["pos.revolut.payment.dispatch"].sudo().search_count(
+                [("operation_id", "=", self.id)], limit=1
+            ) or self.revolut_order_id or self.revolut_payment_intent_id:
+                kind = "unknown"
+            else:
+                values = {"state": "failed", "provider_state": evidence["reason"]}
+        elif kind == "intent":
+            intent = evidence
+            if (intent.get("id") != self.revolut_payment_intent_id
+                    or intent.get("order_id") != self.revolut_order_id):
+                kind = "unknown"
+            else:
+                state = intent.get("state")
+                if (state in {"cancelled", "failed"}
+                        and not intent.get("payment_id")
+                        and self.revolut_payment_id):
+                    return self.operation_snapshot(self)
+                payment_id = intent.get("payment_id") or self.revolut_payment_id
+                if payment_id and (not isinstance(payment_id, str) or not payment_id):
+                    kind = "unknown"
+                elif payment_id:
+                    if self.revolut_payment_id and self.revolut_payment_id != payment_id:
+                        kind = "unknown"
+                    else:
+                        values = {"state": "pending", "provider_state": state,
+                                  "revolut_payment_id": payment_id}
+                elif state in {"pending", "processing"}:
+                    values = {"state": "pending", "provider_state": state}
+                elif state in {"cancelled", "failed"}:
+                    values = {"state": state, "provider_state": state}
+                else:
+                    kind = "unknown"
+        elif kind == "payment":
+            payment = evidence
+            if (not self.revolut_payment_id
+                    or payment.get("id") != self.revolut_payment_id
+                    or payment.get("order_id") != self.revolut_order_id
+                    or payment.get("amount") != self.amount_minor
+                    or payment.get("currency") != self.currency_code):
+                kind = "unknown"
+            else:
+                state = payment.get("state")
+                if state in {"captured", "completed"}:
+                    values = {"state": "verified", "provider_state": state,
+                              "verified_at": fields.Datetime.now()}
+                elif state in {"declined", "failed", "cancelled"}:
+                    values = {"state": state, "provider_state": state}
+                elif state in {"authorised", "capture_started", "declining",
+                               "cancelling", "failing"}:
+                    values = {"state": "pending", "provider_state": state}
+                else:
+                    kind = "unknown"
+        if kind in {"unknown", "interrupted", "timed_out"}:
+            failures = self.reconcile_failures + (kind == "interrupted")
+            delay = (30 if kind == "timed_out" else
+                     min(60 * 2 ** min(failures - 1, 5), 1800) if failures else 300)
+            values = {
+                "state": "unresolved",
+                "local_outcome": kind if kind != "unknown" else False,
+                "reconcile_failures": failures,
+                "next_reconcile_at": (
+                    fields.Datetime.now() + timedelta(seconds=delay)
+                    if self.revolut_order_id and self.revolut_payment_intent_id else False
+                ),
+            }
+        else:
+            state = values["state"]
+            values["local_outcome"] = False
+            if state in {"verified", "declined", "failed", "cancelled"}:
+                values.update({"next_reconcile_at": False, "reconcile_failures": 0,
+                               "blocking_terminal_key": False,
+                               "blocking_order_key": False})
+                if state != "verified":
+                    values["retry_safe"] = True
+            else:
+                values.update({
+                    "next_reconcile_at": fields.Datetime.now() + timedelta(seconds=30),
+                    "reconcile_failures": 0,
+                })
+        self.sudo().write(values)
+        return self.operation_snapshot(self)
+
+    def _recover_legacy_final(self):
+        if self.state not in {"declined", "failed", "cancelled"} or self.retry_safe:
+            return
+        confirmed = (
+            self.provider_state == self.state and self.revolut_order_id
+            and (self.revolut_payment_id or (
+                self.state in {"failed", "cancelled"}
+                and self.revolut_payment_intent_id
+            ))
+        )
+        pre_dispatch = (
+            self.state == "failed"
+            and self.provider_state in {"terminal_unavailable", "terminal_check_failed"}
+            and not self.revolut_order_id and not self.revolut_payment_intent_id
+            and not self.revolut_payment_id
+            and not self.env["pos.revolut.payment.dispatch"].sudo().search_count(
+                [("operation_id", "=", self.id)], limit=1
+            )
+        )
+        if confirmed or pre_dispatch:
+            self.sudo().write({"retry_safe": True, "blocking_order_key": False,
+                               "blocking_terminal_key": False,
+                               "next_reconcile_at": False, "reconcile_failures": 0})
+
+    def _apply_dispatch_observation(self, kind, evidence):
+        action = kind.removeprefix("dispatch_")
+        dispatch = self.env["pos.revolut.payment.dispatch"].sudo().search([
+            ("operation_id", "=", self.id), ("action", "=", action)
+        ], limit=1)
+        if not dispatch:
+            raise UserError(_("The Revolut dispatch was not claimed."))
+        if evidence.get("uncertain"):
+            if not dispatch.completed_at:
+                dispatch.write({"completed_at": fields.Datetime.now(),
+                                "outcome": "unresolved"})
+            if self.state != "verified" and not self.retry_safe:
+                return self._apply_payment_observation(
+                    evidence.get("cause", "unknown")
+                )
+            return self.operation_snapshot(self)
+
+        reference = evidence.get("reference")
+        if action in {"create_order", "create_intent"}:
+            if not isinstance(reference, str) or not reference:
+                raise UserError(_("Revolut returned no transaction reference."))
+            field_name = ("revolut_order_id" if action == "create_order"
+                          else "revolut_payment_intent_id")
+            if self[field_name] and self[field_name] != reference:
+                raise UserError(_("A different Revolut reference is already linked."))
+            if action == "create_intent" and not self.revolut_order_id:
+                raise UserError(_("The Revolut order reference is missing."))
+            already_linked = bool(self[field_name])
+            if not already_linked:
+                self.sudo().write({field_name: reference})
+            claimed_state = ("dispatching_order" if action == "create_order"
+                             else "dispatching_intent")
+            if (self.state == claimed_state
+                    or (self.state == "unresolved" and not already_linked
+                        and self.local_outcome == "timed_out")
+                    or (action == "create_order" and self.state == "unresolved"
+                        and already_linked and not self.revolut_payment_intent_id)):
+                # A local timeout does not refute this claimed request. Its
+                # valid acknowledgement may continue the original sequence.
+                # A manager's matching order-only association is likewise
+                # incomplete evidence and cannot stop the first intent.
+                values = {
+                    "state": "order_created" if action == "create_order" else "pending",
+                    **({"provider_state": evidence.get("state") or "pending"}
+                       if action == "create_intent" else {}),
+                }
+                if action == "create_intent" and not self.next_reconcile_at:
+                    values["next_reconcile_at"] = (
+                        fields.Datetime.now() + timedelta(seconds=30)
+                    )
+                self.sudo().write(values)
+        dispatch.write({"completed_at": fields.Datetime.now(),
+                        "outcome": "succeeded", "provider_reference": reference})
+        return self.operation_snapshot(self)
+
+    def _apply_association_observation(self, evidence):
+        order_reference = evidence["order_reference"]
+        intent_reference = evidence.get("intent_reference")
+        if self.state == "verified" or self.retry_safe:
+            raise UserError(_("This Revolut attempt already has a final outcome."))
+        if self.revolut_order_id and self.revolut_order_id != order_reference:
+            raise UserError(_("A different Revolut order is already linked."))
+        if (intent_reference and self.revolut_payment_intent_id
+                and self.revolut_payment_intent_id != intent_reference):
+            raise UserError(_("A different Revolut payment intent is already linked."))
+        order = evidence["order"]
+        metadata = order.get("metadata")
+        if (order.get("id") != order_reference
+                or order.get("amount") != self.amount_minor
+                or order.get("currency") != self.currency_code
+                or order.get("location_id") != self.location_id
+                or not isinstance(metadata, dict)
+                or metadata.get("pos_order_uuid") != self.order_uuid
+                or metadata.get("pos_payment_line_uuid") != self.payment_line_uuid):
+            raise UserError(_("The Revolut order does not match the original POS payment."))
+        intent = evidence.get("intent")
+        if intent_reference and (
+            not isinstance(intent, dict)
+            or intent.get("id") != intent_reference
+            or intent.get("order_id") != order_reference
+            or intent.get("amount") != self.amount_minor
+            or intent.get("currency") != self.currency_code
+            or intent.get("terminal_id") != self.terminal_id
+        ):
+            raise UserError(_("The Revolut intent does not match the original POS payment."))
+        ownership_domain = [("id", "!=", self.id)]
+        if intent_reference:
+            ownership_domain.append("|")
+        ownership_domain.append(("revolut_order_id", "=", order_reference))
+        if intent_reference:
+            ownership_domain.append(
+                ("revolut_payment_intent_id", "=", intent_reference)
+            )
+        owned = self.sudo().search(ownership_domain, limit=1)
+        if owned:
+            raise UserError(_("A Revolut reference is already owned by another attempt."))
+        # An order-only association confirms the order reference but does not
+        # invalidate this request's already claimed creation sequence.
+        state = self.state if (
+            not intent_reference
+            and self.state in {"dispatching_order", "order_created",
+                               "dispatching_intent"}
+        ) else "unresolved"
+        values = {"revolut_order_id": order_reference, "state": state}
+        if intent_reference:
+            values.update({"revolut_payment_intent_id": intent_reference,
+                           "next_reconcile_at": fields.Datetime.now()})
+        self.sudo().write(values)
+        return self.operation_snapshot(self)
 
     @api.model
     def normalize_financial_snapshot(self, data):
