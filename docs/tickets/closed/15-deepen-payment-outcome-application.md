@@ -94,23 +94,26 @@ cannot cause a serialization failure or erase a verified payment.
 
 Focused Odoo results on `19.0.20260908`:
 
-- `TestRevolutRetryConcurrency`: 17 passed in the full run. Includes
-  stale scheduled and foreground polling, stale cancellation, cancellation during payment
-  verification, provisional polls and local timeouts during order and intent
-  dispatch, a stale missing-reference poll after manager association, dispatch crash
-  recovery, delayed acknowledgement after manager association and
+- `TestRevolutRetryConcurrency`: 19 passed in the full run. Includes
+  stale scheduled and foreground polling, stale cancellation, cancellation
+  during payment verification, provisional polls and local timeouts before
+  claims and during order and intent dispatch, a stale missing-reference poll
+  after manager association, dispatch crash recovery, delayed acknowledgement
+  after manager association and
   reconciliation, and both audit failure transaction guarantees.
 - `TestRevolutReconciliation`: 7 passed.
 - `TestRevolutPayment`: 31 passed.
-- Full `scripts/test-addon`: 138 passed, 0 failed and 0 errors, including
+- Full `scripts/test-addon`: 140 passed, 0 failed and 0 errors, including
   browser tours. `python3 -m compileall` and `git diff --check` passed.
 
 The in-flight poll and timeout tests first failed on the review-discovered
 races. Missing-reference observations now leave the locked operation intact; a
 valid acknowledgement after local timeout resumes its original dispatch claim
 and restores reconciliation scheduling without overriding manager-linked or
-verified results. A separate stale-poll test first showed that manager reconciliation was delayed;
-it now preserves the manager-scheduled time.
+verified results. The two before-claim tests showed that local timeout must
+leave an in-progress server request claimable. A separate stale-poll test
+first showed that manager reconciliation was delayed; it now preserves the
+manager-scheduled time.
 
 The delayed acknowledgement test recovers the same operation through the POS
 lookup, preserves its order, intent, and payment references and released locks,

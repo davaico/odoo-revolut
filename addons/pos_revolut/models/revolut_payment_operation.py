@@ -233,6 +233,16 @@ class PosRevolutPaymentOperation(models.Model):
                 or (kind == "timed_out"
                     and self.state in {"declined", "failed", "cancelled"})):
             return self.operation_snapshot(self)
+        if kind == "timed_out" and self.state in {
+            "created", "dispatching_order", "order_created", "dispatching_intent"
+        }:
+            # A local wait limit cannot cancel a server request between its
+            # committed steps. Preserve the claimable state; the public
+            # snapshot still reports unresolved with a timed-out outcome.
+            self.sudo().write({
+                "local_outcome": "timed_out", "next_reconcile_at": False,
+            })
+            return self.operation_snapshot(self)
 
         values = {}
         if kind == "terminal_check_failed":
