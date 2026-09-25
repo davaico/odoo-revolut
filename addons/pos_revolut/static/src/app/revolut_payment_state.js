@@ -13,6 +13,13 @@ export function isRevolutRefund(line) {
     return isRevolut(line) && (line.amount < 0 || line.pos_order_id?.isRefund);
 }
 
+function refundMayHaveStarted(line) {
+    const state = line.uiState || {};
+    return Boolean(state.revolutStarted || state.revolutStarting ||
+        state.revolutOperationId || state.revolutSnapshot ||
+        state.revolutOriginalOperationId || line.transaction_id || line.payment_ref_no);
+}
+
 export function paymentActions(line) {
     if (!isRevolut(line)) {
         return {
@@ -23,12 +30,13 @@ export function paymentActions(line) {
     }
     const state = line.uiState || {};
     const refund = isRevolutRefund(line);
-    const unstartedRefund = refund && !state.revolutStarted &&
-        !state.revolutOperationId && !state.revolutSnapshot && !state.revolutStarting;
+    const refundStarted = refund && refundMayHaveStarted(line);
+    const unstartedRefund = refund && !refundStarted;
     const failedRefund = refund && state.revolutSnapshot?.state === "failed";
     const locked = !unstartedRefund && !failedRefund && !state.revolutSelectingAllocation &&
         !state.revolutSnapshot?.retry_safe &&
-        (state.revolutStarted || ["retry", "waiting", "waitingCard", "waitingCancel"].includes(line.getPaymentStatus()));
+        (refundStarted || state.revolutStarted ||
+            ["retry", "waiting", "waitingCard", "waitingCancel"].includes(line.getPaymentStatus()));
     const reconcile = !unstartedRefund && !failedRefund && (locked || refund) &&
         state.revolutSnapshot?.state !== "verified";
     return {
@@ -175,7 +183,7 @@ export class RevolutPaymentState {
         const { order, line } = owner;
         const refund = isRevolutRefund(line);
         const pollMethod = refund ? "revolut_poll_refund" : "revolut_poll_payment";
-        const started = line.uiState.revolutStarted;
+        const started = refund ? refundMayHaveStarted(line) : line.uiState.revolutStarted;
         let deadline = this.clock.now() + PAYMENT_TIMEOUT_MS;
         line.uiState.revolutStarted = true;
         line.setPaymentStatus("waiting");
@@ -184,9 +192,7 @@ export class RevolutPaymentState {
                 try {
                     await this.clock.before(this.adapter.restoreRefundOriginals(order), deadline);
                 } catch (error) {
-                    if (started || line.uiState.revolutOperationId ||
-                        line.uiState.revolutSnapshot || line.uiState.revolutOriginalOperationId ||
-                        line.transaction_id || line.payment_ref_no) {
+                    if (started) {
                         throw error;
                     }
                     this.adapter.discardRefund(line);
