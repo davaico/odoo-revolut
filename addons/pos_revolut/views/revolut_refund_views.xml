@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_revolut_refund_list" model="ir.ui.view">
+        <field name="name">pos.revolut.refund.operation.list</field>
+        <field name="model">pos.revolut.refund.operation</field>
+        <field name="arch" type="xml">
+            <list create="0" edit="0" delete="0" decoration-danger="state == 'failed'" decoration-warning="state in ('dispatching', 'pending', 'unresolved')">
+                <field name="create_date"/><field name="original_order_id"/><field name="pos_order_id"/>
+                <field name="amount"/><field name="currency_id"/><field name="state"/>
+                <field name="revolut_order_id"/><field name="related_order_id"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+    <record id="view_revolut_refund_form" model="ir.ui.view">
+        <field name="name">pos.revolut.refund.operation.form</field>
+        <field name="model">pos.revolut.refund.operation</field>
+        <field name="arch" type="xml">
+            <form create="0" edit="0" delete="0">
+                <header><button name="action_check_status" type="object" string="Check status" class="btn-primary" invisible="state in ('verified', 'failed')"/></header>
+                <sheet>
+                    <group>
+                        <field name="state"/><field name="provider_state"/><field name="local_outcome"/>
+                        <field name="original_operation_id"/><field name="original_order_id"/>
+                        <field name="pos_order_id"/><field name="pos_session_id"/><field name="payment_method_id"/>
+                        <field name="amount"/><field name="currency_id"/><field name="order_uuid"/><field name="payment_line_uuid"/>
+                        <field name="revolut_order_id"/><field name="related_order_id"/><field name="idempotency_key"/>
+                        <field name="dispatched_at"/><field name="verified_at"/><field name="next_reconcile_at"/>
+                    </group>
+                    <p>Pending or uncertain refunds reserve the original payment. Check status; do not issue another refund or substitute cash. If no refund reference can be recovered, contact Revolut support with the original order and idempotency key.</p>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="action_revolut_refunds" model="ir.actions.act_window">
+        <field name="name">Revolut Refunds</field><field name="res_model">pos.revolut.refund.operation</field><field name="view_mode">list,form</field>
+    </record>
+    <menuitem id="menu_revolut_refunds" name="Revolut Refunds" parent="point_of_sale.menu_point_of_sale" action="action_revolut_refunds" groups="point_of_sale.group_pos_manager" sequence="41"/>
+</odoo>

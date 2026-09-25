@@ -30,7 +30,8 @@ Development can begin entirely with mocked Revolut HTTP behavior; Merchant crede
 The intended workflow is:
 
 1. Build and test the addon locally in this repository.
-2. Use a local deployment script to copy a reviewed revision to the staging VM. That script does not exist yet.
+2. Use the local deployment script to copy a reviewed revision to the staging
+   VM, following [the staging deployment runbook](staging-deployment.md).
 3. Install or upgrade the addon in the staging database.
 4. Validate the POS behavior in the browser and inspect server logs through Tailscale SSH.
 5. Perform real terminal tests only after non-production Merchant access, a matching Revolut location, and a Pay at Counter terminal are available.
@@ -43,11 +44,37 @@ Never commit or document Merchant API tokens, Odoo passwords, Terraform state, T
 
 The infrastructure account IDs, VM provisioning commands, Terraform recovery procedure, and provider credentials are intentionally omitted because they are not required to implement the addon. Consult `../odoo-hosting` when infrastructure work is actually needed.
 
-## Not yet available
+## Local addon verification
 
-- An addon-specific local test command
-- A local staging deployment script
-- Non-production Revolut Merchant credentials
-- Confirmed terminal access and location identifiers
+The repository now includes a disposable environment pinned to Odoo Community
+`19.0.20260908` and PostgreSQL 16.14. Run the addon tests with:
 
-Add the exact commands here when their implementations exist; do not document speculative commands.
+```bash
+./scripts/test-addon
+```
+
+Verify install, upgrade, the manager configuration browser flow, and actual
+retail and Restaurant POS startup:
+
+```bash
+./scripts/test-addon --verify-install-upgrade
+```
+
+The runtime environment has no external network route. Expected Revolut calls
+are mocked; any accidental outbound API traffic fails. The browser-test image
+adds a checksum-verified Chrome package and Odoo's `python3-websocket` browser
+transport to the exact pinned Odoo base image. The latter was approved as a
+test-only dependency on 23 September 2026. The runner verifies it imports before
+testing: without it, Odoo silently skips browser tours after a warning, so those
+older warning-only runs are not browser acceptance evidence.
+
+The official Revolut terminal guide now documents a controlled sandbox route
+using a virtual terminal and amount-driven simulated payment outcomes. The
+project has not authenticated to that environment or observed its behavior.
+
+Still unavailable:
+
+- non-production Revolut Merchant credentials
+- an assigned operator for sandbox and later physical-terminal acceptance
+- confirmed production terminal access and matching physical location
+  identifiers

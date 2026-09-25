@@ -35,3 +35,23 @@ Place the addon under `addons/`, keeping models, views, security rules, static P
 - Cover success, decline, failure, cancellation, interruption, timeout, safe retry, and full/partial refund paths.
 
 Run the narrowest relevant tests before submission. Use short, imperative commit subjects. Pull requests should explain payment-flow impact, tests performed, configuration changes, and deployment or credential-rotation steps.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are local Markdown tickets under `docs/tickets/`, organized by canonical
+triage label with dependency gates recorded in each ticket. See
+`docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default `needs-triage`, `needs-info`, `ready-for-agent`,
+`ready-for-human`, and `wontfix` vocabulary. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository using root `CONTEXT.md` and system-wide
+ADRs under `docs/adr/` when those documents are needed. See
+`docs/agents/domain.md`.

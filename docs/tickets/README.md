@@ -2,41 +2,60 @@
 
 Approved implementation breakdown for the Odoo–Revolut addon. Source: the three project tickets pasted into the planning conversation and the subsequently approved implementation plan. No tracker issue URLs were supplied, so no parent issue is invented or modified.
 
-## Status folders
+## Triage folders and state
 
-- **Ready to implement:** all prerequisite tickets are closed; status `ready-for-agent`.
-- **In implementation:** work has started; status `in-implementation`.
-- **Blocked:** prerequisite tickets or explicitly recorded external prerequisites remain outstanding; status `blocked`.
-- **Closed:** acceptance criteria have been demonstrated and evidence recorded; status `closed`.
+Open tickets are filed by the canonical triage label recorded in each file:
 
-Initially tickets 01 and 02 are ready, 03–12 are blocked, and the other folders are empty. Placeholder files preserve empty folders in Git.
+- **`needs-triage`:** maintainer evaluation is required.
+- **`needs-info`:** external information or access is required.
+- **`ready-for-agent`:** the ticket is fully specified; dependency gates still
+  apply.
+- **`ready-for-human`:** human or physical-world execution is required.
+- **`wontfix`:** the ticket will not be actioned.
 
-Numbers are stable identifiers, assigned in dependency order. They do not require a linear execution order: work any ticket whose blockers are all closed. Move its existing file to the appropriate folder and update its Status and Category; do not renumber, duplicate or erase its dependency history. Record external blockers when discovered. On closure, record verification commands/results and promote newly unblocked tickets. Update the links below whenever files move.
+Completed tickets are archived under **`closed`**. Lifecycle state is separate
+from triage: an open ticket has state `open` or `claimed`, while completed and
+`wontfix` tickets have state `closed`. Placeholder files preserve empty label
+folders in Git.
+
+Numbers are stable identifiers assigned in dependency order. They do not
+require linear execution: a `ready-for-agent` ticket is actionable only when
+all of its blockers are closed. Move a ticket when its triage label changes,
+set its state to `claimed` when work starts, and update this index. Do not
+renumber, duplicate or erase dependency history. On completion, record
+verification evidence, set state to `closed`, and move the ticket to `closed/`.
 
 ## Branch workflow
 
-Each ticket declares its local `codex/<ticket-number>-<slug>` work branch immediately below the title. All 12 branches were created from the same committed ticket baseline; blocked branches do not yet contain future prerequisite implementations.
+Each ticket declares its local `codex/<ticket-number>-<slug>` work branch
+immediately below the title. All 12 branches were created from the same
+committed ticket baseline; branch existence does not satisfy a dependency.
 
-Use `main` as the shared integration branch for this ticket set. Integrate reviewed, verified ticket work there, including its status update. Before starting a ticket, merge the latest integration branch into its assigned branch and confirm every declared blocker is closed and its implementation is present. Never treat branch existence as permission to skip blockers. Do not reset or overwrite a branch that already contains work.
+Use `main` as the shared integration branch for this ticket set. Integrate
+reviewed, verified ticket work there, including its state and triage updates.
+Before starting a ticket, merge the latest integration branch into its assigned
+branch and confirm every declared blocker is closed and its implementation is
+present. Never treat branch existence as permission to skip blockers. Do not
+reset or overwrite a branch that already contains work.
 
 Use separate worktrees for concurrent agents, within the project's designated worktree area. Keep each ticket's changes on its assigned branch. Resolve overlaps against the integration branch and run the affected tests before integration. These branches are local; publishing them to a remote is a separate action.
 
 ## Ticket directory
 
-| Ticket | Category | Blocked by |
-| --- | --- | --- |
-| [01 — Configure and verify a Revolut payment method](ready-to-implement/01-configure-revolut-payment-method.md) | Ready to implement | None |
-| [02 — Resolve the Revolut terminal contract and testing prerequisites](ready-to-implement/02-confirm-terminal-contract.md) | Ready to implement | None |
-| [03 — Complete one verified Revolut terminal payment](blocked/03-verified-terminal-payment.md) | Blocked | 01 |
-| [04 — Handle unsuccessful payments and safe retries](blocked/04-unsuccessful-payments-safe-retries.md) | Blocked | 03 |
-| [05 — Recover payments after interruption or late success](blocked/05-recover-interrupted-payments.md) | Blocked | 04 |
-| [06 — Resolve uncertain payments from a manager worklist](blocked/06-manager-reconciliation-worklist.md) | Blocked | 05 |
-| [07 — Use Revolut with split tender and restaurant checkout](blocked/07-split-tender-restaurant-checkout.md) | Blocked | 05 |
-| [08 — Issue and reconcile a full Revolut refund](blocked/08-full-revolut-refund.md) | Blocked | 05 |
-| [09 — Issue partial refunds across original payment allocations](blocked/09-partial-allocated-refunds.md) | Blocked | 07, 08 |
-| [10 — Install and upgrade a reviewed revision on staging](blocked/10-staging-install-upgrade.md) | Blocked | 03 |
-| [11 — Verify the complete addon on the target Odoo version](blocked/11-target-version-acceptance.md) | Blocked | 06, 09, 10 |
-| [12 — Validate real terminal payments and publish release evidence](blocked/12-live-terminal-release-evidence.md) | Blocked | 02, 11 |
+| Ticket | Triage | State | Blocked by |
+| --- | --- | --- | --- |
+| [01 — Configure and verify a Revolut payment method](closed/01-configure-revolut-payment-method.md) | `ready-for-agent` at closure | Closed | None |
+| [02 — Resolve the Revolut terminal contract and testing prerequisites](needs-info/02-confirm-terminal-contract.md) | `needs-info` | Open | External: provider clarification and test access |
+| [03 — Complete one verified Revolut terminal payment](closed/03-verified-terminal-payment.md) | `ready-for-agent` at closure | Closed | 01 (closed) |
+| [04 — Handle unsuccessful payments and safe retries](closed/04-unsuccessful-payments-safe-retries.md) | `ready-for-agent` at closure | Closed | 03 (closed) |
+| [05 — Recover payments after interruption or late success](closed/05-recover-interrupted-payments.md) | `ready-for-agent` at closure | Closed | 04 (closed) |
+| [06 — Resolve uncertain payments from a manager worklist](closed/06-manager-reconciliation-worklist.md) | `ready-for-agent` at closure | Closed | 05 (closed) |
+| [07 — Use Revolut with split tender and restaurant checkout](closed/07-split-tender-restaurant-checkout.md) | `ready-for-agent` at closure | Closed | 05 (closed) |
+| [08 — Issue and reconcile a full Revolut refund](closed/08-full-revolut-refund.md) | `ready-for-agent` at closure | Closed | 05 (closed) |
+| [09 — Issue partial refunds across original payment allocations](closed/09-partial-allocated-refunds.md) | `ready-for-agent` at closure | Closed | 07 (closed), 08 (closed) |
+| [10 — Install and upgrade a reviewed revision on staging](closed/10-staging-install-upgrade.md) | `ready-for-human` at closure | Closed | 03 (closed) |
+| [11 — Verify the complete addon on the target Odoo version](ready-for-agent/11-target-version-acceptance.md) | `ready-for-agent` | Open | 06, 09, 10 |
+| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11 |
 
 ## Shared implementation contract
 

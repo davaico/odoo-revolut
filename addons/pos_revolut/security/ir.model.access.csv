@@ -1,0 +1,7 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_pos_revolut_operation_manager,pos.revolut.payment.operation manager,model_pos_revolut_payment_operation,point_of_sale.group_pos_manager,1,0,0,0
+access_pos_revolut_dispatch_manager,pos.revolut.payment.dispatch manager,model_pos_revolut_payment_dispatch,point_of_sale.group_pos_manager,1,0,0,0
+access_pos_revolut_audit_manager,pos.revolut.reconciliation.audit manager,model_pos_revolut_reconciliation_audit,point_of_sale.group_pos_manager,1,0,0,0
+access_pos_revolut_association_manager,pos.revolut.association.wizard manager,model_pos_revolut_association_wizard,point_of_sale.group_pos_manager,1,1,1,0
+access_pos_revolut_order_lock_manager,pos.revolut.order.lock manager,model_pos_revolut_order_lock,point_of_sale.group_pos_manager,1,0,0,0
+access_pos_revolut_refund_manager,pos.revolut.refund.operation manager,model_pos_revolut_refund_operation,point_of_sale.group_pos_manager,1,0,0,0
