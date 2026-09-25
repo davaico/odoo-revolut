@@ -14,6 +14,7 @@ Controlled real-terminal acceptance establishes whether the documented addon is 
 
 ## Acceptance criteria
 
+- [ ] Confirm the reviewed release includes completed corrections 16, 17 and 18, with recorded integrated mocked install, upgrade and Restaurant acceptance on the final combined revision, including verification of the delivered artifact, before starting live acceptance.
 - [ ] Confirm the deployed revision, target Odoo version, merchant environment, location, eligible terminal and operator-authorized test amounts before financial tests. Use non-production testing where supported; separately obtain explicit authorization for any real-money operation.
 - [ ] Validate successful full payment, split tender and retail/restaurant fulfilment using the confirmed contract. Demonstrate that only verified successful payment completes a fully paid order.
 - [ ] Validate decline/failure/cancellation and interruption/late recovery with provider-supported controlled methods. Verify safe retry and duplicate prevention using actual provider transaction references; never deliberately create uncontrolled duplicate charges.
@@ -26,3 +27,13 @@ Controlled real-terminal acceptance establishes whether the documented addon is 
 
 - 02 — Resolve the Revolut terminal contract and testing prerequisites
 - 11 — Verify the complete addon on the target Odoo version
+- 16 — Preserve uncertain refunds when original-sale recovery fails
+- 17 — Deliver the Restaurant bridge with the reviewed addon release
+- 18 — Isolate internal payment records by allowed company
+
+## Release gate update — 2026-09-25
+
+The owner approved the final audit corrections and required all three before
+this ticket. The existing contract/access and target-version acceptance gates
+remain in place. Ticket 02 can proceed independently while the software
+corrections are implemented and verified.
