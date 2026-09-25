@@ -672,6 +672,24 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
         commands = [call[0] for call in runner.calls]
         self.assertIn(["systemctl", "start", "odoo"], commands)
 
+    def test_http_health_check_waits_for_odoo_startup(self):
+        remote = load_script("deploy-addon-remote")
+        runner = FakeRunner(["", ""])
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "artifact.tar.gz"
+            archive.write_bytes(b"unused")
+            deployment = self._deployment(remote, runner, root, archive)
+
+            deployment._health_check()
+
+        curl = runner.calls[1][0]
+        self.assertIn("--retry", curl)
+        self.assertIn("--retry-connrefused", curl)
+        self.assertIn("--retry-delay", curl)
+        self.assertIn("--retry-max-time", curl)
+
     def test_remote_cli_uses_lock_reports_revision_and_removes_artifact(self):
         remote = load_script("deploy-addon-remote")
         revision = "8" * 40
