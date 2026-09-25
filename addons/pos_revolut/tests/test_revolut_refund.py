@@ -369,6 +369,18 @@ class TestRevolutRefund(CommonPosTest):
             self.payload["payment_ids"][0][2]["uuid"],
         )
 
+    def test_pending_refund_blocks_deployment_until_verified(self):
+        started = self._pending()
+        refund = self.env["pos.revolut.refund.operation"].browse(
+            started["operation_id"]
+        )
+        self.assertTrue(refund.deployment_blocking)
+
+        self.request.side_effect = [self._refund_response("completed")]
+        self.assertEqual(self._poll(started)["state"], "verified")
+        refund.invalidate_recordset()
+        self.assertFalse(refund.deployment_blocking)
+
     def test_duplicate_submit_reuses_refund_and_key(self):
         started = self._pending()
         self.assertEqual(self._start(), started)

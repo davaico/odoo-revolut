@@ -270,8 +270,10 @@ responses as evidence; the audit stores only reference UUIDs.
 The root `compose.yaml` pins the official Odoo image containing package
 `19.0.20260908` and PostgreSQL 16.14 by digest. The test image adds a fixed
 Google Chrome package whose SHA-256 is verified during the build. Its runtime
-network is internal, so an unexpected outbound Merchant API call fails.
-Automated tests patch every expected Revolut request.
+network is internal. A test-only Python guard also raises an assertion for any
+unmocked request to either Revolut Merchant host; both runners prove the guard
+is active before starting Odoo. Automated tests patch every expected Revolut
+request.
 
 Run the addon suite on a fresh database:
 
@@ -279,8 +281,8 @@ Run the addon suite on a fresh database:
 ./scripts/test-addon
 ```
 
-Run the install, addon tests, manager configuration browser tour, module
-upgrade, and retail/Restaurant POS startup tours:
+Run the fresh install, full addon suite, manager and POS browser tours, module
+upgrade, and retail/Restaurant checkout tours:
 
 ```bash
 ./scripts/test-addon --verify-install-upgrade
@@ -293,9 +295,17 @@ reconcile the same persisted attempt from a fresh Odoo process:
 ./scripts/test-restart-recovery
 ```
 
-The addon suite verifies the Odoo package version before starting. Both
-scripts remove their disposable containers, networks, databases, and
-filestores when they exit.
+Run the remote deployment preflight SQL against pending payment and refund
+records in a disposable Odoo database, then verify each blocker clears only
+after its operation settles:
+
+```bash
+./scripts/test-deployment-guard
+```
+
+The addon suite verifies the Odoo package version before starting. All three
+checks remove their disposable containers, networks, databases, and filestores
+when they exit.
 
 ## Partial and allocated Revolut returns (POS manager)
 
