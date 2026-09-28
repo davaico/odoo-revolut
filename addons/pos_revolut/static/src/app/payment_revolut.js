@@ -203,6 +203,8 @@ export class PaymentRevolut extends PaymentInterface {
     _showResultError(line, state) {
         if (isRevolutRefund(line)) {
             const messages = {
+                discovery_interrupted: _t("Could not check for an existing Revolut refund. No refund request was sent from this line. Retry after the connection returns, or remove this line and choose another eligible original payment method."),
+                discovery_timed_out: _t("The check for an existing Revolut refund timed out. No refund request was sent from this line. Retry after the connection returns, or remove this line and choose another eligible original payment method."),
                 failed: _t("The Revolut refund failed. A POS manager can remove this failed line and add a new refund line for the same remaining amount. Keep completed allocations unchanged."),
                 interrupted: _t("Communication with Revolut was interrupted. The refund may have succeeded. Choose Check status to reconcile the existing refund."),
                 timed_out: _t("The 60-second Revolut waiting limit expired. The refund remains unresolved. Choose Check status to reconcile the existing refund."),
@@ -215,6 +217,8 @@ export class PaymentRevolut extends PaymentInterface {
             return;
         }
         const messages = {
+            discovery_interrupted: _t("Could not check for an existing Revolut payment. No payment request was sent from this line. Retry after the connection returns, or remove this line and choose another payment method."),
+            discovery_timed_out: _t("The check for an existing Revolut payment timed out. No payment request was sent from this line. Retry after the connection returns, or remove this line and choose another payment method."),
             terminal_unavailable: _t("The Revolut terminal is unavailable. No charge was sent. Check the terminal before retrying."),
             terminal_check_failed: _t("The Revolut terminal connection check failed. No charge was sent. Check the connection before retrying."),
             declined: _t("The Revolut payment was declined. You can retry."),
@@ -362,6 +366,9 @@ patch(PaymentScreenPaymentLines.prototype, {
         const outcome = paymentOutcome(line);
         if (isRevolutRefund(line)) {
             const messages = {
+                discovery_interrupted: _t("Connection check failed — no refund request sent"),
+                discovery_timed_out: _t("Connection check timed out — no refund request sent"),
+                discovery_cancelled: _t("No refund request sent"),
                 failed: _t("Refund failed — remove this line to retry"),
                 pending: _t("Refund pending"),
                 interrupted: _t("Communication interrupted — refund unresolved"),
@@ -370,6 +377,9 @@ patch(PaymentScreenPaymentLines.prototype, {
             return messages[outcome] || _t("Refund unresolved");
         }
         const messages = {
+            discovery_interrupted: _t("Connection check failed — no payment request sent"),
+            discovery_timed_out: _t("Connection check timed out — no payment request sent"),
+            discovery_cancelled: _t("No payment request sent"),
             terminal_unavailable: _t("Terminal unavailable — no charge sent"),
             terminal_check_failed: _t("Terminal connection check failed — no charge sent"),
             declined: _t("Payment declined"),
