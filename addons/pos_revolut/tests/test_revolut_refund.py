@@ -1,5 +1,7 @@
 import os
+from copy import deepcopy
 from unittest.mock import Mock, patch
+from unittest import TestCase
 from uuid import uuid4
 
 import requests
@@ -7,6 +9,7 @@ import requests
 from odoo import Command
 from odoo.addons.point_of_sale.tests.common import CommonPosTest
 from odoo.tests.common import tagged, new_test_user
+from odoo.service.model import call_kw
 from odoo.exceptions import AccessError, UserError, ValidationError
 
 from .test_revolut_payment import TestRevolutOrderSettlement
@@ -76,6 +79,145 @@ class TestRevolutRefund(CommonPosTest):
             self.payload["payment_ids"][0][2]["uuid"], self.payload["payment_ids"][0][2]["amount"],
             self.session.currency_id.id, self.payload,
         )
+
+    def _mutation_actor(self, manager=True):
+        return new_test_user(
+            self.env, login=f"refund_mutation_{uuid4()}",
+            groups="base.group_user,point_of_sale.group_pos_manager" if manager else "base.group_user,point_of_sale.group_pos_user",
+            company_id=self.company.id, company_ids=[Command.set([self.company.id])],
+        )
+
+    def _rpc_refund(self, user, model, method, args):
+        return call_kw(self.env[model].with_user(user), method, args, {
+            "context": {"allowed_company_ids": [self.company.id]},
+        })
+
+    def test_public_refund_draft_preparation_remains_allowed(self):
+        manager = self._mutation_actor()
+        result = self._rpc_refund(manager, "pos.order", "refund", [[self.original.id]])
+        order = self.env["pos.order"].browse(result["res_id"])
+        self.assertEqual(order.state, "draft")
+        self.assertEqual(order.lines.refunded_orderline_id, self.original.lines)
+        self.assertEqual(order.amount_total, -12.34)
+        self.request.assert_not_called()
+
+    def test_public_unclaimed_return_cancellation_remains_allowed(self):
+        manager = self._mutation_actor()
+        result = self._rpc_refund(manager, "pos.order", "refund", [[self.original.id]])
+        order_id = result["res_id"]
+        self._rpc_refund(manager, "pos.order", "remove_from_ui", [[order_id]])
+        self.assertFalse(self.env["pos.order"].browse(order_id).exists())
+        self.request.assert_not_called()
+
+    def test_public_pending_and_failed_refunds_cannot_be_fabricated_as_done(self):
+        manager = self._mutation_actor()
+        started = self._pending()
+        payload = dict(self.payload, state="draft", user_id=manager.id)
+        order_id = self._rpc_refund(manager, "pos.order", "create", [payload])
+        order = self.env["pos.order"].browse(order_id)
+        for state in ("pending", "failed"):
+            with self.subTest(state=state):
+                if state == "failed":
+                    self.request.side_effect = [self._refund_response("failed")]
+                    self.assertEqual(self._poll(started)["state"], "failed")
+                for model, method, args in (
+                    ("pos.payment", "write", [[order.payment_ids.id], {"payment_status": "done"}]),
+                    ("pos.order", "action_pos_order_paid", [[order.id]]),
+                ):
+                    with TestCase.assertRaises(self, UserError):
+                        self._rpc_refund(manager, model, method, args)
+                    self.assertEqual(order.state, "draft")
+                    self.assertEqual(order.payment_ids.payment_status, "waiting")
+        self.assertEqual(self.request.call_count, 3)
+
+    def test_public_verified_refund_rejects_mismatch_and_reuse_atomically(self):
+        manager = self._mutation_actor()
+        started = self._pending()
+        self.request.side_effect = [self._refund_response("completed")]
+        self._poll(started)
+        self.payload.update(state="draft", user_id=manager.id)
+        self.payload["payment_ids"][0][2].update(payment_status="done", transaction_id=self.refund_id)
+        for changed in ({"amount": -6.17}, {"transaction_id": str(uuid4())},
+                        {"revolut_operation_id": self.source.id}):
+            payload = deepcopy(self.payload)
+            payload["payment_ids"][0][2].update(changed)
+            with TestCase.assertRaises(self, UserError):
+                self._rpc_refund(manager, "pos.order", "create", [payload])
+            self.assertFalse(self.env["pos.order"].search([("uuid", "=", payload["uuid"])]))
+        order_id = self._rpc_refund(manager, "pos.order", "create", [self.payload])
+        payload = deepcopy(self.payload)
+        payload["uuid"] = str(uuid4())
+        payload["lines"][0][2]["uuid"] = str(uuid4())
+        payload["payment_ids"][0][2].update(uuid=str(uuid4()), payment_method_id=self.cash_payment_method.id)
+        with TestCase.assertRaises(self, UserError):
+            self._rpc_refund(manager, "pos.order", "create", [payload])
+        self.assertFalse(self.env["pos.order"].search([("uuid", "=", payload["uuid"])]))
+        refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
+        self.assertEqual(refund.pos_order_id.id, order_id)
+        self.assertEqual(self.request.call_count, 3)
+
+    def test_direct_refund_done_and_cash_substitution_without_evidence_are_rejected(self):
+        for manager in (False, True):
+            actor = self._mutation_actor(manager)
+            payload = dict(self.payload, state="draft", user_id=actor.id)
+            payload["payment_ids"][0][2]["payment_status"] = "done"
+            with TestCase.assertRaises(self, UserError):
+                self._rpc_refund(actor, "pos.order", "create", [payload])
+            self.assertFalse(self.env["pos.order"].search([("uuid", "=", payload["uuid"])]))
+        self.request.assert_not_called()
+
+    def test_waiting_return_cannot_detach_original_or_settle_as_cash(self):
+        cashier = self._mutation_actor(False)
+        payload = dict(self.payload, state="draft", amount_paid=0, payment_ids=[], user_id=cashier.id)
+        order_id = self._rpc_refund(cashier, "pos.order", "create", [payload])
+        order = self.env["pos.order"].browse(order_id)
+        with TestCase.assertRaises(self, UserError):
+            self._rpc_refund(cashier, "pos.order.line", "write", [[order.lines.id], {"refunded_orderline_id": False}])
+        payment = dict(self.payload["payment_ids"][0][2], payment_method_id=self.cash_payment_method.id,
+                       payment_status="done", pos_order_id=order.id, transaction_id=False)
+        with TestCase.assertRaises(self, UserError):
+            self._rpc_refund(cashier, "pos.order", "write", [[order.id], {
+                "payment_ids": [Command.create(payment)], "amount_paid": -12.34, "state": "paid",
+            }])
+        self.assertEqual(order.state, "draft")
+        self.assertEqual(order.lines.refunded_orderline_id, self.original.lines)
+        self.assertFalse(order.payment_ids)
+        self.request.assert_not_called()
+
+    def test_public_manager_verified_partial_refund_is_linked_and_immutable(self):
+        manager = self._mutation_actor()
+        self.payload.update(amount_total=-6.17, amount_paid=-6.17)
+        self.payload["lines"][0][2].update(qty=-0.5, price_subtotal=-6.17, price_subtotal_incl=-6.17)
+        self.payload["payment_ids"][0][2]["amount"] = -6.17
+        self.request.side_effect = [
+            self._response(id=self.source.revolut_order_id, state="completed", amount=1234,
+                           currency=self.session.currency_id.name, refunded_amount=0),
+            self._refund_response(amount=617), self._refund_response("completed", amount=617),
+        ]
+        started = self._rpc_refund(manager, "pos.payment.method", "revolut_start_refund", [
+            [self.revolut_method.id], self.session.id, self.payload["uuid"],
+            self.payload["payment_ids"][0][2]["uuid"], -6.17, self.session.currency_id.id, self.payload,
+        ])
+        self._rpc_refund(manager, "pos.payment.method", "revolut_poll_refund", [
+            [self.revolut_method.id], started["operation_id"], self.payload["uuid"],
+            self.payload["payment_ids"][0][2]["uuid"],
+        ])
+        self.payload.update(state="draft", user_id=manager.id)
+        self.payload["payment_ids"][0][2].update(payment_status="done", transaction_id=self.refund_id)
+        order_id = self._rpc_refund(manager, "pos.order", "create", [self.payload])
+        order = self.env["pos.order"].browse(order_id)
+        refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
+        self._rpc_refund(manager, "pos.order", "action_pos_order_paid", [[order.id]])
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(refund.pos_order_id, order)
+        self.assertEqual(refund.pos_payment_id.revolut_refund_operation_id, refund)
+        for values in ({"revolut_refund_operation_id": False}, {"amount": -12.34},
+                       {"payment_method_id": self.cash_payment_method.id}, {"transaction_id": str(uuid4())}):
+            with TestCase.assertRaises(self, UserError):
+                self._rpc_refund(manager, "pos.payment", "write", [[order.payment_ids.id], values])
+            self.assertEqual(order.payment_ids.amount, -6.17)
+            self.assertEqual(order.payment_ids.revolut_refund_operation_id, refund)
+        self.assertEqual(self.request.call_count, 3)
 
     def _response(self, **payload):
         response = Mock()
@@ -439,8 +581,16 @@ class TestRevolutRefund(CommonPosTest):
 
     def test_cross_company_original_cannot_be_refunded(self):
         other = self.env["res.company"].create({"name": "Refund other company"})
-        self.original.write({"company_id": other.id})
-        self.env.flush_all()
+        foreign_original = self.env["pos.order"].create({
+            "session_id": self.session.id, "company_id": other.id,
+            "amount_total": 12.34, "amount_tax": 0, "amount_paid": 0, "amount_return": 0,
+            "lines": [Command.create({
+                "product_id": self.product.id, "qty": 1, "price_unit": 12.34,
+                "price_subtotal": 12.34, "price_subtotal_incl": 12.34,
+                "tax_ids": [Command.clear()],
+            })],
+        })
+        self.payload["lines"][0][2]["refunded_orderline_id"] = foreign_original.lines.id
         with self.assertRaises(AccessError):
             self._start()
         self.request.assert_not_called()

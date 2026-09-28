@@ -144,7 +144,7 @@ class PosRevolutPaymentOperation(models.Model):
     }
 
     @api.model
-    def lock_order(self, company_id, order_uuid):
+    def _lock_order(self, company_id, order_uuid):
         # The row is updated by both payment start and POS checkout. Under
         # Odoo's repeatable-read isolation, a competing stale transaction gets
         # a serialization failure and must retry with a fresh snapshot.
