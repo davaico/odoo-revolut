@@ -35,9 +35,9 @@ on reviewed `main`. Update the assigned branch from `main` before claiming work.
 Branches for tickets 16–18 are created from their committed definitions on
 `main`. Update the assigned branch from reviewed `main` before starting.
 
-Tickets 19–21 declare their work branches; create them from reviewed `main`
-when implementation starts, or update an existing branch without overwriting
-its work. Publication of these tickets does not create the branches.
+Branches for tickets 19–21 are created from their committed definitions on
+`main`. Update the assigned branch from reviewed `main` before starting,
+without overwriting existing work.
 
 Use `main` as the shared integration branch for this ticket set. Integrate
 reviewed, verified ticket work there, including its state and triage updates.

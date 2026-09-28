@@ -57,9 +57,9 @@ then close the internal-helper bypass, with separately identifiable regression
 evidence. Keep any necessary prefactoring local to enforcement of these
 invariants; this is not an Odoo-wide permission redesign.
 
-Create the declared branch from reviewed main when implementation starts, or
-update it if it already exists. Use an isolated worktree for concurrent work.
-The branch is declared here and will be created when implementation starts.
+The declared work branch has been created from the committed ticket baseline.
+Update it from reviewed main before implementation without overwriting existing
+work. Use an isolated worktree for concurrent work.
 
 ## Verification evidence
 

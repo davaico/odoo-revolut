@@ -50,9 +50,9 @@ Addresses audit finding 3. Keep the existing lifecycle/Odoo-adapter split and
 distinct payment/refund rules. No new terminal contract or financial retry
 policy is introduced.
 
-Create the declared branch from reviewed main when implementation starts, or
-update it if it already exists. Use an isolated worktree for concurrent work.
-The branch is declared here and will be created when implementation starts.
+The declared work branch has been created from the committed ticket baseline.
+Update it from reviewed main before implementation without overwriting existing
+work. Use an isolated worktree for concurrent work.
 
 ## Verification evidence
 
