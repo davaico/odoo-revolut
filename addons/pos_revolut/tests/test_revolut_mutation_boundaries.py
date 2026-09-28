@@ -84,18 +84,25 @@ class TestRevolutMutationBoundaries(CommonPosTest):
             "context": {"allowed_company_ids": [self.company.id], **context},
         })
 
-    def _draft_with_operation(self, state="verified"):
+    def _matched_operation_payload(self, state="verified", amount=12.34):
         payload = deepcopy(self.payload)
         payload["uuid"] = str(uuid4())
         payload["lines"][0][2]["uuid"] = str(uuid4())
         payment = payload["payment_ids"][0][2]
         payment["uuid"] = str(uuid4())
+        payment["amount"] = amount
+        payload["amount_paid"] = amount
         operation = self._operation(
             payload["uuid"], payment["uuid"], state=state,
+            amount=amount, amount_minor=round(amount * 100),
             financial_snapshot=self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload),
         )
         payment["payment_status"] = "done" if state == "verified" else "waiting"
         payment["transaction_id"] = operation.revolut_payment_id if state == "verified" else False
+        return payload, operation
+
+    def _draft_with_operation(self, state="verified", amount=12.34):
+        payload, operation = self._matched_operation_payload(state, amount)
         order_id = self._rpc("pos.order", "create", [payload])
         return self.env["pos.order"].browse(order_id), operation
 
@@ -466,6 +473,41 @@ class TestRevolutMutationBoundaries(CommonPosTest):
                     )
                     self.assertEqual(order.currency_rate, rate)
                     self.assertEqual(operation.pos_order_id, order)
+
+    def test_initial_stored_line_subtotals_must_match_the_verified_cart(self):
+        for name in ("price_subtotal", "price_subtotal_incl"):
+            with self.subTest(field=name):
+                payload, operation = self._matched_operation_payload()
+                payload["lines"][0][2][name] = 99
+                with TestCase.assertRaises(self, UserError):
+                    self._rpc("pos.order", "create", [payload])
+                self.assertFalse(self.env["pos.order"].search([("uuid", "=", payload["uuid"])]))
+                self.assertFalse(operation.pos_order_id)
+
+    def test_public_finalization_requires_the_complete_split_balance(self):
+        for state in ("paid", "done"):
+            with self.subTest(state=state):
+                payload, operation = self._matched_operation_payload(amount=6.17)
+                payload["state"] = state
+                with TestCase.assertRaises(self, UserError):
+                    self._rpc("pos.order", "create", [payload])
+                self.assertFalse(self.env["pos.order"].search([("uuid", "=", payload["uuid"])]))
+                self.assertFalse(operation.pos_order_id)
+                order, operation = self._draft_with_operation(amount=6.17)
+                with TestCase.assertRaises(self, UserError):
+                    self._rpc("pos.order", "write", [[order.id], {"state": state}])
+                self.assertEqual(order.state, "draft")
+                self.assertEqual(order.amount_paid, 6.17)
+                self.assertEqual(operation.pos_order_id, order)
+                cash = dict(self.payload["payment_ids"][0][2], uuid=str(uuid4()),
+                            amount=6.17, payment_method_id=self.cash_payment_method.id,
+                            transaction_id=False, pos_order_id=order.id)
+                self._rpc("pos.order", "write", [[order.id], {
+                    "payment_ids": [Command.create(cash)],
+                }])
+                self._rpc("pos.order", "write", [[order.id], {"state": state}])
+                self.assertEqual(order.state, state)
+                self.assertEqual(order.amount_paid, 12.34)
 
     def test_unexposed_waiting_drafts_can_be_cancelled_and_removed(self):
         for method, args_for_id in (

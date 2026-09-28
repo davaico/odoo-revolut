@@ -222,6 +222,10 @@ class PosOrder(models.Model):
             if exposed or (
                 order.state not in {"draft", "cancel"} and return_source
             ):
+                for line in order.lines:
+                    if any(order.currency_id.compare_amounts(line[name], amount)
+                           for name, amount in line._compute_amount_line_all().items()):
+                        raise UserError(_("The Revolut order line totals do not match its financial contents."))
                 # Use Odoo's tax engine, including its rounding rules, rather
                 # than trusting client totals or duplicating tax arithmetic.
                 totals = (order.amount_total, order.amount_tax)
@@ -234,6 +238,8 @@ class PosOrder(models.Model):
                 values, order, self._revolut_payment_values(values, order)
             )
             operations = order._validate_revolut_settlement(values, order) if refunds is None else self.env["pos.revolut.payment.operation"].browse()
+            if operations and order.state in {"paid", "done"} and not order._is_pos_order_paid():
+                raise UserError(_("The Revolut order is not fully paid."))
             order._validate_revolut_payment_references(self._revolut_payment_values(values, order))
             order._link_revolut_settlement(operations, refunds)
 
