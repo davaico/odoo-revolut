@@ -212,6 +212,23 @@ assets. Installation of `pos_revolut` alone remains supported without Restaurant
 
 ### Recovery after reload, server restart, or late success
 
+Upgrade `pos_revolut` to `19.0.1.7.3` for recovery when the initial read-only
+operation lookup fails before a payment or refund start is attempted. The
+POS reports **No payment request sent** or **No refund request sent** and offers
+**Retry**. Once connectivity returns, retry resumes the normal first-start
+flow on the same order and payment-line UUIDs. A manager still chooses an
+original allocation before starting a refund. You may also edit or remove
+this genuinely undispatched line and choose another eligible tender; refunds
+remain limited to their original tender balances. No manager reconciliation
+is required for a line that has never attempted a financial start.
+
+The line stays guarded while discovery is running. A lookup failure or timeout
+after an attempted start, a discovered operation, or a surviving transaction
+reference remains uncertain and uses **Check status**. An empty lookup alone
+never unlocks such a line. Older saved waiting/retry lines without evidence of
+undispatched preparation also retain their guards. A timed-out read's late
+response cannot overwrite a resumed request or mark a line paid.
+
 Upgrade to `19.0.1.3.0` and keep Odoo scheduled actions running. The addon installs
 **Reconcile Revolut POS payments**, a one-minute scheduled action. Each run checks
 at most 50 due attempts with both an order ID and intent ID. Transitional or

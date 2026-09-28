@@ -619,7 +619,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                 operations[0].payment_line_uuid, operations[1].payment_line_uuid
             )
             self.assertEqual(operations[1].pos_order_id.state, "paid")
-        elif outcome == "cancel_race":
+        elif outcome in {"cancel_race", "captured"}:
             self.assertEqual(operations.state, "verified")
             self.assertEqual(operations.pos_order_id.state, "paid")
             self.assertEqual(
@@ -665,6 +665,19 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
 
     def test_cancel_racing_with_capture_preserves_successful_payment(self):
         self._run_unsuccessful_checkout("cancel_race", "pos_revolut_cancel_race")
+
+    def test_payment_discovery_failure_recovers_after_reload_with_one_start(self):
+        self._run_unsuccessful_checkout("captured", "pos_revolut_payment_discovery_recovery")
+
+    def test_payment_discovery_failure_allows_cash_without_dispatch(self):
+        self._configure_revolut_checkout()
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+            side_effect=AssertionError("Undispatched payment must not contact Revolut"),
+        ):
+            self.start_pos_tour("pos_revolut_payment_discovery_alternative")
+        self.env.invalidate_all()
+        self.assertFalse(self.env["pos.revolut.payment.operation"].search([]))
 
     REFUND_ID = "6c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf"
 
@@ -732,10 +745,30 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
             side_effect=request,
         ):
             self.start_pos_tour(tour, login="pos_admin")
-        self.assertEqual(len(refund_posts), 1)
+        self.assertEqual(len(refund_posts), 0 if outcome == "undispatched" else 1)
 
     def test_manager_returns_full_revolut_sale_in_normal_pos_flow(self):
         self._run_full_refund("pos_revolut_full_refund")
+
+    def test_refund_discovery_failure_recovers_after_reload_with_one_start(self):
+        self._run_full_refund("pos_revolut_refund_discovery_recovery")
+        self.env.invalidate_all()
+        refund = self.env["pos.revolut.refund.operation"].search([
+            ("revolut_order_id", "=", self.REFUND_ID),
+        ])
+        self.assertEqual(len(refund), 1)
+        self.assertEqual(refund.state, "verified")
+        self.assertEqual(refund.original_operation_id.revolut_order_id, self.ORDER_ID)
+        self.assertEqual(refund.pos_order_id.state, "paid")
+        self.assertEqual(refund.pos_order_id.uuid, refund.order_uuid)
+        self.assertEqual(refund.pos_payment_id.uuid, refund.payment_line_uuid)
+        self.assertEqual(refund.pos_payment_id.transaction_id, self.REFUND_ID)
+        self.assertEqual(refund.pos_payment_id.payment_ref_no, self.REFUND_ID)
+
+    def test_refund_discovery_failure_allows_cash_without_refund_dispatch(self):
+        self._run_full_refund("pos_revolut_refund_discovery_alternative", "undispatched")
+        self.env.invalidate_all()
+        self.assertFalse(self.env["pos.revolut.refund.operation"].search([]))
 
     def test_lost_refund_response_recovers_after_reload_without_second_refund(self):
         self._run_full_refund("pos_revolut_refund_reload", "lost_response")
