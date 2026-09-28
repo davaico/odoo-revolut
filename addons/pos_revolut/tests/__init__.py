@@ -9,3 +9,4 @@ from . import test_revolut_mutation_boundaries
 from . import test_revolut_refund
 
 from . import test_revolut_refund_concurrency
+from . import test_revolut_recovery_batches

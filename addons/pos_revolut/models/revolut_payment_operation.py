@@ -1,8 +1,14 @@
+import logging
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import timedelta
 
+from psycopg2.errors import DeadlockDetected, SerializationFailure
+
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
+
+
+_logger = logging.getLogger(__name__)
 
 
 class PosRevolutPaymentOperation(models.Model):
@@ -172,11 +178,21 @@ class PosRevolutPaymentOperation(models.Model):
             limit=max(1, min(int(batch_size), 50)),
         )
         for operation in operations:
-            operation.payment_method_id.sudo().with_company(
+            payment_method = operation.payment_method_id.sudo().with_company(
                 operation.company_id
-            ).revolut_poll_payment(
-                operation.id, operation.order_uuid, operation.payment_line_uuid
             )
+            try:
+                payment_method.revolut_poll_payment(
+                    operation.id, operation.order_uuid, operation.payment_line_uuid
+                )
+            except (SerializationFailure, DeadlockDetected):
+                # The failed owned cursor has closed and rolled back. A fresh
+                # locked observation preserves any earlier committed evidence.
+                _logger.warning("Revolut payment operation %s deferred after a transaction conflict", operation.id)
+                try:
+                    payment_method._apply_revolut_observation_owned(operation.id, "interrupted")
+                except (SerializationFailure, DeadlockDetected):
+                    _logger.warning("Revolut payment operation %s could not be rescheduled; retains its previous schedule", operation.id)
 
     def _revolut_deployment_terminal_states(self):
         return {"verified", "declined", "failed", "cancelled"}
@@ -211,6 +227,8 @@ class PosRevolutPaymentOperation(models.Model):
         """
         self.ensure_one()
         evidence = evidence or {}
+        if kind in {"intent", "payment"} and not isinstance(evidence, dict):
+            kind, evidence = "unknown", {}
         self.env.cr.execute(
             "SELECT id FROM pos_revolut_payment_operation WHERE id = %s FOR UPDATE",
             [self.id],
@@ -257,7 +275,14 @@ class PosRevolutPaymentOperation(models.Model):
         elif kind == "intent":
             intent = evidence
             if (intent.get("id") != self.revolut_payment_intent_id
-                    or intent.get("order_id") != self.revolut_order_id):
+                    or intent.get("order_id") != self.revolut_order_id
+                    or not isinstance(intent.get("state"), str)
+                    or intent["state"] not in {
+                        "pending", "processing", "completed", "cancelled", "failed"
+                    }
+                    or (intent.get("payment_id") is not None and (
+                        not isinstance(intent["payment_id"], str) or not intent["payment_id"]
+                    ))):
                 kind = "unknown"
             else:
                 state = intent.get("state")
@@ -285,8 +310,10 @@ class PosRevolutPaymentOperation(models.Model):
             if (not self.revolut_payment_id
                     or payment.get("id") != self.revolut_payment_id
                     or payment.get("order_id") != self.revolut_order_id
+                    or type(payment.get("amount")) is not int
                     or payment.get("amount") != self.amount_minor
-                    or payment.get("currency") != self.currency_code):
+                    or payment.get("currency") != self.currency_code
+                    or not isinstance(payment.get("state"), str)):
                 kind = "unknown"
             else:
                 state = payment.get("state")
@@ -313,6 +340,7 @@ class PosRevolutPaymentOperation(models.Model):
                     if self.revolut_order_id and self.revolut_payment_intent_id else False
                 ),
             }
+            _logger.warning("Revolut payment operation %s remains unresolved (%s)", self.id, kind)
         else:
             state = values["state"]
             values["local_outcome"] = False
@@ -325,7 +353,13 @@ class PosRevolutPaymentOperation(models.Model):
             else:
                 values.update({
                     "next_reconcile_at": fields.Datetime.now() + timedelta(seconds=30),
-                    "reconcile_failures": 0,
+                    # An intent with a payment reference is only half a poll.
+                    # Preserve backoff until the underlying read is conclusive.
+                    "reconcile_failures": (
+                        self.reconcile_failures if kind == "intent" and (
+                            self.revolut_payment_id or values.get("revolut_payment_id")
+                        ) else 0
+                    ),
                 })
         self.sudo().write(values)
         return self.operation_snapshot(self)

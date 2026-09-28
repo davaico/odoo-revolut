@@ -6,7 +6,7 @@
 
 **Parallel work:** Only T20 and T21 run in parallel; coordinate shared-file edits and check for conflicts before merging.
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 
@@ -63,12 +63,43 @@ work. Use an isolated worktree for concurrent work.
 
 ## Verification evidence
 
-Audit evidence only: unchanged production polling, outcome and cron methods
-executed with ORM/HTTP test doubles. Six malformed cases reproduced aborted
-batches; three unknown-string controls reached the healthy operation. That
-probe did not exercise the actual Odoo scheduler/ORM, making the runtime
-regressions above a required part of the correction. Fix implementation has
-not started.
+Implementation started from freshly fetched, reviewed main
+`5081551d77a5db6d62b84965f5c115bd8f3cb236`, including ticket 19. The assigned
+branch was fast-forwarded in its existing isolated worktree without overwriting
+work. Ticket 20's separate worktree remains untouched; its manifest uses
+`19.0.1.7.3`, so this schema update uses `19.0.1.7.4`.
+
+The original audit used unchanged methods with ORM/HTTP doubles. The correction
+now has actual pinned-Odoo regressions, using committed fixtures and ordinary
+registry cursors without registry test mode. Red runs reproduced a list intent
+state, an object refund state, and a genuine PostgreSQL serialization failure
+aborting the scheduled action. Further red tests caught malformed intent
+payment references releasing retry safety and intent observations resetting
+backoff before a failed underlying-payment read.
+
+Focused verification on 2026-09-28, with all provider calls mocked and Merchant
+HTTP blocked:
+
+- `TestRevolutRecoveryBatches`: 17 passed, zero failures/errors. Payment and
+  refund cron entry points include malformed-first/healthy-second cases,
+  list/object/missing/unknown/numeric/boolean states, repeated bounded
+  scheduling, later valid recovery, batch limits, GET-only requests, real
+  transaction rollback, exhausted serialization/deadlock conflicts, an
+  unsuppressed unexpected constraint error, and sanitized cashier/manager
+  checks with manager audit preservation.
+- Affected payment, refund, manager reconciliation, retry concurrency and
+  refund concurrency classes: 114 passed with the first 14 new regressions;
+  the final 17-test class passed separately after adding manager refund and
+  batch-limit coverage.
+- `./scripts/test-restart-recovery`: passed across two independent Odoo
+  processes (`RESTART_RECOVERY_OK`).
+- Node POS state test file passed; deployment-tool unittest suite: 29 passed.
+- Python compilation and `git diff --check` passed. No typechecker is
+  configured in this dynamic Odoo repository; compilation is a syntax check,
+  while pinned-runtime tests exercise the changed behavior.
+
+Independent standards/spec review and final full install/upgrade/Restaurant
+verification remain pending before closure.
 
 ## Triage decision
 

@@ -4,7 +4,7 @@ from uuid import UUID
 
 import requests
 from psycopg2 import IntegrityError
-from psycopg2.errors import SerializationFailure
+from psycopg2.errors import DeadlockDetected, SerializationFailure
 
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError, ValidationError
@@ -505,16 +505,21 @@ class PosPaymentMethod(models.Model):
         return True
 
     def _apply_revolut_observation_owned(self, operation_id, kind, evidence=None):
-        # Provider I/O has completed before entering this transaction. The
-        # operation owns finality and evidence rules under its row lock.
-        with self.env.registry.cursor() as cursor:
-            owned_env = api.Environment(cursor, self.env.uid, dict(self.env.context))
-            operation = owned_env["pos.revolut.payment.operation"].sudo().browse(
-                operation_id
-            )
-            snapshot = operation._apply_payment_observation(kind, evidence)
-            cursor.commit()
-        return snapshot
+        # Retry only local evidence application. Provider I/O and financial
+        # dispatch stay outside this loop, and each conflict ends its cursor.
+        for attempt in range(3):
+            try:
+                with self.env.registry.cursor() as cursor:
+                    owned_env = api.Environment(cursor, self.env.uid, dict(self.env.context))
+                    operation = owned_env["pos.revolut.payment.operation"].sudo().browse(
+                        operation_id
+                    )
+                    snapshot = operation._apply_payment_observation(kind, evidence)
+                    cursor.commit()
+                    return snapshot
+            except (SerializationFailure, DeadlockDetected):
+                if attempt == 2:
+                    raise
 
     def _revolut_api_request(self, operation, method, path, **kwargs):
         secret = os.environ.get(operation["secret_reference"])
@@ -734,7 +739,7 @@ class PosPaymentMethod(models.Model):
             )
             if snapshot["state"] == "verified" or snapshot["retry_safe"]:
                 return snapshot
-            if (intent.get("state") in {"cancelled", "failed"}
+            if (intent.get("state") in ("cancelled", "failed")
                     and not intent.get("payment_id")
                     and not operation["payment_id"]):
                 # Another poll may have stored a payment while this intent GET

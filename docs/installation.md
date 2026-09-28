@@ -222,6 +222,34 @@ five minutes later. The cashier's **Check status** action can still
 query the original attempt immediately. It uses the same server-side outcome
 rules as the scheduled action.
 
+Upgrade `pos_revolut` to `19.0.1.7.4` for isolated payment and refund recovery.
+Malformed, missing and unsupported provider states leave the operation
+unresolved and defer its next scheduled read for five minutes. References,
+dispatch claims, order/terminal blocks and refund reservations stay intact;
+**Check status** can query the same operation immediately. A later valid read
+can verify it without a new charge, refund request or idempotency key.
+
+Each scheduled run continues with later due operations after a recoverable
+provider/parsing failure. Evidence application retries serialization conflicts
+and deadlocks at most three times, each in a fresh transaction, with no provider
+request inside that retry. If the conflicts persist, the scheduler records an
+interrupted unresolved result in a fresh locked transaction and backs off from
+one minute to at most 30 minutes. A valid intent alone does not reset that
+backoff while its underlying payment read is still interrupted. If contention
+also prevents recording the delay, the operation retains its previous schedule
+and a warning identifies its internal operation ID. Other database errors
+still fail the scheduled action for investigation. Independently committed
+references and verified outcomes survive a later failed observation or audit.
+
+Recovery warnings contain the internal operation ID and a fixed failure
+category, without provider bodies or exception text. Cashiers keep the order
+blocked and use **Check status**; managers use the reconciliation worklist and
+retain its audit history. Refund recovery applies the same five-minute delay
+for inconclusive evidence and the one-to-30-minute transport/conflict backoff.
+This update adds a refund recovery counter; perform the normal stopped-service
+module upgrade and reopen POS. No new credential or credential rotation is
+required.
+
 A browser reload restores the attempt by the original order UUID and payment-line
 UUID. It does not create another Revolut order or intent. The POS line displays
 its pending or unresolved status, and **Check status** can restore a late verified
