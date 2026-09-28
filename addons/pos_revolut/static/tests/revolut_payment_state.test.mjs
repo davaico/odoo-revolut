@@ -75,6 +75,215 @@ function fixture({ refund = false, call, chooseAllocation = async () => false,
     return { state, clock, order, line, calls, errors, preparationErrors };
 }
 
+for (const refund of [false, true]) {
+    test(`${refund ? "refund" : "payment"} discovery rejection can resume one first start on the same line`, async () => {
+        let finds = 0;
+        const { state, order, line, calls, errors } = fixture({
+            refund,
+            chooseAllocation: async () => ({ operationId: 10, amount: 12.34 }),
+            call(method) {
+                if (method === `revolut_find_${refund ? "refund" : "payment"}` && ++finds === 1) {
+                    throw new Error("read-only lookup unavailable");
+                }
+                if (method === "revolut_refund_sources") {
+                    return [{ operation_id: 10, payment_method_id: 7, remaining_minor: 1234 }];
+                }
+                if (method === `revolut_start_${refund ? "refund" : "payment"}`) {
+                    return { operation_id: 50, state: "verified", payment_id: "paid-50", order_id: "rev-50" };
+                }
+                return false;
+            },
+        });
+        assert.equal(await state.request(order, line), false);
+        line.setPaymentStatus("retry");
+        assert.deepEqual(order.payment_ids, [line]);
+        assert.equal(paymentActions(line).canDelete, true);
+        assert.equal(paymentActions(line).canEditAmount, true);
+        assert.equal(orderActions(order).blocksAlternativeTender, false);
+        assert.equal(paymentActions(line).retrySafe, true);
+        assert.deepEqual(errors, ["discovery_interrupted"]);
+        restorePaymentLine(line);
+        assert.equal(await state.request(order, line), true);
+        assert.equal(order.uuid, "order-1");
+        assert.equal(line.uuid, "line-1");
+        assert.equal(line.transaction_id, "paid-50");
+        assert.equal(line.payment_ref_no, "rev-50");
+        const starts = calls.filter(({ method }) => method.includes("revolut_start_"));
+        assert.equal(starts.length, 1);
+        assert.deepEqual(starts[0].args.slice(2, 4), ["order-1", "line-1"]);
+    });
+
+    test(`${refund ? "refund" : "payment"} discovery timeout unlocks preparation and ignores its late result`, async () => {
+        const lookup = deferred();
+        let finds = 0;
+        const { state, clock, order, line, calls, errors } = fixture({
+            refund,
+            chooseAllocation: async () => ({ operationId: 10, amount: 12.34 }),
+            call(method) {
+                if (method === `revolut_find_${refund ? "refund" : "payment"}`) {
+                    return ++finds === 1 ? lookup.promise : false;
+                }
+                if (method === "revolut_refund_sources") {
+                    return [{ operation_id: 10, payment_method_id: 7, remaining_minor: 1234 }];
+                }
+                if (method === `revolut_start_${refund ? "refund" : "payment"}`) {
+                    return { operation_id: 51, state: "verified", payment_id: "paid-51", order_id: "rev-51" };
+                }
+                return false;
+            },
+        });
+        const first = state.request(order, line);
+        assert.equal(state.request(order, line), first);
+        await tick();
+        assert.equal(paymentActions(line).canDelete, false);
+        assert.equal(paymentActions(line).canEditAmount, false);
+        assert.equal(orderActions(order).blocksAlternativeTender, true);
+        assert.equal(orderActions(order).blocksCheckout, true);
+        clock.advance(60000);
+        assert.equal(await first, false);
+        line.setPaymentStatus("retry");
+        assert.deepEqual(errors, ["discovery_timed_out"]);
+        assert.equal(paymentActions(line).canDelete, true);
+        assert.equal(orderActions(order).blocksAlternativeTender, false);
+        assert.equal(orderActions(order).blocksCheckout, false);
+        assert.equal(paymentResponseSuccessful(line, true), false);
+        assert.equal(calls.some(({ method }) => method.includes("revolut_start_")), false);
+        restorePaymentLine(line);
+        const resumed = state.request(order, line);
+        assert.equal(state.request(order, line), resumed);
+        assert.equal(await resumed, true);
+        lookup.resolve({ operation_id: 99, state: "verified", payment_id: "stale", order_id: "stale" });
+        await tick();
+        assert.equal(line.transaction_id, "paid-51");
+        assert.equal(line.payment_ref_no, "rev-51");
+        assert.equal(calls.filter(({ method }) => method.includes("revolut_start_")).length, 1);
+        assert.equal(line.uuid, "line-1");
+    });
+
+    test(`${refund ? "refund" : "payment"} cancellation racing initial discovery prevents a first start`, async () => {
+        const lookup = deferred();
+        const { state, order, line, calls } = fixture({
+            refund,
+            call(method) {
+                if (method.includes("revolut_find_")) {
+                    return lookup.promise;
+                }
+                if (method === "revolut_refund_sources") {
+                    return [{ operation_id: 10, payment_method_id: 7, remaining_minor: 1234 }];
+                }
+                if (method.includes("revolut_start_")) {
+                    return { operation_id: 52, state: "verified", payment_id: "paid-52", order_id: "rev-52" };
+                }
+                return false;
+            },
+            chooseAllocation: async () => ({ operationId: 10, amount: 12.34 }),
+        });
+        const request = state.request(order, line);
+        await tick();
+        const cancellation = state.cancel(order, line);
+        lookup.resolve(false);
+        assert.equal(await request, false);
+        assert.equal(await cancellation, true);
+        assert.equal(paymentActions(line).canDelete, true);
+        assert.equal(line.transaction_id, false);
+        assert.equal(calls.filter(({ method }) => method.includes("revolut_find_")).length, 1);
+        assert.equal(calls.some(({ method }) => method.includes("revolut_start_") ||
+            method === "revolut_cancel_payment"), false);
+    });
+
+    test(`${refund ? "refund" : "payment"} resumed discovery restores an existing operation before any start`, async () => {
+        let finds = 0;
+        const { state, order, line, calls } = fixture({
+            refund,
+            call(method) {
+                if (method.includes("revolut_find_")) {
+                    if (++finds === 1) {
+                        throw new Error("lookup unavailable");
+                    }
+                    return { operation_id: 53, state: "pending", order_id: "rev-53" };
+                }
+                if (method.includes("revolut_poll_")) {
+                    if (finds === 2) {
+                        throw new Error("poll unavailable after discovery");
+                    }
+                    return { operation_id: 53, state: "verified", payment_id: "paid-53", order_id: "rev-53" };
+                }
+                return false;
+            },
+        });
+        assert.equal(await state.request(order, line), false);
+        line.setPaymentStatus("retry");
+        restorePaymentLine(line);
+        assert.equal(await state.request(order, line), false);
+        assert.equal(line.uiState.revolutOperationId, 53);
+        assert.equal(line.uiState.revolutSnapshot.order_id, "rev-53");
+        assert.equal(paymentActions(line).canDelete, false);
+        assert.equal(orderActions(order).blocksAlternativeTender, true);
+        finds = 3;
+        assert.equal(await state.request(order, line), true);
+        assert.equal(line.payment_ref_no, "rev-53");
+        assert.equal(calls.some(({ method }) => method.includes("revolut_start_")), false);
+    });
+
+    test(`${refund ? "refund" : "payment"} lost start response and empty discovery never unlock uncertain money`, async () => {
+        const { state, order, line, calls } = fixture({
+            refund,
+            chooseAllocation: async () => ({ operationId: 10, amount: 12.34 }),
+            call(method) {
+                if (method === "revolut_refund_sources") {
+                    return [{ operation_id: 10, payment_method_id: 7, remaining_minor: 1234 }];
+                }
+                if (method.includes("revolut_start_")) {
+                    throw new Error("response lost after dispatch");
+                }
+                return false;
+            },
+        });
+        assert.equal(await state.request(order, line), false);
+        line.setPaymentStatus("retry");
+        restorePaymentLine(line);
+        assert.equal(await state.request(order, line), false);
+        assert.equal(paymentActions(line).canDelete, false);
+        assert.equal(paymentActions(line).canEditAmount, false);
+        assert.equal(paymentActions(line).retrySafe, false);
+        assert.equal(orderActions(order).blocksCheckout, true);
+        assert.equal(orderActions(order).blocksAlternativeTender, true);
+        assert.equal(calls.filter(({ method }) => method.includes("revolut_start_")).length, 1);
+        assert.equal(line.uuid, "line-1");
+    });
+
+    test(`${refund ? "refund" : "payment"} restored legacy waiting state stays protected when discovery is empty`, async () => {
+        const { state, order, line, calls } = fixture({
+            refund,
+            call(method) {
+                return method.includes("revolut_start_")
+                    ? { operation_id: 54, state: "verified", payment_id: "paid-54", order_id: "rev-54" }
+                    : false;
+            },
+        });
+        line.setPaymentStatus("waiting");
+        restorePaymentLine(line);
+        // Odoo changes the status before invoking the terminal interface.
+        line.setPaymentStatus("waiting");
+        assert.equal(await state.request(order, line), false);
+        assert.equal(paymentActions(line).canDelete, false);
+        assert.equal(orderActions(order).blocksAlternativeTender, true);
+        assert.equal(calls.some(({ method }) => method.includes("revolut_start_")), false);
+    });
+
+    test(`${refund ? "refund" : "payment"} surviving transaction evidence overrides undispatched preparation`, async () => {
+        const { state, order, line, calls } = fixture({ refund });
+        line.uiState.revolutUndispatched = true;
+        line.payment_ref_no = "surviving-reference";
+        assert.equal(await state.request(order, line), false);
+        assert.equal(line.payment_ref_no, "surviving-reference");
+        assert.equal(paymentActions(line).canDelete, false);
+        assert.equal(paymentActions(line).retrySafe, false);
+        assert.equal(orderActions(order).blocksCheckout, true);
+        assert.equal(calls.some(({ method }) => method.includes("revolut_start_")), false);
+    });
+}
+
 test("verified cancellation result survives an older failed poll", async () => {
     const olderPoll = deferred();
     const { state, clock, order, line, calls } = fixture({
@@ -211,6 +420,33 @@ test("refund dismissal never dispatches and dispatched refunds cannot be cancell
     assert.equal(await state.cancel(order, line), false);
     assert.equal(paymentActions(line).canDelete, false);
     assert.equal(calls.some(({ method }) => method === "revolut_cancel_payment"), false);
+});
+
+test("refund balance discovery stays guarded and dismissal cannot dispatch its late allocation", async () => {
+    const sources = deferred();
+    const { state, order, line, calls } = fixture({
+        refund: true,
+        call(method) {
+            if (method === "revolut_refund_sources") {
+                return sources.promise;
+            }
+            if (method === "revolut_start_refund") {
+                return { operation_id: 55, state: "verified", payment_id: "paid-55", order_id: "rev-55" };
+            }
+            return false;
+        },
+        chooseAllocation: async () => ({ operationId: 10, amount: 12.34 }),
+    });
+    const request = state.request(order, line);
+    await tick();
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(orderActions(order).blocksAlternativeTender, true);
+    const cancellation = state.cancel(order, line);
+    sources.resolve([{ operation_id: 10, payment_method_id: 7, remaining_minor: 1234 }]);
+    assert.equal(await request, false);
+    assert.equal(await cancellation, true);
+    assert.equal(calls.some(({ method }) => method === "revolut_start_refund"), false);
+    assert.equal(paymentActions(line).canDelete, true);
 });
 
 test("a safe payment replacement stays on the same logical line and retains its predecessor", async () => {
