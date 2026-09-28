@@ -53,7 +53,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | Ticket | Triage | State | Blocked by |
 | --- | --- | --- | --- |
 | [01 — Configure and verify a Revolut payment method](closed/01-configure-revolut-payment-method.md) | `ready-for-agent` at closure | Closed | None |
-| [02 — Resolve the Revolut terminal contract and testing prerequisites](needs-info/02-confirm-terminal-contract.md) | `needs-info` | Open | External: provider clarification and test access |
+| [02 — Resolve the Revolut terminal contract and testing prerequisites](closed/02-confirm-terminal-contract.md) | `ready-for-agent` at closure | Closed | None |
 | [03 — Complete one verified Revolut terminal payment](closed/03-verified-terminal-payment.md) | `ready-for-agent` at closure | Closed | 01 (closed) |
 | [04 — Handle unsuccessful payments and safe retries](closed/04-unsuccessful-payments-safe-retries.md) | `ready-for-agent` at closure | Closed | 03 (closed) |
 | [05 — Recover payments after interruption or late success](closed/05-recover-interrupted-payments.md) | `ready-for-agent` at closure | Closed | 04 (closed) |
@@ -63,7 +63,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [09 — Issue partial refunds across original payment allocations](closed/09-partial-allocated-refunds.md) | `ready-for-agent` at closure | Closed | 07 (closed), 08 (closed) |
 | [10 — Install and upgrade a reviewed revision on staging](closed/10-staging-install-upgrade.md) | `ready-for-human` at closure | Closed | 03 (closed) |
 | [11 — Verify the complete addon on the target Odoo version](closed/11-target-version-acceptance.md) | `ready-for-agent` at closure | Closed | 06, 09, 10 |
-| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11, 16, 17, 18, 19, 20, 21 |
+| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11, 16, 17, 18, 19, 20, 21 (all closed) |
 | [13 — Deepen Return allocation](closed/13-deepen-return-allocation.md) | `ready-for-agent` at closure | Closed | None |
 | [14 — Deepen POS payment state](closed/14-deepen-pos-payment-state.md) | `ready-for-agent` at closure | Closed | None |
 | [15 — Deepen payment outcome application](closed/15-deepen-payment-outcome-application.md) | `ready-for-agent` at closure | Closed | None |
@@ -85,8 +85,8 @@ archived tickets.
 The owner approved tickets 16–18 and requested direct publication as
 `ready-for-agent`. All three can start independently; suggested priority is
 16, then 18, then 17, without introducing dependencies between them. Coordinate
-overlapping tests during integration. Ticket 02's external clarification can
-proceed in parallel and does not block these mocked corrections.
+overlapping tests during integration. Ticket 02's contract verification is now
+closed; physical-terminal and financial acceptance remain ticket 12 work.
 
 All three corrections block ticket 12. Before live acceptance, integrate their
 reviewed implementations and record mocked install, upgrade and Restaurant
@@ -106,8 +106,9 @@ The owner approved three tickets covering the four findings in the
 Tickets 19–21 are closed with reviewed corrections and mocked
 install/upgrade evidence. Ticket 21 also records actual transaction isolation,
 malformed-provider recovery and restart verification; ticket 20 records POS
-discovery recovery. Coordinate overlapping changes during integration; ticket
-02's external work can continue independently.
+discovery recovery. Coordinate overlapping changes during integration. Ticket
+02 is also closed with its documented/observed contract; ticket 12 retains all
+physical-terminal and financial acceptance work.
 
 All three block ticket 12. Before live acceptance, independently review the
 payment-verification boundary and record the full integrated mocked suite on
@@ -124,6 +125,6 @@ that these newly identified paths are fixed.
 - Support retail and restaurant, a configured terminal per payment method, server-managed secrets and manager-only refunds. Late successful payments finalize when the unchanged original order resumes, rather than through unattended background order finalization.
 - Persist operations before external dispatch. Verify the underlying payment, never intent completion alone. Unknown outcomes remain unresolved; local timeouts, empty payment lists and missing IDs do not prove retry safety.
 - Never expose credentials to POS or logs. All automated Merchant API calls are mocked; actual terminal testing belongs to the explicitly controlled acceptance session.
-- Dependencies are gates, not a task ordering preference: 02 gates live acceptance, while provisional contracts allow mocked implementation. Shared code changes from independently ready tickets still require coordination and integration review.
+- Dependencies are gates, not a task ordering preference: closed ticket 02 supplies the documented/observed contract, while ticket 12 owns physical-terminal configuration and financial acceptance. Shared code changes from independently ready tickets still require coordination and integration review.
 
 Read the project instructions, API validation report and development-environment document before implementing. Current documentation and official source take precedence over stale assumptions; record provider ambiguities rather than silently choosing financial behavior.

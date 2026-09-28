@@ -25,7 +25,7 @@ Controlled real-terminal acceptance establishes whether the documented addon is 
 
 ## Blocked by
 
-- 02 — Resolve the Revolut terminal contract and testing prerequisites
+- 02 — Resolve the Revolut terminal contract and testing prerequisites (closed)
 - 11 — Verify the complete addon on the target Odoo version
 - 16 — Preserve uncertain refunds when original-sale recovery fails
 - 17 — Deliver the Restaurant bridge with the reviewed addon release
@@ -38,8 +38,7 @@ Controlled real-terminal acceptance establishes whether the documented addon is 
 
 The owner approved the final audit corrections and required all three before
 this ticket. The existing contract/access and target-version acceptance gates
-remain in place. Ticket 02 can proceed independently while the software
-corrections are implemented and verified.
+remain in place. Ticket 02 is now closed with its contract and Sandbox evidence.
 
 ## Release gate update — 2026-09-28
 
@@ -47,6 +46,20 @@ The owner approved tickets 19–21 as three independently actionable software
 corrections covering the four new payment-safety audit findings. They block
 this ticket in addition to its existing gates. The current passing suite is
 baseline evidence; final acceptance must include the added security and
-failure-recovery regressions on the combined fixed revision. Ticket 02 remains
-an independent external prerequisite, and this ticket remains open for
+failure-recovery regressions on the combined fixed revision. Ticket 02 is
+closed; this ticket remains open for all physical-terminal configuration and
 controlled live acceptance.
+
+## Physical-terminal handoff — 2026-09-28
+
+The project owner reports that a test Revolut Terminal is physically available
+and linked to the production Business user **Test Guzman**. Before any financial
+test, this ticket must verify the device is on app version 1.56 or later, is
+logged in to the intended production Merchant account, is assigned to the
+matching production physical location and has Pay at Counter enabled. Production
+terminal discovery must then return that online device for the matching
+`location_id` and `operation_mode=pos`.
+
+The Sandbox secret and fixed Sandbox virtual terminal are separate and must not
+be used for the physical device. No production credential value, card detail or
+real transaction is authorized or recorded by this availability note.

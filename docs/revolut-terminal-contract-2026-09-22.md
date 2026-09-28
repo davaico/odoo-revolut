@@ -1,10 +1,10 @@
 # Revolut Terminal contract — 22 September 2026
 
-Scope: authoritative Revolut documentation and the official versioned OpenAPI
-definition, reviewed on 22 September 2026. No authenticated API request,
-sandbox mutation, physical-terminal operation or financial operation was
-performed. Consequently, every statement below is either **documented** or
-**unresolved**; there is no observed provider behavior in this record.
+Scope: authoritative Revolut documentation, the official versioned OpenAPI
+definition and authorized non-financial Sandbox probes. Documentation was
+first reviewed on 22 September 2026; the observed-behavior and readiness record
+was updated on 28 September 2026. Statements below distinguish
+**documented**, **observed**, **owner-decided** and **unresolved** behavior.
 
 ## Sources
 
@@ -12,6 +12,8 @@ performed. Consequently, every statement below is either **documented** or
 - [Merchant API reference, version 2026-08-17](https://developer.revolut.com/docs/api/merchant/2026-08-17)
 - [Official 2026-08-17 OpenAPI definition](https://github.com/revolut-engineering/revolut-openapi/blob/master/json/merchant-2026-08-17.json)
 - [Set up a test environment with Revolut Sandbox](https://developer.revolut.com/docs/guides/merchant/test-and-go-live/set-up-sandbox)
+- [Get started with the Revolut Terminal](https://developer.revolut.com/docs/guides/merchant/accept-payments/in-person-payments/terminal/get-started)
+- [Revolut Terminal additional features](https://developer.revolut.com/docs/guides/merchant/accept-payments/in-person-payments/terminal/additional-features)
 - [Refund payments](https://developer.revolut.com/docs/guides/merchant/operations/refunds)
 
 The OpenAPI filename pins the API contract version, but the linked repository
@@ -22,8 +24,12 @@ branch is moving. This record therefore also carries its review date.
 | Date | Activity and source | Outcome | Limitations |
 | --- | --- | --- | --- |
 | 2026-09-22 | Reviewed the official terminal guide, versioned Merchant API reference, official OpenAPI definition, sandbox guide and refund guide linked above | Established the documented contract, sandbox route and unresolved schema/retail conflicts recorded below | Documentation only; the OpenAPI repository branch can move after this review date |
-| 2026-09-22 | Provider clarification | None available or requested from this environment | No provider case or written answer exists to resolve the retail contract |
-| 2026-09-22 | Controlled sandbox or terminal probe | Not performed | No assigned operator or confirmed Merchant access; no payload acceptance or outcome was observed |
+| 2026-09-28 | Sandbox access and location setup, operated by Gary — tester | Confirmed Sandbox Merchant access, secure off-repository secret storage and creation of a `physical` Merchant location | No credential value is recorded; the Sandbox dashboard address workflow failed, so the location was created through the Merchant API |
+| 2026-09-28 | Authenticated create-order probes using API version `2026-08-17` | `eat_in` and `take_away` were accepted; omitting fulfilment was rejected as invalid `SERVICE`; omitting `channel` was accepted by order creation | Runtime acceptance does not define the business meaning of retail, and the channel-omitted order was not used to claim terminal compatibility |
+| 2026-09-28 | Two Sandbox virtual-terminal flows at documented success amounts `100` and `101` minor GBP units | Both intents stayed `pending`; each underlying payment appeared under its order and reached `failed` after approximately 8–9 seconds with no decline reason or bank message | The documented successful outcome was not observed; no real funds or physical terminal were involved |
+| 2026-09-28 | Read-only payment reconciliation probes | `GET /api/orders/{order_id}/payments` exposed each failed payment even while its intent returned `payment_id: null`; direct payment retrieval confirmed `failed` | This establishes a diagnostic/reconciliation source, not an idempotency or replay guarantee |
+| 2026-09-28 | Sandbox virtual-terminal and dashboard inspection | Terminal discovery returned the fixed virtual terminal online but with no reported operation mode or location; the Sandbox Merchant Devices page failed to load | The operator could not verify or change virtual-terminal location/Pay at Counter settings |
+| 2026-09-28 | Provider clarification request | Revolut API Support acknowledged the request; a substantive answer is pending | The reply remains useful but no longer blocks the local contract record |
 
 ## Order payload contract and the remaining contradiction
 
@@ -60,15 +66,17 @@ The resulting evidence by business context is:
 
 | Context | Evidence-backed payload | Confidence |
 | --- | --- | --- |
-| Restaurant, eat-in | The guide's payload above with `fulfilment_type: "eat_in"` | Guide-documented, not exercised; absent from the versioned schema |
-| Restaurant, takeaway | The same payload with `fulfilment_type: "take_away"` | Guide-documented, not exercised; absent from the versioned schema |
-| Retail | No authoritative retail `fulfilment_type` or omission rule was found | Unresolved; do not map retail to `eat_in` or `take_away` |
+| Restaurant, eat-in | The guide's payload above with `fulfilment_type: "eat_in"` | Guide-documented and accepted by the controlled Sandbox create-order probe; absent from the versioned schema |
+| Restaurant, takeaway | The same payload with `fulfilment_type: "take_away"` | Guide-documented and accepted by the controlled Sandbox create-order probe; absent from the versioned schema |
+| Retail | Use `fulfilment_type: "eat_in"` as the project owner's interim mapping | Owner-decided and runtime-accepted; Revolut documents no retail-specific value, so this must not be represented as provider-confirmed semantics |
 
-These restaurant payloads are the provisional mocked-development contract,
-not evidence of runtime acceptance. A controlled sandbox probe or written
-Revolut clarification must establish whether the 2026-08-17 endpoint accepts
-the guide-only fields and what retail must send. Until then, production retail
-compatibility must not be claimed.
+The probes reconcile the guide/schema discrepancy for this project: keep
+sending `channel: "pos"` because the terminal guide and payment-intent
+prerequisites require it, even though order creation accepted its omission.
+Always send one of the two accepted fulfilment values. For retail, the owner has
+chosen `eat_in` until Revolut publishes a distinct rule or corrects the API.
+That decision enables controlled acceptance; it does not redefine Revolut's
+published restaurant terminology.
 
 ## Terminal capture and success contract
 
@@ -90,6 +98,22 @@ The guide suggests polling an intent every second with a bounded timeout in
 its flow description, while its checklist uses 2–3 seconds and gives 90 seconds
 as an example. Those values are recommendations, not a provider guarantee.
 Timeout or a lost response remains uncertain until reconciled.
+
+### Observed Sandbox state-propagation defect and reconciliation
+
+Two controlled probes showed the same unexpected behavior. The virtual
+terminal created an underlying payment almost immediately, and that payment
+reached final state `failed`, but the related intent stayed `pending` with an
+unchanged `updated_at` and `payment_id: null`. The failed payments had neither
+`decline_reason` nor `bank_message`; the Business Sandbox UI described a
+technical error.
+
+The official `GET /api/orders/{order_id}/payments` endpoint returned the
+underlying payment and its final state in both cases. This is useful defensive
+evidence when an intent remains transitional, but it does not authorize blind
+replay: one order can have multiple payment attempts, and the integration must
+match persisted order, amount, currency and known timing/references before
+applying an outcome. Empty or inconsistent results remain unresolved.
 
 ## Location, mode and device prerequisites
 
@@ -127,13 +151,17 @@ minor-unit outcomes:
 | `4000`, or `2300` through `2499` | Transaction not allowed for cardholder |
 | `2500` through `2699` | Suspected fraud |
 
-This provides a non-financial route for controlled success and decline tests,
-including order creation, virtual-terminal discovery, intent creation and
-final payment-state verification. It also provides the appropriate place to
-probe the guide/schema contradiction once an authorized sandbox operator and
-credentials are available. The claims above are documentation findings only:
-no sandbox account access, payload acceptance or simulated outcome was observed
-during this review.
+This is the documented non-financial route for controlled success and decline
+tests, including order creation, virtual-terminal discovery, intent creation
+and final payment-state verification. The 2026-09-28 probes successfully
+exercised access, location creation, payload validation, terminal discovery,
+intent creation, cancellation and final-payment retrieval. They did not
+produce the documented successful outcome: both nominal-success amounts ended
+as technical payment failures while their intents stayed pending.
+
+The failure is reproducible and isolated to the Sandbox terminal path rather
+than 3DS, manual capture or missing polling. No additional Sandbox payment
+attempt should be made until Revolut corrects or explains the simulator.
 
 Production evidence remains a separate later activity. Revolut recommends
 testing both sandbox and production before rollout; no production request or
@@ -160,41 +188,32 @@ that Revolut rejects it; it is proof that this integration cannot rely on it.
 Neither a locally generated reference nor an HTTP `409` response creates an
 undocumented replay guarantee.
 
-## Access readiness and observed evidence
+## Sandbox access readiness and observed evidence
 
-The repository contains no credential values, named responsible operator or
-evidence that the following external prerequisites are currently available:
+The repository contains no credential values. Current readiness is:
 
-| Prerequisite | Readiness on 22 September 2026 | Responsible operator |
+| Prerequisite | Readiness on 28 September 2026 | Responsible operator |
 | --- | --- | --- |
-| Merchant Sandbox account and Secret API key | Unconfirmed | To be assigned |
-| Sandbox physical location suitable for the virtual-terminal flow | Unconfirmed | To be assigned |
-| Production Merchant access | Unconfirmed | To be assigned |
-| Matching production physical location | Unconfirmed | To be assigned |
-| Physical Terminal, app 1.56+, in Pay at Counter mode | Unconfirmed | To be assigned |
+| Merchant Sandbox account and Secret API key | Confirmed; secret stored securely outside the repository | Gary — tester |
+| Sandbox physical location suitable for the virtual-terminal flow | Confirmed through Merchant API creation | Gary — tester |
+| Sandbox virtual terminal | Returned online and accepted intents, but location/mode metadata were absent and the Devices page failed | Gary — tester |
 
-Ticket 01's mocked terminal check and the staging host's unauthenticated DNS/TLS
-check do not establish any of these facts. No credentials should be added to
-this record when an operator is assigned.
+Sandbox and production are separate. Ticket 2 records only the documented
+production prerequisites: a production Merchant account and independent
+credential, a matching physical location, Terminal app version 1.56 or later,
+an online device and Pay at Counter mode. It does not assess a particular
+production account or physical device.
 
-## External dependencies before ticket closure
+## Scope closure and downstream handoff
 
-This verification slice remains open pending all of the following:
+Ticket 2 closes with the documented contract, observed Sandbox behavior,
+owner-decided interim retail mapping and reproducible simulator limitation.
+Physical-terminal setup, production terminal discovery and every real payment
+or refund scenario are outside this record and remain ticket 12 work.
 
-1. Revolut clarification or an authorized sandbox probe for acceptance of
-   `channel` and `fulfilment_type` on `POST /api/orders` with API version
-   2026-08-17.
-2. An authoritative retail rule: a valid retail value, or confirmation that
-   `fulfilment_type` must be omitted. No restaurant value may be repurposed.
-3. Assignment of a responsible operator and confirmation of Sandbox Merchant
-   access for the non-financial contract probes.
-4. For the later physical acceptance session, confirmation of production
-   Merchant access, a matching physical location, and an eligible Terminal in
-   Pay at Counter mode at app version 1.56 or higher.
-
-Mocked development may proceed with the restaurant payloads clearly marked as
-provisional, with retail behavior left unimplemented or explicitly blocked,
-and with ambiguous create-order/create-intent outcomes never auto-replayed.
+A later Revolut response about the Sandbox bug or retail terminology should
+amend this record, but it does not reopen the completed local verification
+slice automatically.
 
 ## Retry and cancellation implementation check — 23 September 2026
 

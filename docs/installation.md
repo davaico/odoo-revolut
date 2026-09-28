@@ -13,17 +13,18 @@ order open; normal automatic checkout runs only after the full order is paid.
 - the standard Odoo `point_of_sale` addon
 - outbound HTTPS from the Odoo server to the selected fixed Revolut host
 - a Revolut Merchant secret key, location UUID, and terminal UUID
-- a restaurant fulfilment selection supported by the published terminal guide:
-  `eat_in` or `take_away`
+- a fulfilment selection supported by the published terminal guide: `eat_in`
+  or `take_away`
 
 `pos_restaurant` is optional. When it is installed alongside `pos_revolut`, the
 small `pos_revolut_restaurant` bridge installs automatically and guards bill
-splits, merges and transfers after a Revolut payment starts. The terminal guide
-provides the provisional restaurant `eat_in` and `take_away` payloads; their
-acceptance by the pinned Merchant API still needs controlled testing. Revolut
-has not confirmed a retail `fulfilment_type`, so this addon does not claim live
-retail compatibility. A manager-configured value in a retail POS is for mocked
-or controlled contract testing only.
+splits, merges and transfers after a Revolut payment starts. Controlled Sandbox
+probes confirmed that the pinned Merchant API accepts the terminal guide's
+`eat_in` and `take_away` values and rejects omission as invalid `SERVICE`.
+Revolut documents no retail-specific value; the project owner therefore selects
+`eat_in` as the interim retail mapping until Revolut publishes another rule.
+This is a product decision backed by runtime acceptance, not a claim that
+Revolut defines retail as restaurant consumption.
 
 ## Provision the secret
 
@@ -56,6 +57,13 @@ environment to these hosts; managers cannot enter a custom host:
 | Production | `https://merchant.revolut.com` |
 
 Every request sends `Revolut-Api-Version: 2026-08-17`.
+
+On 2026-09-28, two nominal-success Sandbox virtual-terminal probes created
+failed underlying payments while their intents remained `pending` with no
+`payment_id`. The order payment-list endpoint exposed the final failures. Treat
+this as a recorded Sandbox simulator limitation, not production evidence; do
+not repeatedly create test intents while the provider issue remains unresolved.
+See the [terminal contract record](revolut-terminal-contract-2026-09-22.md).
 
 ## Install or upgrade
 
@@ -99,11 +107,12 @@ As a Point of Sale administrator:
 4. Select **Sandbox** or **Production**.
 5. Enter the Revolut location UUID and the single terminal UUID assigned to this
    payment method.
-6. Select the guide-documented fulfilment for this payment method. In a
+6. Select the guide-documented fulfilment for this payment method. Use
+   `eat_in` for retail under the current owner-approved interim contract. In a
    Restaurant POS, the active table and standard Dine In/Takeout preset select
    `eat_in` or `take_away` for each payment. Delivery and unknown no-table
-   presets are guarded because the provisional terminal contract does not
-   define their mapping.
+   presets are guarded because the terminal contract does not define their
+   mapping.
 7. Enter the environment-variable name, not its value, in **Revolut Secret
    Reference** and save.
 8. Select **Check Connection**.
@@ -180,8 +189,8 @@ tender or terminal charge for the same sale, and select **Check status**. **Retr
 intent references can be queried again; a local timeout never proves that the
 customer was not charged. If a creation response was lost and its reference is
 missing, ask support to reconcile it with Revolut. Do not clear database locks,
-force the line paid, or delete audit records. Refunds and live retail
-fulfilment remain separate acceptance work.
+force the line paid, or delete audit records. Physical-terminal payment and
+refund acceptance remain ticket 12 work.
 
 ### Split tender and Restaurant checkout
 
