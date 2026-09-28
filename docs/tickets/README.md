@@ -72,7 +72,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [18 — Isolate internal payment records by allowed company](closed/18-isolate-internal-payment-records.md) | `ready-for-agent` at closure | Closed | None |
 | [19 — Enforce verified settlement and internal-operation permissions](closed/19-enforce-payment-server-boundaries.md) | `ready-for-agent` at closure | Closed | None |
 | [20 — Recover POS lines after a failed pre-payment lookup](closed/20-recover-undispatched-pos-lines.md) | `ready-for-agent` at closure | Closed | None |
-| [21 — Keep reconciliation progressing after malformed provider responses](ready-for-agent/21-isolate-reconciliation-failures.md) | `ready-for-agent` | Open | None |
+| [21 — Keep reconciliation progressing after malformed provider responses](closed/21-isolate-reconciliation-failures.md) | `ready-for-agent` at closure | Closed | None |
 
 ## Architecture triage — 2026-09-25
 
@@ -103,10 +103,11 @@ The owner approved three tickets covering the four findings in the
 - **21 (P2):** validate malformed provider evidence and keep other operations
   progressing during reconciliation.
 
-Tickets 19 and 20 are closed with reviewed corrections and mocked
-install/upgrade evidence. Ticket 21 remains open and ready-for-agent with no
-mutual blockers. Coordinate overlapping changes during integration; ticket 02's
-external work can continue independently.
+Tickets 19–21 are closed with reviewed corrections and mocked
+install/upgrade evidence. Ticket 21 also records actual transaction isolation,
+malformed-provider recovery and restart verification; ticket 20 records POS
+discovery recovery. Coordinate overlapping changes during integration; ticket
+02's external work can continue independently.
 
 All three block ticket 12. Before live acceptance, independently review the
 payment-verification boundary and record the full integrated mocked suite on
