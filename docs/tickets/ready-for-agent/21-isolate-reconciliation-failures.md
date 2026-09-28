@@ -2,6 +2,10 @@
 
 **Work branch:** `codex/21-isolate-reconciliation-failures`
 
+**Worktree:** `/home/gary/delivery/Tek2/stage/odoo-rev/worktree/ticket-21`
+
+**Parallel work:** T19–T21 run in parallel; coordinate shared-file edits and check for conflicts before merging.
+
 **State:** open
 
 **Triage:** ready-for-agent

@@ -2,6 +2,10 @@
 
 **Work branch:** `codex/20-recover-undispatched-pos-lines`
 
+**Worktree:** `/home/gary/delivery/Tek2/stage/odoo-rev/worktree/ticket-20`
+
+**Parallel work:** T19–T21 run in parallel; coordinate shared-file edits and check for conflicts before merging.
+
 **State:** open
 
 **Triage:** ready-for-agent
