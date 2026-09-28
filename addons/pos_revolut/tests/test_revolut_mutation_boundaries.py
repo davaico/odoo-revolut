@@ -509,6 +509,21 @@ class TestRevolutMutationBoundaries(CommonPosTest):
                 self.assertEqual(order.state, state)
                 self.assertEqual(order.amount_paid, 12.34)
 
+    def test_cash_return_origin_cannot_reduce_a_verified_sale_balance(self):
+        original = self._order_payload(str(uuid4()), str(uuid4()), payment_method=self.cash_payment_method)
+        original.update(amount_total=-12.34, amount_paid=-6.17, user_id=self.cashier.id)
+        original["lines"][0][2].update(qty=-1, price_subtotal=-12.34, price_subtotal_incl=-12.34)
+        original["payment_ids"][0][2].update(amount=-6.17, transaction_id=False)
+        original_id = self._rpc("pos.order", "create", [original])
+        original_line = self.env["pos.order"].browse(original_id).lines
+        payload, operation = self._matched_operation_payload(amount=6.17)
+        payload["state"] = "paid"
+        payload["lines"][0][2]["refunded_orderline_id"] = original_line.id
+        with TestCase.assertRaises(self, UserError):
+            self._rpc("pos.order", "create", [payload])
+        self.assertFalse(self.env["pos.order"].search([("uuid", "=", payload["uuid"])]))
+        self.assertFalse(operation.pos_order_id)
+
     def test_unexposed_waiting_drafts_can_be_cancelled_and_removed(self):
         for method, args_for_id in (
             ("action_pos_order_cancel", lambda order_id: [[order_id]]),

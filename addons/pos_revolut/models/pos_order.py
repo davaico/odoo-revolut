@@ -3,6 +3,7 @@ from contextvars import ContextVar
 
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
+from odoo.tools import float_is_zero
 
 from .return_allocation import ReturnAllocation
 
@@ -238,8 +239,12 @@ class PosOrder(models.Model):
                 values, order, self._revolut_payment_values(values, order)
             )
             operations = order._validate_revolut_settlement(values, order) if refunds is None else self.env["pos.revolut.payment.operation"].browse()
-            if operations and order.state in {"paid", "done"} and not order._is_pos_order_paid():
-                raise UserError(_("The Revolut order is not fully paid."))
+            if operations and order.state in {"paid", "done"}:
+                # A charge settles this sale's total. Odoo's generic paid
+                # helper can replace it with a related refund's amount_paid.
+                balance = order._get_rounded_amount(order.amount_total) - order.amount_paid
+                if not float_is_zero(balance, precision_rounding=order.currency_id.rounding):
+                    raise UserError(_("The Revolut order is not fully paid."))
             order._validate_revolut_payment_references(self._revolut_payment_values(values, order))
             order._link_revolut_settlement(operations, refunds)
 
