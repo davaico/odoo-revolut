@@ -6,6 +6,18 @@
         <field name="domain_force">[('company_id', 'in', company_ids)]</field>
         <field name="groups" eval="[(4, ref('point_of_sale.group_pos_manager'))]"/>
     </record>
+    <record id="rule_revolut_dispatch_company_manager" model="ir.rule">
+        <field name="name">Revolut dispatch claims in allowed companies</field>
+        <field name="model_id" ref="model_pos_revolut_payment_dispatch"/>
+        <field name="domain_force">[('operation_id.company_id', 'in', company_ids)]</field>
+        <field name="groups" eval="[(4, ref('point_of_sale.group_pos_manager'))]"/>
+    </record>
+    <record id="rule_revolut_order_lock_company_manager" model="ir.rule">
+        <field name="name">Revolut order locks in allowed companies</field>
+        <field name="model_id" ref="model_pos_revolut_order_lock"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="groups" eval="[(4, ref('point_of_sale.group_pos_manager'))]"/>
+    </record>
     <record id="rule_revolut_audit_company_manager" model="ir.rule">
         <field name="name">Revolut audit in allowed companies</field>
         <field name="model_id" ref="model_pos_revolut_reconciliation_audit"/>
