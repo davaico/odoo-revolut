@@ -190,6 +190,7 @@ class PosOrder(models.Model):
         return {
             "uuid": self.uuid, "session_id": self.session_id.id,
             "state": self.state, "amount_total": self.amount_total,
+            "is_refund": self.is_refund,
             "pricelist_id": self.pricelist_id.id,
             "fiscal_position_id": self.fiscal_position_id.id,
             "lines": [{
@@ -384,6 +385,10 @@ class PosOrder(models.Model):
         for operation in operations:
             latest_by_line[operation.payment_line_uuid] = operation
         latest = operation_model.browse([item.id for item in latest_by_line.values()])
+        if order.get("is_refund") and latest.filtered(
+            lambda operation: not operation.retry_safe or operation.state == "verified"
+        ):
+            raise UserError(_("A Revolut charge cannot settle a refund document."))
         verified = operation_model.browse()
         current_snapshot = operation_model.normalize_financial_snapshot(order)
         for operation in latest:

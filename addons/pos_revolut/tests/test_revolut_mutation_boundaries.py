@@ -439,6 +439,34 @@ class TestRevolutMutationBoundaries(CommonPosTest):
         self.assertEqual((order.date_order, order.currency_rate), before)
         self.assertEqual(operation.pos_order_id, order)
 
+    def test_public_create_checks_document_classification_and_normalizes_rate(self):
+        for values in ({"is_refund": True}, {"currency_rate": 2.0}):
+            with self.subTest(values=values):
+                payload = deepcopy(self.payload)
+                payload.update(uuid=str(uuid4()), **values)
+                payload["lines"][0][2]["uuid"] = str(uuid4())
+                payment = payload["payment_ids"][0][2]
+                payment["uuid"] = str(uuid4())
+                operation = self._operation(
+                    payload["uuid"], payment["uuid"],
+                    financial_snapshot=self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload),
+                )
+                payment["transaction_id"] = operation.revolut_payment_id
+                if values.get("is_refund"):
+                    with TestCase.assertRaises(self, UserError):
+                        self._rpc("pos.order", "create", [payload])
+                    self.assertFalse(self.env["pos.order"].search([("uuid", "=", payload["uuid"])]))
+                    self.assertFalse(operation.pos_order_id)
+                else:
+                    order_id = self._rpc("pos.order", "create", [payload])
+                    order = self.env["pos.order"].browse(order_id)
+                    rate = self.env["res.currency"]._get_conversion_rate(
+                        order.company_id.currency_id, order.currency_id,
+                        order.company_id, order.date_order.date(),
+                    )
+                    self.assertEqual(order.currency_rate, rate)
+                    self.assertEqual(operation.pos_order_id, order)
+
     def test_unexposed_waiting_drafts_can_be_cancelled_and_removed(self):
         for method, args_for_id in (
             ("action_pos_order_cancel", lambda order_id: [[order_id]]),
