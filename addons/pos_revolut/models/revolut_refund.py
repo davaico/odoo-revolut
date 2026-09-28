@@ -1,15 +1,19 @@
+import logging
 from datetime import timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
 import requests
 from psycopg2 import IntegrityError
-from psycopg2.errors import SerializationFailure
+from psycopg2.errors import DeadlockDetected, SerializationFailure
 
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError, ValidationError
 
 from .return_allocation import ReturnAllocation
+
+
+_logger = logging.getLogger(__name__)
 
 
 class PosRevolutRefundOperation(models.Model):
@@ -44,6 +48,7 @@ class PosRevolutRefundOperation(models.Model):
     dispatched_at = fields.Datetime(required=True, readonly=True, default=fields.Datetime.now)
     verified_at = fields.Datetime(readonly=True)
     next_reconcile_at = fields.Datetime(readonly=True, default=fields.Datetime.now, index=True)
+    reconcile_failures = fields.Integer(readonly=True, default=0)
 
     _unique_return_line = models.Constraint("UNIQUE(company_id, order_uuid, payment_line_uuid)", "A return payment line can only have one Revolut refund.")
     _unique_key = models.Constraint("UNIQUE(idempotency_key)", "Refund idempotency keys must be unique.")
@@ -88,9 +93,21 @@ class PosRevolutRefundOperation(models.Model):
             ("next_reconcile_at", "<=", fields.Datetime.now()),
         ], order="next_reconcile_at, id", limit=max(1, min(int(batch_size), 50)))
         for operation in operations:
-            operation.payment_method_id.sudo().with_company(operation.company_id).revolut_poll_refund(
-                operation.id, operation.order_uuid, operation.payment_line_uuid
-            )
+            payment_method = operation.payment_method_id.sudo().with_company(operation.company_id)
+            try:
+                payment_method.revolut_poll_refund(
+                    operation.id, operation.order_uuid, operation.payment_line_uuid
+                )
+            except (SerializationFailure, DeadlockDetected):
+                # The adapter has ended the failed transaction. Reschedule in
+                # a fresh locked cursor without repeating a refund request.
+                _logger.warning("Revolut refund operation %s deferred after a transaction conflict", operation.id)
+                try:
+                    payment_method._update_refund_owned(operation.id, {
+                        "state": "unresolved", "local_outcome": "interrupted",
+                    })
+                except (SerializationFailure, DeadlockDetected):
+                    _logger.warning("Revolut refund operation %s could not be rescheduled; retains its previous schedule", operation.id)
 
     def action_check_status(self):
         for operation in self:
@@ -201,23 +218,45 @@ class PosPaymentMethod(models.Model):
                     operation = env["pos.revolut.refund.operation"].sudo().browse(operation_id)
                     if operation.state not in {"verified", "failed"}:
                         final = values.get("state") in {"verified", "failed"}
-                        operation.write({**values, "next_reconcile_at": False if final else fields.Datetime.now() + timedelta(seconds=30)})
+                        cause = values.get("local_outcome")
+                        failures = operation.reconcile_failures
+                        if cause == "interrupted":
+                            failures += 1
+                            delay = min(60 * 2 ** min(failures - 1, 5), 1800)
+                        elif cause == "unknown":
+                            delay = 300
+                        else:
+                            failures, delay = 0, 30
+                        operation.write({
+                            **values, "reconcile_failures": 0 if final else failures,
+                            "next_reconcile_at": False if final else fields.Datetime.now() + timedelta(seconds=delay),
+                        })
+                        if cause in {"unknown", "interrupted"}:
+                            _logger.warning("Revolut refund operation %s remains unresolved (%s)", operation.id, cause)
                     snapshot = operation._snapshot()
                     cursor.commit()
                     return snapshot
-            except SerializationFailure:
+            except (SerializationFailure, DeadlockDetected):
                 if attempt == 2:
                     raise
 
     def _validate_refund_response(self, operation, response):
+        if not isinstance(response, dict):
+            raise ValueError("invalid refund response")
         try:
             UUID(response["id"])
         except (KeyError, TypeError, ValueError, AttributeError):
             raise ValueError("invalid refund reference") from None
         if (response.get("type") != "refund" or response.get("related_order_id") != operation["original_order_id"]
+                or type(response.get("amount")) is not int
                 or response.get("amount") != operation["amount_minor"] or response.get("currency") != operation["currency_code"]
                 or (operation["order_id"] and response["id"] != operation["order_id"])):
             raise ValueError("refund details do not match")
+        state = response.get("state")
+        if not isinstance(state, str) or state not in {
+            "pending", "processing", "authorised", "completed", "failed", "cancelled"
+        }:
+            raise ValueError("refund outcome is not established")
 
     def revolut_find_refund(self, order_uuid, payment_line_uuid):
         result = self._read_refund_owned(order_uuid=order_uuid, payment_line_uuid=payment_line_uuid)
@@ -250,8 +289,10 @@ class PosPaymentMethod(models.Model):
             if values["state"] == "verified":
                 values["verified_at"] = fields.Datetime.now()
             return self._update_refund_owned(operation_id, values)
-        except (requests.RequestException, UserError, ValueError):
+        except requests.RequestException:
             return self._update_refund_owned(operation_id, {"state": "unresolved", "local_outcome": "interrupted"})
+        except (UserError, ValueError):
+            return self._update_refund_owned(operation_id, {"state": "unresolved", "local_outcome": "unknown"})
 
     def revolut_mark_refund_timeout(self, operation_id, order_uuid, payment_line_uuid):
         self._read_refund_owned(operation_id, order_uuid, payment_line_uuid)
