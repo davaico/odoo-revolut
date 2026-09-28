@@ -71,7 +71,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [17 — Deliver the Restaurant bridge with the reviewed addon release](closed/17-deliver-restaurant-bridge.md) | `ready-for-agent` at closure | Closed | None |
 | [18 — Isolate internal payment records by allowed company](closed/18-isolate-internal-payment-records.md) | `ready-for-agent` at closure | Closed | None |
 | [19 — Enforce verified settlement and internal-operation permissions](closed/19-enforce-payment-server-boundaries.md) | `ready-for-agent` at closure | Closed | None |
-| [20 — Recover POS lines after a failed pre-payment lookup](ready-for-agent/20-recover-undispatched-pos-lines.md) | `ready-for-agent` | Open | None |
+| [20 — Recover POS lines after a failed pre-payment lookup](ready-for-agent/20-recover-undispatched-pos-lines.md) | `ready-for-agent` | Claimed | None |
 | [21 — Keep reconciliation progressing after malformed provider responses](ready-for-agent/21-isolate-reconciliation-failures.md) | `ready-for-agent` | Open | None |
 
 ## Architecture triage — 2026-09-25

@@ -6,7 +6,7 @@
 
 **Parallel work:** Only T20 and T21 run in parallel; coordinate shared-file edits and check for conflicts before merging.
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 
