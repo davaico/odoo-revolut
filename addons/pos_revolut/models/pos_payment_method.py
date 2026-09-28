@@ -321,7 +321,7 @@ class PosPaymentMethod(models.Model):
                 owned_env = api.Environment(cursor, self.env.uid, dict(self.env.context))
                 operations = owned_env["pos.revolut.payment.operation"].sudo()
                 try:
-                    operations.lock_order(values["company_id"], values["order_uuid"])
+                    operations._lock_order(values["company_id"], values["order_uuid"])
                     if owned_env["pos.revolut.refund.operation"].sudo().search_count([
                         ("company_id", "=", values["company_id"]), ("order_uuid", "=", values["order_uuid"]),
                     ]):

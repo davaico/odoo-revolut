@@ -1550,6 +1550,9 @@ class TestRevolutOrderSettlement(CommonPosTest):
         payment_line_uuid = str(uuid4())
         draft_payload = self._order_payload(order_uuid, payment_line_uuid)
         draft_payload["state"] = "draft"
+        with self.assertRaisesRegex(UserError, "not been verified"):
+            self.env["pos.order"].sync_from_ui([deepcopy(draft_payload)])
+        draft_payload["payment_ids"][0][2]["payment_status"] = "waiting"
         result = self.env["pos.order"].sync_from_ui([draft_payload])
         draft_order = self.env["pos.order"].browse(result["pos.order"][0]["id"])
         self.assertEqual(draft_order.state, "draft")
