@@ -2,7 +2,7 @@
 
 **Work branch:** `codex/18-isolate-internal-payment-records`
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 
@@ -51,7 +51,43 @@ main before starting; use an isolated worktree for concurrent implementation.
 
 ## Verification evidence
 
-The audit reproduced both disclosures in the disposable Odoo environment with
-synthetic records, a manager restricted to the other company and direct model
-reads. The parent-operation isolation control passed. HTTP was blocked and all
-fixtures were rolled back. Implementation has not started.
+Implemented on `codex/18-isolate-internal-payment-records`, fast-forwarded to
+reviewed `main` at `ebd67fa` before implementation. Addon `19.0.1.7.1` retains
+manager read-only access and restricts dispatch claims through
+`operation_id.company_id`; order locks are restricted through `company_id`.
+Both rules use Odoo's active `company_ids` context and load on module update.
+No separately writable dispatch company can override its operation's owner.
+
+Verification on Odoo `19.0.20260908`, using synthetic records only:
+
+- Red/green regressions reproduced each disclosure before its corresponding
+  rule was added. The parent operation isolation control passed. The final
+  tests request only scalar dispatch or order-lock fields, check direct reads,
+  searches and search/reads, and verify authorized manager reads.
+- Focused fresh install: `./scripts/test-addon --test-tags
+  /pos_revolut:TestRevolutAuthorization,/pos_revolut:TestRevolutReconciliation`
+  passed 13 tests, with 0 failures and 0 errors. This includes a manager with
+  both companies restricted to one active company, cashier read denial, denied
+  manager/cashier create/write/unlink, and a non-superuser cashier dispatch
+  followed by manager reconciliation. The same operation, two completed
+  dispatch claims, provider references and manager audit are retained.
+- Actual legacy upgrade: installed `pos_revolut` from `ebd67fa`
+  (`19.0.1.7.0`) in a disposable database and committed a pending payment,
+  two dispatch claims and its order lock through the public payment start.
+  A foreign manager could read both internal models' scalar fields while the
+  parent operation remained hidden. After updating that same database to
+  `19.0.1.7.1`, the 13 focused tests passed. Direct reads/searches of the
+  persisted foreign records were denied, including for a multi-company
+  manager with a restricted active-company context. Authorized manager
+  reconciliation verified the original payment using only mocked GETs and
+  committed its audit in the production-owned transactions; a fresh
+  transaction confirmed the verified reference, manager actor and preserved
+  dispatch claims.
+- Controlled lifecycle suite passed all 12 tests; repository deployment unit
+  suite passed all 29 tests. Python compilation, security XML parsing and
+  `git diff --check` passed. No static typechecker is configured for the addon.
+
+All expected provider calls were mocked. The test network is internal and the
+Merchant HTTP guard was verified before Odoo ran. No credentials or real
+payment/customer data were used. Manager access and the focused verification
+command are documented in `docs/installation.md`.
