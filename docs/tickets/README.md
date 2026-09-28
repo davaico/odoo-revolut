@@ -65,7 +65,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [15 — Deepen payment outcome application](closed/15-deepen-payment-outcome-application.md) | `ready-for-agent` at closure | Closed | None |
 | [16 — Preserve uncertain refunds when original-sale recovery fails](closed/16-preserve-uncertain-refund-recovery.md) | `ready-for-agent` at closure | Closed | None |
 | [17 — Deliver the Restaurant bridge with the reviewed addon release](closed/17-deliver-restaurant-bridge.md) | `ready-for-agent` at closure | Closed | None |
-| [18 — Isolate internal payment records by allowed company](ready-for-agent/18-isolate-internal-payment-records.md) | `ready-for-agent` | Claimed | None |
+| [18 — Isolate internal payment records by allowed company](closed/18-isolate-internal-payment-records.md) | `ready-for-agent` at closure | Closed | None |
 
 ## Architecture triage — 2026-09-25
 

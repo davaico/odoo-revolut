@@ -2,7 +2,7 @@
 
 **Work branch:** `codex/18-isolate-internal-payment-records`
 
-**State:** claimed
+**State:** closed
 
 **Triage:** ready-for-agent
 
@@ -25,13 +25,13 @@ mutation bypass.
 
 ## Acceptance criteria
 
-- [ ] Direct searches and reads of payment dispatch claims and order locks cannot expose records outside the manager's allowed companies, including requests for scalar fields that do not read the parent operation.
-- [ ] Use existing Odoo access-control conventions: remove unnecessary manager read access or restrict required access by the owning company. Derive dispatch ownership from its operation and prevent inconsistent ownership from bypassing the restriction.
-- [ ] Legitimate manager inspection and reconciliation continue to work for allowed companies. Where internal-model access is unnecessary, denying it must not break supported manager workflows. Users with access to multiple companies remain restricted to their active allowed-company context.
-- [ ] Preserve cashier restrictions and existing prohibitions on direct creation, modification or deletion of financial operation internals. Company scoping must not introduce a mark-paid, unlock or dispatch bypass.
-- [ ] Add two-company Odoo regressions that reproduce the original disclosure through direct model reads with no parent relation requested. Assert the parent operation isolation control, denied foreign internal records, allowed-company behavior and restricted multi-company context using non-superuser access.
-- [ ] Exercise authorized payment dispatch and manager reconciliation after the access change, retaining transaction and audit guarantees. Verify the security update applies on upgrade as well as fresh installation; all provider calls remain mocked.
-- [ ] Document any intentional change to supported manager access and record focused authorization/workflow test results. Never include credentials or real payment/customer data in evidence.
+- [x] Direct searches and reads of payment dispatch claims and order locks cannot expose records outside the manager's allowed companies, including requests for scalar fields that do not read the parent operation.
+- [x] Use existing Odoo access-control conventions: remove unnecessary manager read access or restrict required access by the owning company. Derive dispatch ownership from its operation and prevent inconsistent ownership from bypassing the restriction.
+- [x] Legitimate manager inspection and reconciliation continue to work for allowed companies. Where internal-model access is unnecessary, denying it must not break supported manager workflows. Users with access to multiple companies remain restricted to their active allowed-company context.
+- [x] Preserve cashier restrictions and existing prohibitions on direct creation, modification or deletion of financial operation internals. Company scoping must not introduce a mark-paid, unlock or dispatch bypass.
+- [x] Add two-company Odoo regressions that reproduce the original disclosure through direct model reads with no parent relation requested. Assert the parent operation isolation control, denied foreign internal records, allowed-company behavior and restricted multi-company context using non-superuser access.
+- [x] Exercise authorized payment dispatch and manager reconciliation after the access change, retaining transaction and audit guarantees. Verify the security update applies on upgrade as well as fresh installation; all provider calls remain mocked.
+- [x] Document any intentional change to supported manager access and record focused authorization/workflow test results. Never include credentials or real payment/customer data in evidence.
 
 ## Blocked by
 
@@ -51,8 +51,9 @@ main before starting; use an isolated worktree for concurrent implementation.
 
 ## Verification evidence
 
-Implemented on `codex/18-isolate-internal-payment-records`, fast-forwarded to
-reviewed `main` at `ebd67fa` before implementation. Addon `19.0.1.7.1` retains
+Implemented and reviewed at `43efb98` on
+`codex/18-isolate-internal-payment-records`, based on reviewed `main` at
+`ebd67fa`. Addon `19.0.1.7.1` retains
 manager read-only access and restricts dispatch claims through
 `operation_id.company_id`; order locks are restricted through `company_id`.
 Both rules use Odoo's active `company_ids` context and load on module update.
@@ -83,6 +84,9 @@ Verification on Odoo `19.0.20260908`, using synthetic records only:
   committed its audit in the production-owned transactions; a fresh
   transaction confirmed the verified reference, manager actor and preserved
   dispatch claims.
+- Full addon run: `./scripts/test-addon` completed with 0 failures and 0 errors
+  across 150 tests, including manager and retail POS browser tours and payment,
+  refund and concurrency regressions.
 - Controlled lifecycle suite passed all 12 tests; repository deployment unit
   suite passed all 29 tests. Python compilation, security XML parsing and
   `git diff --check` passed. No static typechecker is configured for the addon.
@@ -91,3 +95,20 @@ All expected provider calls were mocked. The test network is internal and the
 Merchant HTTP guard was verified before Odoo ran. No credentials or real
 payment/customer data were used. Manager access and the focused verification
 command are documented in `docs/installation.md`.
+
+## Standards
+
+No documented-standard violations or actionable code-smell findings. Rules,
+read-only ACLs, tests and documentation follow existing Odoo addon conventions
+and the repository's trusted-server and scoped-change requirements.
+
+## Spec
+
+No missing or incorrectly implemented requirements and no scope creep. The
+review confirmed scalar-read isolation, active-company restrictions,
+cashier/mutation protections, authorized workflows and the actual upgrade
+evidence for persisted records and committed audit transactions.
+
+Review summary: Standards 0 findings; Spec 0 findings. Both reviews used
+`git diff ebd67fa...43efb98`. Ticket 12 retains the integrated release and
+live-terminal acceptance gates.
