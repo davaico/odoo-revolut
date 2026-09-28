@@ -1,6 +1,6 @@
 # Odoo–Revolut tickets
 
-Approved implementation and architecture work for the Odoo–Revolut addon. Tickets 01–12 come from the original project planning conversation and approved implementation plan. Tickets 13–15 come from the architecture review and breakdown approved on 2026-09-25. Tickets 16–18 address findings from the final integrated audit and were approved on the same date. No tracker issue URLs were supplied, so no parent issue is invented or modified.
+Approved implementation and architecture work for the Odoo–Revolut addon. Tickets 01–12 come from the original project planning conversation and approved implementation plan. Tickets 13–15 come from the architecture review and breakdown approved on 2026-09-25. Tickets 16–18 address findings from the final integrated audit and were approved on the same date. Tickets 19–21 address the four findings from the integrated payment safety audit on 2026-09-28; their three-ticket grouping was approved on the same date. No tracker issue URLs were supplied, so no parent issue is invented or modified.
 
 ## Triage folders and state
 
@@ -35,6 +35,10 @@ on reviewed `main`. Update the assigned branch from `main` before claiming work.
 Branches for tickets 16–18 are created from their committed definitions on
 `main`. Update the assigned branch from reviewed `main` before starting.
 
+Tickets 19–21 declare their work branches; create them from reviewed `main`
+when implementation starts, or update an existing branch without overwriting
+its work. Publication of these tickets does not create the branches.
+
 Use `main` as the shared integration branch for this ticket set. Integrate
 reviewed, verified ticket work there, including its state and triage updates.
 Before starting a ticket, merge the latest integration branch into its assigned
@@ -59,13 +63,16 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [09 — Issue partial refunds across original payment allocations](closed/09-partial-allocated-refunds.md) | `ready-for-agent` at closure | Closed | 07 (closed), 08 (closed) |
 | [10 — Install and upgrade a reviewed revision on staging](closed/10-staging-install-upgrade.md) | `ready-for-human` at closure | Closed | 03 (closed) |
 | [11 — Verify the complete addon on the target Odoo version](closed/11-target-version-acceptance.md) | `ready-for-agent` at closure | Closed | 06, 09, 10 |
-| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11, 16, 17, 18 |
+| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11, 16, 17, 18, 19, 20, 21 |
 | [13 — Deepen Return allocation](closed/13-deepen-return-allocation.md) | `ready-for-agent` at closure | Closed | None |
 | [14 — Deepen POS payment state](closed/14-deepen-pos-payment-state.md) | `ready-for-agent` at closure | Closed | None |
 | [15 — Deepen payment outcome application](closed/15-deepen-payment-outcome-application.md) | `ready-for-agent` at closure | Closed | None |
 | [16 — Preserve uncertain refunds when original-sale recovery fails](closed/16-preserve-uncertain-refund-recovery.md) | `ready-for-agent` at closure | Closed | None |
 | [17 — Deliver the Restaurant bridge with the reviewed addon release](closed/17-deliver-restaurant-bridge.md) | `ready-for-agent` at closure | Closed | None |
 | [18 — Isolate internal payment records by allowed company](closed/18-isolate-internal-payment-records.md) | `ready-for-agent` at closure | Closed | None |
+| [19 — Enforce verified settlement and internal-operation permissions](ready-for-agent/19-enforce-payment-server-boundaries.md) | `ready-for-agent` | Open | None |
+| [20 — Recover POS lines after a failed pre-payment lookup](ready-for-agent/20-recover-undispatched-pos-lines.md) | `ready-for-agent` | Open | None |
+| [21 — Keep reconciliation progressing after malformed provider responses](ready-for-agent/21-isolate-reconciliation-failures.md) | `ready-for-agent` | Open | None |
 
 ## Architecture triage — 2026-09-25
 
@@ -84,6 +91,29 @@ proceed in parallel and does not block these mocked corrections.
 All three corrections block ticket 12. Before live acceptance, integrate their
 reviewed implementations and record mocked install, upgrade and Restaurant
 acceptance on the final combined revision, including the delivered artifact.
+
+## Integrated payment safety corrections — 2026-09-28
+
+The owner approved three tickets covering the four findings in the
+[integrated payment safety audit](../testing/release-audit-2026-09-28.md):
+
+- **19 (P1):** enforce verified settlement across server entry points and close
+  the related internal-lock authorization bypass.
+- **20 (P2):** recover an undispatched POS payment/refund after discovery fails.
+- **21 (P2):** validate malformed provider evidence and keep other operations
+  progressing during reconciliation.
+
+All three are open and ready-for-agent with no mutual blockers. One agent may
+implement them in priority order **19 → 20 → 21**. Coordinate overlapping
+server changes during integration; ticket 02's external work can continue
+independently.
+
+All three block ticket 12. Before live acceptance, independently review the
+payment-verification boundary and record the full integrated mocked suite on
+the final combined revision: install/upgrade, Restaurant, lifecycle,
+deployment checks, restart recovery, delivered-artifact acceptance and the new
+adversarial regressions. Earlier green runs are baseline evidence, not proof
+that these newly identified paths are fixed.
 
 ## Shared implementation contract
 
