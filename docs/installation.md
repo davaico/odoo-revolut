@@ -251,6 +251,13 @@ currency, age, current state, known provider references, a sanitized error
 summary and a support explanation. Cashiers continue to see the status of their own payment line in
 POS, but cannot associate references or run manager actions.
 
+Upgrade `pos_revolut` to `19.0.1.7.1` to apply company isolation to direct
+reads of internal dispatch claims and order locks. Manager inspection remains
+read-only and is limited to the companies active in Odoo's company selector,
+including for managers who have access to several companies. Dispatch claims
+belong to their payment operation's company; order locks use their own company.
+The reconciliation procedure remains the same.
+
 1. Keep the original POS order and payment line. Find the matching order and
    payment intent in the **same Revolut Merchant account** using the original
    amount, currency, creation time, terminal/location and POS UUIDs.
@@ -299,6 +306,12 @@ upgrade, and retail/Restaurant checkout tours:
 
 ```bash
 ./scripts/test-addon --verify-install-upgrade
+```
+
+Run the focused two-company authorization and manager workflow regressions:
+
+```bash
+./scripts/test-addon --test-tags /pos_revolut:TestRevolutAuthorization,/pos_revolut:TestRevolutReconciliation
 ```
 
 Run the separate-process recovery check to start a payment, stop Odoo, and
