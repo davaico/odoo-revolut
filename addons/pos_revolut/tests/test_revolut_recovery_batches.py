@@ -570,3 +570,24 @@ class TestRevolutRecoveryBatches(TransactionCase):
         self.assertEqual(self._status(later, "refund")["state"], "pending")
         self._cron("refunds")
         self.assertEqual(self._status(later, "refund")["state"], "verified")
+
+    def test_malformed_payment_after_transport_failure_waits_five_minutes(self):
+        first, healthy = self.payments
+        path = f"/api/payments/{first['payment_id']}"
+        original = self.payloads[path]
+        self.payloads[path] = requests.ConnectionError("test-only sensitive transport detail")
+        self._cron()
+        self._assert_blocked(first, delay=60)
+        self.assertEqual(self._status(healthy)["state"], "verified")
+
+        self.now += timedelta(seconds=60)
+        self.clock.return_value = self.now
+        self.payloads[path] = {**original, "state": {}}
+        self._cron()
+        self._assert_blocked(first, delay=300)
+
+        self.now += timedelta(seconds=300)
+        self.clock.return_value = self.now
+        self.payloads[path] = original
+        self._cron()
+        self.assertEqual(self._status(first)["state"], "verified")

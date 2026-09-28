@@ -329,8 +329,8 @@ class PosRevolutPaymentOperation(models.Model):
                     kind = "unknown"
         if kind in {"unknown", "interrupted", "timed_out"}:
             failures = self.reconcile_failures + (kind == "interrupted")
-            delay = (30 if kind == "timed_out" else
-                     min(60 * 2 ** min(failures - 1, 5), 1800) if failures else 300)
+            delay = (300 if kind == "unknown" else 30 if kind == "timed_out" else
+                     min(60 * 2 ** min(failures - 1, 5), 1800))
             values = {
                 "state": "unresolved",
                 "local_outcome": kind if kind != "unknown" else False,
