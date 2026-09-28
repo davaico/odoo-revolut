@@ -166,6 +166,29 @@ class TestRevolutRefund(CommonPosTest):
             self.assertFalse(self.env["pos.order"].search([("uuid", "=", payload["uuid"])]))
         self.request.assert_not_called()
 
+    def test_reconfigured_method_cannot_turn_original_revolut_into_manual_refund(self):
+        manager = self._mutation_actor()
+        # Reconfiguration is permitted once the original session is closed.
+        self.session.write({"state": "closed"})
+        self._rpc_refund(manager, "pos.payment.method", "write", [
+            [self.revolut_method.id], {"payment_method_type": "none"},
+        ])
+        self.assertFalse(self.revolut_method.use_payment_terminal)
+        self.pos_config_usd.open_ui()
+        self.session = self.pos_config_usd.current_session_id
+        self.session.write({"state": "opened"})
+        payload = deepcopy(self.payload)
+        payload.update(state="paid", session_id=self.session.id, user_id=manager.id)
+        payload["payment_ids"][0][2]["payment_status"] = "done"
+        with TestCase.assertRaisesRegex(self, UserError, "non-Revolut refund exceeds"):
+            self._rpc_refund(manager, "pos.order", "create", [payload])
+        self.assertFalse(self.env["pos.order"].search([("uuid", "=", payload["uuid"])]))
+        self.assertEqual(self.original.payment_ids.revolut_operation_id, self.source)
+        self.assertFalse(self.env["pos.revolut.refund.operation"].search([
+            ("order_uuid", "=", payload["uuid"]),
+        ]))
+        self.request.assert_not_called()
+
     def test_waiting_return_cannot_detach_original_or_settle_as_cash(self):
         cashier = self._mutation_actor(False)
         payload = dict(self.payload, state="draft", amount_paid=0, payment_ids=[], user_id=cashier.id)

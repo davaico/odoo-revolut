@@ -350,8 +350,13 @@ class ReturnAllocation:
                 raise UserError(_("A Revolut refund payment has no verified allocation."))
         # Non-Revolut tender remains limited to its original payment method,
         # including cash-only partial returns of a mixed-tender sale.
+        # A later method reconfiguration cannot turn a provider-backed payment
+        # into an original manual tender balance.
         original_nonrevolut = {}
-        for original_payment in original.payment_ids.sudo().filtered(lambda item: item.payment_method_id.use_payment_terminal != "revolut"):
+        for original_payment in original.payment_ids.sudo().filtered(
+            lambda item: not item.revolut_operation_id
+            and item.payment_method_id.use_payment_terminal != "revolut"
+        ):
             method_id = original_payment.payment_method_id.id
             original_nonrevolut[method_id] = original_nonrevolut.get(method_id, 0) + normalize(session.currency_id, original_payment.amount)[1]
         current_nonrevolut = {}
