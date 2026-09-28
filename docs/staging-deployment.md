@@ -170,6 +170,12 @@ Record the operator, UTC time, revision, cash order reference, result, and any
 follow-up. Real virtual- or physical-terminal charges belong to Ticket 12, not
 this deployment check.
 
+Continue with the [ticket 12 evidence and operator
+checklist](testing/ticket-12-release-evidence.md) after this smoke check. Compare
+the deployed revision and archive checksum with the mocked acceptance candidate
+before device preflight and separately authorized financial tests. Record any
+untested scenario or provider discrepancy as an open release gap.
+
 ## Failure and recovery
 
 The command names the failed phase. Before Odoo is stopped, a preflight or

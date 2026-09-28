@@ -56,6 +56,7 @@ The project is ready when the addon installs in a new Odoo environment, a cashie
 - [Revolut terminal contract and testing readiness](docs/revolut-terminal-contract-2026-09-22.md) reconciles the terminal guide with API version `2026-08-17`, records the sandbox route and idempotency limits, and names the external prerequisites that remain unresolved.
 - [Development environment](docs/development-environment.md) describes the live staging target, repository boundaries, and the intended local development and deployment workflow.
 - [Staging deployment and recovery](docs/staging-deployment.md) provides the reviewed-revision deployer, no-charge smoke check, and payment-safe recovery order.
+- [Ticket 12 release evidence and operator checklist](docs/testing/ticket-12-release-evidence.md) records combined mocked acceptance and remaining physical-terminal and financial checks.
 
 ## Implementation References
 

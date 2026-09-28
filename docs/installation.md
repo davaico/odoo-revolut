@@ -1,5 +1,12 @@
 # Install and configure POS Revolut
 
+Physical-terminal release acceptance is still open. Use the
+[ticket 12 evidence and operator checklist](testing/ticket-12-release-evidence.md)
+to confirm the tested/deployed revision, complete account/device preflight,
+record authorized test amounts and reconcile observed payments/refunds before
+rollout. The procedures below have mocked runtime coverage; the checklist
+records the remaining checks on actual devices.
+
 This release supports cash plus Revolut and multiple Revolut payment lines on
 one POS order. Odoo persists each line's operation before Merchant API dispatch,
 sends only that line's amount to its configured terminal, and verifies the
@@ -419,6 +426,13 @@ checks remove their disposable containers, networks, databases, and filestores
 when they exit.
 
 ## Partial and allocated Revolut returns (POS manager)
+
+Upgrade `pos_revolut` to `19.0.1.7.5` to preserve the original Revolut tender
+classification after its payment method is reconfigured. A historical verified
+Revolut payment never becomes an eligible manual bank refund. Keep its original
+operation and references; restore the method's Revolut configuration before
+using its manager refund flow. Follow the stopped-service upgrade procedure
+and reopen POS. No new configuration field or credential rotation is required.
 
 Sign in with an Odoo POS-manager account. Open **Orders**, select the original
 paid sale, and use Odoo's **Refund** flow for the products and quantities being

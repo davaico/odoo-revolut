@@ -117,6 +117,12 @@ deployment checks, restart recovery, delivered-artifact acceptance and the new
 adversarial regressions. Earlier green runs are baseline evidence, not proof
 that these newly identified paths are fixed.
 
+Ticket 12's [software evidence and operator
+checklist](../testing/ticket-12-release-evidence.md) records the combined candidate,
+an additional reviewed historical-tender refund correction, and the controlled
+human handoff. Physical-device and financial scenarios remain unexecuted;
+ticket 12 stays open under `ready-for-human` after automated preparation.
+
 ## Shared implementation contract
 
 - The addon, tests, documentation and local deployment tooling belong to odoo-revolut. Hosting provisioning is complete for this scope; do not edit odoo-hosting or develop source on the server.
