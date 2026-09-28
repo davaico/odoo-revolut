@@ -266,6 +266,8 @@ operation, order, payment line and provider references. Orders with financial
 exposure cannot change company, session, POS configuration, currency,
 conversion rate, refund document type or financial contents, or delete their
 evidence. Stored payment and line ownership must agree with the order.
+Stored line totals must match Odoo's tax calculation, and a verified partial
+payment remains a draft until the complete tender balance is present.
 Unexposed waiting drafts and unclaimed return drafts can be cancelled or
 discarded. Restaurant table changes and additional valid split
 tenders remain supported. Return drafts remain editable before reservation;
