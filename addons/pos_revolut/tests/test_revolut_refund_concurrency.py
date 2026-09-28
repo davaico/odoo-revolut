@@ -42,38 +42,39 @@ class TestRevolutRefundConcurrency(TransactionCase):
                 "name": "Refund concurrency product", "list_price": 12.34,
                 "available_in_pos": True, "taxes_id": [Command.clear()],
             })
-            order = env["pos.order"].create({
+            order_uuid, payment_uuid, payment_reference = str(uuid4()), str(uuid4()), str(uuid4())
+            order_values = {
                 "name": "Refund concurrency original", "session_id": session.id,
-                "uuid": str(uuid4()), "state": "paid", "amount_total": 12.34,
+                "uuid": order_uuid, "state": "paid", "amount_total": 12.34,
+                "pricelist_id": config.pricelist_id.id,
                 "amount_tax": 0, "amount_paid": 12.34, "amount_return": 0,
                 "lines": [Command.create({
                     "product_id": product.id, "qty": 1, "price_unit": 12.34,
                     "price_subtotal": 12.34, "price_subtotal_incl": 12.34,
-                    "tax_ids": [Command.clear()],
+                    "tax_ids": [Command.set([])], "uuid": str(uuid4()),
                 })],
                 "payment_ids": [Command.create({
                     "payment_method_id": method.id, "amount": 12.34,
-                    "uuid": str(uuid4()),
+                    "uuid": payment_uuid, "payment_status": "done",
+                    "transaction_id": payment_reference,
                 })],
-            })
+            }
             operation = env["pos.revolut.payment.operation"].create({
                 "payment_method_id": method.id, "company_id": env.company.id,
                 "pos_config_id": config.id, "pos_session_id": session.id,
-                "pos_order_id": order.id, "pos_payment_id": order.payment_ids.id,
-                "order_uuid": order.uuid, "payment_line_uuid": order.payment_ids.uuid,
+                "order_uuid": order_uuid, "payment_line_uuid": payment_uuid,
                 "amount": 12.34, "amount_minor": 1234,
                 "currency_id": config.currency_id.id, "currency_code": config.currency_id.name,
                 "environment": "sandbox", "location_id": method.revolut_location_id,
                 "terminal_id": method.revolut_terminal_id, "fulfilment_type": "eat_in",
                 "secret_reference": method.revolut_secret_reference, "state": "verified",
                 "revolut_order_id": self.provider_order,
-                "revolut_payment_intent_id": str(uuid4()), "revolut_payment_id": str(uuid4()),
+                "revolut_payment_intent_id": str(uuid4()), "revolut_payment_id": payment_reference,
+                "financial_snapshot": env["pos.revolut.payment.operation"].normalize_financial_snapshot(order_values),
             })
-            order.payment_ids.write({
-                "revolut_operation_id": operation.id,
-                "payment_status": "done",
-                "transaction_id": operation.revolut_payment_id,
-            })
+            # The production ORM boundary owns the linkage, even in fixtures.
+            order = env["pos.order"].create(order_values)
+            self.assertEqual(operation.pos_order_id, order)
             self.method_id, self.session_id = method.id, session.id
             self.currency_id, self.currency_code = config.currency_id.id, config.currency_id.name
             self.snapshot = {

@@ -70,7 +70,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [16 — Preserve uncertain refunds when original-sale recovery fails](closed/16-preserve-uncertain-refund-recovery.md) | `ready-for-agent` at closure | Closed | None |
 | [17 — Deliver the Restaurant bridge with the reviewed addon release](closed/17-deliver-restaurant-bridge.md) | `ready-for-agent` at closure | Closed | None |
 | [18 — Isolate internal payment records by allowed company](closed/18-isolate-internal-payment-records.md) | `ready-for-agent` at closure | Closed | None |
-| [19 — Enforce verified settlement and internal-operation permissions](ready-for-agent/19-enforce-payment-server-boundaries.md) | `ready-for-agent` | Open | None |
+| [19 — Enforce verified settlement and internal-operation permissions](closed/19-enforce-payment-server-boundaries.md) | `ready-for-agent` at closure | Closed | None |
 | [20 — Recover POS lines after a failed pre-payment lookup](ready-for-agent/20-recover-undispatched-pos-lines.md) | `ready-for-agent` | Open | None |
 | [21 — Keep reconciliation progressing after malformed provider responses](ready-for-agent/21-isolate-reconciliation-failures.md) | `ready-for-agent` | Open | None |
 
@@ -103,8 +103,10 @@ The owner approved three tickets covering the four findings in the
 - **21 (P2):** validate malformed provider evidence and keep other operations
   progressing during reconciliation.
 
-All three are open and ready-for-agent with no mutual blockers. One agent may
-implement them in priority order **19 → 20 → 21**. Coordinate overlapping
+Ticket 19 is closed with reviewed server-boundary corrections and mocked
+install/upgrade evidence. Tickets 20 and 21 remain open and ready-for-agent
+with no mutual blockers. One agent may implement them in priority order
+**20 → 21**. Coordinate overlapping
 server changes during integration; ticket 02's external work can continue
 independently.
 

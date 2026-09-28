@@ -258,6 +258,30 @@ including for managers who have access to several companies. Dispatch claims
 belong to their payment operation's company; order locks use their own company.
 The reconciliation procedure remains the same.
 
+Upgrade `pos_revolut` to `19.0.1.7.2` to enforce settlement verification through
+direct order, payment and order-line operations as well as POS synchronization.
+An unverified Revolut tender can be saved as a waiting draft, but cannot be
+recorded as done or finalize the order. Verified tenders retain their original
+operation, order, payment line and provider references. Orders with financial
+exposure cannot change company, session, POS configuration, currency,
+conversion rate, refund document type or financial contents, or delete their
+evidence. Stored payment and line ownership must agree with the order.
+Stored line totals must match Odoo's tax calculation, and a verified partial
+payment remains a draft until the complete tender balance is present.
+Unexposed waiting drafts and unclaimed return drafts can be cancelled or
+discarded. Restaurant table changes and additional valid split
+tenders remain supported. Return drafts remain editable before reservation;
+they must retain their original sale, and settlement still checks return
+quantities, reservations and original tender limits. Refunds require a POS
+manager. Reconciliation uses the existing manager worklist; there is no public
+SQL lock control or context option that disables these checks.
+
+This is a server update with no new configuration or credential rotation.
+Follow the offline upgrade procedure above and reopen POS. It prevents new
+unverified settlements; it does not retroactively repair an order fabricated
+through an older version. Keep any such order and its evidence for manager
+investigation rather than editing transaction references or deleting it.
+
 1. Keep the original POS order and payment line. Find the matching order and
    payment intent in the **same Revolut Merchant account** using the original
    amount, currency, creation time, terminal/location and POS UUIDs.
@@ -312,6 +336,13 @@ Run the focused two-company authorization and manager workflow regressions:
 
 ```bash
 ./scripts/test-addon --test-tags /pos_revolut:TestRevolutAuthorization,/pos_revolut:TestRevolutReconciliation
+```
+
+Run the direct public-method and ORM settlement regressions, including
+ordinary cashiers, managers and restricted company contexts:
+
+```bash
+./scripts/test-addon --test-tags /pos_revolut:TestRevolutMutationBoundaries,/pos_revolut:TestRevolutRefund,/pos_revolut:TestRevolutAuthorization
 ```
 
 Run the separate-process recovery check to start a payment, stop Odoo, and

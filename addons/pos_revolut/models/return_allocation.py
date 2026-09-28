@@ -197,7 +197,7 @@ class ReturnAllocation:
 
         refunds = self.env["pos.revolut.refund.operation"].sudo()
         charges = self.env["pos.revolut.payment.operation"].sudo()
-        charges.lock_order(method.company_id.id, order_uuid)
+        charges._lock_order(method.company_id.id, order_uuid)
         if charges.search_count([
             ("company_id", "=", method.company_id.id), ("order_uuid", "=", order_uuid),
         ]):
@@ -260,7 +260,7 @@ class ReturnAllocation:
         if not session:
             raise UserError(_("The Point of Sale session does not exist."))
         order_uuid = order.get("uuid") or (existing_order and existing_order.uuid)
-        self.env["pos.revolut.payment.operation"].sudo().lock_order(session.company_id.id, order_uuid)
+        self.env["pos.revolut.payment.operation"].sudo()._lock_order(session.company_id.id, order_uuid)
         refunds = self.env["pos.revolut.refund.operation"].sudo().search([
             ("company_id", "=", session.company_id.id), ("order_uuid", "=", order_uuid),
         ])
@@ -292,6 +292,15 @@ class ReturnAllocation:
         )
         if not refunds and not source_revolut and not negative_revolut:
             return None
+        if order.get("state") in {"draft", "cancel"} and not refunds and not any(
+            payment.get("payment_status") == "done"
+            and self.env["pos.payment.method"].browse(payment.get("payment_method_id")).use_payment_terminal == "revolut"
+            for payment in payments.values()
+        ):
+            # Backend refund() prepares lines and recomputes totals in separate
+            # calls. An unclaimed draft or cancellation is not a settlement. Claims
+            # and finalization still require the full allocation checks below.
+            return refunds.browse()
         if refunds:
             self.env.cr.execute("SELECT id FROM pos_revolut_refund_operation WHERE id = ANY(%s) ORDER BY id FOR UPDATE", [refunds.ids])
             refunds.invalidate_recordset()
