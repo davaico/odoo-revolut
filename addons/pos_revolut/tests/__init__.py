@@ -4,6 +4,7 @@ from . import test_revolut_retry_concurrency
 from . import test_ui
 from . import test_revolut_reconciliation
 from . import test_revolut_authorization
+from . import test_revolut_mutation_boundaries
 
 from . import test_revolut_refund
 
