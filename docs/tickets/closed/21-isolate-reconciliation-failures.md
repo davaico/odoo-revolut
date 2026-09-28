@@ -66,8 +66,9 @@ work. Use an isolated worktree for concurrent work.
 Implementation started from freshly fetched, reviewed main
 `5081551d77a5db6d62b84965f5c115bd8f3cb236`, including ticket 19. The assigned
 branch was fast-forwarded in its existing isolated worktree without overwriting
-work. Ticket 20's separate worktree remains untouched; its manifest uses
-`19.0.1.7.3`, so this schema update uses `19.0.1.7.4`.
+work. Ticket 20's parallel implementation used manifest version `19.0.1.7.3`,
+so this schema update uses `19.0.1.7.4`. Ticket 20 is included in the final
+merged revision below.
 
 The original audit used unchanged methods with ORM/HTTP doubles. The correction
 now has actual pinned-Odoo regressions, using committed fixtures and ordinary
@@ -109,6 +110,10 @@ recovery. Restart recovery passed again on this corrected revision. The first
 full run was stopped when review identified the gap; final full verification
 uses the corrected, stable revision instead.
 
+Before integrating the updated main, that corrected revision passed 203
+fresh-install tests, 203 upgrade tests and 8 Restaurant tests with zero
+failures/errors. The final combined results below supersede those counts.
+
 ## Standards review
 
 No remaining Standards findings on `0f2b6b5`.
@@ -121,6 +126,10 @@ evidence, and valid recovery through the existing mocked reconciliation path.
 No additional documented-standard breaches or actionable baseline smells
 found. No tests executed during this review.
 
+The merge was independently reviewed again at `6b3c7f4` against current main
+`75a8d9f`: no merge-induced Standards findings. Ticket 21's reviewed Python
+and tests remain unchanged, and ticket 20's changes are preserved.
+
 ## Spec review
 
 The backoff finding is resolved at `0f2b6b5`: unknown evidence now always
@@ -130,24 +139,33 @@ payment → valid recovery.
 
 No remaining actionable Spec findings or scope creep identified.
 
+The merge review at `6b3c7f4` against `75a8d9f` also found no merge-induced
+Spec findings. Version `19.0.1.7.4`, both closed-ticket records and both
+installation guidance sections are preserved.
+
 Review totals: Standards 0 remaining findings (worst issue: none); Spec 0
 remaining findings (worst issue: none).
 
 ## Final verification
 
-Reviewed and tested implementation:
-`0f2b6b5110e470b436168ee60c64761b734fd00c`.
+Reviewed and tested merged revision:
+`6b3c7f42a3504f5f2b8506775b5946541dd0487e`, including current main
+`75a8d9f74cf2f23f63153e685862415d7acff888` and ticket 20.
 Final evidence/closure changes contain documentation only. Odoo is the pinned
 Community package `19.0.20260908`; the addon is `19.0.1.7.4`.
 
 | Verification | Result |
 | --- | --- |
 | `./scripts/test-addon --test-tags /pos_revolut:TestRevolutRecoveryBatches` | 18 passed, zero failures/errors |
-| `./scripts/test-addon --verify-install-upgrade` | 203 fresh-install tests, 203 upgrade tests, 8 Restaurant tests; zero failures/errors; exit 0 |
+| `./scripts/test-addon --verify-install-upgrade` on the merged revision | 207 fresh-install tests, 207 upgrade tests, 8 Restaurant tests; zero failures/errors; exit 0 |
 | `./scripts/test-restart-recovery` on the reviewed revision | `RESTART_RECOVERY_OK`; independent processes; exit 0 |
 | `node --test addons/pos_revolut/static/tests/*.test.mjs` | POS state test file passed, zero failures |
 | `python3 -m unittest discover -s tests` | 29 deployment-tool tests passed |
 | Python compilation; `git diff --check` | Passed; no configured typechecker |
+
+The standalone focused and deployment-tool runs are retained from `0f2b6b5`;
+their code is unchanged by the merge. Full Odoo, restart, POS state and syntax
+checks were rerun on the merged revision.
 
 The full suite includes existing stale foreground/scheduled polling,
 cancellation finality, manager association/audit rollback, retry concurrency,
@@ -157,9 +175,10 @@ transactions, observe closed failed cursors and durable results from fresh
 cursors, and prove unrelated constraint errors are not suppressed. Provider
 traffic is mocked or blocked, with GET-only assertions during reconciliation.
 
-Local main and `origin/main` were rechecked at `5081551`. Ticket 20's independent
-implementation is not included in this revision. Before ticket 12, integrate
-the separately reviewed corrections and perform its combined release checks.
+Local main and freshly fetched `origin/main` were rechecked at `75a8d9f` after
+the merge; both are ancestors of the tested branch. The merge retained addon
+version `19.0.1.7.4` and both ticket 20 and ticket 21 closure records. Ticket 12
+still governs delivered-artifact checks, deployment and live acceptance.
 This ticket changes no staging environment or Merchant credentials. Its
 installation guidance documents the required stopped-service module upgrade,
 new refund counter, failure scheduling and manager/cashier recovery actions.
@@ -172,7 +191,7 @@ Agent self-evaluation: 4.6/5 across five axes; no critical issues.
 | --- | --- | --- |
 | Accuracy | 5 | Actual pinned-Odoo red/green runs, full install/upgrade and restart results support the recorded behavior. |
 | Completeness | 5 | All acceptance criteria have runtime evidence, operating guidance and independent standards/spec review. |
-| Clarity | 4 | The long ticket preserves the audit and red/green history; the final verification table provides the current results first for future reviewers. |
+| Clarity | 4 | The long ticket preserves the audit and red/green history; the final verification table identifies the merged revision and current results. |
 | Actionability | 5 | Reviewed commits, reproducible test commands, the upgrade version and recovery procedure are recorded. |
 | Conciseness | 4 | Real transaction fixtures make the 593-line regression file substantial; reuse its setup if further recovery cases are added. |
 
