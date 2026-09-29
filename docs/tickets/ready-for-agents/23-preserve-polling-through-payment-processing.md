@@ -2,6 +2,8 @@
 
 **Work branch:** `codex/23-preserve-polling-through-payment-processing`
 
+**Worktree:** `/home/gary/delivery/Tek2/stage/odoo-rev/worktree/ticket-23`
+
 **State:** open
 
 **Triage:** ready-for-agent

@@ -2,6 +2,8 @@
 
 **Work branch:** `codex/22-recover-terminal-busy-rejection`
 
+**Worktree:** `/home/gary/delivery/Tek2/stage/odoo-rev/worktree/ticket-22`
+
 **State:** open
 
 **Triage:** ready-for-agent
