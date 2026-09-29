@@ -746,7 +746,9 @@ class PosPaymentMethod(models.Model):
             snapshot = self._apply_revolut_observation_owned(
                 operation_id, "intent", intent
             )
-            if snapshot["state"] == "verified" or snapshot["retry_safe"]:
+            if snapshot["state"] in {"verified", "unresolved"} or snapshot["retry_safe"]:
+                # An invalid intent must not be overridden by a later payment
+                # read using a reference retained from an earlier observation.
                 return snapshot
             if (intent.get("state") in ("cancelled", "failed")
                     and not intent.get("payment_id")

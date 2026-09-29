@@ -4,7 +4,7 @@
 
 **Worktree:** `/home/gary/delivery/Tek2/stage/odoo-rev/worktree/ticket-23`
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 
@@ -35,11 +35,11 @@ Generic unresolved or malformed evidence must remain protected.
 
 ## Acceptance criteria
 
-- [ ] Identify and cover provider-documented non-final underlying-payment states relevant to terminal polling. Require matching operation/order/intent/payment identity, exact integer amount and currency before accepting transitions.
-- [ ] Continue bounded observation through valid processing states to capture, without another financial start. A completed intent alone never establishes payment success.
-- [ ] Only verified captured/completed underlying payment marks a tender done. A fully paid unchanged order completes automatically; a partially paid order stays open with the correct remaining amount.
-- [ ] Keep malformed, mismatched, unknown or uncertain evidence guarded. Do not make every unresolved result pollable/retry-safe; retain foreground timeout and later reconciliation.
-- [ ] Add real ORM observation regressions and lifecycle/POS-adapter tests for intermediate-to-captured progression, split/multiple card lines, failures, invalid fields and timeouts. Financial calls are mocked or blocked.
+- [x] Identify and cover provider-documented non-final underlying-payment states relevant to terminal polling. Require matching operation/order/intent/payment identity, exact integer amount and currency before accepting transitions.
+- [x] Continue bounded observation through valid processing states to capture, without another financial start. A completed intent alone never establishes payment success.
+- [x] Only verified captured/completed underlying payment marks a tender done. A fully paid unchanged order completes automatically; a partially paid order stays open with the correct remaining amount.
+- [x] Keep malformed, mismatched, unknown or uncertain evidence guarded. Do not make every unresolved result pollable/retry-safe; retain foreground timeout and later reconciliation.
+- [x] Add real ORM observation regressions and lifecycle/POS-adapter tests for intermediate-to-captured progression, split/multiple card lines, failures, invalid fields and timeouts. Financial calls are mocked or blocked.
 - [ ] Record a reviewed candidate and repeat controlled full and split/multiple-line live payments, explicitly recording whether Check status or Validate was needed. One automatic success does not cover previously failing paths.
 
 ## Blocked by
@@ -58,6 +58,11 @@ Blocks closure of ticket 12. Diagnosis and mocked implementation may start
 locally; the reviewed fix and affected live retests remain outstanding.
 
 ## Verification evidence
+
+The [mocked implementation record](../../testing/ticket-23-payment-processing.md)
+records real committed ORM regressions, lifecycle tests and actual POS tours.
+Full-suite and independent candidate review are the remaining local checks;
+deployment and physical acceptance stay gated by financial reconciliation.
 
 See [operator observations](../../testing/ticket-12-operator-observations.md),
 sections covering the Cash/Revolut split, three-unit sale and separate

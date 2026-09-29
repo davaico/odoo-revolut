@@ -9,6 +9,7 @@ import requests
 from psycopg2.errors import UniqueViolation
 
 from odoo import SUPERUSER_ID, Command, api, fields
+from odoo.exceptions import AccessError
 from odoo.tests.common import TransactionCase, new_test_user, tagged
 from odoo.tools import mute_logger
 
@@ -142,6 +143,154 @@ class TestRevolutRecoveryBatches(TransactionCase):
             )
             cursor.commit()
             return result
+
+    def _poll(self, payment):
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            result = env["pos.payment.method"].browse(payment["method_id"]).revolut_poll_payment(
+                payment["id"], payment["order_uuid"], payment["line_uuid"],
+            )
+            cursor.commit()
+            return result
+
+    def test_documented_processing_states_reach_capture_on_same_attempt(self):
+        payment = self.payments[0]
+        payload = self.payloads[f"/api/payments/{payment['payment_id']}"]
+        for state in (
+            "pending", "authentication_challenge", "authentication_verified",
+            "authorisation_started", "authorisation_passed", "authorised",
+            "capture_started",
+        ):
+            with self.subTest(state=state):
+                payload["state"] = state
+                result = self._poll(payment)
+                self.assertEqual(result["state"], "pending")
+                self.assertEqual(result["provider_state"], state)
+                self.assertEqual(result["operation_id"], payment["id"])
+                self.assertEqual(result["order_id"], payment["order_id"])
+                self.assertEqual(result["payment_intent_id"], payment["intent_id"])
+                self.assertEqual(result["payment_id"], payment["payment_id"])
+                self.assertFalse(result["retry_safe"])
+                self.assertEqual(self._status(payment), result)
+        payload["state"] = "captured"
+        result = self._poll(payment)
+        self.assertEqual(result["state"], "verified")
+        self.assertEqual(result["operation_id"], payment["id"])
+        self.assertEqual(result["payment_id"], payment["payment_id"])
+        self.assertEqual(self._status(payment), result)
+
+    def test_invalid_intent_cannot_resume_a_known_processing_payment(self):
+        invalid_fields = (
+            ("id", str(uuid4())), ("order_id", str(uuid4())),
+            ("payment_id", str(uuid4())), ("payment_id", False),
+            ("state", "unknown_provider_state"), ("state", []),
+        )
+        for index, (field, value) in enumerate(invalid_fields):
+            with self.subTest(field=field, value=value):
+                if index:
+                    self._create_payments()
+                payment = self.payments[0]
+                self.payloads[f"/api/payments/{payment['payment_id']}"]["state"] = "pending"
+                self.assertEqual(self._poll(payment)["state"], "pending")
+                path = f"/api/payment-intents/{payment['intent_id']}"
+                original = dict(self.payloads[path])
+                self.payloads[path][field] = value
+                calls = self.request.call_count
+
+                result = self._poll(payment)
+
+                self.assertEqual(result["state"], "unresolved")
+                self.assertFalse(result["retry_safe"])
+                self.assertEqual(result["payment_id"], payment["payment_id"])
+                self.assertEqual(self.request.call_count, calls + 1)
+                self._assert_blocked(payment)
+                self.payloads[path] = original
+                self.payloads[f"/api/payments/{payment['payment_id']}"]["state"] = "captured"
+                self.assertEqual(self._poll(payment)["state"], "verified")
+
+    def test_processing_payment_requires_exact_identity_amount_currency_and_state(self):
+        invalid_fields = (
+            ("id", str(uuid4())), ("order_id", str(uuid4())),
+            ("amount", 1235), ("amount", 1234.0), ("amount", "1234"),
+            ("amount", True), ("amount", None),
+            ("currency", "ZZZ"), ("currency", None),
+            ("state", "processing"), ("state", "unknown_provider_state"),
+            ("state", []), ("state", None),
+        )
+        for index, (field, value) in enumerate(invalid_fields):
+            with self.subTest(field=field, value=value):
+                if index:
+                    self._create_payments()
+                payment = self.payments[0]
+                path = f"/api/payments/{payment['payment_id']}"
+                self.payloads[path]["state"] = "authentication_verified"
+                self.payloads[path][field] = value
+
+                result = self._poll(payment)
+
+                self.assertEqual(result["state"], "unresolved")
+                self.assertFalse(result["retry_safe"])
+                self._assert_blocked(payment)
+
+    def test_processing_observation_rejects_another_order_or_payment_line(self):
+        payment = self.payments[0]
+        self.payloads[f"/api/payments/{payment['payment_id']}"]["state"] = "pending"
+        for field in ("id", "order_uuid", "line_uuid"):
+            with self.subTest(field=field):
+                wrong = {**payment, field: self.payments[1]["id"] if field == "id" else str(uuid4())}
+                with self.assertRaises(AccessError):
+                    self._poll(wrong)
+        self.request.assert_not_called()
+        self.assertEqual(self._poll(payment)["state"], "pending")
+
+    def test_processing_payment_can_reach_each_unsuccessful_final_state(self):
+        for index, (intermediate, final) in enumerate((
+            ("declining", "declined"), ("failing", "failed"), ("cancelling", "cancelled"),
+        )):
+            with self.subTest(final=final):
+                if index:
+                    self._create_payments()
+                payment = self.payments[0]
+                payload = self.payloads[f"/api/payments/{payment['payment_id']}"]
+                for state in ("authorisation_started", intermediate):
+                    payload["state"] = state
+                    result = self._poll(payment)
+                    self.assertEqual(result["state"], "pending")
+                    self.assertFalse(result["retry_safe"])
+                payload["state"] = final
+                result = self._poll(payment)
+                self.assertEqual(result["state"], final)
+                self.assertTrue(result["retry_safe"])
+                self.assertEqual(result["operation_id"], payment["id"])
+                self.assertEqual(result["payment_id"], payment["payment_id"])
+                self.assertEqual(self._status(payment), result)
+
+    def test_processing_timeout_keeps_claims_and_later_reconciles_capture(self):
+        payment = self.payments[0]
+        payload = self.payloads[f"/api/payments/{payment['payment_id']}"]
+        payload["state"] = "authentication_challenge"
+        self.assertEqual(self._poll(payment)["state"], "pending")
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            result = env["pos.payment.method"].browse(payment["method_id"]).revolut_mark_timeout(
+                payment["id"], payment["order_uuid"], payment["line_uuid"],
+            )
+            cursor.commit()
+        self.assertEqual(result["state"], "unresolved")
+        self.assertEqual(result["local_outcome"], "timed_out")
+        self.assertEqual(result["payment_id"], payment["payment_id"])
+        self._assert_blocked(payment, delay=30)
+
+        payload["state"] = "completed"
+        self.now += timedelta(seconds=30)
+        self.clock.return_value = self.now
+        self._cron()
+
+        result = self._status(payment)
+        self.assertEqual(result["state"], "verified")
+        self.assertEqual(result["operation_id"], payment["id"])
+        self.assertEqual(result["payment_id"], payment["payment_id"])
+        self.assertFalse(result["local_outcome"])
 
     def _assert_blocked(self, payment, delay=300):
         with self.registry.cursor() as cursor:
