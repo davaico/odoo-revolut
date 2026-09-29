@@ -322,8 +322,12 @@ class PosRevolutPaymentOperation(models.Model):
                               "verified_at": fields.Datetime.now()}
                 elif state in {"declined", "failed", "cancelled"}:
                     values = {"state": state, "provider_state": state}
-                elif state in {"authorised", "capture_started", "declining",
-                               "cancelling", "failing"}:
+                elif state in {"pending", "authentication_challenge",
+                               "authentication_verified", "authorisation_started",
+                               "authorisation_passed", "authorised", "capture_started",
+                               "declining", "cancelling", "failing"}:
+                    # Documented non-final payment states only extend observation;
+                    # matching identity, integer amount and currency above remain required.
                     values = {"state": "pending", "provider_state": state}
                 else:
                     kind = "unknown"
