@@ -94,8 +94,72 @@ blocks unmocked Merchant HTTP and has no external network route.
 
 There is no configured static typechecker, linter or coverage measurement.
 Python/JavaScript syntax checks complement runtime verification and are not
-reported as type checking. Full-suite and independent review evidence will be
-recorded after the candidate is pinned.
+reported as type checking. Final source checks passed for **25 Python**,
+**8 JavaScript** and **6 XML** files, along with shell syntax and diff checks.
+
+Reviewed implementation candidate:
+`97f5c0d4e427e232b5985cce121cf4adbf71049c`, compared with `ffae23d`.
+The final full mocked run on that candidate exited **0**:
+
+```bash
+ODOO_REVOLUT_TEST_PROJECT=odoo-revolut-ticket23-final ./scripts/test-addon --verify-install-upgrade
+```
+
+| Phase | Result |
+| --- | --- |
+| Fresh addon installation | **221 passed**, zero failures/errors |
+| Addon upgrade | **221 passed**, zero failures/errors |
+| Restaurant installation and checkout | **8 passed**, zero failures/errors |
+
+The pinned Odoo/Chrome runtime verified websocket transport and outbound
+Merchant HTTP blocking before testing. Browser tours ran in both addon phases.
+`python3 -m unittest discover -s tests -v` also passed **29 deployment-tooling
+tests**. The final lifecycle run passed **49 tests**. No runtime source changed
+after this candidate; the final handoff only updates evidence and ticket triage.
+
+Local runner logs: `/tmp/ticket23-orm-red.log`, `/tmp/ticket23-orm-green.log`,
+`/tmp/ticket23-intent-red.log`, `/tmp/ticket23-intent-green.log`,
+`/tmp/ticket23-orm-focused.log`, `/tmp/ticket23-ui-green.log`,
+`/tmp/ticket23-ui-baseline.log`, `/tmp/ticket23-ui-guards.log`,
+`/tmp/ticket23-review-red.log`, `/tmp/ticket23-review-green.log`,
+`/tmp/ticket23-lifecycle-final.log`, `/tmp/ticket23-deployment-tests.log` and
+`/tmp/ticket23-final-full.log`. These disposable logs supplement the committed
+regressions and retained result summaries.
+
+## Standards
+
+Independent review of `97f5c0d` found no documented-standard violations or
+actionable baseline smells. The correction uses the existing locked
+observation and stored-reference fallback, preserving final-payment
+verification, immutable references, cancellation claims and reconciliation
+backoff. Production changes add no abstraction or dependency. Tests follow
+the existing fixtures and mock HTTP at the external boundary; committed
+timeout regressions exercise actual ORM transactions.
+
+Both conventional imperative commit subjects conform to the supplied norm.
+The reviewer independently ran the unchanged lifecycle file: **49 passed**,
+zero failures/skips. Standards: **0 findings**; worst issue: **none**.
+
+## Spec
+
+Independent review of `97f5c0d` found **0 remaining actionable findings** and
+no scope creep. The earlier P2 against `d07b4ee` was reproduced and resolved:
+valid stale final intents after timeout permit reconciliation of the known
+payment, while malformed or mismatched intent evidence still stops polling.
+The final committed correction and regression match the tested overlay.
+
+Documented processing states retain exact reference/money guards; the existing
+bounded lifecycle does not issue replacement starts. Only captured/completed
+payment verifies. Partial and multiple-card checkout, unsuccessful outcomes
+and timeout recovery have mocked coverage, including actual POS tours.
+
+Physical acceptance remains intentionally incomplete under the financial
+reconciliation gate. This is the retained live criterion, not a local defect.
+Spec: **0 actionable findings**, **1 gated acceptance requirement**;
+worst local issue: **none**.
+
+Review totals: Standards **0**, worst **none**; Spec **0 actionable**, worst
+**none**, with the live acceptance gate retained.
 
 ## Live gate and retained acceptance work
 
@@ -103,6 +167,9 @@ Ticket 23 stays open until a reviewed candidate is authorized for deployment
 after reconciliation of ticket 12's unresolved financial operations, including
 pending refunds. The current task is limited to mocked implementation,
 tests and review. Existing refund claims are preserved.
+
+The completed local work is now filed under `ready-for-human`. This does not
+close ticket 23 or ticket 12, or satisfy their physical acceptance criteria.
 
 After that gate clears, repeat controlled full, cash/card split and multiple
 card-line payments, including the paths that previously required recovery.

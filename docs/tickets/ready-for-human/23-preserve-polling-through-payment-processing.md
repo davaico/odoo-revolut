@@ -4,9 +4,9 @@
 
 **Worktree:** `/home/gary/delivery/Tek2/stage/odoo-rev/worktree/ticket-23`
 
-**State:** claimed
+**State:** open
 
-**Triage:** ready-for-agent
+**Triage:** ready-for-human
 
 **Priority:** P2
 
@@ -47,6 +47,10 @@ Generic unresolved or malformed evidence must remain protected.
 None for local diagnosis/mocked implementation; verification/classifier and
 POS lifecycle seams are present on reviewed main.
 
+Reviewed local implementation and mocked verification are complete at
+`97f5c0d4e427e232b5985cce121cf4adbf71049c`. Human deployment/retest remains
+gated by reconciliation of unresolved financial operations, including refunds.
+
 ## Validation limits and live gates
 
 - The exact early live payload remains unavailable; existing probes do not exercise real ORM transactions/locks or replay captured network traffic.
@@ -61,8 +65,11 @@ locally; the reviewed fix and affected live retests remain outstanding.
 
 The [mocked implementation record](../../testing/ticket-23-payment-processing.md)
 records real committed ORM regressions, lifecycle tests and actual POS tours.
-Full-suite and independent candidate review are the remaining local checks;
-deployment and physical acceptance stay gated by financial reconciliation.
+The reviewed candidate passed **221 fresh-install**, **221 upgrade** and
+**8 Restaurant** tests, plus **49 lifecycle** and **29 deployment-tooling**
+tests. Independent Standards and Spec review found no remaining actionable
+issues after correcting a stale-final-intent timeout regression. Deployment and
+physical acceptance stay gated by financial reconciliation; none was performed.
 
 See [operator observations](../../testing/ticket-12-operator-observations.md),
 sections covering the Cash/Revolut split, three-unit sale and separate
@@ -84,6 +91,16 @@ and [terminal polling](https://developer.revolut.com/docs/guides/merchant/accept
 2026-09-29: Recorded during controlled acceptance and published with its
 evidence. Diagnose and fix locally while retaining all pending refund claims;
 deployment and physical retests remain gated by financial reconciliation.
+
+2026-09-29: Implemented and reviewed the mocked fix in the assigned worktree
+after updating from main. Provider-documented early payment states retain
+bounded polling, and invalid intent evidence cannot override payment guards.
+Review's timeout/stale-final-intent finding was reproduced through real ORM,
+corrected and re-reviewed. Final candidate `97f5c0d` passed mocked install,
+upgrade, Restaurant, lifecycle and tooling verification. Moved to
+`ready-for-human` for the retained full/split/multiple-card live acceptance
+criterion. No deployment or live financial tests; pending refund claims remain
+intact.
 
 2026-09-29: Triaged as ready-for-agent after the owner moved this ticket to
 `ready-for-agents/`. The bounded polling contract and required ORM/lifecycle
