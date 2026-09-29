@@ -401,7 +401,16 @@ class PosPaymentMethod(models.Model):
                         limit=1,
                     )
                     if blocker:
-                        raise UserError(_("An existing Revolut payment blocks this order or terminal."))
+                        # This request reached neither operation creation nor
+                        # financial dispatch. Discard its temporary order lock.
+                        cursor.rollback()
+                        return {
+                            "start_rejected": "terminal_busy",
+                            "dispatched": False,
+                            "order_uuid": values["order_uuid"],
+                            "payment_line_uuid": values["payment_line_uuid"],
+                            "previous_operation_id": previous_operation_id or False,
+                        }, False
                     operation = operations.create(values)
                     snapshot = operations.operation_snapshot(operation)
                     cursor.commit()

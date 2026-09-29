@@ -228,6 +228,21 @@ assets. Installation of `pos_revolut` alone remains supported without Restaurant
 
 ### Recovery after reload, server restart, or late success
 
+Upgrade `pos_revolut` to `19.0.1.7.6` and reopen POS for terminal-busy recovery.
+When the server definitively rejects a start before creating an operation, POS
+reports **Terminal busy — no payment request sent**. Remove that unpaid line
+to choose another tender, or use **Resume** after the other request is cancelled
+or reconciled and the terminal is released. Resume preserves the order and
+payment-line UUIDs. **Check status** only looks for an existing attempt; it
+never starts a new charge, including after the terminal is released. Reloading
+POS retains the definite rejection and these recovery actions.
+
+This recovery requires the structured server rejection for the same start.
+A transport error, an exception containing busy wording, or an empty lookup
+after an uncertain start keeps the line guarded. Reconcile that attempt before
+retrying. Pending refunds and unresolved financial operations must be reconciled
+before deploying or repeating the live terminal contention scenario.
+
 Upgrade `pos_revolut` to `19.0.1.7.3` for recovery when the initial read-only
 operation lookup fails before a payment or refund start is attempted. The
 POS reports **No payment request sent** or **No refund request sent** and offers

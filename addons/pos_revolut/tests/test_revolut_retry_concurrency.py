@@ -85,19 +85,24 @@ class TestRevolutRetryConcurrency(TransactionCase):
             "terminal_id": self.terminal_id, "state": "pending",
         })
 
-    def _start(self, previous_operation_id=None, user_id=SUPERUSER_ID):
+    def _start(
+        self, previous_operation_id=None, user_id=SUPERUSER_ID,
+        *, order_uuid=None, line_uuid=None,
+    ):
+        order_uuid = order_uuid or self.order_uuid
+        line_uuid = line_uuid or self.line_uuid
         snapshot = {
             "pricelist_id": 0,
             "fiscal_position_id": False,
             "lines": [{
-                "uuid": self.order_uuid, "product_id": 1,
+                "uuid": order_uuid, "product_id": 1,
                 "qty": 1, "price_unit": 12.34, "discount": 0,
                 "tax_ids": [],
             }],
         }
         return self._rpc(
-            "revolut_start_payment", self.session_id, self.order_uuid,
-            self.line_uuid, 12.34, self.currency_id,
+            "revolut_start_payment", self.session_id, order_uuid,
+            line_uuid, 12.34, self.currency_id,
             previous_operation_id or False, snapshot,
             user_id=user_id,
         )
@@ -147,6 +152,139 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.assertFalse(any(worker.is_alive() for worker in workers), "RPC worker deadlocked")
         self.assertFalse(errors, repr(errors))
         return results
+
+    def test_busy_starts_recover_only_after_cancellation_and_explicit_start(self):
+        self.request.side_effect = self._start_http
+        blocker = self._start()
+        other_order_uuid, other_line_uuid = str(uuid4()), str(uuid4())
+        self.request.reset_mock()
+        busy_barrier = Barrier(3)
+
+        def busy_start():
+            busy_barrier.wait(timeout=10)
+            return self._start(order_uuid=other_order_uuid, line_uuid=other_line_uuid)
+
+        rejected = self._run_workers([
+            (f"busy-{index}", busy_start) for index in range(3)
+        ])
+        self.assertEqual(rejected, [{
+            "start_rejected": "terminal_busy",
+            "dispatched": False,
+            "order_uuid": other_order_uuid,
+            "payment_line_uuid": other_line_uuid,
+            "previous_operation_id": False,
+        }] * 3)
+        for _lookup in range(2):
+            self.assertFalse(self._rpc(
+                "revolut_find_payment", other_order_uuid, other_line_uuid
+            ))
+        self.request.assert_not_called()
+        self.assertEqual(self._rpc(
+            "revolut_find_payment", self.order_uuid, self.line_uuid
+        ), blocker)
+
+        cancellation_sent = Event()
+
+        def cancel_http(method, url, **kwargs):
+            if method == "POST" and url.endswith("/cancel"):
+                cancellation_sent.set()
+                return self._response({})
+            if method == "GET" and url.endswith(
+                f"/api/payment-intents/{self.provider_intent}"
+            ):
+                return self._intent("cancelled" if cancellation_sent.is_set() else "pending")
+            raise AssertionError(f"Unexpected HTTP request: {method} {url}")
+
+        self.request.side_effect = cancel_http
+        cancelled = self._rpc(
+            "revolut_cancel_payment", blocker["operation_id"],
+            self.order_uuid, self.line_uuid,
+        )
+        self.assertEqual(cancelled["state"], "cancelled")
+        self.assertTrue(cancelled["retry_safe"])
+        self.assertEqual(len([call for call in self.request.call_args_list
+                              if call.args[0] == "POST"]), 1)
+        self.request.reset_mock()
+        self.assertFalse(self._rpc(
+            "revolut_find_payment", other_order_uuid, other_line_uuid
+        ))
+        self.request.assert_not_called()
+
+        self.provider_order, self.provider_intent = str(uuid4()), str(uuid4())
+        start_barrier, replay_finished = Barrier(2), Event()
+
+        def start_http(method, url, **kwargs):
+            if method == "POST" and url.endswith("/api/orders"):
+                self.assertTrue(replay_finished.wait(10), "Repeated start did not coalesce")
+            return self._start_http(method, url, **kwargs)
+
+        def start_after_release():
+            start_barrier.wait(timeout=10)
+            try:
+                return self._start(order_uuid=other_order_uuid, line_uuid=other_line_uuid)
+            finally:
+                replay_finished.set()
+
+        self.request.side_effect = start_http
+        started = self._run_workers([
+            ("start-one", start_after_release), ("start-two", start_after_release),
+        ])
+        recovered = self._rpc("revolut_find_payment", other_order_uuid, other_line_uuid)
+        self.assertEqual(recovered["state"], "pending")
+        self.assertEqual({item["operation_id"] for item in started},
+                         {recovered["operation_id"]})
+        self.assertNotEqual(recovered["operation_id"], blocker["operation_id"])
+        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        self.assertEqual(len(posts), 2, "Only one order and one intent may be dispatched")
+        self.assertEqual(posts[0].kwargs["json"]["metadata"]["pos_order_uuid"], other_order_uuid)
+        self.assertEqual(posts[0].kwargs["json"]["metadata"]["pos_payment_line_uuid"], other_line_uuid)
+
+    def test_busy_replacement_retains_predecessor_and_reuses_existing_attempts(self):
+        self.request.side_effect = self._start_http
+        first = self._start()
+        self.request.side_effect = lambda *args, **kwargs: self._intent("cancelled")
+        cancelled = self._rpc(
+            "revolut_poll_payment", first["operation_id"], self.order_uuid, self.line_uuid
+        )
+        self.assertTrue(cancelled["retry_safe"])
+        other_order_uuid, other_line_uuid = str(uuid4()), str(uuid4())
+        self.provider_order, self.provider_intent = str(uuid4()), str(uuid4())
+        self.request.side_effect = self._start_http
+        blocker = self._start(order_uuid=other_order_uuid, line_uuid=other_line_uuid)
+        self.request.reset_mock()
+
+        rejected = self._start(first["operation_id"])
+        self.assertEqual(rejected, {
+            "start_rejected": "terminal_busy",
+            "dispatched": False,
+            "order_uuid": self.order_uuid,
+            "payment_line_uuid": self.line_uuid,
+            "previous_operation_id": first["operation_id"],
+        })
+        self.assertEqual(self._start(first["operation_id"]), rejected)
+        self.assertEqual(self._start(), cancelled)
+        self.assertEqual(self._rpc(
+            "revolut_find_payment", self.order_uuid, self.line_uuid
+        ), cancelled)
+        self.request.assert_not_called()
+
+        self.request.side_effect = lambda *args, **kwargs: self._intent("cancelled")
+        released = self._rpc(
+            "revolut_poll_payment", blocker["operation_id"], other_order_uuid, other_line_uuid
+        )
+        self.assertTrue(released["retry_safe"])
+        self.provider_order, self.provider_intent = str(uuid4()), str(uuid4())
+        self.request.reset_mock()
+        self.request.side_effect = self._start_http
+        replacement = self._start(first["operation_id"])
+        self.assertNotEqual(replacement["operation_id"], first["operation_id"])
+        self.assertEqual(self._start(first["operation_id"]), replacement)
+        self.assertEqual(self._start(), replacement)
+        self.assertEqual(self._rpc(
+            "revolut_find_payment", self.order_uuid, self.line_uuid
+        ), replacement)
+        self.assertEqual(len([call for call in self.request.call_args_list
+                              if call.args[0] == "POST"]), 2)
 
     def _assert_creation_crash_keeps_dispatch(self, action, after_response):
         def http(method, url, **kwargs):

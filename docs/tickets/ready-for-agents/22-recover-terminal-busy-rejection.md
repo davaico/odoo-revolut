@@ -4,7 +4,7 @@
 
 **Worktree:** `/home/gary/delivery/Tek2/stage/odoo-rev/worktree/ticket-22`
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 
@@ -32,11 +32,11 @@ failure; this report covers a definitive rejection of the financial start.
 
 ## Acceptance criteria
 
-- [ ] Return and recognize an authoritative pre-dispatch terminal-busy result with clear busy feedback. An arbitrary RPC/transport exception, message-string match or empty lookup alone cannot establish safe non-dispatch.
-- [ ] A definitively rejected line can be safely removed or explicitly resumed after terminal release, retaining order/payment-line identity. Check status must not automatically dispatch a new financial request.
-- [ ] Preserve independent-browser serialization: repeated busy requests create no operation/financial dispatch; an explicit start after release creates exactly one intended operation.
-- [ ] Keep guards for lost/uncertain start responses, discovered operations, processing payments and refunds. Missing lookup results cannot authorize retry or checkout when financial dispatch may have occurred.
-- [ ] Cover rejection, status lookup, recovery, repeated clicks and restored state through lifecycle and actual Odoo POS-adapter regressions with mocked financial calls; keep unknown-start and refund controls green.
+- [x] Return and recognize an authoritative pre-dispatch terminal-busy result with clear busy feedback. An arbitrary RPC/transport exception, message-string match or empty lookup alone cannot establish safe non-dispatch.
+- [x] A definitively rejected line can be safely removed or explicitly resumed after terminal release, retaining order/payment-line identity. Check status must not automatically dispatch a new financial request.
+- [x] Preserve independent-browser serialization: repeated busy requests create no operation/financial dispatch; an explicit start after release creates exactly one intended operation.
+- [x] Keep guards for lost/uncertain start responses, discovered operations, processing payments and refunds. Missing lookup results cannot authorize retry or checkout when financial dispatch may have occurred.
+- [x] Cover rejection, status lookup, recovery, repeated clicks and restored state through lifecycle and actual Odoo POS-adapter regressions with mocked financial calls; keep unknown-start and refund controls green.
 - [ ] Record a reviewed candidate and repeat the independent-browser no-card scenario: clear feedback, safe recovery after cancellation, stable identity and no duplicate mutation.
 
 ## Blocked by
@@ -54,6 +54,12 @@ Blocks closure of ticket 12. Work may start locally; the reviewed fix and
 live recovery retest remain outstanding.
 
 ## Verification evidence
+
+Local implementation and mocked verification are recorded in
+[terminal-busy recovery evidence](../../testing/ticket-22-terminal-busy-recovery.md).
+The first five criteria are exercised by lifecycle, actual Odoo adapter and
+independently committed server-RPC tests. The physical two-browser retest in the
+last criterion remains gated; these local checks do not claim live acceptance.
 
 See [operator observations](../../testing/ticket-12-operator-observations.md),
 section **L07 independent-browser terminal contention**. First-request

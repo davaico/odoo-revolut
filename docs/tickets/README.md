@@ -77,7 +77,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [19 — Enforce verified settlement and internal-operation permissions](closed/19-enforce-payment-server-boundaries.md) | `ready-for-agent` at closure | Closed | None |
 | [20 — Recover POS lines after a failed pre-payment lookup](closed/20-recover-undispatched-pos-lines.md) | `ready-for-agent` at closure | Closed | None |
 | [21 — Keep reconciliation progressing after malformed provider responses](closed/21-isolate-reconciliation-failures.md) | `ready-for-agent` at closure | Closed | None |
-| [22 — Recover a POS line after a terminal-busy rejection](ready-for-agents/22-recover-terminal-busy-rejection.md) | `ready-for-agent` | Open | None for local work; live deployment/retest gated by financial reconciliation |
+| [22 — Recover a POS line after a terminal-busy rejection](ready-for-agents/22-recover-terminal-busy-rejection.md) | `ready-for-agent` | Claimed | None for local work; live deployment/retest gated by financial reconciliation |
 | [23 — Preserve payment polling through valid processing states](ready-for-agents/23-preserve-polling-through-payment-processing.md) | `ready-for-agent` | Open | None for local work; missing early live payload and financial reconciliation limit validation |
 
 ## Architecture triage — 2026-09-25

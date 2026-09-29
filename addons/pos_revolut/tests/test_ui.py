@@ -679,6 +679,100 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.env.invalidate_all()
         self.assertFalse(self.env["pos.revolut.payment.operation"].search([]))
 
+    def _run_terminal_busy_checkout(self, tour, resume):
+        revolut_method = self._configure_revolut_checkout()
+        recovered_order_id = "d40466e0-2188-41d0-bebb-aa3a930663a9"
+        recovered_intent_id = "4ca74d24-7b42-451a-91fb-8aca308e2631"
+        recovered_payment_id = "2c2f3842-c34d-4cc3-a0fc-9ae40b04dfc0"
+        calls = []
+        order_posts = []
+        cancelled = False
+
+        def request(method, url, **kwargs):
+            nonlocal cancelled
+            calls.append((method, url, kwargs))
+            if method == "GET" and url.endswith("/api/terminals"):
+                return self._response({"terminals": [{
+                    "id": self.TERMINAL_ID, "online": True,
+                    "operation_mode": "pos", "location_id": self.LOCATION_ID,
+                }]})
+            if method == "POST" and url.endswith("/api/orders"):
+                order_posts.append(kwargs["json"])
+                if len(order_posts) > (2 if resume else 1):
+                    raise AssertionError("Busy or read-only checks dispatched another order")
+                return self._response({
+                    "id": self.ORDER_ID if len(order_posts) == 1 else recovered_order_id,
+                })
+            if method == "POST" and url.endswith(f"/orders/{self.ORDER_ID}/payment-intents"):
+                return self._response({"id": self.INTENT_ID, "state": "pending"})
+            if method == "POST" and url.endswith(f"/orders/{recovered_order_id}/payment-intents"):
+                return self._response({"id": recovered_intent_id, "state": "pending"})
+            if method == "POST" and url.endswith(f"/payment-intents/{self.INTENT_ID}/cancel"):
+                cancelled = True
+                return self._response({"id": self.INTENT_ID, "state": "cancelled"})
+            if method == "GET" and url.endswith(f"/payment-intents/{self.INTENT_ID}"):
+                return self._response({
+                    "id": self.INTENT_ID, "order_id": self.ORDER_ID,
+                    "state": "cancelled" if cancelled else "pending",
+                })
+            if method == "GET" and url.endswith(f"/payment-intents/{recovered_intent_id}"):
+                return self._response({
+                    "id": recovered_intent_id, "order_id": recovered_order_id,
+                    "state": "completed", "payment_id": recovered_payment_id,
+                })
+            if method == "GET" and url.endswith(f"/payments/{recovered_payment_id}"):
+                return self._response({
+                    "id": recovered_payment_id, "order_id": recovered_order_id,
+                    "state": "captured", "amount": 1234,
+                    "currency": self.main_pos_config.currency_id.name,
+                })
+            raise AssertionError(f"Unexpected Revolut request: {method} {url}")
+
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+            side_effect=request,
+        ):
+            self.start_pos_tour(tour)
+
+        self.env.invalidate_all()
+        operations = self.env["pos.revolut.payment.operation"].search([
+            ("payment_method_id", "=", revolut_method.id),
+        ], order="id")
+        self.assertEqual(len(operations), 2 if resume else 1)
+        self.assertEqual(operations[0].state, "cancelled" if resume else "pending")
+        self.assertNotEqual(operations[0].pos_order_id.state, "paid")
+        posts = [call for call in calls if call[0] == "POST"]
+        financial_posts = [call for call in posts if not call[1].endswith("/cancel")]
+        self.assertEqual(len(financial_posts), 4 if resume else 2)
+        self.assertEqual(len(posts) - len(financial_posts), 1 if resume else 0)
+        if resume:
+            recovered = operations[1]
+            self.assertEqual(recovered.state, "verified")
+            self.assertEqual(recovered.pos_order_id.state, "paid")
+            self.assertEqual(recovered.revolut_payment_id, recovered_payment_id)
+            self.assertEqual(recovered.pos_order_id.uuid, recovered.order_uuid)
+            self.assertEqual(recovered.pos_payment_id.uuid, recovered.payment_line_uuid)
+            self.assertNotEqual(recovered.order_uuid, operations[0].order_uuid)
+            self.assertNotEqual(recovered.payment_line_uuid, operations[0].payment_line_uuid)
+            self.assertEqual(order_posts[1]["metadata"]["pos_order_uuid"], recovered.order_uuid)
+            self.assertEqual(
+                order_posts[1]["metadata"]["pos_payment_line_uuid"], recovered.payment_line_uuid,
+            )
+        else:
+            paid_order = self.env["pos.order"].search([
+                ("session_id", "=", self.main_pos_config.current_session_id.id),
+                ("state", "=", "paid"),
+            ])
+            self.assertEqual(len(paid_order), 1)
+            self.assertEqual(paid_order.payment_ids.payment_method_id.name, "Cash")
+            self.assertNotEqual(paid_order.uuid, operations[0].order_uuid)
+
+    def test_terminal_busy_recovers_after_release_and_reload_without_duplicate_charge(self):
+        self._run_terminal_busy_checkout("pos_revolut_busy_recovery", resume=True)
+
+    def test_terminal_busy_line_can_be_removed_for_cash_without_second_dispatch(self):
+        self._run_terminal_busy_checkout("pos_revolut_busy_cash_alternative", resume=False)
+
     REFUND_ID = "6c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf"
 
     def _run_full_refund(self, tour, outcome="completed"):
