@@ -63,7 +63,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [09 — Issue partial refunds across original payment allocations](closed/09-partial-allocated-refunds.md) | `ready-for-agent` at closure | Closed | 07 (closed), 08 (closed) |
 | [10 — Install and upgrade a reviewed revision on staging](closed/10-staging-install-upgrade.md) | `ready-for-human` at closure | Closed | 03 (closed) |
 | [11 — Verify the complete addon on the target Odoo version](closed/11-target-version-acceptance.md) | `ready-for-agent` at closure | Closed | 06, 09, 10 |
-| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11, 16, 17, 18, 19, 20, 21 (all closed) |
+| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11, 16–21 (closed); 22, 23 (open findings) |
 | [13 — Deepen Return allocation](closed/13-deepen-return-allocation.md) | `ready-for-agent` at closure | Closed | None |
 | [14 — Deepen POS payment state](closed/14-deepen-pos-payment-state.md) | `ready-for-agent` at closure | Closed | None |
 | [15 — Deepen payment outcome application](closed/15-deepen-payment-outcome-application.md) | `ready-for-agent` at closure | Closed | None |
@@ -73,6 +73,8 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [19 — Enforce verified settlement and internal-operation permissions](closed/19-enforce-payment-server-boundaries.md) | `ready-for-agent` at closure | Closed | None |
 | [20 — Recover POS lines after a failed pre-payment lookup](closed/20-recover-undispatched-pos-lines.md) | `ready-for-agent` at closure | Closed | None |
 | [21 — Keep reconciliation progressing after malformed provider responses](closed/21-isolate-reconciliation-failures.md) | `ready-for-agent` at closure | Closed | None |
+| [22 — Recover a POS line after a terminal-busy rejection](needs-triage/22-recover-terminal-busy-rejection.md) | `needs-triage` | Open | None for local work; live deployment/retest gated by financial reconciliation |
+| [23 — Preserve payment polling through valid processing states](needs-triage/23-preserve-polling-through-payment-processing.md) | `needs-triage` | Open | None for local work; missing early live payload and financial reconciliation limit validation |
 
 ## Architecture triage — 2026-09-25
 
@@ -120,8 +122,13 @@ that these newly identified paths are fixed.
 Ticket 12's [software evidence and operator
 checklist](../testing/ticket-12-release-evidence.md) records the combined candidate,
 an additional reviewed historical-tender refund correction, and the controlled
-human handoff. Physical-device and financial scenarios remain unexecuted;
-ticket 12 stays open under `ready-for-human` after automated preparation.
+human handoff. Physical-device testing subsequently ran on 2026-09-29, with
+the [operator chronology](../testing/ticket-12-operator-observations.md)
+recording verified payments, selected guard/recovery passes, five pending
+refunds and explicitly unexecuted subcases. Tickets 22–23 are new
+`needs-triage` reports for busy-terminal recovery and automatic status handling;
+they must be resolved and retested before ticket 12 closes. Full acceptance
+and financial reconciliation remain open under `ready-for-human`.
 
 ## Shared implementation contract
 

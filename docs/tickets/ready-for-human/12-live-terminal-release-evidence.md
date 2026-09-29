@@ -15,7 +15,7 @@ Controlled real-terminal acceptance establishes whether the documented addon is 
 ## Acceptance criteria
 
 - [x] Confirm the reviewed release includes completed corrections 16–21 and an independent review of the payment-verification boundary. Before live acceptance, record the full integrated mocked suite on the final combined revision: install/upgrade, Restaurant, lifecycle, deployment checks, restart recovery, delivered-artifact acceptance and the new adversarial regressions for tickets 19–21.
-- [ ] Confirm the deployed revision, target Odoo version, merchant environment, location, eligible terminal and operator-authorized test amounts before financial tests. Use non-production testing where supported; separately obtain explicit authorization for any real-money operation.
+- [x] Confirm the deployed revision, target Odoo version, merchant environment, location, eligible terminal and operator-authorized test amounts before financial tests. Use non-production testing where supported; separately obtain explicit authorization for any real-money operation.
 - [ ] Validate successful full payment, split tender and retail/restaurant fulfilment using the confirmed contract. Demonstrate that only verified successful payment completes a fully paid order.
 - [ ] Validate decline/failure/cancellation and interruption/late recovery with provider-supported controlled methods. Verify safe retry and duplicate prevention using actual provider transaction references; never deliberately create uncontrolled duplicate charges.
 - [ ] Validate full and partial refunds through their asynchronous final outcome, preserving original and refund references. Reconcile all test charges and refunds.
@@ -33,6 +33,8 @@ Controlled real-terminal acceptance establishes whether the documented addon is 
 - 19 — Enforce verified settlement and internal-operation permissions
 - 20 — Recover POS lines after a failed pre-payment lookup
 - 21 — Keep reconciliation progressing after malformed provider responses
+- 22 — Recover a POS line after a terminal-busy rejection (open live finding; needs triage)
+- 23 — Preserve payment polling through valid processing states (open live finding; needs triage)
 
 ## Release gate update — 2026-09-25
 
@@ -98,9 +100,43 @@ upgrade and troubleshooting guidance is linked and the correction's upgrade is
 documented. Final instruction changes based on actual device observations stay
 open.
 
-This ticket remains `ready-for-human`: no staging deployment or Merchant request
+At this 2026-09-28 handoff the ticket remained `ready-for-human`: no staging deployment or Merchant request
 was made, and no physical-terminal charge/refund was run. Deployed-version
 verification, production account/location/device eligibility, explicit test
 amounts and financial authorization, observed live outcomes, reconciliation and
 remaining provider discrepancies still need human completion. All unexecuted
 scenarios are explicit release gaps; this preparation does not close the ticket.
+
+## Controlled live acceptance checkpoint — 2026-09-29
+
+The [operator observations](../../testing/ticket-12-operator-observations.md)
+record the authorized staging upgrade, production device/location discovery,
+server-only credential, dedicated GBP POS/session, explicit financial budget,
+and controlled live outcomes. The
+[release matrix](../../testing/ticket-12-release-evidence.md) now distinguishes
+completed narrow checks, partial scenarios, pending refunds and unexecuted
+subcases. Earlier handoff statements above describe that earlier checkpoint.
+
+At 13:42:07 UTC there were eighteen payment operations, no active card-payment
+blocker, six verified sources totalling eight pence, and five one-penny refunds
+still processing/unverified. Seven of ten authorized additional pence had been
+captured; three remained in that aggregate budget. Three captured pence and
+the mixed sale's Cash penny still need allocation/return. Pending refund
+reservations retain their deployment blockers and are not completed refunds.
+
+L01's original one-penny automatic payment passed. Cash/Revolut and two-card
+allocations, selected cancellation/retry/reload paths, refund caps and locks,
+and both browser terminal guards have passing subcases. Initial automatic
+status handling failed on four later operations, and an independent browser
+remained stuck after a definitive busy-terminal rejection. Reports
+[22](../needs-triage/22-recover-terminal-busy-rejection.md) and
+[23](../needs-triage/23-preserve-polling-through-payment-processing.md) preserve
+these release findings and their mocked characterizations without claiming a
+fix or deployment. Their triage and reviewed fixes/retests are required before
+closure; they do not prevent read-only reconciliation of the pending refunds.
+
+Ticket 12 remains open. Final refunds/test-money reconciliation, Restaurant,
+remaining failure/race/interruption subcases, provider discrepancies and final
+observed operating guidance remain incomplete. No addon code is changed by
+this evidence update, and it does not authorize bypassing financial guards or
+upgrading/restarting staging while unresolved refunds remain.
