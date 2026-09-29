@@ -1,51 +1,143 @@
 # Odoo–Revolut tickets
 
-Approved implementation breakdown for the Odoo–Revolut addon. Source: the three project tickets pasted into the planning conversation and the subsequently approved implementation plan. No tracker issue URLs were supplied, so no parent issue is invented or modified.
+Approved implementation and architecture work for the Odoo–Revolut addon. Tickets 01–12 come from the original project planning conversation and approved implementation plan. Tickets 13–15 come from the architecture review and breakdown approved on 2026-09-25. Tickets 16–18 address findings from the final integrated audit and were approved on the same date. Tickets 19–21 address the four findings from the integrated payment safety audit on 2026-09-28; their three-ticket grouping was approved on the same date. No tracker issue URLs were supplied, so no parent issue is invented or modified.
 
-## Status folders
+## Triage folders and state
 
-- **Ready to implement:** all prerequisite tickets are closed; status `ready-for-agent`.
-- **In implementation:** work has started; status `in-implementation`.
-- **Blocked:** prerequisite tickets or explicitly recorded external prerequisites remain outstanding; status `blocked`.
-- **Closed:** acceptance criteria have been demonstrated and evidence recorded; status `closed`.
+Open tickets are filed by the canonical triage label recorded in each file:
 
-Initially tickets 01 and 02 are ready, 03–12 are blocked, and the other folders are empty. Placeholder files preserve empty folders in Git.
+- **`needs-triage`:** maintainer evaluation is required.
+- **`needs-info`:** external information or access is required.
+- **`ready-for-agent`:** the ticket is fully specified; dependency gates still
+  apply.
+- **`ready-for-human`:** human or physical-world execution is required.
+- **`wontfix`:** the ticket will not be actioned.
 
-Numbers are stable identifiers, assigned in dependency order. They do not require a linear execution order: work any ticket whose blockers are all closed. Move its existing file to the appropriate folder and update its Status and Category; do not renumber, duplicate or erase its dependency history. Record external blockers when discovered. On closure, record verification commands/results and promote newly unblocked tickets. Update the links below whenever files move.
+Completed tickets are archived under **`closed`**. Lifecycle state is separate
+from triage: an open ticket has state `open` or `claimed`, while completed and
+`wontfix` tickets have state `closed`. Placeholder files preserve empty label
+folders in Git.
+
+Numbers are stable identifiers assigned in dependency order. They do not
+require linear execution: a `ready-for-agent` ticket is actionable only when
+all of its blockers are closed. Move a ticket when its triage label changes,
+set its state to `claimed` when work starts, and update this index. Do not
+renumber, duplicate or erase dependency history. On completion, record
+verification evidence, set state to `closed`, and move the ticket to `closed/`.
 
 ## Branch workflow
 
-Each ticket declares its local `codex/<ticket-number>-<slug>` work branch immediately below the title. All 12 branches were created from the same committed ticket baseline; blocked branches do not yet contain future prerequisite implementations.
+Each ticket declares its local `codex/<ticket-number>-<slug>` work branch
+immediately below the title. The original 12 branches were created from the
+same committed ticket baseline; branch existence does not satisfy a dependency.
+Branches for tickets 13–15 are created from the committed ticket definitions
+on reviewed `main`. Update the assigned branch from `main` before claiming work.
+Branches for tickets 16–18 are created from their committed definitions on
+`main`. Update the assigned branch from reviewed `main` before starting.
 
-Use `main` as the shared integration branch for this ticket set. Integrate reviewed, verified ticket work there, including its status update. Before starting a ticket, merge the latest integration branch into its assigned branch and confirm every declared blocker is closed and its implementation is present. Never treat branch existence as permission to skip blockers. Do not reset or overwrite a branch that already contains work.
+Branches for tickets 19–21 are created from their committed definitions on
+`main`. Update the assigned branch from reviewed `main` before starting,
+without overwriting existing work.
+
+Use `main` as the shared integration branch for this ticket set. Integrate
+reviewed, verified ticket work there, including its state and triage updates.
+Before starting a ticket, merge the latest integration branch into its assigned
+branch and confirm every declared blocker is closed and its implementation is
+present. Never treat branch existence as permission to skip blockers. Do not
+reset or overwrite a branch that already contains work.
 
 Use separate worktrees for concurrent agents, within the project's designated worktree area. Keep each ticket's changes on its assigned branch. Resolve overlaps against the integration branch and run the affected tests before integration. These branches are local; publishing them to a remote is a separate action.
 
 ## Ticket directory
 
-| Ticket | Category | Blocked by |
-| --- | --- | --- |
-| [01 — Configure and verify a Revolut payment method](ready-to-implement/01-configure-revolut-payment-method.md) | Ready to implement | None |
-| [02 — Resolve the Revolut terminal contract and testing prerequisites](ready-to-implement/02-confirm-terminal-contract.md) | Ready to implement | None |
-| [03 — Complete one verified Revolut terminal payment](blocked/03-verified-terminal-payment.md) | Blocked | 01 |
-| [04 — Handle unsuccessful payments and safe retries](blocked/04-unsuccessful-payments-safe-retries.md) | Blocked | 03 |
-| [05 — Recover payments after interruption or late success](blocked/05-recover-interrupted-payments.md) | Blocked | 04 |
-| [06 — Resolve uncertain payments from a manager worklist](blocked/06-manager-reconciliation-worklist.md) | Blocked | 05 |
-| [07 — Use Revolut with split tender and restaurant checkout](blocked/07-split-tender-restaurant-checkout.md) | Blocked | 05 |
-| [08 — Issue and reconcile a full Revolut refund](blocked/08-full-revolut-refund.md) | Blocked | 05 |
-| [09 — Issue partial refunds across original payment allocations](blocked/09-partial-allocated-refunds.md) | Blocked | 07, 08 |
-| [10 — Install and upgrade a reviewed revision on staging](blocked/10-staging-install-upgrade.md) | Blocked | 03 |
-| [11 — Verify the complete addon on the target Odoo version](blocked/11-target-version-acceptance.md) | Blocked | 06, 09, 10 |
-| [12 — Validate real terminal payments and publish release evidence](blocked/12-live-terminal-release-evidence.md) | Blocked | 02, 11 |
+| Ticket | Triage | State | Blocked by |
+| --- | --- | --- | --- |
+| [01 — Configure and verify a Revolut payment method](closed/01-configure-revolut-payment-method.md) | `ready-for-agent` at closure | Closed | None |
+| [02 — Resolve the Revolut terminal contract and testing prerequisites](closed/02-confirm-terminal-contract.md) | `ready-for-agent` at closure | Closed | None |
+| [03 — Complete one verified Revolut terminal payment](closed/03-verified-terminal-payment.md) | `ready-for-agent` at closure | Closed | 01 (closed) |
+| [04 — Handle unsuccessful payments and safe retries](closed/04-unsuccessful-payments-safe-retries.md) | `ready-for-agent` at closure | Closed | 03 (closed) |
+| [05 — Recover payments after interruption or late success](closed/05-recover-interrupted-payments.md) | `ready-for-agent` at closure | Closed | 04 (closed) |
+| [06 — Resolve uncertain payments from a manager worklist](closed/06-manager-reconciliation-worklist.md) | `ready-for-agent` at closure | Closed | 05 (closed) |
+| [07 — Use Revolut with split tender and restaurant checkout](closed/07-split-tender-restaurant-checkout.md) | `ready-for-agent` at closure | Closed | 05 (closed) |
+| [08 — Issue and reconcile a full Revolut refund](closed/08-full-revolut-refund.md) | `ready-for-agent` at closure | Closed | 05 (closed) |
+| [09 — Issue partial refunds across original payment allocations](closed/09-partial-allocated-refunds.md) | `ready-for-agent` at closure | Closed | 07 (closed), 08 (closed) |
+| [10 — Install and upgrade a reviewed revision on staging](closed/10-staging-install-upgrade.md) | `ready-for-human` at closure | Closed | 03 (closed) |
+| [11 — Verify the complete addon on the target Odoo version](closed/11-target-version-acceptance.md) | `ready-for-agent` at closure | Closed | 06, 09, 10 |
+| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11, 16–21 (closed); 22, 23 (open findings) |
+| [13 — Deepen Return allocation](closed/13-deepen-return-allocation.md) | `ready-for-agent` at closure | Closed | None |
+| [14 — Deepen POS payment state](closed/14-deepen-pos-payment-state.md) | `ready-for-agent` at closure | Closed | None |
+| [15 — Deepen payment outcome application](closed/15-deepen-payment-outcome-application.md) | `ready-for-agent` at closure | Closed | None |
+| [16 — Preserve uncertain refunds when original-sale recovery fails](closed/16-preserve-uncertain-refund-recovery.md) | `ready-for-agent` at closure | Closed | None |
+| [17 — Deliver the Restaurant bridge with the reviewed addon release](closed/17-deliver-restaurant-bridge.md) | `ready-for-agent` at closure | Closed | None |
+| [18 — Isolate internal payment records by allowed company](closed/18-isolate-internal-payment-records.md) | `ready-for-agent` at closure | Closed | None |
+| [19 — Enforce verified settlement and internal-operation permissions](closed/19-enforce-payment-server-boundaries.md) | `ready-for-agent` at closure | Closed | None |
+| [20 — Recover POS lines after a failed pre-payment lookup](closed/20-recover-undispatched-pos-lines.md) | `ready-for-agent` at closure | Closed | None |
+| [21 — Keep reconciliation progressing after malformed provider responses](closed/21-isolate-reconciliation-failures.md) | `ready-for-agent` at closure | Closed | None |
+| [22 — Recover a POS line after a terminal-busy rejection](needs-triage/22-recover-terminal-busy-rejection.md) | `needs-triage` | Open | None for local work; live deployment/retest gated by financial reconciliation |
+| [23 — Preserve payment polling through valid processing states](needs-triage/23-preserve-polling-through-payment-processing.md) | `needs-triage` | Open | None for local work; missing early live payload and financial reconciliation limit validation |
+
+## Architecture triage — 2026-09-25
+
+Tickets 13–15 were approved as independent architecture work and are now
+closed. Their design decisions and verification evidence remain in their
+archived tickets.
+
+## Final audit corrections — 2026-09-25
+
+The owner approved tickets 16–18 and requested direct publication as
+`ready-for-agent`. All three can start independently; suggested priority is
+16, then 18, then 17, without introducing dependencies between them. Coordinate
+overlapping tests during integration. Ticket 02's contract verification is now
+closed; physical-terminal and financial acceptance remain ticket 12 work.
+
+All three corrections block ticket 12. Before live acceptance, integrate their
+reviewed implementations and record mocked install, upgrade and Restaurant
+acceptance on the final combined revision, including the delivered artifact.
+
+## Integrated payment safety corrections — 2026-09-28
+
+The owner approved three tickets covering the four findings in the
+[integrated payment safety audit](../testing/release-audit-2026-09-28.md):
+
+- **19 (P1):** enforce verified settlement across server entry points and close
+  the related internal-lock authorization bypass.
+- **20 (P2):** recover an undispatched POS payment/refund after discovery fails.
+- **21 (P2):** validate malformed provider evidence and keep other operations
+  progressing during reconciliation.
+
+Tickets 19–21 are closed with reviewed corrections and mocked
+install/upgrade evidence. Ticket 21 also records actual transaction isolation,
+malformed-provider recovery and restart verification; ticket 20 records POS
+discovery recovery. Coordinate overlapping changes during integration. Ticket
+02 is also closed with its documented/observed contract; ticket 12 retains all
+physical-terminal and financial acceptance work.
+
+All three block ticket 12. Before live acceptance, independently review the
+payment-verification boundary and record the full integrated mocked suite on
+the final combined revision: install/upgrade, Restaurant, lifecycle,
+deployment checks, restart recovery, delivered-artifact acceptance and the new
+adversarial regressions. Earlier green runs are baseline evidence, not proof
+that these newly identified paths are fixed.
+
+Ticket 12's [software evidence and operator
+checklist](../testing/ticket-12-release-evidence.md) records the combined candidate,
+an additional reviewed historical-tender refund correction, and the controlled
+human handoff. Physical-device testing subsequently ran on 2026-09-29, with
+the [operator chronology](../testing/ticket-12-operator-observations.md)
+recording verified payments, selected guard/recovery passes, five pending
+refunds and explicitly unexecuted subcases. Tickets 22–23 are new
+`needs-triage` reports for busy-terminal recovery and automatic status handling;
+they must be resolved and retested before ticket 12 closes. Full acceptance
+and financial reconciliation remain open under `ready-for-human`.
 
 ## Shared implementation contract
 
 - The addon, tests, documentation and local deployment tooling belong to odoo-revolut. Hosting provisioning is complete for this scope; do not edit odoo-hosting or develop source on the server.
 - Target Odoo Community 19.0.20260908. Use existing Odoo conventions and runtime facilities; a new framework or dependency requires approval.
-- Every product ticket includes the persistence, server behavior, UI, tests and documentation needed to demonstrate its stated outcome. Ticket 02 is an external-contract verification slice; tickets 10–12 are delivery/acceptance slices. No prefactoring is needed in this documentation-only repository.
+- Every product ticket includes the persistence, server behavior, UI, tests and documentation needed to demonstrate its stated outcome. Ticket 02 is an external-contract verification slice; tickets 10–12 are delivery/acceptance slices. Tickets 13–15 are behavior-preserving architecture refactors of the implemented addon, each verified through its complete affected workflow.
 - Support retail and restaurant, a configured terminal per payment method, server-managed secrets and manager-only refunds. Late successful payments finalize when the unchanged original order resumes, rather than through unattended background order finalization.
 - Persist operations before external dispatch. Verify the underlying payment, never intent completion alone. Unknown outcomes remain unresolved; local timeouts, empty payment lists and missing IDs do not prove retry safety.
 - Never expose credentials to POS or logs. All automated Merchant API calls are mocked; actual terminal testing belongs to the explicitly controlled acceptance session.
-- Dependencies are gates, not a task ordering preference: 02 gates live acceptance, while provisional contracts allow mocked implementation. Shared code changes from independently ready tickets still require coordination and integration review.
+- Dependencies are gates, not a task ordering preference: closed ticket 02 supplies the documented/observed contract, while ticket 12 owns physical-terminal configuration and financial acceptance. Shared code changes from independently ready tickets still require coordination and integration review.
 
 Read the project instructions, API validation report and development-environment document before implementing. Current documentation and official source take precedence over stale assumptions; record provider ambiguities rather than silently choosing financial behavior.

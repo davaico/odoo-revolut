@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""Exercise the deployment preflight SQL against disposable Odoo 19 records."""
+
+import importlib.machinery
+import importlib.util
+import subprocess
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent.parent
+PROJECT = "odoo-revolut-deployment-guard-test"
+DATABASE = "odoo_revolut_guard_test"
+COMPOSE = ["docker", "compose", "--project-name", PROJECT, "--file", str(ROOT / "compose.yaml")]
+
+SEED = """
+from uuid import uuid4
+from odoo import Command
+
+method = env['pos.payment.method'].create({
+    'name': 'Deployment guard terminal',
+    'payment_method_type': 'terminal',
+    'use_payment_terminal': 'revolut',
+    'revolut_environment': 'sandbox',
+    'revolut_location_id': str(uuid4()),
+    'revolut_terminal_id': str(uuid4()),
+    'revolut_fulfilment_type': 'eat_in',
+    'revolut_secret_reference': 'ODOO_REVOLUT_SECRET_TEST_TERMINAL',
+})
+config = env['pos.config'].create({
+    'name': 'Deployment guard POS',
+    'payment_method_ids': [Command.link(method.id)],
+    'auto_validate_terminal_payment': True,
+})
+session = env['pos.session'].create({'config_id': config.id, 'state': 'opened'})
+common = {
+    'payment_method_id': method.id,
+    'company_id': config.company_id.id,
+    'pos_config_id': config.id,
+    'pos_session_id': session.id,
+    'amount': 12.34,
+    'amount_minor': 1234,
+    'currency_id': config.currency_id.id,
+    'currency_code': config.currency_id.name,
+    'environment': 'sandbox',
+    'location_id': method.revolut_location_id,
+    'terminal_id': method.revolut_terminal_id,
+    'fulfilment_type': 'eat_in',
+    'secret_reference': 'ODOO_REVOLUT_SECRET_TEST_TERMINAL',
+}
+payment_model = env['pos.revolut.payment.operation']
+pending = payment_model.create(dict(
+    common, order_uuid='11111111-1111-4111-8111-111111111111',
+    payment_line_uuid='11111111-1111-4111-8111-111111111112', state='pending',
+))
+settled = payment_model.create(dict(
+    common, order_uuid='22222222-2222-4222-8222-222222222222',
+    payment_line_uuid='22222222-2222-4222-8222-222222222223', state='verified',
+))
+refund = env['pos.revolut.refund.operation'].create({
+    'original_operation_id': settled.id,
+    'pos_session_id': session.id,
+    'order_uuid': '33333333-3333-4333-8333-333333333333',
+    'payment_line_uuid': '33333333-3333-4333-8333-333333333334',
+    'amount': 12.34,
+    'amount_minor': 1234,
+    'return_total_minor': 1234,
+    'currency_id': config.currency_id.id,
+    'financial_snapshot': {'lines': []},
+    'state': 'pending',
+})
+assert pending.deployment_blocking
+assert not settled.deployment_blocking
+assert refund.deployment_blocking
+env.cr.commit()
+print('DEPLOYMENT_GUARD_SEED_OK', flush=True)
+"""
+
+SETTLE_PAYMENT = """
+payment = env['pos.revolut.payment.operation'].search([
+    ('order_uuid', '=', '11111111-1111-4111-8111-111111111111'),
+], limit=1)
+assert payment and payment.state == 'pending'
+payment.write({'state': 'verified'})
+assert not payment.deployment_blocking
+env.cr.commit()
+print('DEPLOYMENT_GUARD_PAYMENT_SETTLED', flush=True)
+"""
+
+SETTLE_REFUND = """
+refund = env['pos.revolut.refund.operation'].search([
+    ('order_uuid', '=', '33333333-3333-4333-8333-333333333333'),
+], limit=1)
+assert refund and refund.state == 'pending'
+refund.write({'state': 'verified'})
+assert not refund.deployment_blocking
+env.cr.commit()
+print('DEPLOYMENT_GUARD_REFUND_SETTLED', flush=True)
+"""
+
+
+def run(*args, input_text=None):
+    return subprocess.run(
+        [*COMPOSE, *args], input=input_text, text=True, check=True,
+    )
+
+
+def shell(source):
+    run(
+        "run", "--rm", "-T", "--entrypoint", "odoo", "odoo", "shell",
+        "--database", DATABASE, "--db_host", "db", "--db_user", "odoo",
+        "--db_password", "odoo", "--no-http", "--max-cron-threads", "0",
+        "--shell-interface", "python", "--log-level", "warn",
+        input_text=source,
+    )
+
+
+class DockerPsqlRunner:
+    """Run the production preflight's psql commands on the disposable DB."""
+
+    def run(self, command, **kwargs):
+        assert command[:8] == [
+            "runuser", "-u", "postgres", "--", "psql", "--dbname", DATABASE,
+            "--no-align",
+        ], command
+        return subprocess.run(
+            [*COMPOSE, "exec", "-T", "db", "psql", "--username", "odoo",
+             "--dbname", DATABASE, *command[7:]],
+            check=True, text=True, **kwargs,
+        )
+
+
+def deployment():
+    loader = importlib.machinery.SourceFileLoader(
+        "deploy_addon_remote", str(ROOT / "scripts/deploy-addon-remote")
+    )
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module.RemoteDeployment(
+        runner=DockerPsqlRunner(), root="/", archive="/unused",
+        expected_sha256="0" * 64, revision="0" * 40, database=DATABASE,
+        customer="test", environment="sandbox", mode="upgrade",
+    )
+
+
+def main():
+    run("down", "--volumes", "--remove-orphans")
+    try:
+        run("build", "odoo")
+        run("run", "--rm", "--no-deps", "--entrypoint", "python3", "odoo",
+            "/opt/odoo-test-guard/verify_merchant_http_guard.py")
+        run("up", "--detach", "--wait", "db")
+        run("run", "--rm", "odoo", "--database", DATABASE,
+            "--init", "pos_revolut", "--stop-after-init", "--workers", "0",
+            "--max-cron-threads", "0", "--log-level", "warn")
+        shell(SEED)
+        guard = deployment()
+        assert guard._financial_blockers() == [
+            "pos_revolut_payment_operation=1", "pos_revolut_refund_operation=1",
+        ]
+        shell(SETTLE_PAYMENT)
+        assert guard._financial_blockers() == ["pos_revolut_refund_operation=1"]
+        shell(SETTLE_REFUND)
+        assert guard._financial_blockers() == []
+        print("Deployment guard passed against payment and refund records")
+    finally:
+        run("down", "--volumes", "--remove-orphans")
+
+
+if __name__ == "__main__":
+    main()

@@ -128,31 +128,34 @@ Two-axis review uses fixed point `935d07713d519698d7a2cf9414900ec611675ff9`
 and includes the correction plus its documentation/handoff. Standards: 0
 findings; Spec: 0 findings; neither axis has a blocking finding.
 
-## Operator preflight — IN PROGRESS
+## Operator preflight — verified for the GBP test session, 2026-09-29
 
 The [operator observations](ticket-12-operator-observations.md) record the
 authorized 2026-09-28 staging upgrade and successful Cash smoke, followed by
-2026-09-29 Merchant dashboard access. Physical-terminal and financial acceptance
-remain open. Completed preflight observations below retain their observation
-date and require rechecking when relevant before a financial test.
+2026-09-29 device discovery, GBP configuration, financial authorization and
+controlled terminal tests. Results below summarize the checkpoint at
+**2026-09-29 13:42:07 UTC**; the dated chronology contains supporting references
+and narrower limitations. Ticket 12 remains open. Recheck financial blockers
+and device eligibility before another test or deployment.
 
-The owner reports a physical terminal linked to production Business user
-**Test Guzman**. This does not verify its eligibility/configuration or authorize
-a financial operation. Complete the following record before selecting Revolut:
+The production Merchant account **Test Guzman**, Davai location and configured
+terminal were verified for the isolated GBP test register. Authorization is
+limited to the amounts recorded below; these observations do not authorize
+additional spending or use of another account/device.
 
-| Required observation | Evidence to fill in |
+| Required observation | Recorded evidence |
 | --- | --- |
-| Operator, POS-manager account and UTC session start | NOT RUN |
+| Operator, POS-manager account and UTC session start | PASS: Administrator / Odoo user `2`; session `5` opened at `2026-09-29 08:53:13 UTC` |
 | Reviewed deployed SHA, archive checksum, running Odoo and addon versions | PASS on 2026-09-28: exact tested `76209bb` and matching checksum; Odoo `19.0.20260908`, base `19.0.1.7.5`; Restaurant uninstalled, bridge delivered; see operator observations |
-| Database, company, currency and POS configuration/session | NOT RUN; documented staging is `revolut_staging`, Davai / EUR; confirm actual target |
-| Intended approved Merchant account and environment | PARTIAL: Test Guzman Merchant dashboard accessible on 2026-09-29; account/API eligibility and the physical device's production association remain unverified |
-| Secret-reference name available in every Odoo worker | NOT RUN; record only the variable name |
-| Matching physical location and configured terminal UUID | PARTIAL on 2026-09-29: operator selected Davai for acceptance; provider location UUID/type and terminal association remain unverified |
-| Terminal app version, account login and internet connection | OBSERVED on 2026-09-29: operator reports terminal app 1.102 (101), firmware V1.0.37, Test Guzman login and Wi-Fi connected; app meets minimum 1.56, API online discovery remains unverified |
-| Matching device location and Pay at Counter enabled | PARTIAL on 2026-09-29: operator reports Pay at Counter enabled and Davai selected; API location match remains unverified; reconfirm mode after settings inspection |
-| Manager **Check Connection** result and UTC time | NOT RUN; configured device must appear online with `operation_mode=pos` and matching `location_id` |
-| Amount/currency per scenario, maximum exposure and refund plan | NOT AUTHORIZED; record exact permitted amounts |
-| Explicit owner authorization for real-money operations | NOT AUTHORIZED; record authorizer, UTC time, scope and evidence reference |
+| Database, company, currency and POS configuration/session | PASS: `revolut_staging`, company Davai; dedicated GBP POS `2`, session `5`; existing EUR register retained |
+| Intended approved Merchant account and environment | PASS: Test Guzman production credential authenticated and returned the matching physical location/device; controlled GBP payments subsequently verified through Merchant GETs |
+| Server-only secret reference | PASS: process variable `ODOO_REVOLUT_SECRET_TEST_GUZMAN_PRODUCTION`; systemd encrypted credential and server-process presence checked without disclosure; no browser credential |
+| Matching physical location and configured terminal UUID | PASS: Davai location `7a531302-52af-4f7c-82c2-eaa6b2fe371b`, terminal `aec8020d-cdf6-4f16-a7f4-a6ca908a1f64`; see discovery evidence |
+| Terminal app version, account login and internet connection | OBSERVED: operator reports app `1.102 (101)`, firmware `V1.0.37`, Test Guzman login and Wi-Fi; matching device returned online by Merchant discovery |
+| Matching device location and Pay at Counter enabled | PASS: operator reported Davai and Pay at Counter; provider discovery matched location and `operation_mode=pos` |
+| Manager **Check Connection** result and UTC time | PASS during GBP preparation; method `4` found the configured online terminal; UTC checkpoints in operator observations |
+| Amount/currency per scenario, maximum exposure and refund plan | AUTHORIZED: original `0.01 GBP` charge/refund plus aggregate `0.10 GBP` in additional charges with refund plan; seven additional pence captured, three pence remain; refunds do not replenish the charge budget |
+| Explicit owner authorization for real-money operations | Recorded owner approval in the guided session and operator chronology before paid scenarios; only the operator sent financial requests through POS/device |
 | Backup/upgrade record, baseline Cash smoke and no unresolved existing operations | PASS on 2026-09-28: guarded upgrade and backup, Cash `261-1-000004` / `11.50 EUR`, zero financial blockers at postflight; recheck blockers before financial acceptance |
 
 Device prerequisites follow the [Revolut terminal
@@ -164,7 +167,7 @@ Sandbox simulator failure and the owner's interim retail `eat_in` mapping.
 Do not create more Sandbox payment attempts while the provider issue remains
 unresolved. No example amount here authorizes a production transaction.
 
-## Controlled scenario matrix — all results NOT RUN
+## Controlled scenario matrix — partial live acceptance, 2026-09-29
 
 Use a dedicated test session. Record each row's authorized amount and original
 refundable balances, run one scenario at a time, and reconcile its references
@@ -177,16 +180,16 @@ decline/failure; a pass for one does not cover the others.
 
 | ID | Operator action | Required observed result | Result |
 | --- | --- | --- | --- |
-| L01 | Pay a full retail sale using interim `eat_in` | Device amount/currency match; only a verified `captured`/`completed` underlying payment completes the fully paid order; stored and receipt references agree | NOT RUN |
-| L02 | Pay Cash/Revolut split tender and multiple Revolut lines | Each request uses its line amount; verified partial payment keeps the order open; full balance completes; each line retains distinct references | NOT RUN |
+| L01 | Pay a full retail sale using interim `eat_in` | Device amount/currency match; only a verified `captured`/`completed` underlying payment completes the fully paid order; stored and receipt references agree | PASS for original one-penny sale `4`, with operator-confirmed automatic receipt; later automatic-status failures remain open |
+| L02 | Pay Cash/Revolut split tender and multiple Revolut lines | Each request uses its line amount; verified partial payment keeps the order open; full balance completes; each line retains distinct references | PARTIAL: Cash/Revolut and two-Revolut-line allocations settled correctly after manual Check status; initial automatic status handling failed on operations `10`, `11`, `16`, `17` |
 | L03 | Pay Restaurant dine-in and takeaway; resume an unchanged partially paid order | Correct `eat_in`/`take_away`; retained identity/references; guarded exposed split/merge/transfer; permitted same-order table move | NOT RUN |
-| L04 | Produce controlled decline and provider failure, then safely retry | Distinct unpaid outcomes; provider-final evidence enables retry; predecessors retained and only one intended new charge | NOT RUN |
-| L05 | Cancel pending payment using POS/device controls | Confirmed cancellation stays unpaid; processing/uncertain cancellation stays guarded; capture winning a race preserves verified success | NOT RUN |
-| L06 | Exercise controlled interruption, local timeout and reload/late success | Original UUIDs and operation survive; no replacement charge/alternate tender while uncertain; status recovery resumes the same unchanged order | NOT RUN |
-| L07 | Repeat status checks and resume with another authorized cashier | Same operation/references, no extra financial mutation, serialized order/terminal exposure | NOT RUN |
-| L08 | Manager returns all of a designated original Revolut sale | Linked original/refund references; accepted/pending refund cannot finish return; only asynchronous verified completion settles | NOT RUN |
-| L09 | Partially return a different sale with multiple Revolut allocations and mixed tender | Correct original allocations and reserved balances; original non-Revolut tender handles its share; final references and remaining balances agree | NOT RUN |
-| L10 | Recover controlled interrupted/failed refund and reconcile all test money | Same operation/reference/key; completed siblings retained; uncertain amounts stay reserved; no second dispatch or excess refund | NOT RUN |
+| L04 | Produce controlled decline and provider failure, then safely retry | Distinct unpaid outcomes; provider-final evidence enables retry; predecessors retained and only one intended new charge | PARTIAL: controlled decline and safe cancellation observed; cancellation-to-paid retries passed; provider failure and decline-to-paid retry not run |
+| L05 | Cancel pending payment using POS/device controls | Confirmed cancellation stays unpaid; processing/uncertain cancellation stays guarded; capture winning a race preserves verified success | PARTIAL: multiple no-card cancellations verified unpaid, including `18`; processing/capture-winning-race subcases not run |
+| L06 | Exercise controlled interruption, local timeout and reload/late success | Original UUIDs and operation survive; no replacement charge/alternate tender while uncertain; status recovery resumes the same unchanged order | PARTIAL: single-attempt no-card reload/recovery/cancel and post-success refresh passed; broader network interruption/capture-to-persistence window not run |
+| L07 | Repeat status checks and resume with another authorized cashier | Same operation/references, no extra financial mutation, serialized order/terminal exposure | PARTIAL: same-browser and independent-browser server guards passed under one account; independent-browser busy feedback/recovery FAILED; different-user resume and simultaneous-start race not run |
+| L08 | Manager returns all of a designated original Revolut sale | Linked original/refund references; accepted/pending refund cannot finish return; only asynchronous verified completion settles | IN PROGRESS: original full one-penny refund `1` processing/unverified; guarded return remains open |
+| L09 | Partially return a different sale with multiple Revolut allocations and mixed tender | Correct original allocations and reserved balances; original non-Revolut tender handles its share; final references and remaining balances agree | PARTIAL: source/return/quantity caps, source discovery and dispatched-amount lock passed; refunds `2`–`5` processing; remaining Cash/source-`16` allocations and final settlement open |
+| L10 | Recover controlled interrupted/failed refund and reconcile all test money | Same operation/reference/key; completed siblings retained; uncertain amounts stay reserved; no second dispatch or excess refund | PARTIAL: normal reload/status check retained the same refund reference without duplication; all five refunds still unverified, controlled failure and complete financial reconciliation open |
 
 The [Revolut refund
 guide](https://developer.revolut.com/docs/guides/merchant/operations/refunds)
@@ -196,7 +199,16 @@ account; record those observations separately when available.
 
 ## Per-attempt evidence and reconciliation
 
-Fill in this entry for every attempt/allocation, including unsuccessful ones:
+The [operator chronology](ticket-12-operator-observations.md) contains entries
+for all eighteen payment operations, five refund operations, their UTC checks,
+sanitized external references and observed outcomes. Reconciliation checkpoint:
+eight pence captured in total (original penny plus seven additional pence), five
+pence reserved by processing refunds, zero verified completed refunds, and
+three captured pence still unallocated to refunds (two on source `11`, one on
+source `16`). The mixed sale's separate Cash penny also remains to be returned.
+These pending reservations are not successful refunds or cardholder credits.
+
+Use this template for subsequent attempts/allocations, including unsuccessful ones:
 
 | Field | Entry |
 | --- | --- |
@@ -245,7 +257,10 @@ acceptance. Documentation-only commits can retain these results only when the
 addon trees and deployment/test tooling match the tested revision; record that
 comparison before deployment.
 
-Open human/provider gaps: device/account eligibility and discovery; explicit
-amounts and financial authorization; L01–L10; refund/test-money reconciliation;
+Open release gaps: remaining L02–L10 subcases and complete refund/test-money
+reconciliation; [terminal-busy recovery](../tickets/needs-triage/22-recover-terminal-busy-rejection.md)
+and [automatic payment-status handling](../tickets/needs-triage/23-preserve-polling-through-payment-processing.md);
 the Sandbox simulator issue for required non-production acceptance; and final
-guidance based on physical-terminal observations. None is an implied pass.
+guidance based on physical-terminal observations. Pending refunds block a live
+addon upgrade/restart. These findings require reviewed fixes and affected
+retests; documenting a narrow guard pass does not close the full scenario.

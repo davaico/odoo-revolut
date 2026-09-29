@@ -30,10 +30,14 @@ Development can begin entirely with mocked Revolut HTTP behavior; Merchant crede
 The intended workflow is:
 
 1. Build and test the addon locally in this repository.
-2. Use a local deployment script to copy a reviewed revision to the staging VM. That script does not exist yet.
+2. Use the local deployment script to copy a reviewed revision to the staging
+   VM, following [the staging deployment runbook](staging-deployment.md).
 3. Install or upgrade the addon in the staging database.
 4. Validate the POS behavior in the browser and inspect server logs through Tailscale SSH.
-5. Perform real terminal tests only after non-production Merchant access, a matching Revolut location, and a Pay at Counter terminal are available.
+5. Perform physical-terminal and financial tests only under ticket 12 after the
+   production Merchant environment, matching physical location, eligible
+   terminal, Pay at Counter mode and test amounts are explicitly verified and
+   authorized.
 
 Future deployment tooling must place the addon in a customer-specific directory, preserve the existing Odoo `addons_path`, stop Odoo during an upgrade, run the module update with `--stop-after-init --no-http --workers=0`, and restart the service. The script must fail safely and identify the exact revision deployed.
 
@@ -43,11 +47,39 @@ Never commit or document Merchant API tokens, Odoo passwords, Terraform state, T
 
 The infrastructure account IDs, VM provisioning commands, Terraform recovery procedure, and provider credentials are intentionally omitted because they are not required to implement the addon. Consult `../odoo-hosting` when infrastructure work is actually needed.
 
-## Not yet available
+## Local addon verification
 
-- An addon-specific local test command
-- A local staging deployment script
-- Non-production Revolut Merchant credentials
-- Confirmed terminal access and location identifiers
+The repository now includes a disposable environment pinned to Odoo Community
+`19.0.20260908` and PostgreSQL 16.14. Run the addon tests with:
 
-Add the exact commands here when their implementations exist; do not document speculative commands.
+```bash
+./scripts/test-addon
+```
+
+Verify install, upgrade, the manager configuration browser flow, and actual
+retail and Restaurant POS startup:
+
+```bash
+./scripts/test-addon --verify-install-upgrade
+```
+
+The runtime environment has no external network route. Expected Revolut calls
+are mocked; any accidental outbound API traffic fails. The browser-test image
+adds a checksum-verified Chrome package and Odoo's `python3-websocket` browser
+transport to the exact pinned Odoo base image. The latter was approved as a
+test-only dependency on 23 September 2026. The runner verifies it imports before
+testing: without it, Odoo silently skips browser tours after a warning, so those
+older warning-only runs are not browser acceptance evidence.
+
+The official Revolut terminal guide documents a controlled Sandbox route using
+a fixed virtual terminal and amount-driven simulated outcomes. On 2026-09-28,
+Gary — tester confirmed Sandbox Merchant access, created a physical Sandbox
+location and ran non-financial contract probes. Order validation and underlying
+payment retrieval worked, but two nominal-success virtual-terminal attempts
+created failed payments while their intents remained pending. The Sandbox
+Devices page also failed. See the
+[terminal contract record](revolut-terminal-contract-2026-09-22.md).
+
+No Sandbox credential value belongs in this repository. Production
+physical-terminal configuration, discovery and financial acceptance are not
+development-environment prerequisites; they remain ticket 12 work.

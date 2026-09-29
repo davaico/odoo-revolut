@@ -32,8 +32,15 @@ Refunds require a completed original order and create a separate refund order li
 
 ## Remaining uncertainty and implementation consequences
 
-1. The terminal guide includes `channel` and `fulfilment_type`, but the versioned create-order field list omits them. Use the terminal guide as the provisional contract; confirm acceptance with Revolut or a controlled integration test before claiming live compatibility. The linked downloadable schema could not be retrieved through the documentation browser.
+1. The terminal guide includes `channel` and `fulfilment_type`, but the versioned create-order field list omits them. Use the terminal guide as the contract. Controlled Sandbox probes on 2026-09-28 accepted `eat_in` and `take_away`, rejected omitted fulfilment as invalid `SERVICE`, and accepted omission of `channel`; the terminal flow nevertheless continues to send documented `channel: pos`. The owner selects runtime-accepted `eat_in` as the interim retail mapping until Revolut publishes a retail-specific rule.
 2. Lost create-order/intent responses remain ambiguous. Persist and commit attempts before dispatch, serialize competing operations, and block new charges until reconciled. Do not invent an idempotency guarantee or assume an empty payment list means no active intent. Recovery when an intent ID is lost needs explicit design and testing; unresolved cases require manual reconciliation.
-3. No credentials are needed for mocked development. Live validation later requires merchant access and an eligible terminal; sandbox support for this exact terminal flow has not been established.
+3. A follow-up review found that the terminal guide documents Sandbox push
+   payments through a fixed virtual terminal and amount-driven simulated
+   outcomes. Authorized probes on 2026-09-28 reproduced a simulator defect:
+   nominal-success amounts created final failed payments while their intents
+   remained pending with no payment ID. The order payment-list endpoint exposed
+   the failures. See the
+   [terminal contract and testing-readiness record](revolut-terminal-contract-2026-09-22.md)
+   for the dated evidence and limitations.
 
 Next implementation step: define the persisted attempt/reconciliation contract and mocked failure cases, then scaffold the addon using the verified Odoo hooks. Do not downgrade these remaining uncertainties to confirmed facts.

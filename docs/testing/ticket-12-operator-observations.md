@@ -1,10 +1,38 @@
 # Ticket 12 — Operator observations
 
 Ticket 12 remains open. This record preserves observations from the guided
-acceptance session, including a verified live one-penny payment. Remaining
-device observations, refund completion and other scenarios are still required.
+acceptance session, including verified card payments, guard tests, pending
+refunds and two software findings. Refund completion and remaining acceptance
+subcases are still required. Entries below are chronological observations;
+earlier prerequisites and planned steps are superseded by later dated results.
 Use the [release checklist](ticket-12-release-evidence.md) for all gates and
 required scenarios.
+
+## Current checkpoint — 2026-09-29 13:42:07 UTC
+
+- Eighteen payment operations, zero active card-payment blockers. Six sources
+  are verified for eight GBP minor units in total. Seven of ten authorized
+  additional pence have been captured; three pence remain in that budget.
+- Five one-penny refunds are processing/unverified, with their reservations
+  and deployment blockers retained. Sources `11` and `16` have two and one
+  captured pence, respectively, not yet allocated to refunds. The Cash penny
+  from the mixed sale remains to be returned.
+- Original full-payment automatic checkout, split-tender allocations, safe
+  cancellations/retries, selected reload paths, refund caps/amount locking,
+  and same-browser/independent-browser terminal guards have narrow passing
+  evidence. Other subcases and all final refund settlement remain open.
+- [Ticket 22](../tickets/needs-triage/22-recover-terminal-busy-rejection.md)
+  records the terminal-busy rejection shown as a false communication failure,
+  followed by an unrecoverable Check status loop with no dispatched payment.
+- [Ticket 23](../tickets/needs-triage/23-preserve-polling-through-payment-processing.md)
+  records approved payments requiring manual Check status. Classifier and
+  foreground-loop characterizations identify a reproducible software gap;
+  the exact early live provider payload remains unverified.
+
+This checkpoint does not change the deployed addon. Fixes require a reviewed
+candidate and affected retesting; outstanding refunds must be reconciled
+before a live upgrade/restart. All financial requests in this session were
+sent by the operator.
 
 ## Staging upgrade — PASS, 2026-09-28
 
@@ -1729,7 +1757,9 @@ remain preserved.
 
 ## Physical terminal preparation — PARTIAL, 2026-09-29
 
-
+This section preserves the earlier operator-reported preparation. Subsequent
+discovery, configuration and live checks above verified the matching location,
+configured terminal and online Pay at Counter eligibility.
 The operator reports connecting the terminal to Wi-Fi, logging into Test Guzman
 and enabling Pay at Counter. The terminal warned that standalone checkout would
 be unavailable in this mode and that it would accept card payments sent from
@@ -1739,8 +1769,8 @@ staff passcode. This matches the expected passive-terminal behavior.
 The operator subsequently reported **Davai** as the currently selected terminal
 location and explicitly chose it for acceptance, despite other available
 locations. The location name suffices for this shared record; its street address
-is not copied here. The provider location UUID/type and exact terminal association
-still need authoritative verification.
+is not copied here. Later discovery evidence supplies the provider location
+UUID/type and exact terminal association.
 
 The operator reported firmware **V1.0.37** and terminal application version
 **1.102 (101)**. Application version 1.102 meets the documented minimum 1.56
@@ -1758,7 +1788,7 @@ Davai's matching physical location, terminal UUID, online discovery,
 server-only credential, payment-method configuration and native manager
 Check Connection passed the checks recorded above. Device-version observations
 remain operator-reported. The separate GBP checkout's browser display has been
-observed; reconfirm the physical waiting screen before the first payment.
+observed; reconfirm the device's idle display before another payment.
 The initial one-pound payment attempts were cancelled without payment, as
 recorded above. The approved `0.01 GBP` payment is now captured and the Odoo sale
 is paid, with matching receipt references. The operator confirmed the terminal
