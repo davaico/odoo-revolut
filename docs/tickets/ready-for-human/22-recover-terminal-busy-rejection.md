@@ -4,9 +4,9 @@
 
 **Worktree:** `/home/gary/delivery/Tek2/stage/odoo-rev/worktree/ticket-22`
 
-**State:** claimed
+**State:** open
 
-**Triage:** ready-for-agent
+**Triage:** ready-for-human
 
 **Priority:** P2
 
@@ -57,6 +57,11 @@ live recovery retest remain outstanding.
 
 Local implementation and mocked verification are recorded in
 [terminal-busy recovery evidence](../../testing/ticket-22-terminal-busy-recovery.md).
+Reviewed implementation: `78b42b852790ddd27cb0a49b954e5983567f30cd`, addon
+`19.0.1.7.6`. Standards review found no findings; spec review found no
+implementation mismatch and retained the outstanding live acceptance criterion.
+Full install and upgrade each passed 212 tests; 8 Restaurant, 43 lifecycle and
+29 deployment tests also passed. All financial requests were mocked or blocked.
 The first five criteria are exercised by lifecycle, actual Odoo adapter and
 independently committed server-RPC tests. The physical two-browser retest in the
 last criterion remains gated; these local checks do not claim live acceptance.
@@ -86,3 +91,9 @@ the original POS and pending returns remain open.
 `ready-for-agents/`. The problem, safe recovery contract and mocked regression
 criteria are defined; local work can start without a live terminal. Live
 validation remains gated as recorded above.
+
+2026-09-29: Implemented and independently reviewed on the assigned branch,
+current with fetched remote and local main. Local mocked criteria pass; moved
+to `ready-for-human` for financial reconciliation and the physical two-browser
+no-card retest. The ticket remains open and continues to block ticket 12's
+release acceptance. No live deployment or financial operation was performed.
