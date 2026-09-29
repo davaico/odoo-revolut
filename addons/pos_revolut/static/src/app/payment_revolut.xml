@@ -43,10 +43,12 @@
             </div>
         </xpath>
         <xpath expr="//t[@t-elif=&quot;line.payment_status == 'retry'&quot;]/div[hasclass('send_payment_request')]" position="replace">
-            <div class="button send_payment_request highlight text-bg-primary" role="button" title="Send Payment Request" t-on-click="() => this.props.sendPaymentRequest(line)">
-                <t t-if="line.payment_method_id.use_payment_terminal === 'revolut' and !this.revolutCanRetry(line)">Check status</t>
+            <div class="button send_payment_request highlight text-bg-primary" role="button" title="Send Payment Request" t-on-click="() => this.props.sendPaymentRequest(line, { checkOnly: line.payment_method_id.use_payment_terminal === 'revolut' and !this.revolutCanRetry(line) })">
+                <t t-if="line.payment_method_id.use_payment_terminal === 'revolut' and this.revolutCanResume(line)">Resume</t>
+                <t t-elif="line.payment_method_id.use_payment_terminal === 'revolut' and !this.revolutCanRetry(line)">Check status</t>
                 <t t-else="">Retry</t>
             </div>
+            <button t-if="line.payment_method_id.use_payment_terminal === 'revolut' and this.revolutCanResume(line)" class="button revolut_check_status btn btn-secondary" t-on-click="() => this.props.sendPaymentRequest(line, { checkOnly: true })">Check status</button>
         </xpath>
         <xpath expr="//div[@t-if=&quot;line.payment_status == 'waitingCancel'&quot;]" position="attributes">
             <attribute name="t-if">line.payment_status == 'waitingCancel' and line.payment_method_id.use_payment_terminal !== 'revolut'</attribute>

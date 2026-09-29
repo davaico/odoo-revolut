@@ -219,6 +219,7 @@ export class PaymentRevolut extends PaymentInterface {
         const messages = {
             discovery_interrupted: _t("Could not check for an existing Revolut payment. No payment request was sent from this line. Retry after the connection returns, or remove this line and choose another payment method."),
             discovery_timed_out: _t("The check for an existing Revolut payment timed out. No payment request was sent from this line. Retry after the connection returns, or remove this line and choose another payment method."),
+            terminal_busy: _t("Another Revolut payment is using this order or terminal. No payment request was sent from this line. Use Resume after the terminal is released, or remove this line. Check status only checks for an existing payment."),
             terminal_unavailable: _t("The Revolut terminal is unavailable. No charge was sent. Check the terminal before retrying."),
             terminal_check_failed: _t("The Revolut terminal connection check failed. No charge was sent. Check the connection before retrying."),
             declined: _t("The Revolut payment was declined. You can retry."),
@@ -308,12 +309,12 @@ patch(PaymentScreen.prototype, {
         return super.validateOrder(...arguments);
     },
 
-    async sendPaymentRequest(line) {
+    async sendPaymentRequest(line, options = {}) {
         if (!isRevolut(line)) {
             return super.sendPaymentRequest(...arguments);
         }
         return line.payment_method_id.payment_terminal.paymentState.screenRequest(
-            this.currentOrder, line, () => super.sendPaymentRequest(line)
+            this.currentOrder, line, () => super.sendPaymentRequest(line), options
         );
     },
 
@@ -380,6 +381,7 @@ patch(PaymentScreenPaymentLines.prototype, {
             discovery_interrupted: _t("Connection check failed — no payment request sent"),
             discovery_timed_out: _t("Connection check timed out — no payment request sent"),
             discovery_cancelled: _t("No payment request sent"),
+            terminal_busy: _t("Terminal busy — no payment request sent"),
             terminal_unavailable: _t("Terminal unavailable — no charge sent"),
             terminal_check_failed: _t("Terminal connection check failed — no charge sent"),
             declined: _t("Payment declined"),
@@ -393,6 +395,11 @@ patch(PaymentScreenPaymentLines.prototype, {
 
     revolutCanRetry(line) {
         return paymentActions(line).retrySafe;
+    },
+
+    revolutCanResume(line) {
+        return line.uiState.revolutStartRejected === "terminal_busy" &&
+            paymentActions(line).retrySafe;
     },
 });
 

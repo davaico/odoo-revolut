@@ -174,12 +174,20 @@ class TestRevolutPayment(TransactionCase):
             "config_id": second_config.id, "state": "opened",
         })
 
-        with self.assertRaises(UserError):
-            second.revolut_start_payment(
-                second_session.id, order_uuid, str(uuid4()), 12.34,
-                second_config.currency_id.id, False,
-                self._financial_snapshot(order_uuid),
-            )
+        second_line_uuid = str(uuid4())
+        rejected = second.revolut_start_payment(
+            second_session.id, order_uuid, second_line_uuid, 12.34,
+            second_config.currency_id.id, False,
+            self._financial_snapshot(order_uuid),
+        )
+        self.assertEqual(rejected, {
+            "start_rejected": "terminal_busy",
+            "dispatched": False,
+            "order_uuid": order_uuid,
+            "payment_line_uuid": second_line_uuid,
+            "previous_operation_id": False,
+        })
+        self.assertFalse(second.revolut_find_payment(order_uuid, second_line_uuid))
         self.assertEqual(
             self.payment_method.revolut_find_payment(order_uuid, line_uuid),
             started,
@@ -341,8 +349,17 @@ class TestRevolutPayment(TransactionCase):
             )
         with self.assertRaises(UserError):
             self._start(order_uuid, line_uuid, amount=99)
-        with self.assertRaises(UserError):
-            self._start(order_uuid, str(uuid4()))
+        second_line_uuid = str(uuid4())
+        self.assertEqual(self._start(order_uuid, second_line_uuid), {
+            "start_rejected": "terminal_busy",
+            "dispatched": False,
+            "order_uuid": order_uuid,
+            "payment_line_uuid": second_line_uuid,
+            "previous_operation_id": False,
+        })
+        self.assertFalse(self.payment_method.revolut_find_payment(
+            order_uuid, second_line_uuid
+        ))
         self.assertEqual(len([call for call in request.call_args_list
                               if call.args[0] == "POST"]), 2)
 
@@ -555,12 +572,18 @@ class TestRevolutPayment(TransactionCase):
             self._response({"id": str(uuid4()), "state": "pending"}),
         ]
         first = self._start(order_uuid, first_uuid, amount=4.34)
-        with self.assertRaisesRegex(UserError, "blocks this order"):
-            second_method.revolut_start_payment(
-                self.session.id, order_uuid, second_uuid, 8.00,
-                self.config.currency_id.id, False,
-                self._financial_snapshot(order_uuid),
-            )
+        rejected = second_method.revolut_start_payment(
+            self.session.id, order_uuid, second_uuid, 8.00,
+            self.config.currency_id.id, False,
+            self._financial_snapshot(order_uuid),
+        )
+        self.assertEqual(rejected, {
+            "start_rejected": "terminal_busy",
+            "dispatched": False,
+            "order_uuid": order_uuid,
+            "payment_line_uuid": second_uuid,
+            "previous_operation_id": False,
+        })
         self.assertEqual(request.call_count, 3)
         verified = self.payment_method.revolut_poll_payment(
             first["operation_id"], order_uuid, first_uuid

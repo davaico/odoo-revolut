@@ -39,6 +39,11 @@ class ControlledClock {
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
+const busyRejection = {
+    start_rejected: "terminal_busy", dispatched: false,
+    order_uuid: "order-1", payment_line_uuid: "line-1", previous_operation_id: false,
+};
+
 function fixture({ refund = false, call, chooseAllocation = async () => false,
     restoreRefundOriginals = async () => {} } = {}) {
     const clock = new ControlledClock();
@@ -74,6 +79,226 @@ function fixture({ refund = false, call, chooseAllocation = async () => false,
     const state = new RevolutPaymentState({ adapter, clock, methodId: 7, sessionId: 8, currencyId: 9 });
     return { state, clock, order, line, calls, errors, preparationErrors };
 }
+
+test("definitive terminal-busy rejection leaves the same unpaid line removable", async () => {
+    const { state, clock, order, line, calls, errors } = fixture({
+        call(method) {
+            return method === "revolut_start_payment" ? busyRejection : false;
+        },
+    });
+    const request = state.request(order, line);
+    await tick();
+    clock.advance(60000);
+    assert.equal(await request, false);
+    line.setPaymentStatus("retry");
+    assert.equal(paymentOutcome(line), "terminal_busy");
+    assert.deepEqual(errors, ["terminal_busy"]);
+    assert.equal(paymentActions(line).canDelete, true);
+    assert.equal(paymentActions(line).canEditAmount, true);
+    assert.equal(paymentActions(line).retrySafe, true);
+    assert.equal(orderActions(order).blocksAlternativeTender, false);
+    assert.equal(paymentResponseSuccessful(line, true), false);
+    assert.equal(line.transaction_id, false);
+    assert.equal(line.uuid, "line-1");
+    assert.equal(order.uuid, "order-1");
+    assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 1);
+});
+
+test("terminal-busy status checks stay read-only and explicit resume preserves restored identity", async () => {
+    let busy = true;
+    const { state, order, line, calls } = fixture({
+        call(method) {
+            if (method === "revolut_start_payment") {
+                return busy ? busyRejection : {
+                    operation_id: 60, state: "verified", payment_id: "pay-60", order_id: "rev-60",
+                };
+            }
+            return false;
+        },
+    });
+    const rejected = state.request(order, line);
+    assert.equal(state.request(order, line), rejected);
+    assert.equal(await rejected, false);
+    line.setPaymentStatus("retry");
+    restorePaymentLine(line);
+    const restored = { ...line, uiState: structuredClone(line.uiState) };
+    order.payment_ids = [restored];
+    assert.equal(await state.request(order, restored, { checkOnly: true }), false);
+    assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 1);
+    assert.equal(paymentOutcome(restored), "terminal_busy");
+    assert.equal(paymentActions(restored).canDelete, true);
+    busy = false;
+    assert.equal(await state.request(order, restored, { checkOnly: true }), false);
+    assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 1);
+    const resumed = state.request(order, restored);
+    assert.equal(state.request(order, restored), resumed);
+    assert.equal(await resumed, true);
+    assert.equal(restored.transaction_id, "pay-60");
+    assert.equal(restored.payment_ref_no, "rev-60");
+    assert.equal(order.uuid, "order-1");
+    assert.equal(restored.uuid, "line-1");
+    assert.deepEqual(calls.filter(({ method }) => method === "revolut_start_payment")
+        .map(({ args }) => args.slice(2, 4)), [["order-1", "line-1"], ["order-1", "line-1"]]);
+});
+
+test("repeated explicit busy starts stay removable and report each definitive rejection", async () => {
+    const { state, order, line, errors, calls } = fixture({
+        call(method) {
+            return method === "revolut_start_payment" ? busyRejection : false;
+        },
+    });
+    assert.equal(await state.request(order, line), false);
+    assert.equal(await state.request(order, line), false);
+    assert.equal(paymentActions(line).canDelete, true);
+    assert.deepEqual(errors, ["terminal_busy", "terminal_busy"]);
+    assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 2);
+});
+
+test("a busy replacement preserves its safe predecessor through restoration and explicit resume", async () => {
+    let starts = 0;
+    const { state, order, line, calls } = fixture({
+        call(method) {
+            if (method === "revolut_start_payment") {
+                starts += 1;
+                if (starts === 1) {
+                    return { operation_id: 61, state: "declined", retry_safe: true };
+                }
+                if (starts === 2) {
+                    return { ...busyRejection, previous_operation_id: 61 };
+                }
+                return { operation_id: 62, state: "verified", payment_id: "pay-62", order_id: "rev-62" };
+            }
+            return false;
+        },
+    });
+    assert.equal(await state.request(order, line), false);
+    assert.equal(await state.request(order, line), false);
+    line.setPaymentStatus("retry");
+    restorePaymentLine(line);
+    assert.equal(await state.request(order, line, { checkOnly: true }), false);
+    assert.equal(starts, 2);
+    assert.equal(await state.request(order, line), true);
+    assert.equal(calls.filter(({ method }) => method === "revolut_start_payment")[2].args[6], 61);
+    assert.equal(line.transaction_id, "pay-62");
+});
+
+for (const [reason, response] of [
+    ["transport exception with busy text", new Error("An existing Revolut payment blocks this order or terminal.")],
+    ["missing response", false],
+    ["different order", { ...busyRejection, order_uuid: "other-order" }],
+    ["different payment line", { ...busyRejection, payment_line_uuid: "other-line" }],
+    ["different predecessor", { ...busyRejection, previous_operation_id: 61 }],
+    ["missing dispatch proof", { ...busyRejection, dispatched: undefined }],
+    ["possible dispatch", { ...busyRejection, dispatched: true }],
+    ["surviving provider reference", { ...busyRejection, order_id: "rev-uncertain" }],
+]) {
+    test(`${reason} cannot establish a safe terminal-busy rejection`, async () => {
+        const { state, order, line, calls, errors } = fixture({
+            call(method) {
+                if (method === "revolut_start_payment") {
+                    if (response instanceof Error) {
+                        throw response;
+                    }
+                    return response;
+                }
+                return false;
+            },
+        });
+        assert.equal(await state.request(order, line), false);
+        line.setPaymentStatus("retry");
+        restorePaymentLine(line);
+        assert.equal(await state.request(order, line, { checkOnly: true }), false);
+        assert.equal(paymentActions(line).canDelete, false);
+        assert.equal(paymentActions(line).retrySafe, false);
+        assert.equal(orderActions(order).blocksCheckout, true);
+        assert.equal(orderActions(order).blocksAlternativeTender, true);
+        assert.deepEqual(errors, ["interrupted"]);
+        assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 1);
+    });
+}
+
+test("a start rejection from lookup cannot clear an uncertain start", async () => {
+    const { state, order, line, calls } = fixture({
+        call(method) {
+            return method === "revolut_find_payment" ? busyRejection : false;
+        },
+    });
+    line.uiState.revolutStarted = true;
+    assert.equal(await state.request(order, line, { checkOnly: true }), false);
+    assert.equal(paymentOutcome(line), "interrupted");
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(orderActions(order).blocksCheckout, true);
+    assert.equal(calls.some(({ method }) => method === "revolut_start_payment"), false);
+});
+
+test("a discovered operation overrides earlier terminal-busy recovery", async () => {
+    let finds = 0;
+    const { state, order, line, calls } = fixture({
+        call(method) {
+            if (method === "revolut_start_payment") {
+                return busyRejection;
+            }
+            if (method === "revolut_find_payment" && ++finds > 1) {
+                return { operation_id: 63, state: "pending", provider_state: "processing" };
+            }
+            if (method === "revolut_poll_payment") {
+                return { operation_id: 63, state: "unresolved", provider_state: "processing" };
+            }
+            return false;
+        },
+    });
+    assert.equal(await state.request(order, line), false);
+    assert.equal(await state.request(order, line, { checkOnly: true }), false);
+    line.setPaymentStatus("retry");
+    restorePaymentLine(line);
+    assert.equal(line.uiState.revolutOperationId, 63);
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(paymentActions(line).canEditAmount, false);
+    assert.equal(paymentActions(line).retrySafe, false);
+    assert.equal(orderActions(order).blocksAlternativeTender, true);
+    assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 1);
+});
+
+test("a late terminal-busy start response cannot clear a foreground timeout", async () => {
+    const start = deferred();
+    const { state, clock, order, line, calls } = fixture({
+        call(method) {
+            return method === "revolut_start_payment" ? start.promise : false;
+        },
+    });
+    const request = state.request(order, line);
+    await tick();
+    clock.advance(60000);
+    assert.equal(await request, false);
+    start.resolve(busyRejection);
+    await tick();
+    assert.equal(paymentOutcome(line), "timed_out");
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(await state.request(order, line, { checkOnly: true }), false);
+    assert.equal(orderActions(order).blocksCheckout, true);
+    assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 1);
+});
+
+test("the payment busy contract cannot unlock a dispatched refund", async () => {
+    const { state, order, line, calls } = fixture({
+        refund: true,
+        chooseAllocation: async () => ({ operationId: 10, amount: 12.34 }),
+        call(method) {
+            if (method === "revolut_refund_sources") {
+                return [{ operation_id: 10, payment_method_id: 7, remaining_minor: 1234 }];
+            }
+            return method === "revolut_start_refund" ? busyRejection : false;
+        },
+    });
+    assert.equal(await state.request(order, line), false);
+    line.setPaymentStatus("retry");
+    restorePaymentLine(line);
+    assert.equal(await state.request(order, line, { checkOnly: true }), false);
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(orderActions(order).blocksCheckout, true);
+    assert.equal(orderActions(order).blocksAlternativeTender, true);
+    assert.equal(calls.filter(({ method }) => method === "revolut_start_refund").length, 1);
+});
 
 for (const refund of [false, true]) {
     test(`${refund ? "refund" : "payment"} discovery rejection can resume one first start on the same line`, async () => {
