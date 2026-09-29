@@ -740,3 +740,33 @@ class TestRevolutRecoveryBatches(TransactionCase):
         self.payloads[path] = original
         self._cron()
         self.assertEqual(self._status(first)["state"], "verified")
+
+    def test_timeout_with_stale_final_intent_reconciles_its_known_payment(self):
+        for index, intent_state in enumerate(("cancelled", "failed")):
+            with self.subTest(intent_state=intent_state):
+                if index:
+                    self._create_payments()
+                payment = self.payments[0]
+                payload = self.payloads[f"/api/payments/{payment['payment_id']}"]
+                payload["state"] = "authentication_challenge"
+                self.assertEqual(self._poll(payment)["state"], "pending")
+                with self.registry.cursor() as cursor:
+                    env = api.Environment(cursor, SUPERUSER_ID, self.context)
+                    env["pos.payment.method"].browse(payment["method_id"]).revolut_mark_timeout(
+                        payment["id"], payment["order_uuid"], payment["line_uuid"],
+                    )
+                    cursor.commit()
+                self._assert_blocked(payment, delay=30)
+                intent = self.payloads[f"/api/payment-intents/{payment['intent_id']}"]
+                intent["state"] = intent_state
+                intent.pop("payment_id")
+                payload["state"] = "captured" if intent_state == "cancelled" else "completed"
+
+                result = self._poll(payment)
+
+                self.assertEqual(result["state"], "verified")
+                self.assertEqual(result["operation_id"], payment["id"])
+                self.assertEqual(result["payment_id"], payment["payment_id"])
+                self.assertFalse(result["retry_safe"])
+                self.assertFalse(result["local_outcome"])
+                self.assertEqual(self._status(payment), result)

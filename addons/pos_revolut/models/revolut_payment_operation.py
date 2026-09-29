@@ -286,10 +286,8 @@ class PosRevolutPaymentOperation(models.Model):
                 kind = "unknown"
             else:
                 state = intent.get("state")
-                if (state in {"cancelled", "failed"}
-                        and not intent.get("payment_id")
-                        and self.revolut_payment_id):
-                    return self.operation_snapshot(self)
+                # A final intent without a payment reference cannot refute a
+                # known underlying payment; keep observing that payment.
                 payment_id = intent.get("payment_id") or self.revolut_payment_id
                 if payment_id and (not isinstance(payment_id, str) or not payment_id):
                     kind = "unknown"
