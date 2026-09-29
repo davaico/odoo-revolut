@@ -36,6 +36,13 @@ reference was stored, an invalid intent could be overwritten by a subsequent
 payment read. Polling now returns the unresolved intent result immediately,
 retaining the known reference for a later valid observation.
 
+Review found and corrected an edge in that guard: a valid stale final intent
+omitting an already-known payment reference after timeout must still allow a
+fresh underlying-payment read. The observation now uses its existing stored
+reference fallback and records pending. A separate real ORM regression failed
+for both `cancelled` and `failed` intents before this correction, then verified
+the same captured/completed payments afterward. Invalid intents still stop.
+
 The existing lifecycle needs no production change. It continues observing
 server-confirmed pending states within its original 60-second limit and stops
 on generic unresolved evidence. It never dispatches a replacement charge for
@@ -63,6 +70,9 @@ blocks unmocked Merchant HTTP and has no external network route.
   mismatches, non-integer amounts, malformed/unknown states, all unsuccessful
   final outcomes, retained timeout claims and later cron recovery on the same
   attempt. The observation fixture rejects every HTTP mutation.
+- The reviewed correction and affected ORM/payment/concurrency suites:
+  **80 passed**, zero failures/errors, including both stale final intents after
+  timeout. The unchanged invalid-intent regressions remain green.
 - Controlled lifecycle file: **49 passed**, zero failures/skips. New tests
   exercise early states to capture, unsuccessful transitions, a bounded
   timeout followed by read-only recovery, and generic unresolved stopping
