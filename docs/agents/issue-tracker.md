@@ -8,12 +8,16 @@ Open tickets are organized by triage label:
 
 - `needs-triage/`
 - `needs-info/`
-- `ready-for-agent/`
+- `ready-for-agents/` for the canonical `ready-for-agent` label
 - `ready-for-human/`
 - `wontfix/`
 
 Resolved tickets are archived under `closed/`. `README.md` is the
 authoritative index.
+
+The owner-selected `ready-for-agents/` folder uses the plural spelling; ticket
+metadata keeps the canonical `ready-for-agent` label. Preserve this folder and
+its tracked `.gitkeep` when moving or closing its last ticket.
 
 ## Ticket metadata
 

@@ -4,7 +4,7 @@
 
 **State:** open
 
-**Triage:** needs-triage
+**Triage:** ready-for-agent
 
 **Priority:** P2
 
@@ -42,14 +42,18 @@ Generic unresolved or malformed evidence must remain protected.
 
 ## Blocked by
 
-- None for local diagnosis/mocked implementation; verification/classifier and POS lifecycle seams are present on reviewed main.
+None for local diagnosis/mocked implementation; verification/classifier and
+POS lifecycle seams are present on reviewed main.
+
+## Validation limits and live gates
+
 - The exact early live payload remains unavailable; existing probes do not exercise real ORM transactions/locks or replay captured network traffic.
 - Live deployment/retest requires reconciliation of unresolved financial operations; pending refunds must not be bypassed.
 
 ## Release gate
 
-Blocks closure of ticket 12. This report awaits triage; no classifier fix,
-successful live retest or deployment is claimed.
+Blocks closure of ticket 12. Diagnosis and mocked implementation may start
+locally; the reviewed fix and affected live retests remain outstanding.
 
 ## Verification evidence
 
@@ -73,3 +77,9 @@ and [terminal polling](https://developer.revolut.com/docs/guides/merchant/accept
 2026-09-29: Recorded during controlled acceptance and published with its
 evidence. Diagnose and fix locally while retaining all pending refund claims;
 deployment and physical retests remain gated by financial reconciliation.
+
+2026-09-29: Triaged as ready-for-agent after the owner moved this ticket to
+`ready-for-agents/`. The bounded polling contract and required ORM/lifecycle
+regressions are defined. Missing early live payload limits root-cause
+attribution and live validation; it does not prevent local diagnosis against
+the documented contract or mocked implementation.

@@ -21,10 +21,10 @@ required scenarios.
   cancellations/retries, selected reload paths, refund caps/amount locking,
   and same-browser/independent-browser terminal guards have narrow passing
   evidence. Other subcases and all final refund settlement remain open.
-- [Ticket 22](../tickets/needs-triage/22-recover-terminal-busy-rejection.md)
+- [Ticket 22](../tickets/ready-for-agents/22-recover-terminal-busy-rejection.md)
   records the terminal-busy rejection shown as a false communication failure,
   followed by an unrecoverable Check status loop with no dispatched payment.
-- [Ticket 23](../tickets/needs-triage/23-preserve-polling-through-payment-processing.md)
+- [Ticket 23](../tickets/ready-for-agents/23-preserve-polling-through-payment-processing.md)
   records approved payments requiring manual Check status. Classifier and
   foreground-loop characterizations identify a reproducible software gap;
   the exact early live provider payload remains unverified.

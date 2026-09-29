@@ -129,11 +129,12 @@ allocations, selected cancellation/retry/reload paths, refund caps and locks,
 and both browser terminal guards have passing subcases. Initial automatic
 status handling failed on four later operations, and an independent browser
 remained stuck after a definitive busy-terminal rejection. Reports
-[22](../needs-triage/22-recover-terminal-busy-rejection.md) and
-[23](../needs-triage/23-preserve-polling-through-payment-processing.md) preserve
+[22](../ready-for-agents/22-recover-terminal-busy-rejection.md) and
+[23](../ready-for-agents/23-preserve-polling-through-payment-processing.md) preserve
 these release findings and their mocked characterizations without claiming a
-fix or deployment. Their triage and reviewed fixes/retests are required before
-closure; they do not prevent read-only reconciliation of the pending refunds.
+fix or deployment. They are ready for local work; reviewed fixes/retests are
+required before closure. Read-only reconciliation of the pending refunds can
+continue independently.
 
 Ticket 12 remains open. Final refunds/test-money reconciliation, Restaurant,
 remaining failure/race/interruption subcases, provider discrepancies and final

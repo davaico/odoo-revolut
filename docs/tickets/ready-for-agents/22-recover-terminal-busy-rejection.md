@@ -4,7 +4,7 @@
 
 **State:** open
 
-**Triage:** needs-triage
+**Triage:** ready-for-agent
 
 **Priority:** P2
 
@@ -39,13 +39,17 @@ failure; this report covers a definitive rejection of the financial start.
 
 ## Blocked by
 
-- None for local diagnosis/mocked implementation; lifecycle and server terminal lock are present on reviewed main.
+None for local diagnosis/mocked implementation; lifecycle and server terminal
+lock are present on reviewed main.
+
+## Live validation gates
+
 - Live deployment/retest requires reconciliation of unresolved financial operations. Pending refund reservations must not be bypassed.
 
 ## Release gate
 
-Blocks closure of ticket 12. This report awaits triage; no implementation,
-deployment or passing recovery retest is claimed.
+Blocks closure of ticket 12. Work may start locally; the reviewed fix and
+live recovery retest remain outstanding.
 
 ## Verification evidence
 
@@ -69,3 +73,8 @@ at the trusted rejection seam when implementing the fix.
 2026-09-29: Recorded during controlled acceptance and published with its
 evidence checkpoint. Incognito can be closed after preserving this failure;
 the original POS and pending returns remain open.
+
+2026-09-29: Triaged as ready-for-agent after the owner moved this ticket to
+`ready-for-agents/`. The problem, safe recovery contract and mocked regression
+criteria are defined; local work can start without a live terminal. Live
+validation remains gated as recorded above.

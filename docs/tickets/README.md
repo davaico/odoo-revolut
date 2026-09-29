@@ -4,7 +4,8 @@ Approved implementation and architecture work for the Odoo–Revolut addon. Tick
 
 ## Triage folders and state
 
-Open tickets are filed by the canonical triage label recorded in each file:
+Open tickets are filed by the canonical triage label recorded in each file.
+The `ready-for-agent` label uses the owner-selected `ready-for-agents/` folder:
 
 - **`needs-triage`:** maintainer evaluation is required.
 - **`needs-info`:** external information or access is required.
@@ -17,6 +18,9 @@ Completed tickets are archived under **`closed`**. Lifecycle state is separate
 from triage: an open ticket has state `open` or `claimed`, while completed and
 `wontfix` tickets have state `closed`. Placeholder files preserve empty label
 folders in Git.
+
+Keep `ready-for-agents/.gitkeep` when moving or closing the last ticket so
+the folder remains available in future checkouts.
 
 Numbers are stable identifiers assigned in dependency order. They do not
 require linear execution: a `ready-for-agent` ticket is actionable only when
@@ -73,8 +77,8 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [19 — Enforce verified settlement and internal-operation permissions](closed/19-enforce-payment-server-boundaries.md) | `ready-for-agent` at closure | Closed | None |
 | [20 — Recover POS lines after a failed pre-payment lookup](closed/20-recover-undispatched-pos-lines.md) | `ready-for-agent` at closure | Closed | None |
 | [21 — Keep reconciliation progressing after malformed provider responses](closed/21-isolate-reconciliation-failures.md) | `ready-for-agent` at closure | Closed | None |
-| [22 — Recover a POS line after a terminal-busy rejection](needs-triage/22-recover-terminal-busy-rejection.md) | `needs-triage` | Open | None for local work; live deployment/retest gated by financial reconciliation |
-| [23 — Preserve payment polling through valid processing states](needs-triage/23-preserve-polling-through-payment-processing.md) | `needs-triage` | Open | None for local work; missing early live payload and financial reconciliation limit validation |
+| [22 — Recover a POS line after a terminal-busy rejection](ready-for-agents/22-recover-terminal-busy-rejection.md) | `ready-for-agent` | Open | None for local work; live deployment/retest gated by financial reconciliation |
+| [23 — Preserve payment polling through valid processing states](ready-for-agents/23-preserve-polling-through-payment-processing.md) | `ready-for-agent` | Open | None for local work; missing early live payload and financial reconciliation limit validation |
 
 ## Architecture triage — 2026-09-25
 
@@ -125,8 +129,9 @@ an additional reviewed historical-tender refund correction, and the controlled
 human handoff. Physical-device testing subsequently ran on 2026-09-29, with
 the [operator chronology](../testing/ticket-12-operator-observations.md)
 recording verified payments, selected guard/recovery passes, five pending
-refunds and explicitly unexecuted subcases. Tickets 22–23 are new
-`needs-triage` reports for busy-terminal recovery and automatic status handling;
+refunds and explicitly unexecuted subcases. Tickets 22–23 were triaged on
+2026-09-29 as `ready-for-agent` for local diagnosis and mocked implementation
+of busy-terminal recovery and automatic status handling;
 they must be resolved and retested before ticket 12 closes. Full acceptance
 and financial reconciliation remain open under `ready-for-human`.
 

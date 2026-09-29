@@ -10,3 +10,6 @@
 
 When a skill names a canonical triage role, use the matching local label from
 this table. Do not use dependency state as a substitute triage label.
+
+The `ready-for-agent` label is filed in `docs/tickets/ready-for-agents/`.
+See [issue-tracker.md](issue-tracker.md) for folder mapping and preservation.

@@ -258,8 +258,8 @@ addon trees and deployment/test tooling match the tested revision; record that
 comparison before deployment.
 
 Open release gaps: remaining L02–L10 subcases and complete refund/test-money
-reconciliation; [terminal-busy recovery](../tickets/needs-triage/22-recover-terminal-busy-rejection.md)
-and [automatic payment-status handling](../tickets/needs-triage/23-preserve-polling-through-payment-processing.md);
+reconciliation; [terminal-busy recovery](../tickets/ready-for-agents/22-recover-terminal-busy-rejection.md)
+and [automatic payment-status handling](../tickets/ready-for-agents/23-preserve-polling-through-payment-processing.md);
 the Sandbox simulator issue for required non-production acceptance; and final
 guidance based on physical-terminal observations. Pending refunds block a live
 addon upgrade/restart. These findings require reviewed fixes and affected

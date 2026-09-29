@@ -40,9 +40,11 @@ Run the narrowest relevant tests before submission. Use short, imperative commit
 
 ### Issue tracker
 
-Issues are local Markdown tickets under `docs/tickets/`, organized by canonical
-triage label with dependency gates recorded in each ticket. See
-`docs/agents/issue-tracker.md`.
+Issues are local Markdown tickets under `docs/tickets/`, organized by triage
+with dependency gates recorded in each ticket. Before creating, moving or
+closing tickets, read the folder mapping in `docs/agents/issue-tracker.md`.
+Preserve `docs/tickets/ready-for-agents/` and its tracked `.gitkeep`, including
+when the folder is empty.
 
 ### Triage labels
 
