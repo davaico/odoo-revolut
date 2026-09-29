@@ -147,7 +147,7 @@ export class RevolutPaymentState {
         return owner;
     }
 
-    screenRequest(order, line, invoke) {
+    screenRequest(order, line, invoke, { checkOnly = false } = {}) {
         const owner = this.owner(order, line);
         if (owner.screenRequest) {
             return owner.screenRequest;
@@ -157,11 +157,13 @@ export class RevolutPaymentState {
             line.uiState.revolutStarted = true;
             line.uiState.revolutUndispatched = false;
         }
+        owner.checkOnly = checkOnly;
         const request = Promise.resolve().then(invoke);
         owner.screenRequest = request;
         return request.finally(() => {
             if (owner.screenRequest === request) {
                 owner.screenRequest = null;
+                owner.checkOnly = false;
             }
         });
     }
@@ -184,12 +186,12 @@ export class RevolutPaymentState {
         return safe;
     }
 
-    request(order, line) {
+    request(order, line, { checkOnly = false } = {}) {
         const owner = this.owner(order, line);
         if (owner.request) {
             return owner.request;
         }
-        const request = this.waitForResult(owner);
+        const request = this.waitForResult(owner, checkOnly || owner.checkOnly);
         owner.request = request;
         request.finally(() => {
             if (owner.request === request) {
@@ -199,7 +201,7 @@ export class RevolutPaymentState {
         return request;
     }
 
-    async waitForResult(owner) {
+    async waitForResult(owner, checkOnly) {
         const { order, line } = owner;
         owner.cancelDiscovery = false;
         const refund = isRevolutRefund(line);
@@ -252,7 +254,13 @@ export class RevolutPaymentState {
                 this.showError(line, "interrupted");
                 return false;
             }
+            if (checkOnly && (!result || result.retry_safe)) {
+                // Checking a rejected or provider-final attempt never starts
+                // a new charge. Only the cashier's explicit resume may do so.
+                return false;
+            }
             if (!result || (!refund && result.retry_safe && !discovered)) {
+                const previousSnapshot = result;
                 const previousOperationId = result?.retry_safe ? result.operation_id : false;
                 let originalOperationId = false;
                 if (refund) {
@@ -299,6 +307,8 @@ export class RevolutPaymentState {
                 line.uiState.revolutDiscovering = false;
                 line.uiState.revolutStarted = true;
                 line.uiState.revolutUndispatched = false;
+                line.uiState.revolutStartRejected = false;
+                line.uiState.revolutMessage = false;
                 line.uiState.revolutStarting = true;
                 try {
                     result = await this.clock.before(this.adapter.call(
@@ -311,6 +321,31 @@ export class RevolutPaymentState {
                     ), deadline);
                 } finally {
                     line.uiState.revolutStarting = false;
+                }
+                // Only the direct start response can prove that this request
+                // was rejected before dispatch. Exceptions and empty lookups
+                // retain the uncertain-start guards.
+                if (!refund && result?.start_rejected === "terminal_busy" &&
+                    result.dispatched === false && result.order_uuid === order.uuid &&
+                    result.payment_line_uuid === line.uuid &&
+                    result.previous_operation_id === previousOperationId &&
+                    !result.operation_id && !result.order_id &&
+                    !result.payment_intent_id && !result.payment_id &&
+                    !line.uiState.revolutSnapshot && !line.uiState.revolutOperationId &&
+                    !line.transaction_id && !line.payment_ref_no) {
+                    if (previousOperationId) {
+                        this.remember(line, previousSnapshot);
+                    }
+                    line.uiState.revolutStarted = false;
+                    line.uiState.revolutUndispatched = true;
+                    line.uiState.revolutStartRejected = "terminal_busy";
+                    line.uiState.revolutLocalOutcome = "terminal_busy";
+                    this.showError(line, "terminal_busy");
+                    return false;
+                }
+                if (!result?.operation_id) {
+                    this.showError(line, "interrupted");
+                    return false;
                 }
             } else if (!result?.operation_id) {
                 this.showError(line, "interrupted");
@@ -383,6 +418,7 @@ export class RevolutPaymentState {
         line.uiState.revolutOperationId = result.operation_id;
         line.uiState.revolutStarted = true;
         line.uiState.revolutUndispatched = false;
+        line.uiState.revolutStartRejected = false;
         line.uiState.revolutLocalOutcome = result.local_outcome || false;
     }
 
