@@ -157,7 +157,7 @@ export class PaymentRevolut extends PaymentInterface {
                 discardRefund: (line) => discardUnstartedRefund(line.pos_order_id, line),
                 setVerified: (line, result) => this._setVerified(line, result),
                 showError: (line, state) => this._showResultError(line, state),
-                showPreparationError: (line, reason) => this._showPreparationError(reason),
+                showPreparationError: (line, reason, message) => this._showPreparationError(reason, message),
             },
         });
     }
@@ -182,7 +182,7 @@ export class PaymentRevolut extends PaymentInterface {
         }
     }
 
-    _showPreparationError(reason) {
+    _showPreparationError(reason, message) {
         const messages = {
             originals: {
                 title: _t("Revolut refund"),
@@ -197,10 +197,27 @@ export class PaymentRevolut extends PaymentInterface {
                 body: _t("No original Revolut payment has a remaining balance for this return. Review prior refunds."),
             },
         };
-        this.env.services.dialog.add(AlertDialog, messages[reason]);
+        const feedback = messages[reason];
+        this.env.services.dialog.add(AlertDialog, {
+            ...feedback,
+            body: typeof message === "string" ? `${message}\n\n${feedback.body}` : feedback.body,
+        });
     }
 
     _showResultError(line, state) {
+        if (state === "snapshot_invalid") {
+            const message = line.uiState.revolutRejectionMessage;
+            this.env.services.dialog.add(AlertDialog, {
+                title: _t("Revolut cart needs correction"),
+                body: [
+                    ...(typeof message === "string" ? [message] : []),
+                    isRevolutRefund(line)
+                        ? _t("No refund request was sent from this line. Correct the return, then use Resume, or remove this line. Check status only checks for an existing refund.")
+                        : _t("No payment request was sent from this line. Correct the cart, then use Resume, or remove this line. Check status only checks for an existing payment."),
+                ].join("\n\n"),
+            });
+            return;
+        }
         if (isRevolutRefund(line)) {
             const messages = {
                 discovery_interrupted: _t("Could not check for an existing Revolut refund. No refund request was sent from this line. Retry after the connection returns, or remove this line and choose another eligible original payment method."),
@@ -370,6 +387,7 @@ patch(PaymentScreenPaymentLines.prototype, {
                 discovery_interrupted: _t("Connection check failed — no refund request sent"),
                 discovery_timed_out: _t("Connection check timed out — no refund request sent"),
                 discovery_cancelled: _t("No refund request sent"),
+                snapshot_invalid: _t("Correct the return — no refund request sent"),
                 failed: _t("Refund failed — remove this line to retry"),
                 pending: _t("Refund pending"),
                 interrupted: _t("Communication interrupted — refund unresolved"),
@@ -381,6 +399,7 @@ patch(PaymentScreenPaymentLines.prototype, {
             discovery_interrupted: _t("Connection check failed — no payment request sent"),
             discovery_timed_out: _t("Connection check timed out — no payment request sent"),
             discovery_cancelled: _t("No payment request sent"),
+            snapshot_invalid: _t("Correct the cart — no payment request sent"),
             terminal_busy: _t("Terminal busy — no payment request sent"),
             terminal_unavailable: _t("Terminal unavailable — no charge sent"),
             terminal_check_failed: _t("Terminal connection check failed — no charge sent"),
@@ -398,7 +417,7 @@ patch(PaymentScreenPaymentLines.prototype, {
     },
 
     revolutCanResume(line) {
-        return line.uiState.revolutStartRejected === "terminal_busy" &&
+        return ["terminal_busy", "snapshot_invalid"].includes(line.uiState.revolutStartRejected) &&
             paymentActions(line).retrySafe;
     },
 });

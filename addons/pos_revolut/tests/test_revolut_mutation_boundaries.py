@@ -95,7 +95,7 @@ class TestRevolutMutationBoundaries(CommonPosTest):
         operation = self._operation(
             payload["uuid"], payment["uuid"], state=state,
             amount=amount, amount_minor=round(amount * 100),
-            financial_snapshot=self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload),
+            financial_snapshot=self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload),
         )
         payment["payment_status"] = "done" if state == "verified" else "waiting"
         payment["transaction_id"] = operation.revolut_payment_id if state == "verified" else False
@@ -250,7 +250,7 @@ class TestRevolutMutationBoundaries(CommonPosTest):
                 payment["uuid"] = str(uuid4())
                 operation = self._operation(
                     payload["uuid"], payment["uuid"],
-                    financial_snapshot=self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload),
+                    financial_snapshot=self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload),
                 )
                 payment["transaction_id"] = operation.revolut_payment_id
                 payment[field] = self._operation(str(uuid4()), str(uuid4())).id if field == "revolut_operation_id" else str(uuid4())
@@ -286,7 +286,7 @@ class TestRevolutMutationBoundaries(CommonPosTest):
                 payload["lines"][0][2]["uuid"] = str(uuid4())
                 payment = payload["payment_ids"][0][2]
                 payment["uuid"] = str(uuid4())
-                snapshot = self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload)
+                snapshot = self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload)
                 values = {"financial_snapshot": snapshot, "blocking_terminal_key": False}
                 if mismatch in {"pending", "failed"}:
                     values["state"] = mismatch
@@ -348,7 +348,7 @@ class TestRevolutMutationBoundaries(CommonPosTest):
         payment = payload["payment_ids"][0][2]
         operation = self._operation(
             payload["uuid"], payment["uuid"],
-            financial_snapshot=self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload),
+            financial_snapshot=self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload),
         )
         payment["transaction_id"] = operation.revolut_payment_id
         payload["company_id"] = self.other_company.id
@@ -425,7 +425,7 @@ class TestRevolutMutationBoundaries(CommonPosTest):
                 payment["uuid"] = str(uuid4())
                 operation = self._operation(
                     payload["uuid"], payment["uuid"],
-                    financial_snapshot=self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload),
+                    financial_snapshot=self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload),
                 )
                 payment["transaction_id"] = operation.revolut_payment_id
                 payload[relation][0][2]["company_id"] = self.other_company.id
@@ -456,7 +456,7 @@ class TestRevolutMutationBoundaries(CommonPosTest):
                 payment["uuid"] = str(uuid4())
                 operation = self._operation(
                     payload["uuid"], payment["uuid"],
-                    financial_snapshot=self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload),
+                    financial_snapshot=self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload),
                 )
                 payment["transaction_id"] = operation.revolut_payment_id
                 if values.get("is_refund"):

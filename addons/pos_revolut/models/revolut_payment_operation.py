@@ -7,6 +7,8 @@ from psycopg2.errors import DeadlockDetected, SerializationFailure
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
+from .financial_snapshot import normalize_snapshot
+
 
 _logger = logging.getLogger(__name__)
 
@@ -501,47 +503,9 @@ class PosRevolutPaymentOperation(models.Model):
         return self.operation_snapshot(self)
 
     @api.model
-    def normalize_financial_snapshot(self, data):
-        """Compare the cart sent before dispatch with the final POS order."""
-        if not isinstance(data, dict) or not isinstance(data.get("lines"), list):
-            raise UserError(_("The Revolut order contents are unavailable."))
-
-        def decimal_text(value):
-            number = Decimal(str(value))
-            if not number.is_finite():
-                raise ValueError("non-finite POS amount")
-            return format(number.normalize(), "f")
-
-        try:
-            lines = []
-            for raw_line in data["lines"]:
-                line = raw_line[2] if isinstance(raw_line, (list, tuple)) else raw_line
-                if (
-                    not isinstance(line, dict)
-                    or not line.get("uuid")
-                    or not line.get("product_id")
-                ):
-                    raise ValueError("invalid POS line")
-                taxes = line.get("tax_ids") or []
-                if taxes and isinstance(taxes[0], (list, tuple)):
-                    taxes = taxes[0][2]
-                lines.append({
-                    "uuid": line["uuid"],
-                    "product_id": int(line["product_id"]),
-                    "qty": decimal_text(line["qty"]),
-                    "price_unit": decimal_text(line["price_unit"]),
-                    "discount": decimal_text(line.get("discount") or 0),
-                    "tax_ids": sorted(int(tax_id) for tax_id in taxes),
-                })
-            if not lines or len({line["uuid"] for line in lines}) != len(lines):
-                raise ValueError("missing or duplicate POS lines")
-            return {
-                "pricelist_id": int(data.get("pricelist_id") or 0),
-                "fiscal_position_id": int(data.get("fiscal_position_id") or 0),
-                "lines": sorted(lines, key=lambda line: line["uuid"]),
-            }
-        except (KeyError, TypeError, ValueError, ArithmeticError):
-            raise UserError(_("The Revolut order contents are invalid.")) from None
+    def _normalize_financial_snapshot(self, data, *, native_order=False):
+        """Bound and compare the cart before dispatch and at final settlement."""
+        return normalize_snapshot(data, native_order=native_order)
 
     @api.model
     def normalize_amount(self, currency, amount):
