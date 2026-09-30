@@ -21,8 +21,10 @@ class ReturnAllocation:
     def __init__(self, env):
         self.env = env
 
-    def _normalize_return(self, data):
-        snapshot = self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(data)
+    def _normalize_return(self, data, *, native_order=False):
+        snapshot = self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(
+            data, native_order=native_order
+        )
         try:
             for line in snapshot["lines"]:
                 if not line["refunded_orderline_id"] or Decimal(line["qty"]) >= 0:
@@ -354,7 +356,7 @@ class ReturnAllocation:
         if refunds:
             self.env.cr.execute("SELECT id FROM pos_revolut_refund_operation WHERE id = ANY(%s) ORDER BY id FOR UPDATE", [refunds.ids])
             refunds.invalidate_recordset()
-        snapshot = self._normalize_return(order)
+        snapshot = self._normalize_return(order, native_order=True)
         normalize = self.env["pos.revolut.payment.operation"].normalize_amount
         total_minor = normalize(session.currency_id, order.get("amount_total"))[1]
         if total_minor >= 0:

@@ -1519,6 +1519,7 @@ class TestRevolutOrderSettlement(CommonPosTest):
             ("price_unit", "9" * 65),
             ("price_unit", "0.12345678901234567890123456789"),
             ("discount", "NaN"), ("discount", "12x"),
+            ("discount", None), ("discount", ""), ("discount", []), ("discount", {}),
             ("amount_total", "1e1000"), ("line_count", None), ("aggregate_size", None),
         )
         for field, value in cases:
@@ -1564,7 +1565,7 @@ class TestRevolutOrderSettlement(CommonPosTest):
             {"name": "Snapshot zero tax A", "amount": 0, "amount_type": "percent", "company_id": self.company.id},
             {"name": "Snapshot zero tax B", "amount": 0, "amount_type": "percent", "company_id": self.company.id},
         ])
-        for contents in ("ordinary", "fractional_scientific_discount"):
+        for contents in ("ordinary", "native_zero_discount", "fractional_scientific_discount"):
             with self.subTest(contents=contents):
                 order_uuid, payment_uuid = str(uuid4()), str(uuid4())
                 payload = self._order_payload(order_uuid, payment_uuid)
@@ -1579,6 +1580,10 @@ class TestRevolutOrderSettlement(CommonPosTest):
                     }],
                 }
                 amount, minor = 12.34, 1234
+                if contents == "native_zero_discount":
+                    # Pinned Odoo's native relational serializer sends an
+                    # unset float discount as False; payment start sends 0.
+                    line["discount"] = False
                 if contents == "fractional_scientific_discount":
                     first_uuid = "00000000-0000-4000-8000-000000000001"
                     second_uuid = "00000000-0000-4000-8000-000000000002"

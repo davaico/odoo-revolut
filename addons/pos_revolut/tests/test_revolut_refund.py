@@ -306,6 +306,29 @@ class TestRevolutRefund(CommonPosTest):
         self.assertFalse(refund.pos_payment_id)
         self.request.assert_not_called()
 
+    def test_native_zero_discount_settles_verified_refund(self):
+        manager = self._mutation_actor()
+        started = self._pending()
+        self.request.side_effect = [self._refund_response("completed")]
+        self.assertEqual(self._poll(started)["state"], "verified")
+        refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
+        snapshot = deepcopy(refund.financial_snapshot)
+        self.payload.update(user_id=manager.id)
+        self.payload["payment_ids"][0][2].update(payment_status="done", transaction_id=self.refund_id)
+        self.payload["lines"][0][2]["discount"] = False
+        self.request.reset_mock()
+
+        saved = self._rpc_refund(manager, "pos.order", "sync_from_ui", [[self.payload]])
+        order = self.env["pos.order"].browse(next(
+            item["id"] for item in saved["pos.order"] if item["uuid"] == self.payload["uuid"]
+        ))
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(order.lines.discount, 0)
+        self.assertEqual(refund.pos_order_id, order)
+        self.assertEqual(order.payment_ids.revolut_refund_operation_id, refund)
+        self.assertEqual(refund.financial_snapshot, snapshot)
+        self.request.assert_not_called()
+
     def test_persisted_refund_snapshot_remains_settleable(self):
         manager = self._mutation_actor()
         self.payload.update(amount_total=-6.17, amount_paid=-6.17, user_id=manager.id)

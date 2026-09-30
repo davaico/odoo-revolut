@@ -501,9 +501,9 @@ class PosRevolutPaymentOperation(models.Model):
         return self.operation_snapshot(self)
 
     @api.model
-    def _normalize_financial_snapshot(self, data):
+    def _normalize_financial_snapshot(self, data, *, native_order=False):
         """Bound and compare the cart before dispatch and at final settlement."""
-        return normalize_snapshot(data)
+        return normalize_snapshot(data, native_order=native_order)
 
     @api.model
     def normalize_amount(self, currency, amount):

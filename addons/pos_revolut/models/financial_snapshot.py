@@ -88,7 +88,7 @@ def decimal_text(value, name, maximum):
     return format(number.normalize(), "f")
 
 
-def normalize_snapshot(data):
+def normalize_snapshot(data, *, native_order=False):
     if not isinstance(data, dict):
         raise _invalid("contents are unavailable.")
     check_line_count(data.get("lines"))
@@ -134,12 +134,18 @@ def normalize_snapshot(data):
             taxes = command[2]
         if not isinstance(taxes, (list, tuple)) or len(taxes) > MAX_TAXES:
             raise _invalid("must contain at most 100 taxes per line.")
+        discount = raw.get("discount", 0)
+        # Pinned Odoo's serializeForORM exports an unset Float as False;
+        # getDiscount() and our start adapter represent that same value as 0.
+        # Only native settlement accepts this transport representation.
+        if native_order and discount is False:
+            discount = 0
         try:
             line = {
                 "uuid": uuid, "product_id": snapshot_id(raw["product_id"]),
                 "qty": decimal_text(raw["qty"], "quantity", 10**9),
                 "price_unit": decimal_text(raw["price_unit"], "unit price", 10**9),
-                "discount": decimal_text(raw.get("discount", 0), "discount", 10**6),
+                "discount": decimal_text(discount, "discount", 10**6),
                 "tax_ids": sorted(snapshot_id(tax) for tax in taxes),
             }
         except KeyError:
