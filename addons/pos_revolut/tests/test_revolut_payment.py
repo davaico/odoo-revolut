@@ -1,6 +1,8 @@
 import os
+import json
 from copy import deepcopy
 from datetime import timedelta
+from decimal import Decimal
 from threading import Barrier, Thread
 from unittest import SkipTest
 from unittest.mock import Mock, patch
@@ -15,6 +17,7 @@ from odoo.addons.point_of_sale.tests.common import CommonPosTest
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests.common import TransactionCase, new_test_user, tagged
 from odoo.tools import mute_logger
+from odoo.service.model import call_kw
 
 
 class TestRevolutPayment(TransactionCase):
@@ -1020,6 +1023,217 @@ class TestRevolutPayment(TransactionCase):
         self.assertEqual(operation.audit_ids.mapped("actor_id"), manager)
 
 
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_cashier_snapshot_expansion_rejected_before_dispatch(self, request):
+        cashier = new_test_user(
+            self.env, login="snapshot_bounds_cashier",
+            groups="base.group_user,point_of_sale.group_pos_user", company_id=self.env.company.id,
+        )
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        snapshot = self._financial_snapshot(order_uuid)
+        snapshot["lines"][0].update(qty="1e1000", price_unit="1e-1000", discount="1e1000")
+        request.side_effect = self._start_responses()
+        result = call_kw(self.payment_method.with_user(cashier), "revolut_start_payment", [
+            [self.payment_method.id], self.session.id, order_uuid, line_uuid,
+            12.34, self.config.currency_id.id, False, snapshot,
+        ], {})
+        accepted = self.env["pos.revolut.payment.operation"].sudo().browse(result.get("operation_id"))
+        amplification = (f"raw snapshot: {len(json.dumps(snapshot))} ASCII bytes; "
+                         f"accepted snapshot: {len(json.dumps(accepted.financial_snapshot))} ASCII bytes"
+                         if accepted else "snapshot rejected")
+        self.assertEqual(result.get("start_rejected"), "snapshot_invalid", amplification)
+        self.assertIs(result["dispatched"], False)
+        self.assertIn("Revolut cart", result["message"])
+        self.assertFalse(self.payment_method.with_user(cashier).revolut_find_payment(order_uuid, line_uuid))
+        self.assertFalse(self.env["pos.revolut.order.lock"].sudo().search([
+            ("order_uuid", "=", order_uuid),
+        ]))
+        request.assert_not_called()
+
+    def test_snapshot_normalizer_not_rpc_callable(self):
+        for role, groups in (
+            ("cashier", "base.group_user,point_of_sale.group_pos_user"),
+            ("manager", "base.group_user,point_of_sale.group_pos_manager"),
+            ("internal", "base.group_user"),
+            ("portal", "base.group_portal"),
+        ):
+            user = new_test_user(self.env, login=f"snapshot_rpc_{role}", groups=groups)
+            with self.subTest(role=role):
+                with self.assertRaises(AttributeError):
+                    call_kw(self.env["pos.revolut.payment.operation"].with_user(user),
+                            "normalize_financial_snapshot", [self._financial_snapshot(str(uuid4()))], {})
+                with self.assertRaises(AccessError):
+                    call_kw(self.env["pos.revolut.payment.operation"].with_user(user),
+                            "_normalize_financial_snapshot", [self._financial_snapshot(str(uuid4()))], {})
+
+
+    def _snapshot_rpc(self, snapshot, order_uuid=None, line_uuid=None):
+        return call_kw(self.payment_method, "revolut_start_payment", [
+            [self.payment_method.id], self.session.id, order_uuid or str(uuid4()),
+            line_uuid or str(uuid4()), 12.34, self.config.currency_id.id, False, snapshot,
+        ], {})
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_snapshot_numeric_representations_rejected_without_expansion(self, request):
+        # Capped text only; never allocate the expanded adversarial result.
+        invalid = ["1e1000", "1e-1000", "-1e1000", "-1e-1000", "1e325", "1e-325",
+                   "1" * 65, "0.12345678901234567890123456789", "NaN", "Infinity",
+                   "-Infinity", "1_000", " 1", "1/2", True, [1], {"value": 1}]
+        for field in ("qty", "price_unit", "discount"):
+            for value in invalid:
+                with self.subTest(field=field, value=value):
+                    snapshot = self._financial_snapshot(str(uuid4()))
+                    snapshot["lines"][0][field] = value
+                    with patch("odoo.addons.pos_revolut.models.financial_snapshot.Decimal",
+                               wraps=Decimal) as parsing:
+                        result = self._snapshot_rpc(snapshot)
+                    self.assertEqual(result["start_rejected"], "snapshot_invalid")
+                    self.assertNotIn(str(value), [call.args[0] for call in parsing.call_args_list])
+        request.assert_not_called()
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_snapshot_cart_count_rejected_before_iteration(self, request):
+        class NoTraversal(list):
+            def __iter__(self):
+                raise AssertionError("Oversized cart was traversed")
+        snapshot = self._financial_snapshot(str(uuid4()))
+        snapshot["lines"] = NoTraversal([None] * 1001)
+        self.assertEqual(self._snapshot_rpc(snapshot)["start_rejected"], "snapshot_invalid")
+        request.assert_not_called()
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_snapshot_collection_and_retained_scalar_limits(self, request):
+        invalid = (
+            {"uuid": "x" * 129}, {"uuid": ["bad"]}, {"product_id": "1" * 65},
+            {"product_id": 2147483648}, {"refunded_orderline_id": "1" * 65},
+            {"tax_ids": [1] * 101}, {"tax_ids": [[6, 0, [1] * 101]]},
+            {"tax_ids": [[6]]}, {"tax_ids": [[6, 0, []], [6, 0, []]]},
+            {"tax_ids": [2147483648]}, {"qty": None}, {"price_unit": None},
+        )
+        for changes in invalid:
+            with self.subTest(changes=changes):
+                snapshot = self._financial_snapshot(str(uuid4()))
+                snapshot["lines"][0].update(changes)
+                self.assertEqual(self._snapshot_rpc(snapshot)["start_rejected"], "snapshot_invalid")
+        for lines in ([], [[0]], [[6, 0, {}]], [None]):
+            with self.subTest(lines=lines):
+                snapshot = dict(self._financial_snapshot(str(uuid4())), lines=lines)
+                self.assertEqual(self._snapshot_rpc(snapshot)["start_rejected"], "snapshot_invalid")
+        for changes in ({"amount_total": "1e1000"}, {"pricelist_id": "1" * 65},
+                        {"fiscal_position_id": 2147483648}, {"restaurant": {"preset_id": "1" * 65}},
+                        {"restaurant": {"table_id": 2147483648}}):
+            with self.subTest(changes=changes):
+                snapshot = dict(self._financial_snapshot(str(uuid4())), **changes)
+                self.assertEqual(self._snapshot_rpc(snapshot)["start_rejected"], "snapshot_invalid")
+        request.assert_not_called()
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_snapshot_valid_numeric_boundaries_remain_canonical(self, request):
+        request.return_value = self._response({"terminals": []})
+        controls = (
+            ("qty", "1000000000", "1000000000"), ("qty", "-1000000000", "-1000000000"),
+            ("price_unit", "1000000000", "1000000000"),
+            ("price_unit", "-1000000000", "-1000000000"),
+            ("discount", "1000000", "1000000"), ("discount", "-1000000", "-1000000"),
+            ("qty", "-0.001", "-0.001"), ("qty", "-0.5", "-0.5"),
+            ("qty", 0.30000000000000004, "0.30000000000000004"),
+            ("price_unit", "1.234e1", "12.34"), ("discount", "17.7333333333", "17.7333333333"),
+            ("qty", "0.1234567890123456789012345678", "0.1234567890123456789012345678"),
+            ("qty", "5e-324", "0." + "0" * 323 + "5"),
+            ("qty", "-0", "-0"), ("qty", "0e324", "0"),
+            ("qty", "0" * 63 + "1", "1"),
+        )
+        for field, value, expected in controls:
+            with self.subTest(field=field, value=value):
+                snapshot = self._financial_snapshot(str(uuid4()))
+                snapshot["lines"][0][field] = value
+                result = self._snapshot_rpc(snapshot)
+                operation = self.env["pos.revolut.payment.operation"].sudo().browse(result["operation_id"])
+                self.assertEqual(operation.financial_snapshot["lines"][0][field], expected)
+        for field, value in (("qty", "1000000000.000000001"), ("qty", "-1000000000.000000001"),
+                             ("price_unit", "1000000000.000000001"),
+                             ("price_unit", "-1000000000.000000001"),
+                             ("discount", "1000000.000000001"), ("discount", "-1000000.000000001")):
+            with self.subTest(outside=field, value=value):
+                snapshot = self._financial_snapshot(str(uuid4()))
+                snapshot["lines"][0][field] = value
+                self.assertEqual(self._snapshot_rpc(snapshot)["start_rejected"], "snapshot_invalid")
+        self.assertTrue(all(call.args[0] == "GET" for call in request.call_args_list))
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_snapshot_aggregate_budget_includes_taxes_and_return_ids(self, request):
+        # 1000 compact, valid lines fit; a 200-line bounded cart with 100 taxes
+        # each crosses the 256 KiB aggregate without numeric expansion.
+        request.return_value = self._response({"terminals": []})
+        snapshot = self._financial_snapshot(str(uuid4()))
+        template = snapshot["lines"][0]
+        snapshot["lines"] = [dict(template, uuid=str(i)) for i in range(1000)]
+        result = self._snapshot_rpc(snapshot)
+        stored = self.env["pos.revolut.payment.operation"].sudo().browse(result["operation_id"]).financial_snapshot
+        self.assertEqual(len(stored["lines"]), 1000)
+        self.assertLessEqual(len(json.dumps(stored)), 256 * 1024)
+        request.reset_mock()
+        template = dict(template, uuid="x" * 126, tax_ids=[2147483647] * 100,
+                        refunded_orderline_id=2147483647)
+        snapshot["lines"] = [dict(template, uuid=f"{i:03d}" + "x" * 125) for i in range(200)]
+        result = self._snapshot_rpc(snapshot)
+        self.assertEqual(result["start_rejected"], "snapshot_invalid")
+        self.assertIn("256 KiB", result["message"])
+        request.assert_not_called()
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_snapshot_exact_retained_budget_boundary(self, request):
+        request.return_value = self._response({"terminals": []})
+        snapshot = self._financial_snapshot(str(uuid4()))
+        snapshot.update(pricelist_id=2147483647, fiscal_position_id=2147483647)
+        template = dict(snapshot["lines"][0], tax_ids=[2147483647] * 100,
+                        refunded_orderline_id=2147483647)
+        snapshot["lines"] = [dict(template, uuid=f"{i:03d}" + "x" * 125) for i in range(180)]
+        # Default JSON is exactly 262,144 bytes: 180 bounded lines, with
+        # 76 fewer taxes on the last line and three escaped identifier quotes.
+        snapshot["lines"][-1].update(tax_ids=[2147483647] * 24,
+                                      uuid="179" + "x" * 122 + '"' * 3)
+        accepted = self._snapshot_rpc(snapshot)
+        stored = self.env["pos.revolut.payment.operation"].sudo().browse(accepted["operation_id"]).financial_snapshot
+        self.assertEqual(len(json.dumps(stored)), 262144)
+        request.reset_mock()
+        snapshot["lines"][-1]["uuid"] = "179" + "x" * 121 + '"' * 4
+        rejected = self._snapshot_rpc(snapshot)
+        self.assertEqual(rejected["start_rejected"], "snapshot_invalid")
+        self.assertIn("256 KiB", rejected["message"])
+        request.assert_not_called()
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_rejected_snapshot_can_be_corrected_but_uncertain_start_stays_guarded(self, request):
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        snapshot = self._financial_snapshot(order_uuid)
+        snapshot["lines"][0]["qty"] = "1e1000"
+        rejected = self._snapshot_rpc(snapshot, order_uuid, line_uuid)
+        self.assertEqual(rejected["payment_line_uuid"], line_uuid)
+        request.assert_not_called()
+        snapshot["lines"][0]["qty"] = 1
+        request.side_effect = [self._eligible_terminal(), requests.Timeout()]
+        uncertain = self._snapshot_rpc(snapshot, order_uuid, line_uuid)
+        self.assertEqual(uncertain["state"], "unresolved")
+        request.reset_mock()
+        snapshot["lines"][0]["qty"] = "1e-1000"
+        with self.assertRaises(UserError):
+            self._snapshot_rpc(snapshot, order_uuid, line_uuid)
+        request.assert_not_called()
+        self.assertEqual(self.payment_method.revolut_find_payment(order_uuid, line_uuid), uncertain)
+        self.assertEqual(self.env["pos.revolut.payment.operation"].sudo().search_count([
+            ("order_uuid", "=", order_uuid),
+        ]), 1)
+
+
 @tagged("post_install", "-at_install")
 class TestRevolutConcurrentStart(TransactionCase):
     def test_competing_start_dispatch_claims_are_atomic(self):
@@ -1283,13 +1497,127 @@ class TestRevolutOrderSettlement(CommonPosTest):
             "to_invoice": False,
         }
 
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_cash_only_large_cart_does_not_use_revolut_snapshot_limits(self, request):
+        payload = self._order_payload(str(uuid4()), str(uuid4()), payment_method=self.cash_payment_method)
+        first = payload["lines"][0][2]
+        payload["lines"] += [[0, 0, dict(first, uuid=str(uuid4()), price_unit=0,
+                                       price_subtotal=0, price_subtotal_incl=0)] for _ in range(1000)]
+        result = call_kw(self.env["pos.order"], "sync_from_ui", [[payload]], {})
+        order = self.env["pos.order"].browse(result["pos.order"][0]["id"])
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(len(order.lines), 1001)
+        request.assert_not_called()
+
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_invalid_snapshot_cannot_settle_verified_payment(self, request):
+        cases = (
+            ("qty", "1e1000"), ("qty", "-1e1000"), ("qty", "1e-1000"),
+            ("price_unit", "9" * 65),
+            ("price_unit", "0.12345678901234567890123456789"),
+            ("discount", "NaN"), ("discount", "12x"),
+            ("amount_total", "1e1000"), ("line_count", None), ("aggregate_size", None),
+        )
+        for field, value in cases:
+            with self.subTest(field=field, value=value):
+                order_uuid, payment_uuid = str(uuid4()), str(uuid4())
+                payload = self._order_payload(order_uuid, payment_uuid)
+                snapshot = self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload)
+                operation = self._operation(order_uuid, payment_uuid, financial_snapshot=snapshot)
+                payload["payment_ids"][0][2]["transaction_id"] = operation.revolut_payment_id
+                references = (operation.revolut_order_id, operation.revolut_payment_intent_id,
+                              operation.revolut_payment_id)
+                if field == "line_count":
+                    payload["lines"] = payload["lines"] * 1001
+                elif field == "aggregate_size":
+                    # A small request would expand beyond the retained budget;
+                    # the payload stays capped at 250 otherwise valid lines.
+                    template = payload["lines"][0][2]
+                    payload["lines"] = [Command.create({
+                        **template, "uuid": f"snapshot-{index:04d}-" + "x" * 110,
+                        "qty": "1e-324", "price_unit": "1e-324", "discount": "1e-324",
+                    }) for index in range(250)]
+                elif field == "amount_total":
+                    payload[field] = value
+                else:
+                    payload["lines"][0][2][field] = value
+
+                with self.assertRaisesRegex(UserError, "Revolut cart"):
+                    self.env["pos.order"].sync_from_ui([payload])
+                self.assertFalse(self.env["pos.order"].search_count([("uuid", "=", order_uuid)]))
+                operation.invalidate_recordset()
+                self.assertEqual(operation.state, "verified")
+                self.assertEqual(operation.financial_snapshot, snapshot)
+                self.assertEqual((operation.revolut_order_id, operation.revolut_payment_intent_id,
+                                  operation.revolut_payment_id), references)
+                self.assertEqual(operation.blocking_order_key, f"{self.company.id}:{order_uuid}")
+                self.assertFalse(operation.pos_order_id)
+                self.assertFalse(operation.pos_payment_id)
+                request.assert_not_called()
+
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_persisted_canonical_snapshots_remain_settleable(self, request):
+        taxes = self.env["account.tax"].create([
+            {"name": "Snapshot zero tax A", "amount": 0, "amount_type": "percent", "company_id": self.company.id},
+            {"name": "Snapshot zero tax B", "amount": 0, "amount_type": "percent", "company_id": self.company.id},
+        ])
+        for contents in ("ordinary", "fractional_scientific_discount"):
+            with self.subTest(contents=contents):
+                order_uuid, payment_uuid = str(uuid4()), str(uuid4())
+                payload = self._order_payload(order_uuid, payment_uuid)
+                line = payload["lines"][0][2]
+                # Literal evidence produced by the previous normalizer, kept
+                # independent of the implementation under test.
+                persisted = {
+                    "pricelist_id": payload["pricelist_id"], "fiscal_position_id": 0,
+                    "lines": [{
+                        "uuid": line["uuid"], "product_id": self.product.id,
+                        "qty": "1", "price_unit": "12.34", "discount": "0", "tax_ids": [],
+                    }],
+                }
+                amount, minor = 12.34, 1234
+                if contents == "fractional_scientific_discount":
+                    first_uuid = "00000000-0000-4000-8000-000000000001"
+                    second_uuid = "00000000-0000-4000-8000-000000000002"
+                    line.update(uuid=second_uuid, qty=-0.5, price_unit="1e1", discount="2e1",
+                                price_subtotal=-4, price_subtotal_incl=-4,
+                                tax_ids=[[6, False, list(reversed(taxes.ids))]])
+                    payload["lines"].append(Command.create({
+                        **line, "uuid": first_uuid, "qty": 1.5, "price_unit": 10.0, "discount": 20.0,
+                        "price_subtotal": 12, "price_subtotal_incl": 12,
+                    }))
+                    persisted["lines"] = [{
+                        "uuid": uuid, "product_id": self.product.id, "qty": qty,
+                        "price_unit": "10", "discount": "20", "tax_ids": sorted(taxes.ids),
+                    } for uuid, qty in ((first_uuid, "1.5"), (second_uuid, "-0.5"))]
+                    amount, minor = 8, 800
+                    payload.update(amount_total=amount, amount_paid=amount)
+                    payload["payment_ids"][0][2]["amount"] = amount
+                operation = self._operation(
+                    order_uuid, payment_uuid, amount=amount, amount_minor=minor, financial_snapshot=persisted,
+                )
+                payload["payment_ids"][0][2]["transaction_id"] = operation.revolut_payment_id
+
+                saved = self.env["pos.order"].sync_from_ui([payload])
+                order = self.env["pos.order"].browse(next(
+                    item["id"] for item in saved["pos.order"] if item["uuid"] == order_uuid
+                ))
+                operation.invalidate_recordset()
+                self.assertEqual(order.state, "paid")
+                self.assertEqual(order.amount_total, amount)
+                self.assertEqual(operation.pos_order_id, order)
+                self.assertEqual(operation.pos_payment_id, order.payment_ids)
+                self.assertEqual(operation.financial_snapshot, persisted)
+                self.assertFalse(operation.blocking_order_key)
+                request.assert_not_called()
+
     def test_verified_payment_settles_once_and_stores_references(self):
         order_uuid = str(uuid4())
         payment_line_uuid = str(uuid4())
         payload = self._order_payload(order_uuid, payment_line_uuid)
         snapshot = self.env[
             "pos.revolut.payment.operation"
-        ].normalize_financial_snapshot(payload)
+        ]._normalize_financial_snapshot(payload)
         operation = self._operation(
             order_uuid, payment_line_uuid, financial_snapshot=snapshot
         )
@@ -1324,7 +1652,7 @@ class TestRevolutOrderSettlement(CommonPosTest):
         }))
         operation = self._operation(
             order_uuid, line_uuid, amount=4.34, amount_minor=434,
-            financial_snapshot=self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload),
+            financial_snapshot=self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload),
         )
         payload["payment_ids"][0][2]["transaction_id"] = operation.revolut_payment_id
 
@@ -1353,7 +1681,7 @@ class TestRevolutOrderSettlement(CommonPosTest):
             "payment_status": "done",
             "uuid": second_uuid,
         }))
-        snapshot = self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload)
+        snapshot = self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload)
         first = self._operation(order_uuid, first_uuid, amount=4.00, amount_minor=400,
                                 blocking_order_key=False, financial_snapshot=snapshot)
         second = self._operation(order_uuid, second_uuid, amount=8.34, amount_minor=834,
@@ -1391,7 +1719,7 @@ class TestRevolutOrderSettlement(CommonPosTest):
                 }))
                 snapshot = self.env[
                     "pos.revolut.payment.operation"
-                ].normalize_financial_snapshot(payload)
+                ]._normalize_financial_snapshot(payload)
                 first = self._operation(order_uuid, first_uuid, amount=4.00,
                                         amount_minor=400, blocking_order_key=False,
                                         financial_snapshot=snapshot)
@@ -1426,7 +1754,7 @@ class TestRevolutOrderSettlement(CommonPosTest):
             "payment_method_id": self.cash_payment_method.id,
             "uuid": str(uuid4()),
         }))
-        snapshot = self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload)
+        snapshot = self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload)
         first = self._operation(order_uuid, first_uuid, amount=4.00, amount_minor=400,
                                 blocking_order_key=False, financial_snapshot=snapshot)
         self._operation(order_uuid, second_uuid, state="unresolved", amount=8.34,
@@ -1452,7 +1780,7 @@ class TestRevolutOrderSettlement(CommonPosTest):
         payload = self._order_payload(order_uuid, line_uuid)
         payload["payment_ids"][0][2]["amount"] = 4.34
         payload["amount_paid"] = 4.34
-        snapshot = self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload)
+        snapshot = self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload)
         operation = self._operation(order_uuid, line_uuid, amount=4.34,
                                     amount_minor=434, financial_snapshot=snapshot)
         payload["payment_ids"][0][2]["transaction_id"] = operation.revolut_payment_id
@@ -1487,7 +1815,7 @@ class TestRevolutOrderSettlement(CommonPosTest):
         payload = self._order_payload(order_uuid, line_uuid)
         payload["payment_ids"][0][2]["amount"] = 4.34
         payload["amount_paid"] = 4.34
-        snapshot = self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload)
+        snapshot = self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload)
         operation = self._operation(order_uuid, line_uuid, amount=4.34,
                                     amount_minor=434, financial_snapshot=snapshot)
         payload["payment_ids"][0][2]["transaction_id"] = operation.revolut_payment_id
@@ -1625,7 +1953,7 @@ class TestRevolutOrderSettlement(CommonPosTest):
                                     amount_minor=434,
                                     financial_snapshot=self.env[
                                         "pos.revolut.payment.operation"
-                                    ].normalize_financial_snapshot(payload))
+                                    ]._normalize_financial_snapshot(payload))
         payload["payment_ids"][0][2]["transaction_id"] = operation.revolut_payment_id
         payload["payment_ids"].append(Command.create({
             "amount": 8.00, "name": fields.Datetime.now(),
@@ -1780,7 +2108,7 @@ class TestRevolutRestaurantContext(TransactionCase):
             "revolut_payment_id": str(uuid4()),
             "financial_snapshot": self.env[
                 "pos.revolut.payment.operation"
-            ].normalize_financial_snapshot(payload),
+            ]._normalize_financial_snapshot(payload),
         })
         payload["payment_ids"][0][2]["transaction_id"] = operation.revolut_payment_id
         moved = deepcopy(payload)
