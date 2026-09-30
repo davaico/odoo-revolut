@@ -110,3 +110,21 @@ metadata, retries, and manual printing/email. Physical printing, manual email,
 real terminal interaction, deployment and live financial acceptance remain
 unexecuted and outside this local PDF slice. Existing human release gates are
 unchanged; no push or staging change was authorized or performed.
+
+## Integration follow-up - 2026-09-30
+
+The owner subsequently authorized pushing, opening a PR and merging it after
+conflict resolution. Main `0c614fd` was integrated without changing ticket
+12's updated ticket, release evidence or observations. Both ticket 24 and 25
+index entries are retained and the combined addon version is `19.0.1.8.0`.
+Three test fixture calls were aligned with ticket 24's private snapshot
+normalizer; no production financial behavior or assertions were changed.
+
+Combined executable revision `da84e22313e58e4af5e4716a3c28e1eb44d2c20d`
+passed all 265 fresh-install tests, all 22 receipt upgrade tests and eight
+Restaurant tests, with no Chrome startup skips. Independent Standards/Spec
+follow-up findings are zero.
+The [verification record](../../testing/ticket-25-receipts.md#main-integration-and-pr-acceptance---2026-09-30)
+preserves the initial fixture errors, browser timeouts and interrupted
+resource-constrained run separately from clean acceptance. Publication does
+not authorize deployment or live payments; human release gates remain open.

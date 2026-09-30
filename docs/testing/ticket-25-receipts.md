@@ -8,20 +8,23 @@ Verified locally on 2026-09-30 using Odoo Community package
 
 - Reviewed baseline: `fbab631eaf7595de7893b95bee99c1c83245bd9d`.
 - Implementation: `daf0445`.
-- Final reviewed and tested code: `57f6e16afa4c5dab8ac7158eb437d77919f59931`.
+- Initial reviewed and tested code: `57f6e16afa4c5dab8ac7158eb437d77919f59931`.
 - Branch: `codex/25-download-historical-payment-refund-receipts`.
 - Addon version: `19.0.1.8.0`, previously `19.0.1.7.7`.
 
 This is an Odoo-generated PDF slice, not an accounting invoice, provider-original
 receipt, or remote terminal-print implementation. The original checkout and
 unrelated dirty files were preserved in a separate checkout. No staging change,
-deployment, push, real charge, refund, or provider probe was performed.
+deployment, push, real charge, refund, or provider probe was performed during
+that initial local slice. Publication was authorized separately in the PR
+follow-up below; it does not authorize deployment or live financial testing.
 
 At final status inspection, `origin/main` had advanced by eight commits to
 `0c614fd`, including ticket 24's financial snapshot changes. They are not part
 of this branch's reviewed/tested code revision. Before release, integrate the
 branches and rerun the affected receipt, settlement, recovery and return tests;
-these results are not combined ticket 24/25 acceptance evidence.
+those initial results are not combined ticket 24/25 acceptance evidence. The
+later combined verification below resolves this integration limitation.
 
 The staff workflow, upgrade instructions, legacy metadata labels, and manual
 print/email procedure are in [installation guidance](../installation.md#download-payment-and-refund-receipts).
@@ -157,3 +160,82 @@ documents; printing/emailing them occurs outside the payment integration.
 Automated PDF checks do not establish physical printing success. No terminal
 printer command, automatic email, public QR link or accounting document was
 introduced. Existing human release/financial gates remain unchanged.
+
+## Main integration and PR acceptance - 2026-09-30
+
+The owner subsequently authorized resolving conflicts, pushing, opening a PR
+and merging it. Main `0c614fd65cc6aef35cf8326acf9e24476034212a` was integrated
+in `84f806f`. There were two Git conflicts: keep the receipt addon version
+`19.0.1.8.0` above main's `19.0.1.7.8`, and retain both closed ticket 24 and
+ticket 25 index rows. Ticket 12's updated ticket, release evidence and operator
+observations remain byte-identical to main. Ticket 24's financial snapshot,
+settlement, payment and return implementation was not rewritten.
+
+Final combined executable revision:
+`da84e22313e58e4af5e4716a3c28e1eb44d2c20d`. The only post-merge correction
+renamed three receipt fixture calls to main's private
+`_normalize_financial_snapshot`. Production behavior, assertions and ticket
+24's RPC restriction are unchanged.
+
+The first merged full run completed with **0 failures and 21 fixture errors
+out of 265 tests**, caused by those obsolete public method calls. It is not a
+pass (`/tmp/ticket25-pr-full.log`). After correction, the 22-test receipt run
+had one non-final tour login-step timeout; its isolated unchanged-code rerun
+passed (`/tmp/ticket25-pr-focused.log`,
+`/tmp/ticket25-pr-nonfinal-rerun.log`). A further fresh-install run was stopped
+after an administration download-step timeout and Chrome startup failures
+under severe host memory/swap pressure; it is not acceptance evidence
+(`/tmp/ticket25-pr-final-install.log`). Other applications were left untouched;
+the owner freed resources before acceptance restarted. No timeout or assertion
+was relaxed, and no browser skip is counted as verified behavior.
+
+At the unchanged final executable revision, using the pinned image, checked
+Merchant HTTP guard and isolated compose project `odoo-revolut-ticket25-pr`:
+
+| Combined check | Result | Local log |
+| --- | --- | --- |
+| Clean full retail installation | **265 passed**, 0 failures/errors, no Chrome startup skips | `/tmp/ticket25-pr-acceptance.log` |
+| Receipt module upgrade checks | **22 passed**, 0 failures/errors, no Chrome startup skips | `/tmp/ticket25-pr-acceptance-upgrade.log` |
+| Restaurant installation and bridge upgrade | **8 passed**, 0 failures/errors, no Chrome startup skips | `/tmp/ticket25-pr-restaurant-install.log`, `/tmp/ticket25-pr-restaurant.log` |
+| Deployment tooling, payment-state regressions and syntax/whitespace | 29 unit tests, native JS assertions and compile/syntax/diff checks passed | Commands recorded above |
+
+The clean full run includes ticket 24's resource-bound, settlement and refund
+regressions, existing recovery and return-allocation paths, all receipt server
+and POS/admin workflows, and the previously timed-out non-final and admin
+download tours. Restaurant-only checks remain a separate phase. The upgrade
+log contains native bus/websocket test-cursor diagnostics; no receipt assertion
+failed and Odoo's final test result is zero failures/errors. Final installed
+versions were `pos_revolut 19.0.1.8.0`, `pos_restaurant 19.0.1.0`, and
+`pos_revolut_restaurant 19.0.1.0.0`. PR-run browser artifacts were archived in
+`/tmp/ticket25-pr-artifacts.tar` before disposable environment cleanup.
+
+The clean full command used the project's normal warning-level logging:
+
+```sh
+docker compose --project-name odoo-revolut-ticket25-pr --file compose.yaml run --rm odoo \
+  --database ticket25_pr_acceptance --stop-after-init --workers 0 \
+  --log-level warn --log-handler odoo.tests.result:INFO \
+  --log-handler odoo.tests.suite:INFO --init pos_revolut --test-tags /pos_revolut
+```
+
+For upgrade, use the same database and the 22-test receipt selection above.
+The separate original baseline-to-ticket schema-upgrade evidence retains its
+identity; this follow-up does not claim a production database migration,
+deployment, real financial operation, or physical print test. Ticket 12's human
+and financial release gates remain open.
+
+### Standards
+
+Independent review of `0c614fd...84f806f`, followed by the three-call fixture
+correction through `da84e22`, found **0 documented breaches and 0 actionable
+smell judgments**. Both index/version conflict resolutions and preservation
+of main's ticket 12/24 changes were checked.
+
+### Spec
+
+Independent review and correction follow-up found **0 remaining actionable
+findings**. Initial review did not detect the fixture API mismatch; execution
+caught it, and the follow-up independently verified the correction. The clean
+combined run now exercises the current normalization boundary. Initial failed
+and interrupted runs remain identified above rather than being rewritten as
+passes. No scope expansion or closure of human release gates was introduced.
