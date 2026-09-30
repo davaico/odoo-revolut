@@ -56,7 +56,7 @@ class TestRevolutReceiptUi(TestPointOfSaleHttpCommon):
             }))
         historical_date = self.event_time = fields.Datetime.now() - timedelta(days=8)
         payload["date_order"] = fields.Datetime.to_string(historical_date)
-        snapshot = self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload)
+        snapshot = self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload)
         operation = self._operation(
             payload["uuid"], payment["uuid"], amount=payment["amount"],
             amount_minor=434 if split else 1234, financial_snapshot=snapshot,
