@@ -485,6 +485,11 @@ class PosOrder(models.Model):
                 "blocking_order_key": False,
             })
 
+    def _get_refunded_orders(self, order):
+        # Pinned Odoo traverses raw lines here before calling _process_order.
+        ReturnAllocation(self.env).preflight_order_lines(order)
+        return super()._get_refunded_orders(order)
+
     def _process_order(self, order, existing_order):
         with _revolut_mutation(self.env) as mutation:
             refunds = ReturnAllocation(self.env).validate_settlement(

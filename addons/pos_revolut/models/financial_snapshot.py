@@ -139,7 +139,7 @@ def normalize_snapshot(data):
                 "uuid": uuid, "product_id": snapshot_id(raw["product_id"]),
                 "qty": decimal_text(raw["qty"], "quantity", 10**9),
                 "price_unit": decimal_text(raw["price_unit"], "unit price", 10**9),
-                "discount": decimal_text(raw.get("discount") or 0, "discount", 10**6),
+                "discount": decimal_text(raw.get("discount", 0), "discount", 10**6),
                 "tax_ids": sorted(snapshot_id(tax) for tax in taxes),
             }
         except KeyError:

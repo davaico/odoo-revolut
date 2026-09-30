@@ -106,6 +106,39 @@ class TestRevolutRefund(CommonPosTest):
             payload or self.payload,
         ])
 
+    def test_oversized_cash_return_discovers_originals_in_bounded_batches(self):
+        class NoWholeTraversal(list):
+            def __iter__(self):
+                raise AssertionError("Unbounded return relationship traversal")
+
+            def __getitem__(self, key):
+                if isinstance(key, slice):
+                    assert key.stop - key.start <= 1000, "Unbounded discovery batch"
+                return super().__getitem__(key)
+
+        cash_sale = self._order_payload(str(uuid4()), str(uuid4()), payment_method=self.cash_payment_method)
+        saved = self.env["pos.order"].sync_from_ui([cash_sale])
+        cash_original = self.env["pos.order"].browse(saved["pos.order"][0]["id"])
+        for financial_first in (True, False):
+            with self.subTest(financial_first=financial_first):
+                payload = deepcopy(self.payload)
+                payload["uuid"] = str(uuid4())
+                payload["payment_ids"][0][2].update(
+                    payment_method_id=self.cash_payment_method.id, payment_status="done", transaction_id=False,
+                )
+                financial = payload["lines"][0]
+                cash = deepcopy(financial)
+                cash[2]["refunded_orderline_id"] = cash_original.lines.id
+                contents = [financial] + [cash] * 1000 if financial_first else [cash] * 1000 + [financial]
+                payload["lines"] = NoWholeTraversal(contents)
+                with TestCase.assertRaisesRegex(self, UserError, "at most 1,000 lines"):
+                    self._rpc_refund(self._mutation_actor(), "pos.order", "sync_from_ui", [[payload]])
+                self.assertFalse(self.env["pos.order"].search_count([("uuid", "=", payload["uuid"])]))
+                self.assertFalse(self.env["pos.revolut.refund.operation"].sudo().search_count([
+                    ("order_uuid", "=", payload["uuid"]),
+                ]))
+                self.request.assert_not_called()
+
     def test_public_invalid_refund_snapshot_leaves_no_reservation(self):
         manager = self._mutation_actor()
         valid = deepcopy(self.payload)
