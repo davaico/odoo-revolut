@@ -81,8 +81,8 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [23 — Preserve payment polling through valid processing states](ready-for-human/23-preserve-polling-through-payment-processing.md) | `ready-for-human` | Open | Reviewed local fix complete; full/split/multiple-card live retests gated by financial reconciliation |
 | [24 — Bound financial snapshot processing before numeric expansion](closed/24-bound-financial-snapshot-processing.md) | `ready-for-agent` at closure | Closed | None for local validation and mocked implementation |
 | [25 — Download historical Revolut payment and refund receipts](closed/25-download-historical-payment-refund-receipts.md) | `ready-for-agent` at closure | Closed | None for local implementation and mocked verification |
-| [26 — Decide server-authorized cart and tip behavior](ready-for-agents/26-decide-order-and-tip-authorization.md) | `ready-for-agent` | Open | None |
-| [27 — Enforce the authorized order balance before terminal dispatch](ready-for-agents/27-enforce-authorized-terminal-allocation.md) | `ready-for-agent` | Open | 26 |
+| [26 — Decide server-authorized cart and tip behavior](closed/26-decide-order-and-tip-authorization.md) | `ready-for-agent` at closure | Closed | None |
+| [27 — Enforce the authorized order balance before terminal dispatch](ready-for-agents/27-enforce-authorized-terminal-allocation.md) | `ready-for-agent` | Open | 26 (closed locally; integrate reviewed design first) |
 | [28 — Bind Revolut credential authority to the owning company](ready-for-agents/28-bind-merchant-credentials-to-company.md) | `ready-for-agent` | Open | None |
 | [29 — Determine the impact of concurrent payment status polling](ready-for-agents/29-investigate-concurrent-status-polling.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
 | [30 — Determine authorized access to shared POS sessions](ready-for-agents/30-investigate-shared-pos-session-authorization.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
@@ -181,7 +181,7 @@ retained findings from Codex Security scan
 coverage; the triage assessed reviewed main revision
 `1d549c11507878fd95fb91a38337599d486e7afc`, not proof of the deployed version.
 
-- **26** resolves the server-authorized cart and explicit-tip contract.
+- **26** selects validated native drafts, atomic base allocations and required customer-selected terminal tips verified through authenticated payments reports. The owner approved waiting safely for report details; the design is closed locally, with target-device/report acceptance remaining a release gate.
 - **27**, blocked by **26**, remediates the five confirmed amount-authority
   findings as one complete checkout slice.
 - **28** remediates the two confirmed company/credential-authority findings.

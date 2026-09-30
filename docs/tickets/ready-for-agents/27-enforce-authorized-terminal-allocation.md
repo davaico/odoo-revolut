@@ -44,7 +44,7 @@ Source scan `95c73550-ed81-4cfe-9e81-b6f2be355a38` was canceled with partial cov
 
 ## Blocked by
 
-26 — Decide server-authorized cart and tip behavior.
+26 — Decide server-authorized cart and tip behavior (closed locally; integrate its reviewed closure/design before starting).
 
 ## External prerequisites
 
@@ -61,3 +61,9 @@ The reviewed fix and combined regression evidence must be considered before tick
 ## Working agreement
 
 Start from current reviewed main and record the exact revision; do not implement against the stale scanned checkout. Preserve existing work and use an isolated worktree if another agent is editing overlapping code. All automated Revolut calls are mocked and blocked from reaching real Merchant endpoints. Physical terminal actions, deployment and production mutations require a separate authorized workflow.
+
+## Ticket 26 implementation contract — 2026-09-30
+
+Use [ADR 0001](../../adr/0001-authorize-revolut-cart-before-dispatch.md) and [the selected cart/terminal-tip contract](../../revolut-cart-authorization.md). The owner requires the customer's Revolut terminal tip popup, not mandatory Odoo tip pre-entry. Authorize the frozen base cart and reserve each base allocation; retrieve final payment and authenticated `payments_report` evidence (explicit tip, including zero), then project the tip and gross tender into Odoo once. Missing/late evidence remains exposed with recovery and no new charge. Customer terminal tips are permitted within provider limits; the 25%/manager rule applies only to cashier-entered Odoo tips. Preserve gross receipts and explicit base/tip full/partial refund accounting.
+
+The design's tables/matrix are part of this ticket's acceptance criteria. No invented tip field on payment retrieval, amount-difference inference, duplicate tip, browser-only authority or partial financial guard satisfies this ticket. Target-device tip/report timing and currency identity evidence remain release acceptance; local tests use documented fixtures and guarded mocked HTTP. If the complete native-pricing/tip/receipt/refund slice cannot fit this ticket, follow its existing concrete-breakdown requirement before implementing.
