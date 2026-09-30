@@ -1080,7 +1080,7 @@ class TestRevolutPayment(TransactionCase):
         # Capped text only; never allocate the expanded adversarial result.
         invalid = ["1e1000", "1e-1000", "-1e1000", "-1e-1000", "1e325", "1e-325",
                    "1" * 65, "0.12345678901234567890123456789", "NaN", "Infinity",
-                   "-Infinity", "1_000", " 1", "1/2", True, [1], {"value": 1}]
+                   "-Infinity", "1_000", " 1", "1/2", True, False, None, "", [], {}, [1], {"value": 1}]
         for field in ("qty", "price_unit", "discount"):
             for value in invalid:
                 with self.subTest(field=field, value=value):
@@ -1145,6 +1145,8 @@ class TestRevolutPayment(TransactionCase):
             ("price_unit", "1.234e1", "12.34"), ("discount", "17.7333333333", "17.7333333333"),
             ("qty", "0.1234567890123456789012345678", "0.1234567890123456789012345678"),
             ("qty", "5e-324", "0." + "0" * 323 + "5"),
+            ("qty", "0.1234567890123456789012345678e-324",
+             "0." + "0" * 324 + "1234567890123456789012345678"),
             ("qty", "-0", "-0"), ("qty", "0e324", "0"),
             ("qty", "0" * 63 + "1", "1"),
         )
@@ -1155,7 +1157,8 @@ class TestRevolutPayment(TransactionCase):
                 result = self._snapshot_rpc(snapshot)
                 operation = self.env["pos.revolut.payment.operation"].sudo().browse(result["operation_id"])
                 self.assertEqual(operation.financial_snapshot["lines"][0][field], expected)
-        for field, value in (("qty", "1000000000.000000001"), ("qty", "-1000000000.000000001"),
+        for field, value in (("qty", "-0.1234567890123456789012345678e-324"),
+                             ("qty", "1000000000.000000001"), ("qty", "-1000000000.000000001"),
                              ("price_unit", "1000000000.000000001"),
                              ("price_unit", "-1000000000.000000001"),
                              ("discount", "1000000.000000001"), ("discount", "-1000000.000000001")):
