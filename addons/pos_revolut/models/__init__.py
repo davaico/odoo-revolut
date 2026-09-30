@@ -4,3 +4,4 @@ from . import pos_payment_method
 from . import pos_order
 from . import revolut_reconciliation
 from . import revolut_refund
+from . import revolut_receipt
