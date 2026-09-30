@@ -240,6 +240,139 @@ for (const refund of [false, true]) {
     }
 }
 
+test("documented processing observations stay guarded until capture on the same attempt", async () => {
+    const states = [
+        "pending", "authentication_challenge", "authentication_verified",
+        "authorisation_started", "authorisation_passed", "authorised", "capture_started", "captured",
+    ];
+    let observation = 0;
+    const { state, clock, order, line, calls, errors } = fixture({
+        call(method) {
+            if (method === "revolut_start_payment" || method === "revolut_poll_payment") {
+                if (method === "revolut_poll_payment") {
+                    observation += 1;
+                }
+                return {
+                    operation_id: 70, state: states[observation] === "captured" ? "verified" : "pending",
+                    provider_state: states[observation], payment_id: "pay-70",
+                    payment_intent_id: "intent-70", order_id: "rev-70", retry_safe: false,
+                };
+            }
+            return false;
+        },
+    });
+    const request = state.request(order, line);
+    assert.equal(state.request(order, line), request);
+    await tick();
+    for (const providerState of states.slice(0, -1)) {
+        assert.equal(line.uiState.revolutSnapshot.provider_state, providerState);
+        assert.equal(line.getPaymentStatus(), "waitingCard");
+        assert.equal(paymentResponseSuccessful(line, true), false);
+        assert.equal(line.transaction_id, false);
+        assert.equal(paymentActions(line).canEditAmount, false);
+        assert.equal(paymentActions(line).canDelete, false);
+        assert.equal(paymentActions(line).retrySafe, false);
+        assert.equal(orderActions(order).blocksCheckout, true);
+        clock.advance(1000);
+        await tick();
+    }
+    assert.equal(await request, true);
+    assert.equal(line.transaction_id, "pay-70");
+    assert.equal(line.payment_ref_no, "rev-70");
+    assert.equal(paymentResponseSuccessful(line, true), true);
+    assert.deepEqual(errors, []);
+    assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 1);
+    assert.deepEqual(calls.filter(({ method }) => method === "revolut_poll_payment")
+        .map(({ args }) => args.slice(1)), Array(7).fill([70, "order-1", "line-1"]));
+});
+
+for (const [processing, final] of [["declining", "declined"], ["failing", "failed"], ["cancelling", "cancelled"]]) {
+    test(`early processing observes ${processing} before final ${final}`, async () => {
+        let polls = 0;
+        const { state, clock, order, line, calls, errors } = fixture({
+            call(method) {
+                if (method === "revolut_start_payment") {
+                    return { operation_id: 71, state: "pending", provider_state: "authorisation_started" };
+                }
+                if (method === "revolut_poll_payment") {
+                    return ++polls === 1
+                        ? { operation_id: 71, state: "pending", provider_state: processing }
+                        : { operation_id: 71, state: final, provider_state: final, retry_safe: true };
+                }
+                return false;
+            },
+        });
+        const request = state.request(order, line);
+        await tick();
+        clock.advance(1000);
+        await tick();
+        assert.equal(line.uiState.revolutSnapshot.provider_state, processing);
+        assert.equal(paymentActions(line).retrySafe, false);
+        clock.advance(1000);
+        assert.equal(await request, false);
+        assert.equal(line.transaction_id, false);
+        assert.equal(paymentActions(line).retrySafe, true);
+        assert.equal(paymentResponseSuccessful(line, true), false);
+        assert.deepEqual(errors, [final]);
+        assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 1);
+    });
+}
+
+test("valid processing times out and a later check recovers capture without starting again", async () => {
+    let captured = false;
+    const { state, clock, order, line, calls, errors } = fixture({
+        call(method) {
+            if (method === "revolut_start_payment" || method === "revolut_poll_payment") {
+                return {
+                    operation_id: 72, state: captured ? "verified" : "pending",
+                    provider_state: captured ? "captured" : "authentication_challenge",
+                    payment_id: "pay-72", order_id: "rev-72",
+                };
+            }
+            return false;
+        },
+    });
+    const request = state.request(order, line);
+    await tick();
+    clock.advance(60000);
+    assert.equal(await request, false);
+    assert.deepEqual(errors, ["timed_out"]);
+    assert.equal(line.transaction_id, false);
+    assert.equal(paymentActions(line).retrySafe, false);
+    assert.equal(orderActions(order).blocksAlternativeTender, true);
+    assert.equal(calls.filter(({ method }) => method === "revolut_mark_timeout").length, 1);
+    captured = true;
+    assert.equal(await state.request(order, line, { checkOnly: true }), true);
+    assert.equal(line.transaction_id, "pay-72");
+    assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 1);
+});
+
+test("unresolved evidence stops foreground polling even with a prior documented processing state", async () => {
+    const { state, clock, order, line, calls, errors } = fixture({
+        call(method) {
+            if (method === "revolut_start_payment") {
+                return { operation_id: 73, state: "pending", provider_state: "authentication_verified" };
+            }
+            if (method === "revolut_poll_payment") {
+                return { operation_id: 73, state: "unresolved", provider_state: "authentication_verified" };
+            }
+            return false;
+        },
+    });
+    const request = state.request(order, line);
+    await tick();
+    clock.advance(1000);
+    assert.equal(await request, false);
+    clock.advance(60000);
+    await tick();
+    assert.deepEqual(errors, ["unresolved"]);
+    assert.equal(paymentActions(line).retrySafe, false);
+    assert.equal(orderActions(order).blocksCheckout, true);
+    assert.equal(paymentResponseSuccessful(line, true), false);
+    assert.equal(calls.filter(({ method }) => method === "revolut_poll_payment").length, 1);
+    assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 1);
+});
+
 test("definitive terminal-busy rejection leaves the same unpaid line removable", async () => {
     const { state, clock, order, line, calls, errors } = fixture({
         call(method) {

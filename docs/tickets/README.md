@@ -78,7 +78,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [20 — Recover POS lines after a failed pre-payment lookup](closed/20-recover-undispatched-pos-lines.md) | `ready-for-agent` at closure | Closed | None |
 | [21 — Keep reconciliation progressing after malformed provider responses](closed/21-isolate-reconciliation-failures.md) | `ready-for-agent` at closure | Closed | None |
 | [22 — Recover a POS line after a terminal-busy rejection](ready-for-human/22-recover-terminal-busy-rejection.md) | `ready-for-human` | Open | Reviewed local fix complete; live two-browser retest gated by financial reconciliation |
-| [23 — Preserve payment polling through valid processing states](ready-for-agents/23-preserve-polling-through-payment-processing.md) | `ready-for-agent` | Open | None for local work; missing early live payload and financial reconciliation limit validation |
+| [23 — Preserve payment polling through valid processing states](ready-for-human/23-preserve-polling-through-payment-processing.md) | `ready-for-human` | Open | Reviewed local fix complete; full/split/multiple-card live retests gated by financial reconciliation |
 | [24 — Bound financial snapshot processing before numeric expansion](closed/24-bound-financial-snapshot-processing.md) | `ready-for-agent` at closure | Closed | None for local validation and mocked implementation |
 
 ## Architecture triage — 2026-09-25
@@ -156,9 +156,9 @@ reports `fixed`. Actual deployed worker exhaustion remains unverified; the
 original outage severity is separate from local remediation completion.
 
 Ticket 12 still requires reviewed integration and final combined-candidate
-acceptance before closure. Coordinate the separate ticket 23 changes and refresh
-its affected automated evidence after integration, preserving earlier dated
-results and outstanding human and financial reconciliation gates.
+acceptance before closure. Ticket 23's reviewed local correction is now in main
+and this branch; refresh combined-candidate evidence while preserving earlier
+dated results and outstanding human and financial reconciliation gates.
 
 ## Shared implementation contract
 

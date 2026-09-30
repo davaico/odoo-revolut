@@ -140,7 +140,7 @@ registry.category("web_tour.tours").add("pos_revolut_verified_checkout", {
                 trigger: ".modal:contains('Revolut verification required')",
             },
             Dialog.confirm(),
-            ReceiptScreen.isShown(),
+            ReceiptScreen.isShown().map((step) => ({ ...step, timeout: 20000 })),
             ReceiptScreen.paymentLineContains("Revolut", "12.34"),
             receiptContainsReference(PAYMENT_REFERENCE),
             ReceiptScreen.totalAmountContains("12.34"),
@@ -227,6 +227,70 @@ registry.category("web_tour.tours").add("pos_revolut_split_cash_checkout", {
         ReceiptScreen.paymentLineContains("Cash", "8.00"),
         ReceiptScreen.paymentLineContains("Revolut", "4.34"),
     ].flat(),
+});
+
+registry.category("web_tour.tours").add("pos_revolut_processing_multiple_cards", {
+    steps: () => {
+        let identity;
+        return [
+            Chrome.startPoS(),
+            ProductScreen.addOrderline("Desk Pad"),
+            ProductScreen.clickPayButton(),
+            {
+                content: "Prepare a partial card line before sending its amount to the terminal",
+                trigger: ".payment-screen",
+                run() {
+                    const pos = window.posmodel;
+                    const order = pos.getOrder();
+                    const method = pos.config.payment_method_ids.find((item) => item.name === "Revolut");
+                    const result = order.addPaymentline(method);
+                    if (!result.status) {
+                        throw new Error("Could not prepare the partial Revolut line");
+                    }
+                    identity = { orderUuid: order.uuid, lineUuid: result.data.uuid };
+                },
+            },
+            PaymentScreen.enterPaymentLineAmount("Revolut", "12.33"),
+            PaymentScreen.selectedPaymentlineHas("Revolut", "12.33"),
+            { trigger: ".payment-screen .send_payment_request:contains('Send')", run: "click" },
+            { trigger: ".payment-screen .electronic_status:contains('Waiting for card')" },
+            {
+                content: "A captured partial card line leaves exactly one penny due on the unchanged order",
+                trigger: ".payment-screen .electronic_status:contains('Payment Successful')",
+                run() {
+                    const order = window.posmodel.getOrder();
+                    const line = order.getPaymentlineByUuid(identity.lineUuid);
+                    if (order.uuid !== identity.orderUuid || order.isPaid() ||
+                        order.currency.round(order.remainingDue) !== 0.01 || order.payment_ids.length !== 1 ||
+                        !line.isDone() || line.amount !== 12.33 || !line.transaction_id ||
+                        line.uiState.revolutSnapshot.state !== "verified") {
+                        throw new Error("Processing incorrectly settled or changed the partial card order");
+                    }
+                    identity.paymentId = line.transaction_id;
+                },
+            },
+            PaymentScreen.clickPaymentMethod("Revolut"),
+            { trigger: ".payment-screen .electronic_status:contains('Waiting for card')" },
+            ReceiptScreen.isShown(),
+            {
+                content: "Both card lines complete automatically with their own verified references",
+                trigger: ".receipt-screen",
+                run() {
+                    const order = window.posmodel.getOrder();
+                    const first = order.getPaymentlineByUuid(identity.lineUuid);
+                    const second = order.payment_ids.find((item) => item.uuid !== identity.lineUuid);
+                    if (order.uuid !== identity.orderUuid || order.payment_ids.length !== 2 ||
+                        !order.isPaid() || !first.isDone() || !second?.isDone() ||
+                        first.transaction_id !== identity.paymentId || first.amount !== 12.33 ||
+                        second.amount !== 0.01 || !second.transaction_id ||
+                        second.transaction_id === first.transaction_id ||
+                        second.uiState.revolutSnapshot.state !== "verified") {
+                        throw new Error("Multiple card checkout lost a verified allocation or required manual recovery");
+                    }
+                },
+            },
+        ].flat();
+    },
 });
 
 registry.category("web_tour.tours").add("pos_revolut_reload_late_success", {
@@ -355,7 +419,19 @@ registry.category("web_tour.tours").add("pos_revolut_timed_out", {
             {
                 content: "Advance the browser clock beyond the 60-second foreground limit",
                 trigger: ".payment-screen .electronic_status:contains('Waiting for card')",
-                run() {
+                async run() {
+                    const line = window.posmodel.getOrder().payment_ids.find(
+                        (item) => item.payment_method_id.use_payment_terminal === "revolut"
+                    );
+                    const deadline = Date.now() + 10000;
+                    while (line.uiState.revolutSnapshot?.provider_state !== "authentication_challenge" &&
+                            Date.now() < deadline) {
+                        await new Promise((resolve) => setTimeout(resolve, 100));
+                    }
+                    if (line.uiState.revolutSnapshot?.provider_state !== "authentication_challenge" ||
+                        line.isDone() || !line.uiState.revolutSnapshot.payment_id) {
+                        throw new Error("The timeout regression did not observe a guarded underlying payment");
+                    }
                     originalNow = Date.now;
                     Date.now = () => originalNow() + 60001;
                 },
@@ -373,6 +449,33 @@ registry.category("web_tour.tours").add("pos_revolut_timed_out", {
             PaymentScreen.selectedPaymentlineHas("Revolut", "12.34"),
         ].flat();
     },
+});
+
+registry.category("web_tour.tours").add("pos_revolut_malformed_processing", {
+    steps: () => [
+        ...revolutCheckoutSteps(),
+        { trigger: ".modal:contains('The Revolut result is unresolved')" },
+        Dialog.confirm(),
+        { trigger: ".payment-screen .send_payment_request:contains('Check status')", run: "click" },
+        { trigger: ".payment-screen .electronic_status:contains('Payment unresolved')" },
+        PaymentScreen.clickNumpad("9"),
+        PaymentScreen.selectedPaymentlineHas("Revolut", "12.34"),
+        PaymentScreen.clickPaymentlineDelButton("Revolut", "12.34"),
+        { trigger: ".payment-screen .send_payment_request:contains('Check status')" },
+        {
+            content: "Malformed processing evidence retains the unpaid line and known payment reference",
+            trigger: ".payment-screen",
+            run() {
+                const order = window.posmodel.getOrder();
+                const line = order.payment_ids.find((item) => item.payment_method_id.use_payment_terminal === "revolut");
+                if (order.isPaid() || !line || line.amount !== 12.34 || line.isDone() ||
+                    line.transaction_id || line.uiState.revolutSnapshot.state !== "unresolved" ||
+                    !line.uiState.revolutSnapshot.payment_id || line.uiState.revolutSnapshot.retry_safe) {
+                    throw new Error("Malformed payment evidence released a financial guard");
+                }
+            },
+        },
+    ].flat(),
 });
 
 registry.category("web_tour.tours").add("pos_revolut_processing", {

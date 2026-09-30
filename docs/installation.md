@@ -158,6 +158,17 @@ state, reference mismatch, or process crash after dispatch leaves an unresolved
 operation. The affected order and terminal stay blocked, the force-done path is
 guarded, and mutating requests are never automatically replayed.
 
+Version `19.0.1.7.7` keeps observing documented pending, authentication and
+early authorisation payment states within the same 60-second foreground limit.
+Each underlying payment must still match the persisted payment/order references,
+exact integer minor-unit amount and currency. Invalid intent evidence stops the
+current poll, retaining known references for later reconciliation. A partial
+capture leaves the remaining order amount due; only a fully paid unchanged
+order completes automatically. Follow the offline module upgrade procedure
+and reopen POS when this candidate is authorized for release. No configuration
+or credential changes are required. Deployment and live retests remain gated
+by reconciliation of the pending financial operations recorded under ticket 12.
+
 ### Unsuccessful payments and retries
 
 Upgrade the addon to `19.0.1.3.0` before using this flow so Odoo has the
@@ -517,8 +528,10 @@ and environment.
 
 ## Financial cart limits and safe correction
 
-Upgrade `pos_revolut` to `19.0.1.7.7` using the offline upgrade procedure and
-reopen POS. No configuration or credential change is required.
+Upgrade `pos_revolut` to `19.0.1.7.8` using the offline upgrade procedure and
+reopen POS. This combined candidate retains the payment-processing correction
+introduced by `19.0.1.7.7` and adds the financial cart limits below.
+No configuration or credential change is required.
 
 Revolut cart evidence is bounded before numeric expansion and before a charge
 or refund reservation. These server limits apply to starts, return discovery
