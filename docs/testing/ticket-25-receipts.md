@@ -17,6 +17,12 @@ receipt, or remote terminal-print implementation. The original checkout and
 unrelated dirty files were preserved in a separate checkout. No staging change,
 deployment, push, real charge, refund, or provider probe was performed.
 
+At final status inspection, `origin/main` had advanced by eight commits to
+`0c614fd`, including ticket 24's financial snapshot changes. They are not part
+of this branch's reviewed/tested code revision. Before release, integrate the
+branches and rerun the affected receipt, settlement, recovery and return tests;
+these results are not combined ticket 24/25 acceptance evidence.
+
 The staff workflow, upgrade instructions, legacy metadata labels, and manual
 print/email procedure are in [installation guidance](../installation.md#download-payment-and-refund-receipts).
 
