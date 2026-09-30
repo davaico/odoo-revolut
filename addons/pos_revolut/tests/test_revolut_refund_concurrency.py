@@ -70,7 +70,7 @@ class TestRevolutRefundConcurrency(TransactionCase):
                 "secret_reference": method.revolut_secret_reference, "state": "verified",
                 "revolut_order_id": self.provider_order,
                 "revolut_payment_intent_id": str(uuid4()), "revolut_payment_id": payment_reference,
-                "financial_snapshot": env["pos.revolut.payment.operation"].normalize_financial_snapshot(order_values),
+                "financial_snapshot": env["pos.revolut.payment.operation"]._normalize_financial_snapshot(order_values),
             })
             # The production ORM boundary owns the linkage, even in fixtures.
             order = env["pos.order"].create(order_values)

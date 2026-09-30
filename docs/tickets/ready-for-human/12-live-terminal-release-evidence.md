@@ -15,6 +15,7 @@ Controlled real-terminal acceptance establishes whether the documented addon is 
 ## Acceptance criteria
 
 - [x] Confirm the reviewed release includes completed corrections 16–21 and an independent review of the payment-verification boundary. Before live acceptance, record the full integrated mocked suite on the final combined revision: install/upgrade, Restaurant, lifecycle, deployment checks, restart recovery, delivered-artifact acceptance and the new adversarial regressions for tickets 19–21.
+- [ ] Integrate the reviewed ticket 24 snapshot-resource correction and record its bounded Odoo validation, rejection/recovery regressions and independent security fix verification on the final combined candidate. Refresh affected payment/refund, settlement, lifecycle, install/upgrade and Restaurant evidence before release acceptance and closure; preserve earlier dated results as historical evidence.
 - [x] Confirm the deployed revision, target Odoo version, merchant environment, location, eligible terminal and operator-authorized test amounts before financial tests. Use non-production testing where supported; separately obtain explicit authorization for any real-money operation.
 - [ ] Validate successful full payment, split tender and retail/restaurant fulfilment using the confirmed contract. Demonstrate that only verified successful payment completes a fully paid order.
 - [ ] Validate decline/failure/cancellation and interruption/late recovery with provider-supported controlled methods. Verify safe retry and duplicate prevention using actual provider transaction references; never deliberately create uncontrolled duplicate charges.
@@ -35,6 +36,7 @@ Controlled real-terminal acceptance establishes whether the documented addon is 
 - 21 — Keep reconciliation progressing after malformed provider responses
 - 22 — Recover a POS line after a terminal-busy rejection (open live finding; needs triage)
 - 23 — Preserve payment polling through valid processing states (open live finding; needs triage)
+- 24 — Bound financial snapshot processing before numeric expansion (open; ready-for-agent)
 
 ## Release gate update — 2026-09-25
 
@@ -141,3 +143,18 @@ remaining failure/race/interruption subcases, provider discrepancies and final
 observed operating guidance remain incomplete. No addon code is changed by
 this evidence update, and it does not authorize bypassing financial guards or
 upgrading/restarting staging while unresolved refunds remain.
+
+## Snapshot resource-bound release gate — 2026-09-30
+
+The owner approved [ticket 24](../ready-for-agents/24-bound-financial-snapshot-processing.md)
+as an additional blocker for release acceptance and closure. Its local mocked
+validation and implementation can proceed independently of terminal access,
+financial reconciliation and tickets 22–23. Review the combined correction and
+refresh affected automated evidence before closing this release gate.
+
+The report demonstrates bounded numeric amplification in an extracted-method
+harness, and static triage found the behavior in the current code. Neither
+triage nor this ticket update establishes an actual deployed worker outage.
+Preserve that limitation alongside the eventual Odoo regression and fix evidence.
+All existing human acceptance, financial reconciliation and deployment safety
+requirements remain in force.

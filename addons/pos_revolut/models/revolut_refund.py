@@ -11,6 +11,7 @@ from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError, ValidationError
 
 from .return_allocation import ReturnAllocation
+from .financial_snapshot import FinancialSnapshotError
 
 
 _logger = logging.getLogger(__name__)
@@ -161,6 +162,8 @@ class PosPaymentMethod(models.Model):
                         return reservation.existing_status
                     cursor.commit()
                 break
+            except FinancialSnapshotError as error:
+                return self._reject_revolut_snapshot_owned(order_uuid, payment_line_uuid, error)
             except (IntegrityError, SerializationFailure):
                 if attempt == 2:
                     raise UserError(_("Another refund request is in progress. Check status.")) from None
