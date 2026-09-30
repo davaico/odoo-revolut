@@ -34,9 +34,9 @@ Controlled real-terminal acceptance establishes whether the documented addon is 
 - 19 — Enforce verified settlement and internal-operation permissions
 - 20 — Recover POS lines after a failed pre-payment lookup
 - 21 — Keep reconciliation progressing after malformed provider responses
-- 22 — Recover a POS line after a terminal-busy rejection (open live finding; needs triage)
-- 23 — Preserve payment polling through valid processing states (open live finding; needs triage)
-- 24 — Bound financial snapshot processing before numeric expansion (closed locally; reviewed integration and combined-candidate evidence remain required)
+- 22 — Recover a POS line after a terminal-busy rejection (reviewed local fix; live retest open)
+- 23 — Preserve payment polling through valid processing states (reviewed local fix; live retest open)
+- 24 — Bound financial snapshot processing before numeric expansion (closed; final combined release evidence remains required)
 
 ## Release gate update — 2026-09-25
 
@@ -190,5 +190,28 @@ records conflict resolution, refreshed acceptance and preserved live gates.
 Final combined acceptance passed 243 install, 243 upgrade and eight Restaurant
 tests; 71 lifecycle and 29 deployment checks; and two-process restart recovery.
 Independent Standards and Spec reviews have zero remaining source findings.
-PR #28 remains open and unmerged; integration of ticket 24 into the release
-branch and human/financial acceptance are still required.
+PR #28 subsequently merged into main at `1d549c1`; human/financial acceptance
+and final release evidence are still required.
+
+## Refund reconciliation checkpoint — 2026-09-30
+
+The operator reports five separate £0.01 credits received in their Revolut
+account, corresponding in count and amount to the five test refunds. This is
+cardholder-side evidence, not an individual match to the five Merchant refund
+order IDs or an authoritative final Merchant API status.
+
+At 12:48–12:49 UTC, Odoo's Revolut Refunds list still showed all five records
+as **Pending**. An Odoo **Check status** on refund operation `5` returned
+**Pending**, provider state `processing`, and advanced its next reconciliation
+time. Operation `1` also displayed **Pending** / `processing` with a recent
+next reconciliation time. The Odoo status action read the existing refund;
+no new refund was issued. The direct Merchant payloads for this checkpoint
+were not captured. See the [operator observations](../../testing/ticket-12-operator-observations.md)
+for the bounded evidence.
+
+Keep the final-refund criterion and ticket 12 open. Do not mark these refunds
+verified, release their reservations, or lift the staging upgrade gate from the
+customer credits alone. Compare each stored refund order with an authoritative
+Merchant final outcome; investigate the prolonged `processing` state with
+Revolut if it persists. The reviewed ticket 22 and 23 fixes are merged into
+main but remain undeployed; their live retests remain gated.

@@ -107,3 +107,12 @@ intact.
 regressions are defined. Missing early live payload limits root-cause
 attribution and live validation; it does not prevent local diagnosis against
 the documented contract or mocked implementation.
+
+2026-09-30: The operator reports five separate £0.01 Revolut credits for the
+test refunds, but all five Odoo refund operations still show Pending. A fresh
+Odoo status check of refund `5` still reported provider `processing`, and
+refund `1` showed the same stored provider state. These refund observations do
+not establish the early payment-state payload behind this ticket's automatic
+polling defect. The reviewed local correction is merged into main but remains
+undeployed; live validation remains gated on authoritative refund
+reconciliation. See [ticket 12's refund checkpoint](12-live-terminal-release-evidence.md).
