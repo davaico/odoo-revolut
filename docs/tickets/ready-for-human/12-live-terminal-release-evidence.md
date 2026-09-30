@@ -15,6 +15,7 @@ Controlled real-terminal acceptance establishes whether the documented addon is 
 ## Acceptance criteria
 
 - [x] Confirm the reviewed release includes completed corrections 16–21 and an independent review of the payment-verification boundary. Before live acceptance, record the full integrated mocked suite on the final combined revision: install/upgrade, Restaurant, lifecycle, deployment checks, restart recovery, delivered-artifact acceptance and the new adversarial regressions for tickets 19–21.
+- [ ] Integrate the reviewed ticket 24 snapshot-resource correction and record its bounded Odoo validation, rejection/recovery regressions and independent security fix verification on the final combined candidate. Refresh affected payment/refund, settlement, lifecycle, install/upgrade and Restaurant evidence before release acceptance and closure; preserve earlier dated results as historical evidence.
 - [x] Confirm the deployed revision, target Odoo version, merchant environment, location, eligible terminal and operator-authorized test amounts before financial tests. Use non-production testing where supported; separately obtain explicit authorization for any real-money operation.
 - [ ] Validate successful full payment, split tender and retail/restaurant fulfilment using the confirmed contract. Demonstrate that only verified successful payment completes a fully paid order.
 - [ ] Validate decline/failure/cancellation and interruption/late recovery with provider-supported controlled methods. Verify safe retry and duplicate prevention using actual provider transaction references; never deliberately create uncontrolled duplicate charges.
@@ -33,8 +34,9 @@ Controlled real-terminal acceptance establishes whether the documented addon is 
 - 19 — Enforce verified settlement and internal-operation permissions
 - 20 — Recover POS lines after a failed pre-payment lookup
 - 21 — Keep reconciliation progressing after malformed provider responses
-- 22 — Recover a POS line after a terminal-busy rejection (open live finding; needs triage)
-- 23 — Preserve payment polling through valid processing states (open live finding; needs triage)
+- 22 — Recover a POS line after a terminal-busy rejection (reviewed local fix; live retest open)
+- 23 — Preserve payment polling through valid processing states (reviewed local fix; live retest open)
+- 24 — Bound financial snapshot processing before numeric expansion (closed; final combined release evidence remains required)
 
 ## Release gate update — 2026-09-25
 
@@ -129,8 +131,8 @@ allocations, selected cancellation/retry/reload paths, refund caps and locks,
 and both browser terminal guards have passing subcases. Initial automatic
 status handling failed on four later operations, and an independent browser
 remained stuck after a definitive busy-terminal rejection. Reports
-[22](../ready-for-agents/22-recover-terminal-busy-rejection.md) and
-[23](../ready-for-agents/23-preserve-polling-through-payment-processing.md) preserve
+[22](../ready-for-human/22-recover-terminal-busy-rejection.md) and
+[23](../ready-for-human/23-preserve-polling-through-payment-processing.md) preserve
 these release findings and their mocked characterizations without claiming a
 fix or deployment. They are ready for local work; reviewed fixes/retests are
 required before closure. Read-only reconciliation of the pending refunds can
@@ -141,3 +143,75 @@ remaining failure/race/interruption subcases, provider discrepancies and final
 observed operating guidance remain incomplete. No addon code is changed by
 this evidence update, and it does not authorize bypassing financial guards or
 upgrading/restarting staging while unresolved refunds remain.
+
+## Snapshot resource-bound release gate — 2026-09-30
+
+The owner approved [ticket 24](../closed/24-bound-financial-snapshot-processing.md)
+as an additional blocker for release acceptance and closure. Its local mocked
+validation and implementation can proceed independently of terminal access,
+financial reconciliation and tickets 22–23. Review the combined correction and
+refresh affected automated evidence before closing this release gate.
+
+The report demonstrates bounded numeric amplification in an extracted-method
+harness, and static triage found the behavior in the current code. Neither
+triage nor this ticket update establishes an actual deployed worker outage.
+Preserve that limitation alongside the eventual Odoo regression and fix evidence.
+All existing human acceptance, financial reconciliation and deployment safety
+requirements remain in force.
+
+## Local snapshot correction verified — 2026-09-30
+
+Ticket 24 is closed on `codex/24-bound-financial-snapshot-processing`, with
+implementation `604962a41d74552a497f661baa66b45c8db72113`, addon `19.0.1.7.7`.
+The [bounded reproduction and independent verification](../../testing/ticket-24-financial-snapshot-bounds.md)
+record authenticated cashier/helper dispatcher evidence, shared resource limits,
+zero-dispatch rejection and native payment/refund correction/recovery. Final
+mocked acceptance passed 234 install, 234 upgrade and eight Restaurant tests;
+65 lifecycle and 29 deployment tests; and recovery across two Odoo processes.
+Standards and Spec reviews have zero remaining findings; independent security
+fix verification reports `fixed` for the reproduced resource boundary.
+
+This branch includes ticket 22's local correction from reviewed main; ticket 23
+is a separate branch. Integrate and review the combined correction, refresh the
+affected final-candidate evidence and complete existing financial/human gates
+before release acceptance. The integration criterion above remains unchecked.
+No staging change, real Merchant request, physical-terminal test or deployed
+worker-exhaustion experiment occurred in ticket 24 work. Prior dated live and
+automated evidence remains historical evidence.
+
+## Combined branch update after ticket 23 entered main — 2026-09-30
+
+Ticket 23's reviewed local fix is now in main `fbab631`, through PR #29.
+Ticket 24's PR #28 incorporates that main in executable candidate `d64e962`,
+addon `19.0.1.7.8`, retaining both corrections and their tests. The earlier
+separate-branch statement describes the preceding checkpoint.
+The [combined verification](../../testing/ticket-24-financial-snapshot-bounds.md#combined-candidate-after-ticket-23-integration--2026-09-30)
+records conflict resolution, refreshed acceptance and preserved live gates.
+Final combined acceptance passed 243 install, 243 upgrade and eight Restaurant
+tests; 71 lifecycle and 29 deployment checks; and two-process restart recovery.
+Independent Standards and Spec reviews have zero remaining source findings.
+PR #28 subsequently merged into main at `1d549c1`; human/financial acceptance
+and final release evidence are still required.
+
+## Refund reconciliation checkpoint — 2026-09-30
+
+The operator reports five separate £0.01 credits received in their Revolut
+account, corresponding in count and amount to the five test refunds. This is
+cardholder-side evidence, not an individual match to the five Merchant refund
+order IDs or an authoritative final Merchant API status.
+
+At 12:48–12:49 UTC, Odoo's Revolut Refunds list still showed all five records
+as **Pending**. An Odoo **Check status** on refund operation `5` returned
+**Pending**, provider state `processing`, and advanced its next reconciliation
+time. Operation `1` also displayed **Pending** / `processing` with a recent
+next reconciliation time. The Odoo status action read the existing refund;
+no new refund was issued. The direct Merchant payloads for this checkpoint
+were not captured. See the [operator observations](../../testing/ticket-12-operator-observations.md)
+for the bounded evidence.
+
+Keep the final-refund criterion and ticket 12 open. Do not mark these refunds
+verified, release their reservations, or lift the staging upgrade gate from the
+customer credits alone. Compare each stored refund order with an authoritative
+Merchant final outcome; investigate the prolonged `processing` state with
+Revolut if it persists. The reviewed ticket 22 and 23 fixes are merged into
+main but remain undeployed; their live retests remain gated.
