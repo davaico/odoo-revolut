@@ -36,7 +36,7 @@ Controlled real-terminal acceptance establishes whether the documented addon is 
 - 21 — Keep reconciliation progressing after malformed provider responses
 - 22 — Recover a POS line after a terminal-busy rejection (open live finding; needs triage)
 - 23 — Preserve payment polling through valid processing states (open live finding; needs triage)
-- 24 — Bound financial snapshot processing before numeric expansion (open; ready-for-agent)
+- 24 — Bound financial snapshot processing before numeric expansion (closed locally; reviewed integration and combined-candidate evidence remain required)
 
 ## Release gate update — 2026-09-25
 
@@ -146,7 +146,7 @@ upgrading/restarting staging while unresolved refunds remain.
 
 ## Snapshot resource-bound release gate — 2026-09-30
 
-The owner approved [ticket 24](../ready-for-agents/24-bound-financial-snapshot-processing.md)
+The owner approved [ticket 24](../closed/24-bound-financial-snapshot-processing.md)
 as an additional blocker for release acceptance and closure. Its local mocked
 validation and implementation can proceed independently of terminal access,
 financial reconciliation and tickets 22–23. Review the combined correction and
@@ -158,3 +158,23 @@ triage nor this ticket update establishes an actual deployed worker outage.
 Preserve that limitation alongside the eventual Odoo regression and fix evidence.
 All existing human acceptance, financial reconciliation and deployment safety
 requirements remain in force.
+
+## Local snapshot correction verified — 2026-09-30
+
+Ticket 24 is closed on `codex/24-bound-financial-snapshot-processing`, with
+implementation `604962a41d74552a497f661baa66b45c8db72113`, addon `19.0.1.7.7`.
+The [bounded reproduction and independent verification](../../testing/ticket-24-financial-snapshot-bounds.md)
+record authenticated cashier/helper dispatcher evidence, shared resource limits,
+zero-dispatch rejection and native payment/refund correction/recovery. Final
+mocked acceptance passed 234 install, 234 upgrade and eight Restaurant tests;
+65 lifecycle and 29 deployment tests; and recovery across two Odoo processes.
+Standards and Spec reviews have zero remaining findings; independent security
+fix verification reports `fixed` for the reproduced resource boundary.
+
+This branch includes ticket 22's local correction from reviewed main; ticket 23
+is a separate branch. Integrate and review the combined correction, refresh the
+affected final-candidate evidence and complete existing financial/human gates
+before release acceptance. The integration criterion above remains unchecked.
+No staging change, real Merchant request, physical-terminal test or deployed
+worker-exhaustion experiment occurred in ticket 24 work. Prior dated live and
+automated evidence remains historical evidence.

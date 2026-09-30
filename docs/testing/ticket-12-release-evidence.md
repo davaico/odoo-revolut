@@ -264,3 +264,29 @@ the Sandbox simulator issue for required non-production acceptance; and final
 guidance based on physical-terminal observations. Pending refunds block a live
 addon upgrade/restart. These findings require reviewed fixes and affected
 retests; documenting a narrow guard pass does not close the full scenario.
+
+## Local snapshot-resource candidate — 2026-09-30
+
+The locally reviewed ticket 24 implementation is
+`604962a41d74552a497f661baa66b45c8db72113` on
+`codex/24-bound-financial-snapshot-processing`, addon `19.0.1.7.7`.
+Its [evidence record](ticket-24-financial-snapshot-bounds.md) demonstrates capped
+authenticated Odoo input amplification before the fix, authenticated helper
+dispatch, shared bounds before expansion/retention, strict start validation,
+safe native rejection/recovery and preserved literal payment/refund comparisons.
+
+| Final local check | Result |
+| --- | --- |
+| Pinned mocked fresh install / upgrade / Restaurant | 234 / 234 / 8 tests; zero failures/errors; runner exit 0 |
+| Affected public payment/refund/settlement/mutation and native checkout | 154 tests; zero failures/errors |
+| POS lifecycle / deployment unit checks | 65 / 29 tests passed |
+| Persisted payment/refund restart recovery | Two processes; `RESTART_RECOVERY_OK`; exit 0 |
+| Independent Standards / Spec / security fix verification | 0 / 0 findings; reproduced resource boundary `fixed` |
+
+This is local branch evidence, awaiting integration and combined-candidate
+release verification. It includes ticket 22's local source correction from
+reviewed main; ticket 23 remains separate. The earlier candidate/artifact/live
+results above retain their original dates and identities. No staging deployment,
+real financial operation or worker-outage experiment accompanied these tests.
+All outstanding reconciliation, human acceptance and final deployment gates
+remain open in ticket 12.
