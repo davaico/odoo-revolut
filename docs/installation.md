@@ -396,6 +396,52 @@ be safely associated through the worklist. Keep them blocked and escalate for
 provider-backed investigation. Do not enter credentials, card data or raw API
 responses as evidence; the audit stores only reference UUIDs.
 
+## Download payment and refund receipts
+
+Upgrade `pos_revolut` to `19.0.1.8.0` using the offline procedure above, then
+reload POS to load the receipt controls. This adds reports and optional merchant
+identity snapshots to existing operation records. No credential rotation,
+customer record, accounting invoice, new Python dependency or terminal setting
+is required.
+
+At checkout, use **Revolut receipts** on the receipt screen. For an older sale,
+open **Orders** in POS, select **Paid**, find and select the sale, then use
+**Revolut receipts**. The original session may already be closed. Select the
+payment or refund document when more than one is available. Each Revolut tender
+has its own payment receipt; its amount does not represent other tenders or
+assert that the entire sale is paid. Refund receipts are separate documents,
+including each partial refund. The original payment remains available after a
+refund.
+
+In administration, open **Point of Sale > Orders > Orders**, select the sale
+and open the **Revolut receipts** tab. Follow the individual payment or refund
+download link. The original sale lists its refunds too; the return order also
+lists its own refund documents. Existing sale access and the companies active
+in the company selector apply to every download. Cashiers can view permitted
+documents without receiving permission to issue refunds or alter evidence.
+
+Open the downloaded PDF in an ordinary PDF viewer to print it, or attach it to
+an email manually. The document is clearly labelled as an **Odoo-generated**
+receipt. It is distinct from Revolut's original terminal document and Odoo's
+itemized sales receipt. There is no automatic email, public sharing link,
+accounting document creation or remote terminal printer command.
+
+The timestamp labelled **Verified in Odoo at** records local verification,
+not the provider transaction time. A separate generation time identifies this
+download. When old records lack a merchant snapshot, the document labels the
+available identity as **Current merchant identity**; it does not reconstruct
+historical merchant details. Missing optional card or provider date fields
+are omitted. Receipt viewing does not fetch them from Revolut or modify the
+saved payment evidence.
+
+Only verified successful payments and completed refunds qualify. Pending,
+declined, failed, cancelled and uncertain attempts cannot produce completion
+documents. If required evidence is missing or inconsistent, contact a POS
+manager with the sale reference. If PDF generation fails, retry the download
+or ask the administrator to check Odoo's report service. Downloads work from
+stored evidence without terminal connectivity and never create another charge
+or refund. Cancelling a print or a printer failure has no effect on the payment.
+
 ## Disposable verification environment
 
 The root `compose.yaml` pins the official Odoo image containing package
