@@ -286,10 +286,8 @@ class PosRevolutPaymentOperation(models.Model):
                 kind = "unknown"
             else:
                 state = intent.get("state")
-                if (state in {"cancelled", "failed"}
-                        and not intent.get("payment_id")
-                        and self.revolut_payment_id):
-                    return self.operation_snapshot(self)
+                # A final intent without a payment reference cannot refute a
+                # known underlying payment; keep observing that payment.
                 payment_id = intent.get("payment_id") or self.revolut_payment_id
                 if payment_id and (not isinstance(payment_id, str) or not payment_id):
                     kind = "unknown"
@@ -322,8 +320,12 @@ class PosRevolutPaymentOperation(models.Model):
                               "verified_at": fields.Datetime.now()}
                 elif state in {"declined", "failed", "cancelled"}:
                     values = {"state": state, "provider_state": state}
-                elif state in {"authorised", "capture_started", "declining",
-                               "cancelling", "failing"}:
+                elif state in {"pending", "authentication_challenge",
+                               "authentication_verified", "authorisation_started",
+                               "authorisation_passed", "authorised", "capture_started",
+                               "declining", "cancelling", "failing"}:
+                    # Documented non-final payment states only extend observation;
+                    # matching identity, integer amount and currency above remain required.
                     values = {"state": "pending", "provider_state": state}
                 else:
                     kind = "unknown"
