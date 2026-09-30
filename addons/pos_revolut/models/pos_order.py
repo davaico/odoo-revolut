@@ -406,7 +406,7 @@ class PosOrder(models.Model):
         ):
             raise UserError(_("A Revolut charge cannot settle a refund document."))
         verified = operation_model.browse()
-        current_snapshot = operation_model._normalize_financial_snapshot(order)
+        current_snapshot = operation_model._normalize_financial_snapshot(order, native_order=True)
         for operation in latest:
             if operation.retry_safe and operation.state != "verified":
                 continue
