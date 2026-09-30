@@ -56,7 +56,7 @@ class TestRevolutReceipt(CommonPosTest):
         self.source = self._operation(
             payload["uuid"], payload["payment_ids"][0][2]["uuid"],
             provider_state="captured", verified_at=self.event_time,
-            financial_snapshot=self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload),
+            financial_snapshot=self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload),
         )
         payload["payment_ids"][0][2]["transaction_id"] = self.source.revolut_payment_id
         self.env["pos.order"].sync_from_ui([payload])
@@ -85,7 +85,7 @@ class TestRevolutReceipt(CommonPosTest):
                     price_subtotal_incl=-amount, refunded_orderline_id=self.original.lines.id)
         reference = str(uuid4())
         payload["payment_ids"][0][2].update(amount=-amount, transaction_id=reference)
-        snapshot = self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(payload)
+        snapshot = self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload)
         snapshot["lines"][0]["refunded_orderline_id"] = self.original.lines.id
         refund = self.env["pos.revolut.refund.operation"].sudo().create({
             "original_operation_id": self.source.id, "pos_session_id": self.session.id,
