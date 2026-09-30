@@ -6,6 +6,8 @@ from decimal import Decimal
 from odoo import _
 from odoo.exceptions import AccessError, UserError
 
+from .financial_snapshot import MAX_LINES, check_line_count, check_line_count_size, snapshot_id
+
 
 @dataclass(frozen=True)
 class ReservationClaim:
@@ -19,15 +21,12 @@ class ReturnAllocation:
     def __init__(self, env):
         self.env = env
 
-    def _normalize_return(self, data):
-        snapshot = self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(data)
+    def _normalize_return(self, data, *, native_order=False):
+        snapshot = self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(
+            data, native_order=native_order
+        )
         try:
-            originals = {}
-            for raw in data["lines"]:
-                line = raw[2] if isinstance(raw, (tuple, list)) else raw
-                originals[line["uuid"]] = int(line["refunded_orderline_id"])
             for line in snapshot["lines"]:
-                line["refunded_orderline_id"] = originals[line["uuid"]]
                 if not line["refunded_orderline_id"] or Decimal(line["qty"]) >= 0:
                     raise ValueError()
         except (KeyError, ValueError, TypeError):
@@ -255,28 +254,80 @@ class ReturnAllocation:
             verified_before_claim=verified_before_claim,
         )
 
+    def _has_revolut_original(self, original_ids):
+        originals = self.env["pos.order.line"].sudo().browse(original_ids).exists()
+        return any(
+            payment.payment_method_id.use_payment_terminal == "revolut" or payment.revolut_operation_id
+            for payment in originals.order_id.payment_ids
+        )
+
+    def _discover_revolut_return(self, order, existing_order):
+        # Unknown cash carts still require native relationship classification.
+        # Bound each metadata batch and ID lookup without imposing financial
+        # snapshot limits on unrelated cash sales/returns. No decimal is parsed.
+        lines = order.get("lines", [])
+        if not isinstance(lines, list):
+            check_line_count(lines)
+        for start in range(0, len(lines), MAX_LINES):
+            batch = lines[start:start + MAX_LINES]
+            check_line_count(batch)
+            original_ids = []
+            for raw in batch:
+                line = raw[2] if isinstance(raw, (tuple, list)) and len(raw) > 2 else raw
+                if isinstance(line, dict) and line.get("refunded_orderline_id"):
+                    original_ids.append(snapshot_id(line["refunded_orderline_id"]))
+            if original_ids and self._has_revolut_original(original_ids):
+                check_line_count(lines)
+                return True
+        if existing_order:
+            for start in range(0, len(existing_order.lines), MAX_LINES):
+                original_ids = existing_order.lines[start:start + MAX_LINES].refunded_orderline_id.ids
+                if original_ids and self._has_revolut_original(original_ids):
+                    check_line_count(lines)
+                    check_line_count_size(len(existing_order.lines))
+                    return True
+        return False
+
+    def preflight_order_lines(self, order):
+        """Guard oversized financial carts before native POS return discovery."""
+        lines = order.get("lines", [])
+        if not isinstance(lines, list):
+            check_line_count(lines)
+        if len(lines) <= MAX_LINES:
+            return
+        domain = [("company_id", "in", self.env.companies.ids), ("order_uuid", "=", order.get("uuid"))]
+        if any(self.env[model].sudo().search_count(domain) for model in (
+            "pos.revolut.payment.operation", "pos.revolut.refund.operation",
+        )):
+            check_line_count(lines)
+        for command in order.get("payment_ids", []):
+            if len(command) >= 3 and isinstance(command[2], dict):
+                method_id = command[2].get("payment_method_id")
+                if method_id and self.env["pos.payment.method"].browse(method_id).use_payment_terminal == "revolut":
+                    check_line_count(lines)
+        self._discover_revolut_return(order, None)
+
     def validate_settlement(self, order, existing_order, payments):
         session = self.env["pos.session"].browse(order["session_id"]).exists()
         if not session:
             raise UserError(_("The Point of Sale session does not exist."))
         order_uuid = order.get("uuid") or (existing_order and existing_order.uuid)
-        self.env["pos.revolut.payment.operation"].sudo()._lock_order(session.company_id.id, order_uuid)
+        charges = self.env["pos.revolut.payment.operation"].sudo()
+        charges._lock_order(session.company_id.id, order_uuid)
         refunds = self.env["pos.revolut.refund.operation"].sudo().search([
             ("company_id", "=", session.company_id.id), ("order_uuid", "=", order_uuid),
         ])
-        # Find original return relationships even before a Revolut operation
-        # exists, so selecting cash cannot bypass the verified-refund boundary.
-        original_ids = []
-        for raw in order.get("lines", []):
-            line = raw[2] if isinstance(raw, (tuple, list)) and len(raw) > 2 else raw
-            if isinstance(line, dict) and line.get("refunded_orderline_id"):
-                original_ids.append(line["refunded_orderline_id"])
-        if existing_order:
-            original_ids += existing_order.lines.refunded_orderline_id.ids
-        original_lines = self.env["pos.order.line"].sudo().browse(original_ids).exists()
-        source_revolut = original_lines.order_id.payment_ids.filtered(
-            lambda payment: payment.payment_method_id.use_payment_terminal == "revolut" or payment.revolut_operation_id
+        revolut_tender = any(
+            self.env["pos.payment.method"].browse(value.get("payment_method_id")).use_payment_terminal == "revolut"
+            for value in payments.values()
         )
+        if refunds or revolut_tender or charges.search_count([
+            ("company_id", "=", session.company_id.id), ("order_uuid", "=", order_uuid),
+        ]):
+            check_line_count(order.get("lines", []))
+        # A return may omit its refund flag or use cash: neither can exempt a
+        # relationship to an original Revolut sale from allocation checks.
+        source_revolut = self._discover_revolut_return(order, existing_order)
         references = [value.get("transaction_id") for value in payments.values() if value.get("transaction_id")]
         copied = self.env["pos.revolut.refund.operation"].sudo().search([
             "|", ("payment_line_uuid", "in", list(payments)), ("revolut_order_id", "in", references),
@@ -292,6 +343,7 @@ class ReturnAllocation:
         )
         if not refunds and not source_revolut and not negative_revolut:
             return None
+        check_line_count(order.get("lines", []))
         if order.get("state") in {"draft", "cancel"} and not refunds and not any(
             payment.get("payment_status") == "done"
             and self.env["pos.payment.method"].browse(payment.get("payment_method_id")).use_payment_terminal == "revolut"
@@ -304,11 +356,11 @@ class ReturnAllocation:
         if refunds:
             self.env.cr.execute("SELECT id FROM pos_revolut_refund_operation WHERE id = ANY(%s) ORDER BY id FOR UPDATE", [refunds.ids])
             refunds.invalidate_recordset()
+        snapshot = self._normalize_return(order, native_order=True)
         normalize = self.env["pos.revolut.payment.operation"].normalize_amount
         total_minor = normalize(session.currency_id, order.get("amount_total"))[1]
         if total_minor >= 0:
             raise UserError(_("A Revolut-linked return must have a negative total."))
-        snapshot = self._normalize_return(order)
         original = self._return_original(snapshot, session)
         # Cash-only returns of a mixed-tender sale use the same original-sale lock.
         self._lock_original_return(snapshot, original, order_uuid)

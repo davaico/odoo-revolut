@@ -57,7 +57,7 @@ class TestRevolutRefund(CommonPosTest):
         original = self._order_payload(str(uuid4()), str(uuid4()))
         self.source = self._operation(
             original["uuid"], original["payment_ids"][0][2]["uuid"],
-            financial_snapshot=self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(original),
+            financial_snapshot=self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(original),
         )
         original["payment_ids"][0][2]["transaction_id"] = self.source.revolut_payment_id
         self.env["pos.order"].sync_from_ui([original])
@@ -91,6 +91,281 @@ class TestRevolutRefund(CommonPosTest):
         return call_kw(self.env[model].with_user(user), method, args, {
             "context": {"allowed_company_ids": [self.company.id]},
         })
+
+    def _rpc_start_refund(self, manager, payload=None):
+        payload = payload or self.payload
+        payment = payload["payment_ids"][0][2]
+        return self._rpc_refund(manager, "pos.payment.method", "revolut_start_refund", [
+            [self.revolut_method.id], self.session.id, payload["uuid"],
+            payment["uuid"], payment["amount"], self.session.currency_id.id, payload,
+        ])
+
+    def _rpc_refund_sources(self, manager, payload=None):
+        return self._rpc_refund(manager, "pos.payment.method", "revolut_refund_sources", [
+            [self.revolut_method.id], self.session.id, self.session.currency_id.id,
+            payload or self.payload,
+        ])
+
+    def test_oversized_cash_return_discovers_originals_in_bounded_batches(self):
+        class NoWholeTraversal(list):
+            def __iter__(self):
+                raise AssertionError("Unbounded return relationship traversal")
+
+            def __getitem__(self, key):
+                if isinstance(key, slice):
+                    assert key.stop - key.start <= 1000, "Unbounded discovery batch"
+                return super().__getitem__(key)
+
+        cash_sale = self._order_payload(str(uuid4()), str(uuid4()), payment_method=self.cash_payment_method)
+        saved = self.env["pos.order"].sync_from_ui([cash_sale])
+        cash_original = self.env["pos.order"].browse(saved["pos.order"][0]["id"])
+        for financial_first in (True, False):
+            with self.subTest(financial_first=financial_first):
+                payload = deepcopy(self.payload)
+                payload["uuid"] = str(uuid4())
+                payload["payment_ids"][0][2].update(
+                    payment_method_id=self.cash_payment_method.id, payment_status="done", transaction_id=False,
+                )
+                financial = payload["lines"][0]
+                cash = deepcopy(financial)
+                cash[2]["refunded_orderline_id"] = cash_original.lines.id
+                contents = [financial] + [cash] * 1000 if financial_first else [cash] * 1000 + [financial]
+                payload["lines"] = NoWholeTraversal(contents)
+                with TestCase.assertRaisesRegex(self, UserError, "at most 1,000 lines"):
+                    self._rpc_refund(self._mutation_actor(), "pos.order", "sync_from_ui", [[payload]])
+                self.assertFalse(self.env["pos.order"].search_count([("uuid", "=", payload["uuid"])]))
+                self.assertFalse(self.env["pos.revolut.refund.operation"].sudo().search_count([
+                    ("order_uuid", "=", payload["uuid"]),
+                ]))
+                self.request.assert_not_called()
+
+    def test_public_invalid_refund_snapshot_leaves_no_reservation(self):
+        manager = self._mutation_actor()
+        valid = deepcopy(self.payload)
+        cases = (
+            ("qty", "-1e1000"), ("qty", "-1e-1000"),
+            ("price_unit", "9" * 65),
+            ("price_unit", "0.12345678901234567890123456789"),
+            ("discount", "NaN"), ("discount", "12x"),
+            ("amount_total", "-1e1000"), ("lines", None),
+        )
+        for field, value in cases:
+            with self.subTest(field=field, value=value):
+                payload = deepcopy(valid)
+                if field == "lines":
+                    # A capped list proves the public routes apply the same
+                    # cheap count check before return/source traversal.
+                    payload["lines"] = payload["lines"] * 1001
+                elif field == "amount_total":
+                    payload[field] = value
+                else:
+                    payload["lines"][0][2][field] = value
+                with TestCase.assertRaisesRegex(self, UserError, "Revolut cart"):
+                    self._rpc_refund_sources(manager, payload)
+                rejected = self._rpc_start_refund(manager, payload)
+                self.assertEqual(rejected["start_rejected"], "snapshot_invalid")
+                self.assertIs(rejected["dispatched"], False)
+                self.assertEqual(rejected["order_uuid"], payload["uuid"])
+                self.assertEqual(rejected["payment_line_uuid"], payload["payment_ids"][0][2]["uuid"])
+                self.assertFalse(rejected["previous_operation_id"])
+                self.assertNotIn("operation_id", rejected)
+                self.assertIn("Correct the cart", rejected["message"])
+                for model in ("pos.revolut.payment.operation", "pos.revolut.refund.operation",
+                              "pos.revolut.order.lock"):
+                    self.assertFalse(self.env[model].sudo().search_count([
+                        ("company_id", "=", self.company.id), ("order_uuid", "=", payload["uuid"]),
+                    ]))
+                self.assertFalse(self.env["pos.order"].search_count([("uuid", "=", payload["uuid"])]))
+                found = self._rpc_refund(manager, "pos.payment.method", "revolut_find_refund", [
+                    [self.revolut_method.id], payload["uuid"], payload["payment_ids"][0][2]["uuid"],
+                ])
+                self.assertFalse(found)
+                self.request.assert_not_called()
+        self.assertEqual(self._rpc_refund_sources(manager, valid)[0]["remaining_minor"], 1234)
+        self.request.assert_not_called()
+
+    def test_public_refund_snapshot_correction_completes_same_line(self):
+        manager = self._mutation_actor()
+        self.payload.update(amount_total=-6.17, amount_paid=-6.17)
+        line = self.payload["lines"][0][2]
+        line.update(qty=-0.5, price_subtotal=-6.17, price_subtotal_incl=-6.17)
+        self.payload["payment_ids"][0][2]["amount"] = -6.17
+        corrected = deepcopy(self.payload)
+        line["qty"] = "-1e1000"
+        rejected = self._rpc_start_refund(manager)
+        self.assertEqual(rejected["start_rejected"], "snapshot_invalid")
+        self.request.assert_not_called()
+
+        self.payload = corrected
+        self.assertEqual(self._rpc_refund_sources(manager)[0]["remaining_minor"], 1234)
+        self.request.side_effect = [
+            self._response(id=self.source.revolut_order_id, state="completed", amount=1234,
+                           currency=self.session.currency_id.name, refunded_amount=0),
+            self._refund_response(amount=617), self._refund_response("completed", amount=617),
+        ]
+        started = self._rpc_start_refund(manager)
+        self.assertEqual(started["state"], "pending")
+        verified = self._rpc_refund(manager, "pos.payment.method", "revolut_poll_refund", [
+            [self.revolut_method.id], started["operation_id"], self.payload["uuid"],
+            self.payload["payment_ids"][0][2]["uuid"],
+        ])
+        self.assertEqual(verified["state"], "verified")
+        self.payload.update(user_id=manager.id)
+        self.payload["payment_ids"][0][2].update(payment_status="done", transaction_id=self.refund_id)
+        saved = self._rpc_refund(manager, "pos.order", "sync_from_ui", [[self.payload]])
+        order = self.env["pos.order"].browse(next(
+            item["id"] for item in saved["pos.order"] if item["uuid"] == self.payload["uuid"]
+        ))
+        refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(order.lines.qty, -0.5)
+        self.assertEqual(refund.pos_order_id, order)
+        self.assertEqual(refund.pos_payment_id.revolut_refund_operation_id, refund)
+        self.assertEqual(self._rpc_refund_sources(manager)[0]["remaining_minor"], 617)
+        self.assertEqual([call.args[0] for call in self.request.call_args_list], ["GET", "POST", "GET"])
+
+    def test_public_invalid_snapshot_preserves_uncertain_refund(self):
+        manager = self._mutation_actor()
+        self.request.side_effect = [
+            self._response(id=self.source.revolut_order_id, state="completed", amount=1234,
+                           currency=self.session.currency_id.name, refunded_amount=0),
+            requests.Timeout(),
+        ]
+        started = self._rpc_start_refund(manager)
+        self.assertEqual(started["state"], "unresolved")
+        self.assertFalse(started["order_id"])
+        refund = self.env["pos.revolut.refund.operation"].sudo().browse(started["operation_id"])
+        evidence_fields = ["state", "original_operation_id", "order_uuid", "payment_line_uuid",
+                           "financial_snapshot", "idempotency_key", "amount_minor", "return_total_minor",
+                           "revolut_order_id", "dispatched_at", "local_outcome"]
+        evidence = deepcopy(refund.read(evidence_fields)[0])
+        valid = deepcopy(self.payload)
+        self.payload["lines"][0][2]["qty"] = "-1e1000"
+        self.request.reset_mock()
+        with TestCase.assertRaisesRegex(self, UserError, "Revolut cart"):
+            self._rpc_start_refund(manager)
+        with TestCase.assertRaisesRegex(self, UserError, "Revolut cart"):
+            self._rpc_refund_sources(manager)
+        refund.invalidate_recordset()
+        self.assertEqual(refund.read(evidence_fields)[0], evidence)
+        self.assertTrue(refund.deployment_blocking)
+        found = self._rpc_refund(manager, "pos.payment.method", "revolut_find_refund", [
+            [self.revolut_method.id], valid["uuid"], valid["payment_ids"][0][2]["uuid"],
+        ])
+        self.assertEqual(found, started)
+        self.assertFalse(found["retry_safe"])
+        self.assertEqual(self._rpc_start_refund(manager, valid), started)
+        self.assertEqual(self._rpc_refund_sources(manager, valid)[0]["remaining_minor"], 0)
+        replacement = deepcopy(valid)
+        replacement["uuid"] = str(uuid4())
+        replacement["payment_ids"][0][2]["uuid"] = str(uuid4())
+        with TestCase.assertRaises(self, UserError):
+            self._rpc_start_refund(manager, replacement)
+        self.assertEqual(self.env["pos.revolut.refund.operation"].search_count([
+            ("original_operation_id", "=", self.source.id),
+        ]), 1)
+        self.request.assert_not_called()
+
+        candidate = self._refund_response("completed").json()
+        candidate["merchant_order_data"] = {"reference": evidence["idempotency_key"]}
+        self.request.side_effect = [self._response(orders=[candidate]), self._refund_response("completed")]
+        verified = self._rpc_refund(manager, "pos.payment.method", "revolut_poll_refund", [
+            [self.revolut_method.id], started["operation_id"], valid["uuid"],
+            valid["payment_ids"][0][2]["uuid"],
+        ])
+        self.assertEqual(verified["state"], "verified")
+        self.assertEqual(verified["order_id"], self.refund_id)
+        self.assertEqual([call.args[0] for call in self.request.call_args_list], ["GET", "GET"])
+        refund.invalidate_recordset()
+        self.assertEqual(refund.financial_snapshot, evidence["financial_snapshot"])
+        self.assertEqual(refund.idempotency_key, evidence["idempotency_key"])
+
+    def test_public_invalid_snapshot_cannot_settle_verified_refund(self):
+        manager = self._mutation_actor()
+        started = self._pending()
+        self.request.side_effect = [self._refund_response("completed")]
+        self.assertEqual(self._poll(started)["state"], "verified")
+        refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
+        refund.invalidate_recordset()
+        snapshot = deepcopy(refund.financial_snapshot)
+        key = refund.idempotency_key
+        self.payload.update(user_id=manager.id)
+        self.payload["payment_ids"][0][2].update(payment_status="done", transaction_id=self.refund_id)
+        self.payload["lines"][0][2]["price_unit"] = "1e-1000"
+        self.request.reset_mock()
+
+        with TestCase.assertRaisesRegex(self, UserError, "Revolut cart"):
+            self._rpc_refund(manager, "pos.order", "sync_from_ui", [[self.payload]])
+        self.assertFalse(self.env["pos.order"].search_count([("uuid", "=", self.payload["uuid"])]))
+        refund.invalidate_recordset()
+        self.assertEqual(refund.state, "verified")
+        self.assertEqual(refund.revolut_order_id, self.refund_id)
+        self.assertEqual(refund.financial_snapshot, snapshot)
+        self.assertEqual(refund.idempotency_key, key)
+        self.assertFalse(refund.pos_order_id)
+        self.assertFalse(refund.pos_payment_id)
+        self.request.assert_not_called()
+
+    def test_native_zero_discount_settles_verified_refund(self):
+        manager = self._mutation_actor()
+        started = self._pending()
+        self.request.side_effect = [self._refund_response("completed")]
+        self.assertEqual(self._poll(started)["state"], "verified")
+        refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
+        snapshot = deepcopy(refund.financial_snapshot)
+        self.payload.update(user_id=manager.id)
+        self.payload["payment_ids"][0][2].update(payment_status="done", transaction_id=self.refund_id)
+        self.payload["lines"][0][2]["discount"] = False
+        self.request.reset_mock()
+
+        saved = self._rpc_refund(manager, "pos.order", "sync_from_ui", [[self.payload]])
+        order = self.env["pos.order"].browse(next(
+            item["id"] for item in saved["pos.order"] if item["uuid"] == self.payload["uuid"]
+        ))
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(order.lines.discount, 0)
+        self.assertEqual(refund.pos_order_id, order)
+        self.assertEqual(order.payment_ids.revolut_refund_operation_id, refund)
+        self.assertEqual(refund.financial_snapshot, snapshot)
+        self.request.assert_not_called()
+
+    def test_persisted_refund_snapshot_remains_settleable(self):
+        manager = self._mutation_actor()
+        self.payload.update(amount_total=-6.17, amount_paid=-6.17, user_id=manager.id)
+        line = self.payload["lines"][0][2]
+        line.update(qty="-5e-1", price_unit="1.234e1", discount="0e1",
+                    price_subtotal=-6.17, price_subtotal_incl=-6.17)
+        self.payload["payment_ids"][0][2].update(
+            amount=-6.17, payment_status="done", transaction_id=self.refund_id,
+        )
+        # Literal output of the pre-upgrade return normalizer: the assertion
+        # must not regenerate its expected evidence with the new helper.
+        persisted = {
+            "pricelist_id": self.payload["pricelist_id"], "fiscal_position_id": 0,
+            "lines": [{
+                "uuid": line["uuid"], "product_id": self.product.id,
+                "qty": "-0.5", "price_unit": "12.34", "discount": "0", "tax_ids": [],
+                "refunded_orderline_id": self.original.lines.id,
+            }],
+        }
+        refund = self.env["pos.revolut.refund.operation"].sudo().create({
+            "original_operation_id": self.source.id, "pos_session_id": self.session.id,
+            "order_uuid": self.payload["uuid"],
+            "payment_line_uuid": self.payload["payment_ids"][0][2]["uuid"],
+            "amount": 6.17, "amount_minor": 617, "return_total_minor": 617,
+            "currency_id": self.session.currency_id.id, "financial_snapshot": persisted,
+            "state": "verified", "revolut_order_id": self.refund_id, "provider_state": "completed",
+        })
+        saved = self._rpc_refund(manager, "pos.order", "sync_from_ui", [[self.payload]])
+        order = self.env["pos.order"].browse(next(
+            item["id"] for item in saved["pos.order"] if item["uuid"] == self.payload["uuid"]
+        ))
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(order.lines.qty, -0.5)
+        self.assertEqual(refund.pos_order_id, order)
+        self.assertEqual(order.payment_ids.revolut_refund_operation_id, refund)
+        self.assertEqual(refund.financial_snapshot, persisted)
+        self.request.assert_not_called()
 
     def test_public_refund_draft_preparation_remains_allowed(self):
         manager = self._mutation_actor()
@@ -259,7 +534,7 @@ class TestRevolutRefund(CommonPosTest):
         second_payment = dict(first_payment, uuid=str(uuid4()), amount=6.17,
                               payment_method_id=self.revolut_method.id if second_revolut else self.cash_payment_method.id)
         original["payment_ids"].append(Command.create(second_payment))
-        financial = self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(original)
+        financial = self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(original)
         first = self._operation(original["uuid"], first_payment["uuid"], amount=6.17,
                                 amount_minor=617, financial_snapshot=financial)
         first_payment["transaction_id"] = first.revolut_payment_id
@@ -396,7 +671,7 @@ class TestRevolutRefund(CommonPosTest):
             "price_unit": 11.34, "price_subtotal": 11.34, "price_subtotal_incl": 11.34,
             "discount": 0, "tax_ids": [[6, False, []]], "pack_lot_ids": [],
         }))
-        financial = self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(original)
+        financial = self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(original)
         source = self._operation(
             original["uuid"], original["payment_ids"][0][2]["uuid"],
             financial_snapshot=financial,
@@ -726,7 +1001,7 @@ class TestRevolutRefund(CommonPosTest):
 
     def test_return_cannot_dispatch_while_charge_exists_for_same_order(self):
         self._operation(self.payload["uuid"], str(uuid4()), state="pending",
-                        financial_snapshot=self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(self.payload))
+                        financial_snapshot=self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(self.payload))
         self.env.flush_all()
         with self.assertRaises(UserError):
             self._start()
