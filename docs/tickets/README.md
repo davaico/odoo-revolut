@@ -67,7 +67,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [09 — Issue partial refunds across original payment allocations](closed/09-partial-allocated-refunds.md) | `ready-for-agent` at closure | Closed | 07 (closed), 08 (closed) |
 | [10 — Install and upgrade a reviewed revision on staging](closed/10-staging-install-upgrade.md) | `ready-for-human` at closure | Closed | 03 (closed) |
 | [11 — Verify the complete addon on the target Odoo version](closed/11-target-version-acceptance.md) | `ready-for-agent` at closure | Closed | 06, 09, 10 |
-| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11, 16–21 (closed); 22, 23 (open findings) |
+| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11, 16–21 (closed); 22, 23 (open findings); 24 (closed locally, awaiting integration) |
 | [13 — Deepen Return allocation](closed/13-deepen-return-allocation.md) | `ready-for-agent` at closure | Closed | None |
 | [14 — Deepen POS payment state](closed/14-deepen-pos-payment-state.md) | `ready-for-agent` at closure | Closed | None |
 | [15 — Deepen payment outcome application](closed/15-deepen-payment-outcome-application.md) | `ready-for-agent` at closure | Closed | None |
@@ -79,6 +79,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [21 — Keep reconciliation progressing after malformed provider responses](closed/21-isolate-reconciliation-failures.md) | `ready-for-agent` at closure | Closed | None |
 | [22 — Recover a POS line after a terminal-busy rejection](ready-for-human/22-recover-terminal-busy-rejection.md) | `ready-for-human` | Open | Reviewed local fix complete; live two-browser retest gated by financial reconciliation |
 | [23 — Preserve payment polling through valid processing states](ready-for-human/23-preserve-polling-through-payment-processing.md) | `ready-for-human` | Open | Reviewed local fix complete; full/split/multiple-card live retests gated by financial reconciliation |
+| [24 — Bound financial snapshot processing before numeric expansion](closed/24-bound-financial-snapshot-processing.md) | `ready-for-agent` at closure | Closed | None for local validation and mocked implementation |
 
 ## Architecture triage — 2026-09-25
 
@@ -134,6 +135,33 @@ refunds and explicitly unexecuted subcases. Tickets 22–23 were triaged on
 of busy-terminal recovery and automatic status handling;
 they must be resolved and retested before ticket 12 closes. Full acceptance
 and financial reconciliation remain open under `ready-for-human`.
+
+## Financial snapshot resource bounds — 2026-09-30
+
+The owner approved [ticket 24](closed/24-bound-financial-snapshot-processing.md)
+as one complete remediation slice and approved direct placement in
+`ready-for-agents/`. It covers safe pinned-Odoo validation, resource bounds
+before numeric expansion, shared payment/refund and settlement behavior, POS
+rejection recovery, regression tests and independent fix verification.
+
+Ticket 24 is closed locally with original implementation `604962a` and the
+[bounded Odoo reproduction and independent verification](../testing/ticket-24-financial-snapshot-bounds.md).
+The authenticated cashier amplification path and old helper's cashier/manager/
+internal/portal dispatch were demonstrated on the baseline. Shared bounds now
+reject unsupported input and the private utility rejects RPC dispatch.
+The combined `19.0.1.7.8` candidate `d64e962` includes main `fbab631` and its
+ticket 23 processing correction. Its refreshed acceptance is in the linked
+record: 243 install, 243 upgrade and eight Restaurant tests, 71 lifecycle and
+29 deployment checks, plus restart recovery, all passed. The original
+234/234/eight and 65/29 results retain their initial identity.
+Standards/Spec findings are zero; independent resource-bound fix verification
+reports `fixed`. Actual deployed worker exhaustion remains unverified; the
+original outage severity is separate from local remediation completion.
+
+Ticket 12 still requires reviewed integration and final combined-candidate
+acceptance before closure. Ticket 23's reviewed local correction is now in main
+and this branch; refresh combined-candidate evidence while preserving earlier
+dated results and outstanding human and financial reconciliation gates.
 
 ## Shared implementation contract
 

@@ -772,6 +772,42 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.env.invalidate_all()
         self.assertFalse(self.env["pos.revolut.payment.operation"].search([]))
 
+    def test_invalid_payment_snapshot_recovers_after_correction_and_reload(self):
+        operations, _calls = self._run_unsuccessful_checkout(
+            "captured", "pos_revolut_payment_snapshot_recovery"
+        )
+        self.assertEqual(operations.financial_snapshot["lines"][0]["qty"], "1")
+        self.assertEqual(
+            operations.financial_snapshot["lines"][0]["price_unit"], "12.34"
+        )
+        self.assertEqual(operations.pos_order_id.uuid, operations.order_uuid)
+        self.assertEqual(
+            operations.pos_payment_id.uuid, operations.payment_line_uuid
+        )
+        self.assertEqual(operations.pos_payment_id.payment_ref_no, self.ORDER_ID)
+        self.assertFalse(self.env["pos.revolut.refund.operation"].search([]))
+
+    def test_invalid_payment_snapshot_line_can_be_removed_for_cash_without_dispatch(self):
+        self._configure_revolut_checkout()
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+            side_effect=AssertionError("Invalid snapshot must not contact Revolut"),
+        ) as request:
+            self.start_pos_tour("pos_revolut_payment_snapshot_cash_alternative")
+        request.assert_not_called()
+
+        self.env.invalidate_all()
+        self.assertFalse(self.env["pos.revolut.payment.operation"].search([]))
+        self.assertFalse(self.env["pos.revolut.refund.operation"].search([]))
+        orders = self.env["pos.order"].search([
+            ("session_id", "=", self.main_pos_config.current_session_id.id),
+            ("state", "=", "paid"),
+        ])
+        self.assertEqual(len(orders), 1)
+        self.assertEqual(orders.amount_total, 12.34)
+        self.assertEqual(orders.lines.qty, 1)
+        self.assertEqual(orders.payment_ids.payment_method_id.name, "Cash")
+
     def _run_terminal_busy_checkout(self, tour, resume):
         revolut_method = self._configure_revolut_checkout()
         recovered_order_id = "d40466e0-2188-41d0-bebb-aa3a930663a9"
@@ -870,11 +906,13 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
 
     def _run_full_refund(self, tour, outcome="completed"):
         self._configure_revolut_checkout()
+        calls = []
         refund_polls = 0
         refund_posts = []
 
         def request(method, url, **kwargs):
             nonlocal refund_polls
+            calls.append((method, url, kwargs))
             if method == "GET" and url.endswith("/api/terminals"):
                 return self._response({"terminals": [{
                     "id": self.TERMINAL_ID, "online": True,
@@ -933,6 +971,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         ):
             self.start_pos_tour(tour, login="pos_admin")
         self.assertEqual(len(refund_posts), 0 if outcome == "undispatched" else 1)
+        return calls
 
     def test_manager_returns_full_revolut_sale_in_normal_pos_flow(self):
         self._run_full_refund("pos_revolut_full_refund")
@@ -956,6 +995,29 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self._run_full_refund("pos_revolut_refund_discovery_alternative", "undispatched")
         self.env.invalidate_all()
         self.assertFalse(self.env["pos.revolut.refund.operation"].search([]))
+
+    def test_invalid_refund_snapshot_recovers_after_correction_and_reload(self):
+        calls = self._run_full_refund("pos_revolut_refund_snapshot_recovery")
+        self.env.invalidate_all()
+        refunds = self.env["pos.revolut.refund.operation"].search([])
+        payments = self.env["pos.revolut.payment.operation"].search([])
+        self.assertEqual(len(refunds), 1)
+        self.assertEqual(len(payments), 1)
+        self.assertEqual(refunds.state, "verified")
+        self.assertEqual(refunds.financial_snapshot["lines"][0]["qty"], "-1")
+        self.assertEqual(
+            refunds.financial_snapshot["lines"][0]["refunded_orderline_id"],
+            payments.pos_order_id.lines.id,
+        )
+        self.assertEqual(refunds.original_operation_id, payments)
+        self.assertEqual(refunds.original_operation_id.state, "verified")
+        self.assertEqual(refunds.revolut_order_id, self.REFUND_ID)
+        self.assertEqual(refunds.pos_order_id.state, "paid")
+        self.assertEqual(refunds.pos_order_id.uuid, refunds.order_uuid)
+        self.assertEqual(refunds.pos_payment_id.uuid, refunds.payment_line_uuid)
+        self.assertEqual(refunds.pos_payment_id.transaction_id, self.REFUND_ID)
+        self.assertEqual(refunds.pos_payment_id.payment_ref_no, self.REFUND_ID)
+        self.assertEqual(sum(method == "POST" for method, _url, _kwargs in calls), 3)
 
     def test_lost_refund_response_recovers_after_reload_without_second_refund(self):
         self._run_full_refund("pos_revolut_refund_reload", "lost_response")

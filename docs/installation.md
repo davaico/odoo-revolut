@@ -525,3 +525,54 @@ Upgrade the addon to `19.0.1.7.0` to enable partial allocations and the revised
 refund uniqueness constraint. No new credentials or configuration fields are
 required; refunds use each original payment's server-side credential reference
 and environment.
+
+## Financial cart limits and safe correction
+
+Upgrade `pos_revolut` to `19.0.1.7.8` using the offline upgrade procedure and
+reopen POS. This combined candidate retains the payment-processing correction
+introduced by `19.0.1.7.7` and adds the financial cart limits below.
+No configuration or credential change is required.
+
+Revolut cart evidence is bounded before numeric expansion and before a charge
+or refund reservation. These server limits apply to starts, return discovery
+and final cart comparisons:
+
+| Input | Supported limit |
+| --- | --- |
+| Lines | 1–1,000; checked before traversal |
+| Quantity and unit price | −1,000,000,000 to +1,000,000,000, inclusive |
+| Discount | −1,000,000 to +1,000,000, inclusive; normal POS still uses 0–100% |
+| Snapshot total, when supplied | −1,000,000,000,000 to +1,000,000,000,000 |
+| Numeric representation | At most 64 ASCII characters, 28 significant digits; decimal notation or scientific exponent −324…324 |
+| Normalized number | At most 354 fixed-point characters, including sign and decimal point |
+| Line identifier | Nonempty, unique text of at most 128 characters |
+| Record identifiers | Integers 0…2,147,483,647; products and original return lines must be nonzero |
+| Taxes | At most 100 per line, including Odoo tax commands |
+| Retained snapshot | At most 256 KiB in default ASCII JSON, including taxes and original return identifiers |
+
+These limits retain the pinned Odoo runtime's ordinary float values, fractional
+quantities, negative return quantities, float artifacts, scientific notation
+and subnormal values such as `5e-324`. The generous signed magnitudes retain
+negative prices and existing backend discounts without changing POS business
+rules. Precision matches the previous normalizer's 28-digit Decimal context;
+excess precision is rejected instead of silently rounded. Nothing is clamped,
+truncated or rounded to pass the bounds. No current fixture requires larger
+magnitudes or carts; customer-specific catalog and unit-of-measure extremes
+have not been validated.
+
+A **Revolut cart needs correction** message identifies the rejected field or
+limit. A direct, identity-bound rejection proving that no payment/refund attempt
+exists permits editing or removing the unpaid line. Correct quantities, prices,
+discounts, identifiers, lines or taxes, then use **Resume** to explicitly start.
+**Check status** stays read-only. A manager must select the original payment
+again when resuming a rejected refund. An invalid return discovered before
+starting displays its server error and has no refund reservation.
+
+Existing attempts and provider references stay protected. Lost responses,
+exceptions and empty status lookups do not establish safe retry or removal.
+Check status or ask a manager to reconcile an existing or uncertain attempt.
+Previously persisted snapshots within the supported bounds compare in the same
+canonical form after upgrade, including signed zero, sorting and original return
+links. Historical evidence outside the bounds is retained; it must be reconciled
+with its original references. Never edit the stored snapshot to fit a limit,
+remove its reservation or restart a financial request based on a validation error.
