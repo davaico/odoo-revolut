@@ -131,8 +131,8 @@ allocations, selected cancellation/retry/reload paths, refund caps and locks,
 and both browser terminal guards have passing subcases. Initial automatic
 status handling failed on four later operations, and an independent browser
 remained stuck after a definitive busy-terminal rejection. Reports
-[22](../ready-for-agents/22-recover-terminal-busy-rejection.md) and
-[23](../ready-for-agents/23-preserve-polling-through-payment-processing.md) preserve
+[22](../ready-for-human/22-recover-terminal-busy-rejection.md) and
+[23](../ready-for-human/23-preserve-polling-through-payment-processing.md) preserve
 these release findings and their mocked characterizations without claiming a
 fix or deployment. They are ready for local work; reviewed fixes/retests are
 required before closure. Read-only reconciliation of the pending refunds can
@@ -178,3 +178,17 @@ before release acceptance. The integration criterion above remains unchecked.
 No staging change, real Merchant request, physical-terminal test or deployed
 worker-exhaustion experiment occurred in ticket 24 work. Prior dated live and
 automated evidence remains historical evidence.
+
+## Combined branch update after ticket 23 entered main — 2026-09-30
+
+Ticket 23's reviewed local fix is now in main `fbab631`, through PR #29.
+Ticket 24's PR #28 incorporates that main in executable candidate `d64e962`,
+addon `19.0.1.7.8`, retaining both corrections and their tests. The earlier
+separate-branch statement describes the preceding checkpoint.
+The [combined verification](../../testing/ticket-24-financial-snapshot-bounds.md#combined-candidate-after-ticket-23-integration--2026-09-30)
+records conflict resolution, refreshed acceptance and preserved live gates.
+Final combined acceptance passed 243 install, 243 upgrade and eight Restaurant
+tests; 71 lifecycle and 29 deployment checks; and two-process restart recovery.
+Independent Standards and Spec reviews have zero remaining source findings.
+PR #28 remains open and unmerged; integration of ticket 24 into the release
+branch and human/financial acceptance are still required.

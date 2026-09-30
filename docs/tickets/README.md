@@ -144,13 +144,16 @@ as one complete remediation slice and approved direct placement in
 before numeric expansion, shared payment/refund and settlement behavior, POS
 rejection recovery, regression tests and independent fix verification.
 
-Ticket 24 is closed locally with implementation `604962a` and the
+Ticket 24 is closed locally with original implementation `604962a` and the
 [bounded Odoo reproduction and independent verification](../testing/ticket-24-financial-snapshot-bounds.md).
 The authenticated cashier amplification path and old helper's cashier/manager/
 internal/portal dispatch were demonstrated on the baseline. Shared bounds now
 reject unsupported input and the private utility rejects RPC dispatch.
-Final mocked verification passed 234 install, 234 upgrade and eight
-Restaurant tests, 65 lifecycle and 29 deployment tests, plus restart recovery.
+The combined `19.0.1.7.8` candidate `d64e962` includes main `fbab631` and its
+ticket 23 processing correction. Its refreshed acceptance is in the linked
+record: 243 install, 243 upgrade and eight Restaurant tests, 71 lifecycle and
+29 deployment checks, plus restart recovery, all passed. The original
+234/234/eight and 65/29 results retain their initial identity.
 Standards/Spec findings are zero; independent resource-bound fix verification
 reports `fixed`. Actual deployed worker exhaustion remains unverified; the
 original outage severity is separate from local remediation completion.

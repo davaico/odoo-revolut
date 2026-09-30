@@ -1,9 +1,11 @@
 # Ticket 24 — Financial snapshot processing bounds
 
-Implementation candidate: `604962a41d74552a497f661baa66b45c8db72113`.
-Reviewed base: `ffae23dcfcf71dc61293404e3c7183b3fe70e750`.
+Initial implementation candidate: `604962a41d74552a497f661baa66b45c8db72113`.
+Initial reviewed base: `ffae23dcfcf71dc61293404e3c7183b3fe70e750`.
 Branch: `codex/24-bound-financial-snapshot-processing`.
-Addon version: `19.0.1.7.7`. Local verification date: 2026-09-30.
+Initial addon version: `19.0.1.7.7`. Local verification date: 2026-09-30.
+The combined `19.0.1.7.8` candidate after ticket 23 entered main is recorded
+in the final section below; earlier results retain their original identities.
 
 ## Boundary and limits
 
@@ -199,8 +201,8 @@ ID or original scanned revision; neither is invented here. Historical out-of-bou
 financial evidence is retained and requires reconciliation, never silent rewriting
 or exception-based retry.
 
-Main's completed ticket 22 correction is included in the tested base. Ticket 23
-is still a separate open branch; this report does not claim its integration or live
+At this initial checkpoint, ticket 22's local correction was in the tested base
+and ticket 23 was still separate; those results did not claim its integration or live
 acceptance. Ticket 12 retains its outstanding integration, reconciliation, staging
 and physical-terminal gates. Its historical dated evidence remains unchanged.
 
@@ -221,3 +223,65 @@ link this detailed history from a short release summary. Both are later release
 work, not missing local remediation.
 Self-check: the requested branch implementation, tests, reviews and commit are
 reviewable; the user can distinguish local completion from human release work.
+
+## Combined candidate after ticket 23 integration — 2026-09-30
+
+PR #28 now includes main `fbab631eaf7595de7893b95bee99c1c83245bd9d`, which
+merged ticket 23 through PR #29. Combined executable candidate:
+`d64e9621ab040eb62e27f47b601bb3ca8566a750`, addon `19.0.1.7.8`.
+Both earlier branches used `19.0.1.7.7`; the new version distinguishes the
+resource-bound addition from main's already versioned processing correction.
+
+The two-parent merge preserves the previous ticket 24 head `4717954` and
+current main. The only Git conflict was the ticket index: ticket 23 retains its
+`ready-for-human` live gate and ticket 24 its locally closed state. Every Python
+test method from both reviewed parents is retained. Ticket 24's shared resource
+normalizer, return allocation, settlement and POS recovery modules match its
+previous head exactly; ticket 23's documented pending-state handling, invalid
+intent guard and known-payment fallback remain present. The original independent
+resource-bound verification above retains its `604962a` identity.
+
+The affected real Odoo processing/payment/snapshot/settlement/refund checks
+passed **128 tests**, zero failures/errors. Combined lifecycle checks passed
+**71 tests**, zero failures/skips; deployment checks passed **29 tests**.
+Python/JavaScript syntax and whitespace checks passed. Restart recovery passed
+across two processes, with `RESTART_RECOVERY_OK` and runner exit **0**.
+
+The first combined install run failed **1 of 243 tests**: the cash-alternative
+snapshot tour ended with a generic `Script timeout exceeded`, without a failed
+tour-step diagnostic. That run is not a pass. The exact tour then passed in a
+fresh disposable database on unchanged `d64e962`; no cause was established and
+no speculative source change was made. Full combined acceptance was restarted
+on the same candidate. The final full command returned **0**: **243 fresh-install**,
+**243 upgrade** and **8 Restaurant** tests, each with zero failures/errors and
+no browser-skip warnings. Both full phases include the previously timed-out
+cash tour. The final command was:
+
+```bash
+ODOO_REVOLUT_TEST_PROJECT=odoo-revolut-ticket24-combined-final ./scripts/test-addon --verify-install-upgrade
+```
+
+### Standards
+
+Independent review of `d64e962` against current main and the previous PR head
+found **0** documented-standard violations or actionable baseline smells.
+The combined version/upgrade guidance, retained modules, ticket states and
+tracked agent-ready placeholder follow the repository contract.
+
+### Spec
+
+Independent review found **0** remaining source findings or scope creep.
+Both snapshot-resource/recovery protections and explicit pending-to-capture
+processing, invalid-intent guards and known-payment fallback are retained.
+No runtime gate is inferred from the source review. Ticket 23's controlled
+live retests and ticket 12's release gates remain outstanding.
+
+No hosting, staging or real financial operation accompanies this integration.
+Ticket 23 and ticket 12 keep their reconciliation and live acceptance gates.
+PR #28 remains unmerged; the owner requested only the branch/PR correction.
+
+Final evidence/tracker updates change documentation only; addon and deployment/
+test tooling match the tested `d64e962` tree. The final self-check confirms
+current-main ancestry, retained work/tests, versioned upgrade guidance and an
+open PR with no authorized merge. The five-axis assessment above remains 4.4/5;
+live/deployment-impact limitations retain their original scope.

@@ -85,5 +85,16 @@ remains proportional to native input with bounded temporary batches. No live
 financial operation, destructive load test or hosting/staging change occurred.
 Ticket 12 remains open for integration/combined-candidate acceptance and its
 existing financial reconciliation and human checks. Ticket 22's local source
-fix is in the base; ticket 23 remains a separate branch. Previous dated evidence
+fix was in that initial base; ticket 23 was then separate. Previous dated evidence
 is preserved.
+
+## Integration follow-up — 2026-09-30
+
+After ticket 23 merged into main through PR #29, PR #28 was updated from
+main `fbab631`. Combined candidate `d64e962` preserves the previous ticket 24
+head and main through a two-parent merge. The ticket-index conflict retains
+both tickets' states, and addon `19.0.1.7.8` distinguishes the combined release
+from their earlier shared version. The
+[combined verification](../../testing/ticket-24-financial-snapshot-bounds.md#combined-candidate-after-ticket-23-integration--2026-09-30)
+records retained resource bounds, recovery and processing behavior plus refreshed
+acceptance. Ticket 24 stays closed locally; PR #28 is not merged by this work.

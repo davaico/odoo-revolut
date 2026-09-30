@@ -258,8 +258,8 @@ addon trees and deployment/test tooling match the tested revision; record that
 comparison before deployment.
 
 Open release gaps: remaining L02–L10 subcases and complete refund/test-money
-reconciliation; [terminal-busy recovery](../tickets/ready-for-agents/22-recover-terminal-busy-rejection.md)
-and [automatic payment-status handling](../tickets/ready-for-agents/23-preserve-polling-through-payment-processing.md);
+reconciliation; [terminal-busy recovery](../tickets/ready-for-human/22-recover-terminal-busy-rejection.md)
+and [automatic payment-status handling](../tickets/ready-for-human/23-preserve-polling-through-payment-processing.md);
 the Sandbox simulator issue for required non-production acceptance; and final
 guidance based on physical-terminal observations. Pending refunds block a live
 addon upgrade/restart. These findings require reviewed fixes and affected
@@ -290,3 +290,22 @@ results above retain their original dates and identities. No staging deployment,
 real financial operation or worker-outage experiment accompanied these tests.
 All outstanding reconciliation, human acceptance and final deployment gates
 remain open in ticket 12.
+
+## Combined ticket 23/24 candidate — 2026-09-30
+
+Main `fbab631` includes ticket 23 through PR #29. PR #28 now contains both
+local corrections in executable candidate `d64e962`, addon `19.0.1.7.8`.
+The [combined evidence](ticket-24-financial-snapshot-bounds.md#combined-candidate-after-ticket-23-integration--2026-09-30)
+retains the earlier run identities, the unchanged snapshot/recovery boundary,
+processing-state guards and refreshed acceptance. The preceding report's
+separate-branch note describes its earlier checkpoint.
+
+Final combined mocked verification passed 243 fresh-install, 243 upgrade and
+eight Restaurant tests; 71 lifecycle and 29 deployment checks; and restart
+recovery across two processes. Standards/Spec source findings are zero. The
+linked record separately retains the initial browser timeout, its passing
+unchanged isolated rerun and the final passing full suite.
+
+Ticket 24 still awaits PR integration into main; ticket 23's live retests and
+ticket 12's reconciliation/release requirements remain open. The branch update
+performs no deployment or real financial operation and does not merge PR #28.
