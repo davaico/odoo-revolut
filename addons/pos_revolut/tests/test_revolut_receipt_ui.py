@@ -45,6 +45,7 @@ class TestRevolutReceiptUi(TestPointOfSaleHttpCommon):
         self.product = self.desk_pad.product_variant_id
         self.receipt_session = self.main_pos_config.current_session_id
         payload = self._order_payload(str(uuid4()), str(uuid4()))
+        payload["pos_reference"] = "Historical Revolut receipt sale"
         payment = payload["payment_ids"][0][2]
         if split:
             payment["amount"] = 4.34
@@ -64,6 +65,7 @@ class TestRevolutReceiptUi(TestPointOfSaleHttpCommon):
         payment["transaction_id"] = operation.revolut_payment_id
         self.env["pos.order"].sync_from_ui([payload])
         operation.invalidate_recordset()
+        self.assertEqual(operation.pos_order_id.pos_reference, "Historical Revolut receipt sale")
         return operation
 
     def _sale_refunds(self, full=False):
@@ -79,6 +81,11 @@ class TestRevolutReceiptUi(TestPointOfSaleHttpCommon):
 
     def test_cashier_downloads_week_old_split_payment_after_closed_session_and_fresh_load(self):
         operation = self._receipt_sale(split=True)
+        self.env.cr.execute(
+            "UPDATE pos_revolut_payment_operation SET receipt_merchant_snapshot = NULL WHERE id = %s",
+            [operation.id],
+        )
+        operation.invalidate_recordset()
         original = operation.pos_order_id
         self.receipt_session.post_closing_cash_details(8.0)
         self.receipt_session.close_session_from_ui()
@@ -96,6 +103,19 @@ class TestRevolutReceiptUi(TestPointOfSaleHttpCommon):
         self.assertEqual(self.receipt_session.state, "closed")
         self.assertEqual(original.amount_total, 12.34)
         self.assertEqual(operation.amount_minor, 434)
+        merchant.assert_not_called()
+
+    def test_cashier_history_does_not_offer_a_nonfinal_payment_receipt(self):
+        operation = self._receipt_sale()
+        # Historical browser evidence must not override the server outcome.
+        operation.write({"state": "pending"})
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+            side_effect=AssertionError("Receipt discovery must not contact Merchant API"),
+        ) as merchant:
+            self.start_pos_tour("pos_revolut_nonfinal_receipt_unavailable")
+        self.env.invalidate_all()
+        self.assertEqual(operation.state, "pending")
         merchant.assert_not_called()
 
     def test_current_receipt_download_retries_report_failure_without_another_charge(self):

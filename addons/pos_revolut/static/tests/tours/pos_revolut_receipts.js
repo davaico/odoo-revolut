@@ -42,13 +42,49 @@ function pdfDownloaded(count) {
     };
 }
 
+registry.category("web_tour.tours").add("pos_revolut_nonfinal_receipt_unavailable", {
+    steps: () => [
+        Chrome.startPoS(),
+        {
+            trigger: ".product-screen",
+            run() {
+                const open = XMLHttpRequest.prototype.open;
+                XMLHttpRequest.prototype.open = function (method, url, ...args) {
+                    if (String(url).includes("/pos.order/revolut_receipt_options")) {
+                        this.addEventListener("load", () => {
+                            const result = JSON.parse(this.responseText).result;
+                            if (!Array.isArray(result) || result.length) {
+                                throw new Error("A nonfinal payment exposed receipt options");
+                            }
+                            document.body.dataset.revolutReceiptUnavailable = "true";
+                        });
+                    }
+                    return open.call(this, method, url, ...args);
+                };
+            },
+        },
+        Chrome.clickOrders(),
+        TicketScreen.selectFilter("Paid"),
+        { trigger: ".ticket-screen .order-row:has(.order-name:contains('Historical Revolut receipt sale'))", run: "click" },
+        {
+            trigger: "body[data-revolut-receipt-unavailable='true']",
+            run() {
+                if (document.querySelector(".ticket-screen .revolut-receipt-download")) {
+                    throw new Error("A nonfinal payment offered a completed receipt download");
+                }
+            },
+        },
+    ].flat(),
+});
+
 function openHistoricalReceiptSelection() {
     return [
         Chrome.startPoS(),
         watchReceiptDownloads(),
         Chrome.clickOrders(),
         TicketScreen.selectFilter("Paid"),
-        TicketScreen.selectOrderByPrice("12.34"),
+        { trigger: ".ticket-screen .order-row:has(.order-name:contains('Historical Revolut receipt sale'))", run: "click" },
+        { trigger: ".ticket-screen .order-row.active:has(.order-name:contains('Historical Revolut receipt sale'))" },
         { trigger: ".ticket-screen .revolut-receipt-download", run: "click" },
         { trigger: ".revolut-receipt-selection" },
     ].flat();
@@ -74,7 +110,8 @@ registry.category("web_tour.tours").add("pos_revolut_historical_receipt_download
         watchReceiptDownloads(),
         Chrome.clickOrders(),
         TicketScreen.selectFilter("Paid"),
-        TicketScreen.selectOrderByPrice("12.34"),
+        { trigger: ".ticket-screen .order-row:has(.order-name:contains('Historical Revolut receipt sale'))", run: "click" },
+        { trigger: ".ticket-screen .order-row.active:has(.order-name:contains('Historical Revolut receipt sale'))" },
         { trigger: ".ticket-screen .revolut-receipt-download", run: "click" },
         pdfDownloaded(1),
         { trigger: ".ticket-screen .revolut-receipt-download:not(:disabled)", run: "click" },

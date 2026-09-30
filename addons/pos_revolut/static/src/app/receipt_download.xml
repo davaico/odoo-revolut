@@ -2,7 +2,7 @@
 <templates id="template" xml:space="preserve">
     <t t-name="pos_revolut.RevolutReceiptButton">
         <button t-if="state.options.length || state.error"
-                class="revolut-receipt-download btn btn-secondary btn-lg flex-grow-1"
+                class="revolut-receipt-download btn btn-secondary btn-lg w-100 flex-shrink-0"
                 t-att-disabled="state.loading || state.downloading" t-on-click="open">
             <i t-att-class="state.loading || state.downloading ? 'fa fa-spinner fa-spin me-1' : 'fa fa-download me-1'" aria-hidden="true"/>
             Revolut Receipts
