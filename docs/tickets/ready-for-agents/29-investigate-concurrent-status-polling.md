@@ -55,5 +55,3 @@ Resolve applicability before relying on an availability claim for final release;
 ## Working agreement
 
 Start from current reviewed main and record the exact revision; do not implement against the stale scanned checkout. Preserve existing work and use an isolated worktree if another agent is editing overlapping code. All automated Revolut calls are mocked and blocked from reaching real Merchant endpoints. Physical terminal actions, deployment and production mutations require a separate authorized workflow.
-
-

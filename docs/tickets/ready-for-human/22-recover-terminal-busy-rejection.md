@@ -97,3 +97,12 @@ current with fetched remote and local main. Local mocked criteria pass; moved
 to `ready-for-human` for financial reconciliation and the physical two-browser
 no-card retest. The ticket remains open and continues to block ticket 12's
 release acceptance. No live deployment or financial operation was performed.
+
+2026-09-30: The operator reports receiving five separate £0.01 Revolut credits,
+but Odoo still lists all five refund operations as Pending. A fresh Odoo status
+check of refund `5` still reported provider `processing`; refund `1` showed the
+same stored provider state. Cardholder receipt does not establish each Merchant
+refund's final API outcome or clear the staging deployment gate. The reviewed
+terminal-busy fix remains undeployed and its independent-browser no-card retest
+remains unchecked until the refund operations are reconciled safely. See
+[ticket 12's refund checkpoint](12-live-terminal-release-evidence.md).

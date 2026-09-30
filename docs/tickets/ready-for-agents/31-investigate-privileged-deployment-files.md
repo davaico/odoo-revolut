@@ -62,4 +62,6 @@ Disposition must precede relying on the reviewed-artifact guarantee for a releas
 
 Start from current reviewed main and record the exact revision; do not implement against the stale scanned checkout. Preserve existing work and use an isolated worktree if another agent is editing overlapping code. All automated Revolut calls are mocked and blocked from reaching real Merchant endpoints. Physical terminal actions, deployment and production mutations require a separate authorized workflow.
 
+## Owner clarification — 2026-09-30
 
+The owner reports that deployment SSH access is held by their boss and that the Hetzner VM belongs to company infrastructure. This identifies the operating context, not the complete local-process privilege model. Establish service-account access and effective filesystem protections before confirming or dismissing the six claims.

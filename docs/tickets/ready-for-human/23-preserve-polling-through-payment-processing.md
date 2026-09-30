@@ -6,7 +6,7 @@
 
 **State:** open
 
-**Triage:** ready-for-agent
+**Triage:** ready-for-human
 
 **Priority:** P2
 
@@ -35,17 +35,21 @@ Generic unresolved or malformed evidence must remain protected.
 
 ## Acceptance criteria
 
-- [ ] Identify and cover provider-documented non-final underlying-payment states relevant to terminal polling. Require matching operation/order/intent/payment identity, exact integer amount and currency before accepting transitions.
-- [ ] Continue bounded observation through valid processing states to capture, without another financial start. A completed intent alone never establishes payment success.
-- [ ] Only verified captured/completed underlying payment marks a tender done. A fully paid unchanged order completes automatically; a partially paid order stays open with the correct remaining amount.
-- [ ] Keep malformed, mismatched, unknown or uncertain evidence guarded. Do not make every unresolved result pollable/retry-safe; retain foreground timeout and later reconciliation.
-- [ ] Add real ORM observation regressions and lifecycle/POS-adapter tests for intermediate-to-captured progression, split/multiple card lines, failures, invalid fields and timeouts. Financial calls are mocked or blocked.
+- [x] Identify and cover provider-documented non-final underlying-payment states relevant to terminal polling. Require matching operation/order/intent/payment identity, exact integer amount and currency before accepting transitions.
+- [x] Continue bounded observation through valid processing states to capture, without another financial start. A completed intent alone never establishes payment success.
+- [x] Only verified captured/completed underlying payment marks a tender done. A fully paid unchanged order completes automatically; a partially paid order stays open with the correct remaining amount.
+- [x] Keep malformed, mismatched, unknown or uncertain evidence guarded. Do not make every unresolved result pollable/retry-safe; retain foreground timeout and later reconciliation.
+- [x] Add real ORM observation regressions and lifecycle/POS-adapter tests for intermediate-to-captured progression, split/multiple card lines, failures, invalid fields and timeouts. Financial calls are mocked or blocked.
 - [ ] Record a reviewed candidate and repeat controlled full and split/multiple-line live payments, explicitly recording whether Check status or Validate was needed. One automatic success does not cover previously failing paths.
 
 ## Blocked by
 
 None for local diagnosis/mocked implementation; verification/classifier and
 POS lifecycle seams are present on reviewed main.
+
+Reviewed local implementation and mocked verification are complete at
+`97f5c0d4e427e232b5985cce121cf4adbf71049c`. Human deployment/retest remains
+gated by reconciliation of unresolved financial operations, including refunds.
 
 ## Validation limits and live gates
 
@@ -58,6 +62,14 @@ Blocks closure of ticket 12. Diagnosis and mocked implementation may start
 locally; the reviewed fix and affected live retests remain outstanding.
 
 ## Verification evidence
+
+The [mocked implementation record](../../testing/ticket-23-payment-processing.md)
+records real committed ORM regressions, lifecycle tests and actual POS tours.
+The reviewed candidate passed **221 fresh-install**, **221 upgrade** and
+**8 Restaurant** tests, plus **49 lifecycle** and **29 deployment-tooling**
+tests. Independent Standards and Spec review found no remaining actionable
+issues after correcting a stale-final-intent timeout regression. Deployment and
+physical acceptance stay gated by financial reconciliation; none was performed.
 
 See [operator observations](../../testing/ticket-12-operator-observations.md),
 sections covering the Cash/Revolut split, three-unit sale and separate
@@ -80,8 +92,27 @@ and [terminal polling](https://developer.revolut.com/docs/guides/merchant/accept
 evidence. Diagnose and fix locally while retaining all pending refund claims;
 deployment and physical retests remain gated by financial reconciliation.
 
+2026-09-29: Implemented and reviewed the mocked fix in the assigned worktree
+after updating from main. Provider-documented early payment states retain
+bounded polling, and invalid intent evidence cannot override payment guards.
+Review's timeout/stale-final-intent finding was reproduced through real ORM,
+corrected and re-reviewed. Final candidate `97f5c0d` passed mocked install,
+upgrade, Restaurant, lifecycle and tooling verification. Moved to
+`ready-for-human` for the retained full/split/multiple-card live acceptance
+criterion. No deployment or live financial tests; pending refund claims remain
+intact.
+
 2026-09-29: Triaged as ready-for-agent after the owner moved this ticket to
 `ready-for-agents/`. The bounded polling contract and required ORM/lifecycle
 regressions are defined. Missing early live payload limits root-cause
 attribution and live validation; it does not prevent local diagnosis against
 the documented contract or mocked implementation.
+
+2026-09-30: The operator reports five separate £0.01 Revolut credits for the
+test refunds, but all five Odoo refund operations still show Pending. A fresh
+Odoo status check of refund `5` still reported provider `processing`, and
+refund `1` showed the same stored provider state. These refund observations do
+not establish the early payment-state payload behind this ticket's automatic
+polling defect. The reviewed local correction is merged into main but remains
+undeployed; live validation remains gated on authoritative refund
+reconciliation. See [ticket 12's refund checkpoint](12-live-terminal-release-evidence.md).

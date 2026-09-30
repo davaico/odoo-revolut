@@ -8,6 +8,29 @@ earlier prerequisites and planned steps are superseded by later dated results.
 Use the [release checklist](ticket-12-release-evidence.md) for all gates and
 required scenarios.
 
+## Refund status follow-up — 2026-09-30 12:48–12:49 UTC
+
+The operator reports five separate £0.01 credits in their Revolut account.
+They were not individually matched by Merchant refund ID in the evidence
+available to this check. In Odoo's Point of Sale → Orders → Revolut Refunds,
+all five existing £0.01 refund records still displayed **Pending**. Refund
+operation `5` was checked once through Odoo's **Check status** action: its
+state remained `pending`, stored provider state remained `processing`, and
+Next Reconcile At advanced to about 12:49 UTC. The oldest refund operation
+`1` also displayed `pending` / `processing` with Next Reconcile At about
+12:49 UTC. No fresh raw Merchant API payload or Merchant dashboard status was
+captured here. The only status action queried the existing refund order; it
+did not submit another refund.
+
+The installed addon marks a refund verified only after its matching Merchant
+refund order is read as `completed`. The scheduled refund reconciliation is
+configured at one-minute intervals, with a non-final successful poll scheduled
+again after 30 seconds. The observed near-term Next Reconcile At does not by
+itself prove the cron ran. Cardholder receipt and Odoo's provider `processing`
+state are therefore a discrepancy requiring authoritative per-order
+reconciliation. No final refund state, reservation release, deployment
+clearance or fixed provider completion time is inferred.
+
 ## Current checkpoint — 2026-09-29 13:42:07 UTC
 
 - Eighteen payment operations, zero active card-payment blockers. Six sources
@@ -21,10 +44,10 @@ required scenarios.
   cancellations/retries, selected reload paths, refund caps/amount locking,
   and same-browser/independent-browser terminal guards have narrow passing
   evidence. Other subcases and all final refund settlement remain open.
-- [Ticket 22](../tickets/ready-for-agents/22-recover-terminal-busy-rejection.md)
+- [Ticket 22](../tickets/ready-for-human/22-recover-terminal-busy-rejection.md)
   records the terminal-busy rejection shown as a false communication failure,
   followed by an unrecoverable Check status loop with no dispatched payment.
-- [Ticket 23](../tickets/ready-for-agents/23-preserve-polling-through-payment-processing.md)
+- [Ticket 23](../tickets/ready-for-human/23-preserve-polling-through-payment-processing.md)
   records approved payments requiring manual Check status. Classifier and
   foreground-loop characterizations identify a reproducible software gap;
   the exact early live provider payload remains unverified.

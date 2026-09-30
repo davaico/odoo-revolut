@@ -271,10 +271,10 @@ export class RevolutPaymentState {
                             [this.methodId], this.sessionId, this.currencyId,
                             this.adapter.financialSnapshot(order),
                         ]), deadline);
-                    } catch {
+                    } catch (error) {
                         line.uiState.revolutDiscovering = false;
                         this.adapter.discardRefund(line);
-                        this.adapter.showPreparationError(line, "sources");
+                        this.adapter.showPreparationError(line, "sources", error?.data?.message);
                         return false;
                     }
                     if (!Array.isArray(sources) || !sources.length) {
@@ -308,6 +308,7 @@ export class RevolutPaymentState {
                 line.uiState.revolutStarted = true;
                 line.uiState.revolutUndispatched = false;
                 line.uiState.revolutStartRejected = false;
+                line.uiState.revolutRejectionMessage = false;
                 line.uiState.revolutMessage = false;
                 line.uiState.revolutStarting = true;
                 try {
@@ -325,22 +326,31 @@ export class RevolutPaymentState {
                 // Only the direct start response can prove that this request
                 // was rejected before dispatch. Exceptions and empty lookups
                 // retain the uncertain-start guards.
-                if (!refund && result?.start_rejected === "terminal_busy" &&
+                const rejectedBusy = !refund && result?.start_rejected === "terminal_busy";
+                const rejectedSnapshot = result?.start_rejected === "snapshot_invalid" &&
+                    !started && !previousSnapshot && previousOperationId === false;
+                if ((rejectedBusy || rejectedSnapshot) &&
                     result.dispatched === false && result.order_uuid === order.uuid &&
                     result.payment_line_uuid === line.uuid &&
                     result.previous_operation_id === previousOperationId &&
                     !result.operation_id && !result.order_id &&
-                    !result.payment_intent_id && !result.payment_id &&
+                    !result.payment_intent_id && !result.payment_id && !result.refund_id &&
                     !line.uiState.revolutSnapshot && !line.uiState.revolutOperationId &&
                     !line.transaction_id && !line.payment_ref_no) {
                     if (previousOperationId) {
                         this.remember(line, previousSnapshot);
                     }
+                    if (refund) {
+                        // Selection alone is not a dispatched refund. The
+                        // rejected start created no reservation for this source.
+                        line.uiState.revolutOriginalOperationId = false;
+                    }
                     line.uiState.revolutStarted = false;
                     line.uiState.revolutUndispatched = true;
-                    line.uiState.revolutStartRejected = "terminal_busy";
-                    line.uiState.revolutLocalOutcome = "terminal_busy";
-                    this.showError(line, "terminal_busy");
+                    line.uiState.revolutStartRejected = result.start_rejected;
+                    line.uiState.revolutLocalOutcome = result.start_rejected;
+                    line.uiState.revolutRejectionMessage = rejectedSnapshot ? result.message : false;
+                    this.showError(line, result.start_rejected);
                     return false;
                 }
                 if (!result?.operation_id) {
@@ -419,6 +429,7 @@ export class RevolutPaymentState {
         line.uiState.revolutStarted = true;
         line.uiState.revolutUndispatched = false;
         line.uiState.revolutStartRejected = false;
+        line.uiState.revolutRejectionMessage = false;
         line.uiState.revolutLocalOutcome = result.local_outcome || false;
     }
 

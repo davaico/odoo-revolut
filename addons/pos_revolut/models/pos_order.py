@@ -6,6 +6,7 @@ from odoo.exceptions import UserError
 from odoo.tools import float_is_zero
 
 from .return_allocation import ReturnAllocation
+from .financial_snapshot import check_line_count_size
 
 
 # Odoo applies one2many commands in several nested ORM calls. Validate their
@@ -185,9 +186,11 @@ class PosOrder(models.Model):
         ])
         return bool(operations.filtered(lambda operation: not operation.retry_safe or operation.state == "verified") or refunds)
 
-    def _revolut_order_values(self):
+    def _revolut_order_values(self, bounded=True):
         """Feed the same domain validators from persisted ORM records."""
         self.ensure_one()
+        if bounded:
+            check_line_count_size(len(self.lines))
         return {
             "uuid": self.uuid, "session_id": self.session_id.id,
             "state": self.state, "amount_total": self.amount_total,
@@ -234,7 +237,9 @@ class PosOrder(models.Model):
                 if any(order.currency_id.compare_amounts(before, after) for before, after in
                        zip(totals, (order.amount_total, order.amount_tax))):
                     raise UserError(_("The Revolut order totals do not match its financial contents."))
-            values = order._revolut_order_values()
+            values = order._revolut_order_values(
+                bounded=bool(exposed or has_revolut_payment or return_source)
+            )
             refunds = ReturnAllocation(self.env).validate_settlement(
                 values, order, self._revolut_payment_values(values, order)
             )
@@ -401,7 +406,7 @@ class PosOrder(models.Model):
         ):
             raise UserError(_("A Revolut charge cannot settle a refund document."))
         verified = operation_model.browse()
-        current_snapshot = operation_model.normalize_financial_snapshot(order)
+        current_snapshot = operation_model._normalize_financial_snapshot(order, native_order=True)
         for operation in latest:
             if operation.retry_safe and operation.state != "verified":
                 continue
@@ -479,6 +484,11 @@ class PosOrder(models.Model):
                 "pos_payment_id": payment.id,
                 "blocking_order_key": False,
             })
+
+    def _get_refunded_orders(self, order):
+        # Pinned Odoo traverses raw lines here before calling _process_order.
+        ReturnAllocation(self.env).preflight_order_lines(order)
+        return super()._get_refunded_orders(order)
 
     def _process_order(self, order, existing_order):
         with _revolut_mutation(self.env) as mutation:

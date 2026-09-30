@@ -1,6 +1,6 @@
 {
     "name": "POS Revolut",
-    "version": "19.0.1.7.6",
+    "version": "19.0.1.8.0",
     "category": "Sales/Point of Sale",
     "summary": "Configure a Revolut payment terminal for Point of Sale",
     "author": "Davai",
@@ -12,6 +12,8 @@
         "views/pos_payment_method_views.xml",
         "views/revolut_reconciliation_views.xml",
         "views/revolut_refund_views.xml",
+        "report/revolut_receipt.xml",
+        "views/revolut_receipt_views.xml",
     ],
     "assets": {
         "point_of_sale._assets_pos": [

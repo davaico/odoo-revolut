@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="pos_revolut.RevolutReceiptButton">
+        <button t-if="state.options.length || state.error"
+                class="revolut-receipt-download btn btn-secondary btn-lg w-100 flex-shrink-0"
+                t-att-disabled="state.loading || state.downloading" t-on-click="open">
+            <i t-att-class="state.loading || state.downloading ? 'fa fa-spinner fa-spin me-1' : 'fa fa-download me-1'" aria-hidden="true"/>
+            Revolut Receipts
+        </button>
+    </t>
+
+    <t t-name="pos_revolut.RevolutReceiptSelection">
+        <Dialog title="title">
+            <div class="revolut-receipt-selection list-group list-group-flush">
+                <button t-foreach="props.options" t-as="option" t-key="option.kind + ':' + option.operation_id"
+                        class="list-group-item list-group-item-action d-flex align-items-center gap-2 py-3"
+                        t-att-data-kind="option.kind" t-att-data-operation-id="option.operation_id"
+                        t-att-disabled="!!state.downloading" t-on-click="() => this.download(option)">
+                    <i t-att-class="state.downloading === option.kind + ':' + option.operation_id ? 'fa fa-spinner fa-spin' : 'fa fa-download'" aria-hidden="true"/>
+                    <span class="text-break" t-esc="option.label"/>
+                </button>
+            </div>
+            <t t-set-slot="footer">
+                <button class="btn btn-secondary" t-on-click="props.close">Close</button>
+            </t>
+        </Dialog>
+    </t>
+
+    <t t-inherit="point_of_sale.ReceiptScreen" t-inherit-mode="extension">
+        <xpath expr="//div[hasclass('receipt-options')]" position="inside">
+            <RevolutReceiptButton order="currentOrder"/>
+        </xpath>
+    </t>
+
+    <t t-inherit="point_of_sale.TicketScreen" t-inherit-mode="extension">
+        <xpath expr="//div[hasclass('pads')]" position="before">
+            <RevolutReceiptButton order="_selectedSyncedOrder"/>
+        </xpath>
+    </t>
+</templates>

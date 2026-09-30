@@ -56,4 +56,6 @@ Resolve evidence policy before further sharing of release material; any necessar
 
 Start from current reviewed main and record the exact revision; do not implement against the stale scanned checkout. Preserve existing work and use an isolated worktree if another agent is editing overlapping code. All automated Revolut calls are mocked and blocked from reaching real Merchant endpoints. Physical terminal actions, deployment and production mutations require a separate authorized workflow.
 
+## Owner clarification — 2026-09-30
 
+The owner confirms that the repository is currently private and is intended to become open source. They do not know whether the recorded payment and terminal identifiers are original or anonymized. Resolve this investigation before public publication; planned publication is not evidence that public disclosure has already occurred. Establish identifier provenance and the authorized current readership. If provenance cannot be established, propose consistent aliases and a restricted authoritative mapping before publication, preserving reconciliation evidence. No history rewrite or credential rotation is authorized by these facts.

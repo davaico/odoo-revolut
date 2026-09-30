@@ -9,6 +9,8 @@ from psycopg2.errors import DeadlockDetected, SerializationFailure
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError, ValidationError
 
+from .financial_snapshot import FinancialSnapshotError
+
 
 REVOLUT_SECRET_REFERENCE_PATTERN = re.compile(r"ODOO_REVOLUT_SECRET_[A-Z0-9_]+")
 REVOLUT_UUID_PATTERN = re.compile(
@@ -254,6 +256,9 @@ class PosPaymentMethod(models.Model):
     ):
         # The caller's POS permissions and ownership have already been checked.
         # Configuration stays manager-only; only the server reads it for dispatch.
+        snapshot = (self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(
+            financial_snapshot
+        ) if financial_snapshot else False)
         configuration = self.sudo()
         fulfilment_type = configuration.revolut_fulfilment_type
         if ("module_pos_restaurant" in session.config_id._fields
@@ -297,11 +302,7 @@ class PosPaymentMethod(models.Model):
             "fulfilment_type": fulfilment_type,
             "secret_reference": configuration.revolut_secret_reference,
             "blocking_order_key": f"{self.company_id.id}:{order_uuid}",
-            "financial_snapshot": (
-                self.env["pos.revolut.payment.operation"].normalize_financial_snapshot(
-                    financial_snapshot
-                ) if financial_snapshot else False
-            ),
+            "financial_snapshot": snapshot,
             "blocking_terminal_key": (
                 f"{self.company_id.id}:{configuration.revolut_environment}:"
                 f"{configuration.revolut_terminal_id}"
@@ -582,6 +583,34 @@ class PosPaymentMethod(models.Model):
             == operation["location_id"]
         )
 
+    def _reject_revolut_snapshot_owned(self, order_uuid, payment_line_uuid, error,
+                                      previous_operation_id=False):
+        # A validation exception alone never proves a previous start was absent.
+        # Use the same order lock as creation/reservation, then discard it along
+        # with the rejected request. Existing evidence remains reconciliation-only.
+        for attempt in range(3):
+            try:
+                with self.env.registry.cursor() as cursor:
+                    env = api.Environment(cursor, self.env.uid, dict(self.env.context))
+                    charges = env["pos.revolut.payment.operation"].sudo()
+                    charges._lock_order(self.company_id.id, order_uuid)
+                    domain = [("company_id", "=", self.company_id.id), ("order_uuid", "=", order_uuid)]
+                    if (previous_operation_id or charges.search_count(domain)
+                            or env["pos.revolut.refund.operation"].sudo().search_count(domain)
+                            or env["pos.order"].sudo().search_count(domain[:1] + [
+                                ("uuid", "=", order_uuid), ("state", "!=", "draft"),
+                            ])):
+                        raise error
+                    cursor.rollback()
+                    return {
+                        "start_rejected": "snapshot_invalid", "dispatched": False,
+                        "order_uuid": order_uuid, "payment_line_uuid": payment_line_uuid,
+                        "previous_operation_id": False, "message": str(error),
+                    }
+            except (IntegrityError, SerializationFailure):
+                if attempt == 2:
+                    raise error from None
+
     def revolut_start_payment(
         self, session_id, order_uuid, payment_line_uuid, amount, currency_id,
         previous_operation_id=False, financial_snapshot=False,
@@ -599,15 +628,20 @@ class PosPaymentMethod(models.Model):
         )
         if not financial_snapshot:
             raise UserError(_("The original POS order contents are required before payment."))
-        operation_values = self._revolut_operation_values(
-            session,
-            currency,
-            normalized_amount,
-            amount_minor,
-            order_uuid,
-            payment_line_uuid,
-            financial_snapshot,
-        )
+        try:
+            operation_values = self._revolut_operation_values(
+                session,
+                currency,
+                normalized_amount,
+                amount_minor,
+                order_uuid,
+                payment_line_uuid,
+                financial_snapshot,
+            )
+        except FinancialSnapshotError as error:
+            return self._reject_revolut_snapshot_owned(
+                order_uuid, payment_line_uuid, error, previous_operation_id
+            )
         snapshot, created = self._create_revolut_operation_owned(
             operation_values, previous_operation_id
         )
@@ -746,7 +780,9 @@ class PosPaymentMethod(models.Model):
             snapshot = self._apply_revolut_observation_owned(
                 operation_id, "intent", intent
             )
-            if snapshot["state"] == "verified" or snapshot["retry_safe"]:
+            if snapshot["state"] in {"verified", "unresolved"} or snapshot["retry_safe"]:
+                # An invalid intent must not be overridden by a later payment
+                # read using a reference retained from an earlier observation.
                 return snapshot
             if (intent.get("state") in ("cancelled", "failed")
                     and not intent.get("payment_id")

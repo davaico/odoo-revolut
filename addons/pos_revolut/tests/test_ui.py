@@ -1,4 +1,5 @@
 from unittest.mock import Mock, patch
+from uuid import uuid4
 
 import requests
 
@@ -282,6 +283,11 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         revolut_method = self._configure_revolut_checkout()
         calls = []
         intent_polls = 0
+        payment_states = []
+        processing_states = [
+            "pending", "authentication_challenge", "authentication_verified",
+            "authorisation_started", "authorisation_passed", "authorised", "capture_started",
+        ]
 
         def request(method, url, **kwargs):
             nonlocal intent_polls
@@ -322,11 +328,13 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                     }
                 )
             if method == "GET" and "/api/payments/" in url:
+                state = processing_states[len(payment_states)] if len(payment_states) < len(processing_states) else "captured"
+                payment_states.append(state)
                 return self._response(
                     {
                         "id": self.PAYMENT_ID,
                         "order_id": self.ORDER_ID,
-                        "state": "captured",
+                        "state": state,
                         "amount": 1234,
                         "currency": self.main_pos_config.currency_id.name,
                         "cardholder_name": "CARDHOLDER_CANARY_TICKET_11",
@@ -352,6 +360,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.assertEqual(operation.revolut_payment_id, self.PAYMENT_ID)
         self.assertEqual(order.state, "paid")
         self.assertEqual(order.payment_ids.transaction_id, self.PAYMENT_ID)
+        self.assertEqual(payment_states, [*processing_states, "captured"])
         self.assertNotIn("CARDHOLDER_CANARY_TICKET_11", repr(operation.read()[0]))
         self.assertNotIn("PAN_CANARY_TICKET_11", repr(operation.read()[0]))
         mutating_calls = [call for call in calls if call[0] == "POST"]
@@ -379,8 +388,10 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
     def test_split_cash_and_revolut_checkout_uses_remaining_line_amount(self):
         revolut_method = self._configure_revolut_checkout()
         calls = []
+        payment_polls = 0
 
         def request(method, url, **kwargs):
+            nonlocal payment_polls
             calls.append((method, url, kwargs))
             if method == "GET" and url.endswith("/api/terminals"):
                 return self._response({"terminals": [{
@@ -397,9 +408,10 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                     "state": "completed", "payment_id": self.PAYMENT_ID,
                 })
             if method == "GET" and "/api/payments/" in url:
+                payment_polls += 1
                 return self._response({
                     "id": self.PAYMENT_ID, "order_id": self.ORDER_ID,
-                    "state": "captured", "amount": 434,
+                    "state": "pending" if payment_polls == 1 else "captured", "amount": 434,
                     "currency": self.main_pos_config.currency_id.name,
                 })
             raise AssertionError(f"Unexpected Revolut request: {method} {url}")
@@ -422,6 +434,72 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         posts = [call for call in calls if call[0] == "POST"]
         self.assertEqual(posts[0][2]["json"]["amount"], 434)
         self.assertEqual(posts[1][2]["json"]["amount"], 434)
+        self.assertEqual(payment_polls, 2)
+
+    def test_processing_multiple_card_lines_preserve_partial_due_and_complete_automatically(self):
+        revolut_method = self._configure_revolut_checkout()
+        attempts = {}
+        calls = []
+
+        def request(method, url, **kwargs):
+            calls.append((method, url))
+            if method == "GET" and url.endswith("/api/terminals"):
+                return self._response({"terminals": [{
+                    "id": self.TERMINAL_ID, "online": True,
+                    "operation_mode": "pos", "location_id": self.LOCATION_ID,
+                }]})
+            if method == "POST" and url.endswith("/api/orders"):
+                order_id = str(uuid4())
+                attempts[order_id] = {
+                    "order_id": order_id, "intent_id": str(uuid4()), "payment_id": str(uuid4()),
+                    "amount": kwargs["json"]["amount"], "polls": 0,
+                }
+                return self._response({"id": order_id})
+            if method == "POST" and url.endswith("/payment-intents"):
+                order_id = url.split("/api/orders/")[1].split("/")[0]
+                attempt = attempts[order_id]
+                self.assertEqual(kwargs["json"]["amount"], attempt["amount"])
+                return self._response({"id": attempt["intent_id"], "state": "pending"})
+            if method == "GET" and "/api/payment-intents/" in url:
+                attempt = next(item for item in attempts.values() if url.endswith(item["intent_id"]))
+                return self._response({
+                    "id": attempt["intent_id"], "order_id": attempt["order_id"],
+                    "state": "completed", "payment_id": attempt["payment_id"],
+                })
+            if method == "GET" and "/api/payments/" in url:
+                attempt = next(item for item in attempts.values() if url.endswith(item["payment_id"]))
+                states = ["pending", "authorisation_started", "capture_started", "captured"]
+                state = states[min(attempt["polls"], 3)]
+                attempt["polls"] += 1
+                return self._response({
+                    "id": attempt["payment_id"], "order_id": attempt["order_id"],
+                    "state": state, "amount": attempt["amount"],
+                    "currency": self.main_pos_config.currency_id.name,
+                })
+            raise AssertionError(f"Unexpected Revolut request: {method} {url}")
+
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+            side_effect=request,
+        ):
+            self.start_pos_tour("pos_revolut_processing_multiple_cards")
+
+        self.env.invalidate_all()
+        operations = self.env["pos.revolut.payment.operation"].search([
+            ("payment_method_id", "=", revolut_method.id),
+        ], order="id")
+        self.assertEqual(len(operations), 2)
+        self.assertEqual(operations.mapped("state"), ["verified", "verified"])
+        self.assertEqual(operations.mapped("amount_minor"), [1233, 1])
+        self.assertEqual(len(operations.mapped("payment_line_uuid")), 2)
+        self.assertEqual(len(set(operations.mapped("payment_line_uuid"))), 2)
+        self.assertEqual(len(operations.pos_order_id), 1)
+        self.assertEqual(operations.pos_order_id.state, "paid")
+        self.assertEqual(operations.pos_payment_id.mapped("amount"), [12.33, 0.01])
+        self.assertEqual(set(operations.pos_payment_id.mapped("transaction_id")),
+                         {item["payment_id"] for item in attempts.values()})
+        self.assertEqual([item["polls"] for item in attempts.values()], [4, 4])
+        self.assertEqual(len([call for call in calls if call[0] == "POST"]), 4)
 
     def test_reload_recovers_late_success_without_new_charge(self):
         revolut_method = self._configure_revolut_checkout()
@@ -524,9 +602,10 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         calls = []
         attempt = 0
         cancelled = False
+        payment_polls = 0
 
         def request(method, url, **kwargs):
-            nonlocal attempt, cancelled
+            nonlocal attempt, cancelled, payment_polls
             calls.append((method, url))
             order_id = (
                 self.ORDER_ID if attempt <= 1
@@ -566,8 +645,8 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                 state = "completed"
                 if outcome == "interrupted":
                     raise requests.ConnectionError("Simulated transport interruption")
-                if outcome in {"processing", "timed_out"}:
-                    state = "processing" if outcome == "processing" else "pending"
+                if outcome == "processing":
+                    state = "processing"
                 if outcome == "cancel_race" and not cancelled:
                     state = "pending"
                 if outcome == "cancelled":
@@ -577,16 +656,21 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                     payload["payment_id"] = payment_id
                 return self._response(payload)
             if method == "GET" and "/api/payments/" in url:
+                payment_polls += 1
                 state = (
                     "captured" if attempt > 1 or outcome == "cancel_race"
                     else outcome
                 )
+                if outcome in {"timed_out", "malformed_payment"}:
+                    state = "authentication_challenge"
+                elif attempt == 1 and payment_polls == 1 and outcome in {"declined", "failed"}:
+                    state = "authorisation_started"
                 return self._response(
                     {
                         "id": payment_id,
                         "order_id": order_id,
                         "state": state,
-                        "amount": 1234,
+                        "amount": 1234.0 if outcome == "malformed_payment" else 1234,
                         "currency": self.main_pos_config.currency_id.name,
                     }
                 )
@@ -655,7 +739,16 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self._run_unsuccessful_checkout("interrupted", "pos_revolut_interrupted")
 
     def test_foreground_timeout_preserves_line_and_blocks_new_charge(self):
-        self._run_unsuccessful_checkout("timed_out", "pos_revolut_timed_out")
+        operation, calls = self._run_unsuccessful_checkout("timed_out", "pos_revolut_timed_out")
+        self.assertEqual(operation.revolut_payment_id, self.PAYMENT_ID)
+        self.assertTrue(any(method == "GET" and "/api/payments/" in url for method, url in calls))
+
+    def test_malformed_processing_amount_stays_guarded_and_check_is_read_only(self):
+        operation, _calls = self._run_unsuccessful_checkout(
+            "malformed_payment", "pos_revolut_malformed_processing",
+        )
+        self.assertEqual(operation.revolut_payment_id, self.PAYMENT_ID)
+        self.assertFalse(operation.retry_safe)
 
     def test_processing_cannot_be_cancelled_and_amount_stays_locked(self):
         _operations, calls = self._run_unsuccessful_checkout(
@@ -678,6 +771,42 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
             self.start_pos_tour("pos_revolut_payment_discovery_alternative")
         self.env.invalidate_all()
         self.assertFalse(self.env["pos.revolut.payment.operation"].search([]))
+
+    def test_invalid_payment_snapshot_recovers_after_correction_and_reload(self):
+        operations, _calls = self._run_unsuccessful_checkout(
+            "captured", "pos_revolut_payment_snapshot_recovery"
+        )
+        self.assertEqual(operations.financial_snapshot["lines"][0]["qty"], "1")
+        self.assertEqual(
+            operations.financial_snapshot["lines"][0]["price_unit"], "12.34"
+        )
+        self.assertEqual(operations.pos_order_id.uuid, operations.order_uuid)
+        self.assertEqual(
+            operations.pos_payment_id.uuid, operations.payment_line_uuid
+        )
+        self.assertEqual(operations.pos_payment_id.payment_ref_no, self.ORDER_ID)
+        self.assertFalse(self.env["pos.revolut.refund.operation"].search([]))
+
+    def test_invalid_payment_snapshot_line_can_be_removed_for_cash_without_dispatch(self):
+        self._configure_revolut_checkout()
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+            side_effect=AssertionError("Invalid snapshot must not contact Revolut"),
+        ) as request:
+            self.start_pos_tour("pos_revolut_payment_snapshot_cash_alternative")
+        request.assert_not_called()
+
+        self.env.invalidate_all()
+        self.assertFalse(self.env["pos.revolut.payment.operation"].search([]))
+        self.assertFalse(self.env["pos.revolut.refund.operation"].search([]))
+        orders = self.env["pos.order"].search([
+            ("session_id", "=", self.main_pos_config.current_session_id.id),
+            ("state", "=", "paid"),
+        ])
+        self.assertEqual(len(orders), 1)
+        self.assertEqual(orders.amount_total, 12.34)
+        self.assertEqual(orders.lines.qty, 1)
+        self.assertEqual(orders.payment_ids.payment_method_id.name, "Cash")
 
     def _run_terminal_busy_checkout(self, tour, resume):
         revolut_method = self._configure_revolut_checkout()
@@ -777,11 +906,13 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
 
     def _run_full_refund(self, tour, outcome="completed"):
         self._configure_revolut_checkout()
+        calls = []
         refund_polls = 0
         refund_posts = []
 
         def request(method, url, **kwargs):
             nonlocal refund_polls
+            calls.append((method, url, kwargs))
             if method == "GET" and url.endswith("/api/terminals"):
                 return self._response({"terminals": [{
                     "id": self.TERMINAL_ID, "online": True,
@@ -840,6 +971,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         ):
             self.start_pos_tour(tour, login="pos_admin")
         self.assertEqual(len(refund_posts), 0 if outcome == "undispatched" else 1)
+        return calls
 
     def test_manager_returns_full_revolut_sale_in_normal_pos_flow(self):
         self._run_full_refund("pos_revolut_full_refund")
@@ -863,6 +995,29 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self._run_full_refund("pos_revolut_refund_discovery_alternative", "undispatched")
         self.env.invalidate_all()
         self.assertFalse(self.env["pos.revolut.refund.operation"].search([]))
+
+    def test_invalid_refund_snapshot_recovers_after_correction_and_reload(self):
+        calls = self._run_full_refund("pos_revolut_refund_snapshot_recovery")
+        self.env.invalidate_all()
+        refunds = self.env["pos.revolut.refund.operation"].search([])
+        payments = self.env["pos.revolut.payment.operation"].search([])
+        self.assertEqual(len(refunds), 1)
+        self.assertEqual(len(payments), 1)
+        self.assertEqual(refunds.state, "verified")
+        self.assertEqual(refunds.financial_snapshot["lines"][0]["qty"], "-1")
+        self.assertEqual(
+            refunds.financial_snapshot["lines"][0]["refunded_orderline_id"],
+            payments.pos_order_id.lines.id,
+        )
+        self.assertEqual(refunds.original_operation_id, payments)
+        self.assertEqual(refunds.original_operation_id.state, "verified")
+        self.assertEqual(refunds.revolut_order_id, self.REFUND_ID)
+        self.assertEqual(refunds.pos_order_id.state, "paid")
+        self.assertEqual(refunds.pos_order_id.uuid, refunds.order_uuid)
+        self.assertEqual(refunds.pos_payment_id.uuid, refunds.payment_line_uuid)
+        self.assertEqual(refunds.pos_payment_id.transaction_id, self.REFUND_ID)
+        self.assertEqual(refunds.pos_payment_id.payment_ref_no, self.REFUND_ID)
+        self.assertEqual(sum(method == "POST" for method, _url, _kwargs in calls), 3)
 
     def test_lost_refund_response_recovers_after_reload_without_second_refund(self):
         self._run_full_refund("pos_revolut_refund_reload", "lost_response")

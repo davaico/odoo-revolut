@@ -56,4 +56,6 @@ Independent of ticket 31: host identity and local file integrity require differe
 
 Start from current reviewed main and record the exact revision; do not implement against the stale scanned checkout. Preserve existing work and use an isolated worktree if another agent is editing overlapping code. All automated Revolut calls are mocked and blocked from reaching real Merchant endpoints. Physical terminal actions, deployment and production mutations require a separate authorized workflow.
 
+## Owner clarification — 2026-09-30
 
+The owner reports that their boss operates SSH access to the company-managed Hetzner VM. The exact deployment connection route and first-use identity verification remain unknown. Versioned hosting setup enables Tailscale SSH; confirm the effective route and identity/access controls with the infrastructure owner rather than assuming ordinary public-host SSH semantics.
