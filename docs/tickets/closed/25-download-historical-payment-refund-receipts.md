@@ -4,7 +4,7 @@
 
 **Work branch:** `codex/25-download-historical-payment-refund-receipts`
 
-**State:** claimed
+**State:** closed
 
 **Category:** enhancement
 
@@ -60,16 +60,16 @@ The absence of a documented remote-print endpoint is not proof that Revolut can 
 
 ## Acceptance criteria
 
-- [ ] An authorized user can find an integration-backed sale and download its verified Revolut payment PDF from both the cashier interface and administration interface. Demonstrate this for a transaction at least one week old, after the original POS session closes, and after a fresh browser load. Do not require the customer to have requested a receipt at checkout or to have an accounting invoice.
-- [ ] The receipt clearly identifies itself as an Odoo-generated payment receipt, with merchant identity, a recognizable Odoo sale reference, the payment's verified amount and currency, relevant Revolut references, and an accurately labelled date/time. Include card brand/last four digits only when supported by verified available evidence. Never invent missing card details, authorization data, historical merchant details or provider timestamps, and never present a local verification timestamp as the provider transaction time.
-- [ ] Existing verified payments and refunds remain usable after upgrade even when optional receipt fields were not historically persisted. Define and test a truthful fallback using available verified evidence. Preserve stable financial facts for future reprints and distinguish a reprint/download time from the original event time. Missing optional display metadata must not trigger a new financial request or silently rewrite transaction history.
-- [ ] Each verified full or partial refund has a distinct downloadable refund PDF from both interfaces, showing its verified refund amount/currency, refund reference and original-payment relationship. Multiple partial refunds remain individually identifiable. Original payment receipts remain available after partial or full refund; the original payment and later refund documents do not overwrite each other or misrepresent each other's dates and amounts.
-- [ ] Receipt eligibility is enforced server-side from authoritative verified outcomes. Unverified, pending, failed, declined, cancelled or uncertain attempts cannot produce a successful-payment or completed-refund receipt through UI actions, direct requests or attachment access. A verified partial tender may have its own payment receipt, but it must not claim the whole POS sale is fully paid. Selecting a payment in a split-tender sale must not substitute the order total or include another tender's amount.
-- [ ] Cashiers and administrators can retrieve only documents permitted by their existing POS/sale and active-company access. Exercise cross-company and unauthorized direct download attempts, including modified identifiers and stored attachments if used. Receipt viewing does not grant permission to issue refunds or alter payment evidence. Keep Merchant credentials and sensitive card data out of PDF content, URLs, client payloads and logs.
-- [ ] Repeated downloads, retries after a report failure and access from both interfaces cause no provider financial mutations, duplicate financial records, state changes, or reopening of closed sessions. Downloading an already available receipt must not depend on terminal availability or a live provider response. Missing/inconsistent required evidence or PDF generation failures produce an actionable message without changing the payment/refund outcome.
-- [ ] Deliver downloadable PDFs suitable for ordinary printing. Staff handle email manually. A physical-printer failure or cancellation must not change transaction state. No automatic email, public QR receipt sharing, direct TPE printer command, or accounting invoice/credit-note creation is introduced by this slice.
-- [ ] Add meaningful pinned-Odoo report/access tests and POS browser coverage for both current and historical retrieval, session closure/reload, full and partial refunds, split tender, missing optional legacy fields, repeated downloads, unauthorized access, failed report generation and non-final outcomes. Verify actual generated PDF content and that Merchant financial calls remain blocked. Exercise administration report/download integration as well as the POS path; receipt-screen rendering alone is insufficient evidence.
-- [ ] Record the reviewed implementation revision, affected automated results and fresh-install/upgrade compatibility, and document how staff find, download and manually print/send each document. Preserve existing verified settlement, recovery and return-allocation behavior. Record any physical-print checks that remain unexecuted separately from automated PDF verification. Complete independent Standards and Spec review before closing.
+- [x] An authorized user can find an integration-backed sale and download its verified Revolut payment PDF from both the cashier interface and administration interface. Demonstrate this for a transaction at least one week old, after the original POS session closes, and after a fresh browser load. Do not require the customer to have requested a receipt at checkout or to have an accounting invoice.
+- [x] The receipt clearly identifies itself as an Odoo-generated payment receipt, with merchant identity, a recognizable Odoo sale reference, the payment's verified amount and currency, relevant Revolut references, and an accurately labelled date/time. Include card brand/last four digits only when supported by verified available evidence. Never invent missing card details, authorization data, historical merchant details or provider timestamps, and never present a local verification timestamp as the provider transaction time.
+- [x] Existing verified payments and refunds remain usable after upgrade even when optional receipt fields were not historically persisted. Define and test a truthful fallback using available verified evidence. Preserve stable financial facts for future reprints and distinguish a reprint/download time from the original event time. Missing optional display metadata must not trigger a new financial request or silently rewrite transaction history.
+- [x] Each verified full or partial refund has a distinct downloadable refund PDF from both interfaces, showing its verified refund amount/currency, refund reference and original-payment relationship. Multiple partial refunds remain individually identifiable. Original payment receipts remain available after partial or full refund; the original payment and later refund documents do not overwrite each other or misrepresent each other's dates and amounts.
+- [x] Receipt eligibility is enforced server-side from authoritative verified outcomes. Unverified, pending, failed, declined, cancelled or uncertain attempts cannot produce a successful-payment or completed-refund receipt through UI actions, direct requests or attachment access. A verified partial tender may have its own payment receipt, but it must not claim the whole POS sale is fully paid. Selecting a payment in a split-tender sale must not substitute the order total or include another tender's amount.
+- [x] Cashiers and administrators can retrieve only documents permitted by their existing POS/sale and active-company access. Exercise cross-company and unauthorized direct download attempts, including modified identifiers and stored attachments if used. Receipt viewing does not grant permission to issue refunds or alter payment evidence. Keep Merchant credentials and sensitive card data out of PDF content, URLs, client payloads and logs.
+- [x] Repeated downloads, retries after a report failure and access from both interfaces cause no provider financial mutations, duplicate financial records, state changes, or reopening of closed sessions. Downloading an already available receipt must not depend on terminal availability or a live provider response. Missing/inconsistent required evidence or PDF generation failures produce an actionable message without changing the payment/refund outcome.
+- [x] Deliver downloadable PDFs suitable for ordinary printing. Staff handle email manually. A physical-printer failure or cancellation must not change transaction state. No automatic email, public QR receipt sharing, direct TPE printer command, or accounting invoice/credit-note creation is introduced by this slice.
+- [x] Add meaningful pinned-Odoo report/access tests and POS browser coverage for both current and historical retrieval, session closure/reload, full and partial refunds, split tender, missing optional legacy fields, repeated downloads, unauthorized access, failed report generation and non-final outcomes. Verify actual generated PDF content and that Merchant financial calls remain blocked. Exercise administration report/download integration as well as the POS path; receipt-screen rendering alone is insufficient evidence.
+- [x] Record the reviewed implementation revision, affected automated results and fresh-install/upgrade compatibility, and document how staff find, download and manually print/send each document. Preserve existing verified settlement, recovery and return-allocation behavior. Record any physical-print checks that remain unexecuted separately from automated PDF verification. Complete independent Standards and Spec review before closing.
 
 ## Blocked by
 
@@ -89,3 +89,24 @@ The owner resolved the document type, generated-document fallback, interface acc
 
 This is a feature brief, not evidence that the feature works. Release scheduling relative to ticket 12 has not been decided; this triage does not add a new ticket 12 dependency. No implementation, commit, push, deployment or financial operation was performed while creating the brief.
 
+## Completion evidence - 2026-09-30
+
+Implemented on the declared isolated branch from reviewed baseline
+`fbab631eaf7595de7893b95bee99c1c83245bd9d`. Final reviewed and tested code is
+`57f6e16afa4c5dab8ac7158eb437d77919f59931`; addon version is `19.0.1.8.0`.
+
+See [verification and independent review](../../testing/ticket-25-receipts.md)
+for actual PDF/report/access and POS/administration browser coverage, the
+baseline-to-ticket schema upgrade, and the 8-test Restaurant compatibility run.
+All 22 receipt tests passed on fresh install and upgrade. The full 243-test
+retail run had one existing cancellation-race tour timeout; its isolated rerun
+passed at unchanged code. This is recorded explicitly, not presented as a
+wholly green full suite. Standards and Spec reviews had no actionable findings
+after the legacy/non-final browser coverage additions were exercised.
+
+[Staff guidance](../../installation.md#download-payment-and-refund-receipts)
+explains locating individual historical payment/refund documents, legacy
+metadata, retries, and manual printing/email. Physical printing, manual email,
+real terminal interaction, deployment and live financial acceptance remain
+unexecuted and outside this local PDF slice. Existing human release gates are
+unchanged; no push or staging change was authorized or performed.

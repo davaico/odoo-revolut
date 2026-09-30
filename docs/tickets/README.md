@@ -79,7 +79,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [21 — Keep reconciliation progressing after malformed provider responses](closed/21-isolate-reconciliation-failures.md) | `ready-for-agent` at closure | Closed | None |
 | [22 — Recover a POS line after a terminal-busy rejection](ready-for-human/22-recover-terminal-busy-rejection.md) | `ready-for-human` | Open | Reviewed local fix complete; live two-browser retest gated by financial reconciliation |
 | [23 — Preserve payment polling through valid processing states](ready-for-human/23-preserve-polling-through-payment-processing.md) | `ready-for-human` | Open | Reviewed local fix complete; full/split/multiple-card live retests gated by financial reconciliation |
-| [25 — Download historical Revolut payment and refund receipts](ready-for-agents/25-download-historical-payment-refund-receipts.md) | `ready-for-agent` | Claimed | None for local implementation and mocked verification |
+| [25 — Download historical Revolut payment and refund receipts](closed/25-download-historical-payment-refund-receipts.md) | `ready-for-agent` at closure | Closed | None for local implementation and mocked verification |
 
 ## Architecture triage — 2026-09-25
 
