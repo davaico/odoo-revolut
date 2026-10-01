@@ -77,7 +77,7 @@ clearance or fixed provider completion time is inferred.
 - [Ticket 22](../tickets/closed/22-recover-terminal-busy-rejection.md)
   records the terminal-busy rejection shown as a false communication failure,
   followed by an unrecoverable Check status loop with no dispatched payment.
-- [Ticket 23](../tickets/ready-for-human/23-preserve-polling-through-payment-processing.md)
+- [Ticket 23](../tickets/closed/23-preserve-polling-through-payment-processing.md)
   records approved payments requiring manual Check status. Classifier and
   foreground-loop characterizations identify a reproducible software gap;
   the exact early live provider payload remains unverified.

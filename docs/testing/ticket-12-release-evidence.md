@@ -259,7 +259,7 @@ comparison before deployment.
 
 Open release gaps: remaining L02–L10 subcases and complete test-money
 reconciliation; [terminal-busy recovery](../tickets/closed/22-recover-terminal-busy-rejection.md)
-and [automatic payment-status handling](../tickets/ready-for-human/23-preserve-polling-through-payment-processing.md);
+and [automatic payment-status handling](../tickets/closed/23-preserve-polling-through-payment-processing.md);
 the Sandbox simulator issue for required non-production acceptance; and final
 guidance based on physical-terminal observations. Before a live addon
 upgrade/restart, confirm all refund final states and any other financial
@@ -398,7 +398,7 @@ tender. A read-only ledger check independently found the payment operation
 `verified` with underlying provider state `captured`, one GBP minor unit, a
 linked paid POS order totalling £0.01, and no order or terminal lock. This
 passes the full-card live subcase; split tender and multiple Revolut lines
-remain required before [ticket 23](../tickets/ready-for-human/23-preserve-polling-through-payment-processing.md)
+remain required before [ticket 23](../tickets/closed/23-preserve-polling-through-payment-processing.md)
 can close. The retained test capture must also be accounted for under ticket
 12's release reconciliation.
 
@@ -411,3 +411,18 @@ a linked paid £0.02 order, two stored £0.01 payments on the expected tender
 methods, and no order or terminal lock. The operator confirmed the receipt
 opened automatically without Check status or Validate. The multiple-Revolut-line
 case and test-charge reconciliation remain open.
+
+## Ticket 23 two-card automatic success — 2026-10-01
+
+The operator prepared a £0.02 GBP sale. They cancelled the initial £0.02
+Revolut request without presenting a card, edited the cancelled line to £0.01
+and retried. The first £0.01 card payment succeeded automatically, leaving
+£0.01 due. A second £0.01 Revolut payment completed the order and the operator
+reports the receipt opened automatically without Check status or Validate.
+Read-only staging records show paid order `261-2-000019` for £0.02, two
+distinct verified/captured one-minor-unit operations and two matching £0.01
+Revolut tender lines. The original £0.02 operation is provider-cancelled
+without an underlying payment; no order or terminal lock remains. This
+completes [ticket 23](../tickets/closed/23-preserve-polling-through-payment-processing.md)'s
+live full/split/multiple-line criterion. Ticket 12 retains the wider release
+and test-money reconciliation requirements, including these two new captures.

@@ -35,7 +35,7 @@ Controlled real-terminal acceptance establishes whether the documented addon is 
 - 20 — Recover POS lines after a failed pre-payment lookup
 - 21 — Keep reconciliation progressing after malformed provider responses
 - 22 — Recover a POS line after a terminal-busy rejection (closed after live retest)
-- 23 — Preserve payment polling through valid processing states (reviewed local fix; live retest open)
+- 23 — Preserve payment polling through valid processing states (closed after full, split and two-card live retests)
 - 24 — Bound financial snapshot processing before numeric expansion (closed; final combined release evidence remains required)
 
 ## Release gate update — 2026-09-25
@@ -132,7 +132,7 @@ and both browser terminal guards have passing subcases. Initial automatic
 status handling failed on four later operations, and an independent browser
 remained stuck after a definitive busy-terminal rejection. Reports
 [22](../closed/22-recover-terminal-busy-rejection.md) and
-[23](../ready-for-human/23-preserve-polling-through-payment-processing.md) preserve
+[23](../closed/23-preserve-polling-through-payment-processing.md) preserve
 these release findings and their mocked characterizations without claiming a
 fix or deployment. They are ready for local work; reviewed fixes/retests are
 required before closure. Read-only reconciliation of the pending refunds can
@@ -349,3 +349,18 @@ expected methods, and no remaining lock. The operator confirmed the receipt
 opened automatically without Check status or Validate. The multiple-Revolut-line
 live case and other ticket 12 release gates remain open.
 This new £0.01 card capture is part of the test-sale reconciliation still due.
+
+## Two-Revolut-line automatic receipt — 2026-10-01
+
+On a £0.02 GBP sale, the initial £0.02 terminal request was cancelled before
+any card was presented. The cancelled line was changed to £0.01 and retried.
+The first £0.01 card payment became successful automatically while Odoo kept
+the order open with £0.01 due. The second £0.01 Revolut payment then completed;
+the operator reports the £0.02 receipt opened automatically without Check
+status or Validate. Read-only server verification found paid POS order
+`261-2-000019`, two distinct captured/verified one-penny Revolut operations,
+two stored £0.01 tender lines with distinct provider references, and no
+terminal/order lock. The initial £0.02 attempt was provider-cancelled and had
+no underlying card payment. This closes [ticket 23](../closed/23-preserve-polling-through-payment-processing.md).
+Ticket 12 remains open for its other release gates and reconciliation of these
+two additional £0.01 card captures.

@@ -67,7 +67,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [09 — Issue partial refunds across original payment allocations](closed/09-partial-allocated-refunds.md) | `ready-for-agent` at closure | Closed | 07 (closed), 08 (closed) |
 | [10 — Install and upgrade a reviewed revision on staging](closed/10-staging-install-upgrade.md) | `ready-for-human` at closure | Closed | 03 (closed) |
 | [11 — Verify the complete addon on the target Odoo version](closed/11-target-version-acceptance.md) | `ready-for-agent` at closure | Closed | 06, 09, 10 |
-| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11, 16–21, 24 (closed); 22, 23 (live retests open); final reconciliation and acceptance |
+| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11, 16–24 (closed); final reconciliation and broader acceptance |
 | [13 — Deepen Return allocation](closed/13-deepen-return-allocation.md) | `ready-for-agent` at closure | Closed | None |
 | [14 — Deepen POS payment state](closed/14-deepen-pos-payment-state.md) | `ready-for-agent` at closure | Closed | None |
 | [15 — Deepen payment outcome application](closed/15-deepen-payment-outcome-application.md) | `ready-for-agent` at closure | Closed | None |
@@ -78,7 +78,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [20 — Recover POS lines after a failed pre-payment lookup](closed/20-recover-undispatched-pos-lines.md) | `ready-for-agent` at closure | Closed | None |
 | [21 — Keep reconciliation progressing after malformed provider responses](closed/21-isolate-reconciliation-failures.md) | `ready-for-agent` at closure | Closed | None |
 | [22 — Recover a POS line after a terminal-busy rejection](closed/22-recover-terminal-busy-rejection.md) | `ready-for-human` at closure | Closed | None; controlled two-browser no-card retest passed on staging |
-| [23 — Preserve payment polling through valid processing states](ready-for-human/23-preserve-polling-through-payment-processing.md) | `ready-for-human` | Open | Reviewed fix merged; full/split/multiple-card live retests after financial/deployment preflight |
+| [23 — Preserve payment polling through valid processing states](closed/23-preserve-polling-through-payment-processing.md) | `ready-for-human` at closure | Closed | None; full, Cash/Revolut split and two-card live retests passed |
 | [24 — Bound financial snapshot processing before numeric expansion](closed/24-bound-financial-snapshot-processing.md) | `ready-for-agent` at closure | Closed | None for local validation and mocked implementation |
 | [25 — Download historical Revolut payment and refund receipts](closed/25-download-historical-payment-refund-receipts.md) | `ready-for-agent` at closure | Closed | None for local implementation and mocked verification |
 | [26 — Decide server-authorized cart and tip behavior](closed/26-decide-order-and-tip-authorization.md) | `ready-for-agent` at closure | Closed | None |
