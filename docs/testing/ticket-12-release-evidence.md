@@ -1,9 +1,56 @@
 # Ticket 12 — Release evidence and terminal acceptance handoff
 
-**Live acceptance remains open.** This record covers software verification and
-the operator procedure. Physical-device and financial checks below are **NOT
-RUN** until an authorized operator records an observed result. Mocked success
-does not establish terminal certification.
+**Live acceptance remains open.** Dated entries distinguish observed passes,
+partial results and unexecuted cases. Mocked success does not establish terminal
+certification. Use the current checkpoint below to resume; earlier matrices and
+balances retain their original dates.
+
+## Current resume checkpoint — 2026-10-01, 13:40 UTC
+
+The resumed checkout fast-forwarded to `57af76b`, preserving the previous
+session's work. Its addon, scripts, Compose and Docker trees match deployed
+source `25e096d74ca62ac7f39558e0257f609be85185d7`. Read-only staging SQL
+confirmed base addon `19.0.1.10.2`; both `pos_restaurant` and
+`pos_revolut_restaurant` are uninstalled. The dedicated GBP register `2` has
+neither a Tip Product nor Odoo's tip option configured. Sessions `4` and `9`
+remain open. No payment operation was outside a final local state.
+
+The refund ledger has six operations: `1`–`5` are verified/completed;
+`6`, the existing one-penny allocation from original source `16` on return
+`1012`, remains pending/provider processing. Operations `1`–`4` link to paid
+negative POS orders `20`–`23`; operation `5` and the processing operation `6`
+have no finalized POS return yet. The ledger still totals £0.15 captured,
+£0.05 verified refunded, £0.01 reserved by the processing refund and £0.09
+not allocated to a refund. These are local ledger totals, not confirmation of
+cardholder credits or permission to spend/refund the remaining balance.
+
+| Resume area | Existing evidence to retain | Work still required |
+| --- | --- | --- |
+| Full retail / Cash-Revolut / two-card checkout | Controlled automatic receipt retests passed; ticket 23 is closed | Observe the newer cart-authority/tip behavior on the current deployed release |
+| Busy-terminal rejection and recovery | Controlled two-browser retest passed; ticket 22 is closed | Different-user resume and simultaneous-start subcases of L07 |
+| Full refund and earlier returns | Five provider refunds verified; four POS returns finalized | Reconcile the remaining test-money disposition by original source |
+| Two-card partial return `1012` | First penny verified; exactly one second-penny refund launched | Await authoritative completion of operation `6`, then resume the existing return and verify its receipt; no replacement refund |
+| Terminal tips | Local mocked implementation evidence exists | Configure the supported untaxed Tip Product; observe explicit zero and nonzero tips, matching report identity, units and latency on the device |
+| Restaurant L03 | Local bridge acceptance exists | Install/enable Restaurant and the bridge through the guarded procedure when financial blockers are clear; test dine-in, takeaway and unchanged partially paid order recovery |
+| Failure / cancellation / interruption L04–L06 and L10 | Earlier decline, no-card cancellation, retry and reload subcases remain recorded | Controlled provider failure, decline-to-paid retry, processing/capture cancellation race, network/capture-to-persistence interruption and interrupted/failed refund recovery; record unavailable controlled methods explicitly |
+| Final release evidence | Prior focused refund install/upgrade, Restaurant and POS-state results remain recorded | Complete exact packaged-artifact acceptance and finalize operating guidance from the remaining observations; ticket 28 retains its separate open gate |
+
+The operator is away from the terminal for this resume. No new physical-device
+scenario, Merchant request, configuration change, deployment or service restart
+was performed. Do not reuse the older matrix's remaining charge budget: later
+tests changed the totals. Retain the existing authorization history and confirm
+the amount/remaining authorization before each further real-money scenario.
+
+Both previously interrupted exact packaged-artifact scenarios were attempted
+using separate disposable project names and source `25e096d`. Each exited `1`
+before Odoo or any test could start because the execution environment has no
+Docker daemon socket at `/var/run/docker.sock`. The archive SHA-256 was
+`2e6bd410d9b90cb11a8468bd7247dfb6a830563742ee9f007903caec7f064728`
+in both attempts. These are blocked checks, not addon failures or passing
+acceptance. On a development host with Docker available, run
+`scripts/test-delivered-addon --revision 25e096d74ca62ac7f39558e0257f609be85185d7 --scenario retail`
+and the same command with `--scenario migration`. No completed live retest or
+previously passing full suite was repeated during this resume.
 
 ## Software candidate
 

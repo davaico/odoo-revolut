@@ -8,6 +8,22 @@ Before starting, confirm this ticket’s blockers are closed and merge the lates
 
 **Triage:** ready-for-human
 
+## Resume checkpoint — 2026-10-01, 13:40 UTC
+
+Resume from the [current checkpoint and remaining-work matrix](../../testing/ticket-12-release-evidence.md#current-resume-checkpoint--2026-10-01-1340-utc).
+Completed full/split/two-card automatic checkout, terminal-busy recovery and
+the four finalized older returns retain their evidence; do not restart those
+scenarios. Read-only staging checks show refund `6` on existing return `1012`
+still pending/provider processing, with the first penny verified. The
+operator is away from the terminal, so no new live scenario ran.
+
+Remaining device work covers terminal tips, Restaurant, the unexecuted
+failure/race/interruption subcases and final reconciliation. Staging has no
+Restaurant installation or configured GBP Tip Product. Both outstanding
+exact packaged-artifact scenarios were attempted but blocked before Odoo
+started by an unavailable local Docker daemon. Their passing acceptance is
+still required. Ticket 12 remains open; other ticket states are unchanged.
+
 ## What to build
 
 Controlled real-terminal acceptance establishes whether the documented addon is ready for use, with traceable payment/refund evidence and complete operating instructions.
