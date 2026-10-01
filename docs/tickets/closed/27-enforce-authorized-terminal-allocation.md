@@ -8,7 +8,7 @@
 
 Work in this worktree on the assigned branch; respect the blockers below and update from reviewed main before starting.
 
-**State:** claimed
+**State:** closed
 
 **Triage:** ready-for-agent
 
@@ -32,15 +32,15 @@ Source scan `95c73550-ed81-4cfe-9e81-b6f2be355a38` was canceled with partial cov
 
 ## Acceptance criteria
 
-- [ ] Implement ticket 26's selected authority model end to end through persisted authorization/reservation, server validation, POS behavior and final settlement. Reject missing, forged, stale or mismatched authority before provider financial mutations.
-- [ ] Derive the chargeable order amount from server-authorized Odoo state, not a browser total or independently supplied snapshot. Enforce binding to company, session/configuration, currency, order/cart version and payment allocation.
-- [ ] Under an atomic shared allocation boundary, cap a new charge plus relevant verified and unresolved/in-flight allocations to the authorized remaining balance. Cover concurrent requests, different payment-line UUIDs, sequential verified payments and safe retry; no unchecked second allocation may slip through.
-- [ ] Keep tips explicit according to the approved design. Preserve ordinary no-tip checkout, supported tipping and authorized pricing; reject disguising arbitrary excess as a tip or counting a tip twice.
-- [ ] Preserve cash/Revolut splits, multiple Revolut lines, partial-payment order state and Restaurant checkout. A rejected pre-dispatch amount has an actionable POS recovery path; it must not strand an untouched line or imply retry safety for an existing uncertain charge.
-- [ ] Reload, lost responses, authorization expiry, process restart and concurrent cashiers retain the original financial operation and immutable provider references. Historical verified/uncertain operations follow the approved compatibility path without invented evidence or automatic replay.
-- [ ] Add bounded pinned-Odoo direct-RPC and concurrency regressions demonstrating rejection before financial POSTs, plus legitimate split/tip/rounding/tax/discount controls. Exercise native POS checkout/recovery and assert operation/reservation/provider mutation counts.
-- [ ] Run affected payment/refund/settlement/lifecycle and install/upgrade checks appropriate to changed persistence, then independent Standards/Spec review and explicit security-fix verification for every linked source claim. Record commands, revision and remaining human/device checks; all provider calls are mocked.
-- [ ] Document configuration/migration needs and cashier behavior. Keep the change scoped to amount authorization; if ticket 26's selected design cannot fit one reviewed slice, stop at a concrete revised breakdown rather than landing a partial financial guard.
+- [x] Implement ticket 26's selected authority model end to end through persisted authorization/reservation, server validation, POS behavior and final settlement. Reject missing, forged, stale or mismatched authority before provider financial mutations.
+- [x] Derive the chargeable order amount from server-authorized Odoo state, not a browser total or independently supplied snapshot. Enforce binding to company, session/configuration, currency, order/cart version and payment allocation.
+- [x] Under an atomic shared allocation boundary, cap a new charge plus relevant verified and unresolved/in-flight allocations to the authorized remaining balance. Cover concurrent requests, different payment-line UUIDs, sequential verified payments and safe retry; no unchecked second allocation may slip through.
+- [x] Keep tips explicit according to the approved design. Preserve ordinary no-tip checkout, supported tipping and authorized pricing; reject disguising arbitrary excess as a tip or counting a tip twice.
+- [x] Preserve cash/Revolut splits, multiple Revolut lines, partial-payment order state and Restaurant checkout. A rejected pre-dispatch amount has an actionable POS recovery path; it must not strand an untouched line or imply retry safety for an existing uncertain charge.
+- [x] Reload, lost responses, authorization expiry, process restart and concurrent cashiers retain the original financial operation and immutable provider references. Historical verified/uncertain operations follow the approved compatibility path without invented evidence or automatic replay.
+- [x] Add bounded pinned-Odoo direct-RPC and concurrency regressions demonstrating rejection before financial POSTs, plus legitimate split/tip/rounding/tax/discount controls. Exercise native POS checkout/recovery and assert operation/reservation/provider mutation counts.
+- [x] Run affected payment/refund/settlement/lifecycle and install/upgrade checks appropriate to changed persistence, then independent Standards/Spec review and explicit security-fix verification for every linked source claim. Record commands, revision and remaining human/device checks; all provider calls are mocked.
+- [x] Document configuration/migration needs and cashier behavior. Keep the change scoped to amount authorization; if ticket 26's selected design cannot fit one reviewed slice, stop at a concrete revised breakdown rather than landing a partial financial guard.
 
 ## Blocked by
 
@@ -72,6 +72,8 @@ The design's tables/matrix are part of this ticket's acceptance criteria. No inv
 
 ## Implementation assessment — 2026-10-01
 
+This is the historical planning-only assessment, superseded by the completed implementation and verification below.
+
 The assigned branch was fast-forwarded from `080f3fb0a72df80fa772bb72b31eeba4fdc7d965` to reviewed main `719bae93390c3a326673af2d0e6b89aea0a84b65`, including ticket 26's closure and required terminal-tip contract. Independent read-only pricing and tip/receipt/refund assessments confirmed that current snapshot checks establish no canonical pricing authority, remaining-base ledger or authenticated report evidence. Capture verification, native snapshot/tender equality, receipts and refund ceilings all currently use the requested amount; the approved base/gross/tip flow needs coordinated changes to each.
 
 Following this ticket's explicit stop condition, record [P1–P6 development dependencies, public seams, acceptance gates and source-claim verification requirements](../../ticket-27-implementation-breakdown.md) before runtime implementation. The proposal introduces no partial financial guard and is awaiting triage of its sequencing. Planning labels are not new numbered tickets; publish those only after breakdown triage. Keep this ticket open as the complete remediation acceptance gate. All five linked source claims remain open, and none of the acceptance checkboxes is satisfied by this documentation change. Terminal-selected tips and the existing approved decisions remain required.
@@ -81,3 +83,13 @@ The pinned temporary Odoo source extraction is absent. Docker image inspection a
 ## Implementation resumed — 2026-10-01
 
 Owner explicitly requested continuing implementation with Docker started. Ticket is claimed on its assigned branch. P1–P6 are internal milestones for one complete candidate; no newly numbered tickets or further scope approval are required. Previous documentation-only evidence remains historical, not remediation evidence.
+
+## Completed and verified — 2026-10-01
+
+The complete coordinated implementation is committed on the assigned branch. Final runtime `88c88a5da9636d644bd66048ce654efa31fd53c8` implements native canonical cart pricing and exact manager approval, immutable authority and atomic remaining-base reservations, authenticated explicit terminal-tip reports, once-only native gross projection, full/partial base-and-tip refunds, receipts and historical compatibility. No isolated cap-only guard was landed as the completed fix.
+
+[Final evidence](../../testing/ticket-27-cart-authority.md) records the exact revisions, addon trees, delivered archive hash, commands, failed controls and repaired regressions. The final combined runner exited 0 with 340 tests on fresh installation, 340 after module upgrade and nine Restaurant checks, all with zero failures/errors. Both exact-archive retail and migration scenarios exited 0. Additional controls cover actual historical upgrade, three-process restart, nine independent-cursor races, posted gross sale/credit-note accounting, native checkout/recovery and 73 JavaScript payment-state cases. Configuration, migration and cashier instructions are in [installation](../../installation.md).
+
+Independent Standards and Spec reviews have no unresolved actionable findings. Explicit read-only security-fix verification assessed all five source IDs in this ticket as **fixed** against the final committed runtime; each verdict and its original source/control/sink boundary appears in the evidence table.
+
+Ticket 27 is closed for local implementation and mocked verification. The work branch awaits shared integration. Target-device popup/report identity, units, latency and physical release acceptance remain ticket 12's separate gate. Ticket 12 and the live POS were not edited, exercised or deployed to.

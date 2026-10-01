@@ -82,7 +82,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [24 — Bound financial snapshot processing before numeric expansion](closed/24-bound-financial-snapshot-processing.md) | `ready-for-agent` at closure | Closed | None for local validation and mocked implementation |
 | [25 — Download historical Revolut payment and refund receipts](closed/25-download-historical-payment-refund-receipts.md) | `ready-for-agent` at closure | Closed | None for local implementation and mocked verification |
 | [26 — Decide server-authorized cart and tip behavior](closed/26-decide-order-and-tip-authorization.md) | `ready-for-agent` at closure | Closed | None |
-| [27 — Enforce the authorized order balance before terminal dispatch](ready-for-agents/27-enforce-authorized-terminal-allocation.md) | `ready-for-agent` | Claimed | 26 (closed and integrated); implementation resumed |
+| [27 — Enforce the authorized order balance before terminal dispatch](closed/27-enforce-authorized-terminal-allocation.md) | `ready-for-agent` at closure | Closed | 26 (closed and integrated); complete local fix verified, awaiting shared integration |
 | [28 — Bind Revolut credential authority to the owning company](ready-for-agents/28-bind-merchant-credentials-to-company.md) | `ready-for-agent` | Open | None |
 | [29 — Determine the impact of concurrent payment status polling](ready-for-agents/29-investigate-concurrent-status-polling.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
 | [30 — Determine authorized access to shared POS sessions](ready-for-agents/30-investigate-shared-pos-session-authorization.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
@@ -190,8 +190,13 @@ coverage; the triage assessed reviewed main revision
   under `needs-triage` pending sequencing review at that point, with all five
   source claims still open and no runtime guard in that documentation-only
   proposal. The owner resumed complete implementation later on 2026-10-01;
-  ticket 27 is now claimed in `ready-for-agents/`, with runtime candidate
-  `b25082d` undergoing integrated validation and independent review.
+  P1–P6 became internal milestones of the complete candidate. Ticket 27 is now
+  closed locally on tested runtime `88c88a5`: both 340-test install/upgrade
+  phases, nine Restaurant checks and both exact-artifact scenarios pass.
+  Independent Standards/Spec review is clean and all five source claims were
+  explicitly verified fixed. [Final evidence](../testing/ticket-27-cart-authority.md)
+  records the commands, hashes and separate ticket 12 physical-device gate.
+  The work branch awaits shared integration; the live POS was untouched.
 - **28** remediates the two confirmed company/credential-authority findings.
 - **29–33** investigate the eleven unresolved findings: concurrent polling,
   shared-register authorization, privileged deployment files, first-use SSH

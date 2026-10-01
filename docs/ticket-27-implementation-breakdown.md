@@ -1,5 +1,7 @@
 # Ticket 27 implementation breakdown
 
+**Completed 2026-10-01:** P1–P6 were implemented as internal milestones in one complete candidate, without additional numbered tickets. [Ticket 27 is closed locally](tickets/closed/27-enforce-authorized-terminal-allocation.md); [final runtime, regression, review and source-claim evidence](testing/ticket-27-cart-authority.md) supersedes the planning-only dispositions below. The remainder preserves the original assessment at the time it was written.
+
 2026-10-01. Proposed development dependencies for the complete amount-authorization fix. Ticket 27 remains open; this document changes no runtime behavior and supplies no remediation evidence.
 
 The repository inspection started at reviewed main `719bae93390c3a326673af2d0e6b89aea0a84b65`. The assigned `codex/27-enforce-authorized-terminal-allocation` branch was fast-forwarded from `080f3fb0a72df80fa772bb72b31eeba4fdc7d965` to that revision in `../worktree/ticket-27`, incorporating ticket 26's reviewed closure. Its [ADR](adr/0001-authorize-revolut-cart-before-dispatch.md) and [complete contract](revolut-cart-authorization.md) remain authoritative. No product decision is reopened.
