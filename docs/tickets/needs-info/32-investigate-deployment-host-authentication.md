@@ -111,8 +111,22 @@ Effective root rules include Gary's laptop, four Emile-owned device addresses,
 and two unmapped device principals. Current provisioning takes a manually
 supplied enrollment key; old OAuth/one-hour/single-use documentation is stale.
 
-**Revised needs-info handoff:** obtain administrative enrollment/tag-owner and
+**Broader-search needs-info handoff (before the clarification below):** obtain administrative enrollment/tag-owner and
 Hetzner replacement permissions, identify the two other root-rule devices and
 their source network/SSH rules, and provide new-workstation/replacement approval
 procedures. The report lists exact non-secret evidence needed. No deployment or
 infrastructure setting was changed.
+
+## Owner clarification — 2026-10-01
+
+Gary confirms that Emile administers device enrollment/tagging and Hetzner VM
+replacement. The two previously unmapped root-rule devices also belong to
+Emile, Gary's boss. These owner-supplied facts resolve those identification
+questions without claiming an independently verified administrative inventory.
+
+Gary does not have the approved new-workstation and VM/key replacement procedure.
+**Current needs-info handoff:** obtain Emile's documented or approved procedure
+for workstation authorization, first-upload staging identity verification, and
+legitimate replacement/re-verification of the VM, Tailscale node or SSH host key.
+Retain the ticket as open/needs-info for that procedure. No message, deployment
+or infrastructure change was performed.

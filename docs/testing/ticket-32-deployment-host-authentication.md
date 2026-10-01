@@ -3,8 +3,10 @@
 Investigation date: 2026-10-01. Initial local-only verdict: **wrapper
 trust-on-first-use and missing target binding demonstrated; approved-route
 exploitability needs info**. The broader follow-up below now verifies the actual
-approved staging route as Tailscale SSH and identifies its VM/device. Enrollment
-and replacement authority still need info. No remote deployment ran and no host,
+approved staging route as Tailscale SSH and identifies its VM/device. Gary's
+subsequent clarification identifies Emile as the administrator and owner of the
+remaining devices; the new-workstation/replacement procedure still needs info.
+No remote deployment ran and no host,
 credential, tailnet policy or production code was changed. The initial pass made
 no production connection; the follow-up performed only pinned, read-only staging
 checks and a no-upload first-SSH-use observation.
@@ -351,7 +353,7 @@ two root-policy device owners remain unavailable.
 **Revised verdict:** the observed supported staging route has an independent
 Tailscale node-authentication anchor, so a generic unverified-public-SSH MITM is
 not established. The wrapper's permissive target handling remains demonstrated.
-Keep the claim needs-info until these narrower remaining facts are supplied:
+The broader-search handoff, before the owner clarification below, requested:
 
 1. Current tailnet administrator/tag-owner and auth-key issuance rights, key
    restrictions and enrollment approval process; Hetzner project members/token
@@ -375,3 +377,31 @@ connection/identity observations were exercised as described above. Independent
 Standards and Spec reviewers assessed `git diff 790bfca...e1617b0`: 0 findings on
 each axis. The reviewers assessed the recorded evidence without repeating live
 queries. This final provenance/review note was added after their review.
+
+## Owner clarification — 2026-10-01
+
+Gary subsequently confirmed:
+
+- Emile has administrative authority to enroll/tag devices and replace the
+  Hetzner staging VM.
+- The two additional root-rule device principals, `100.106.119.120` and
+  `100.125.232.36`, belong to Emile, Gary's boss.
+- Gary does not have the approved new-workstation and legitimate VM/key
+  replacement procedure.
+
+These are owner-supplied facts, distinct from the earlier machine observations.
+They resolve the administrator and two-device ownership questions; they do not
+constitute an independently exported role/policy inventory or prove enrollment
+key restrictions. No exclusivity of administrative rights is inferred.
+
+**Current needs-info handoff:** Emile should provide or approve the procedure
+for authorizing a new workstation, verifying the approved staging association
+before its first upload, and approving/re-verifying a legitimate VM, Tailscale
+node or SSH host-key replacement. The procedure should specify enrollment-key
+settings and preserve rejection of an unexpected identity change. No message
+was sent to Emile. Ticket 32 remains open for this procedure; the earlier requests
+to identify the administrator and the two device owners are resolved.
+
+This clarification changes documentation only. Evidence links, the ticket index
+and whitespace were checked; runtime suites were not repeated because no code
+or deployed behavior changed.
