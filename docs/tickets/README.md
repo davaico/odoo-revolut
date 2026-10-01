@@ -67,7 +67,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [09 — Issue partial refunds across original payment allocations](closed/09-partial-allocated-refunds.md) | `ready-for-agent` at closure | Closed | 07 (closed), 08 (closed) |
 | [10 — Install and upgrade a reviewed revision on staging](closed/10-staging-install-upgrade.md) | `ready-for-human` at closure | Closed | 03 (closed) |
 | [11 — Verify the complete addon on the target Odoo version](closed/11-target-version-acceptance.md) | `ready-for-agent` at closure | Closed | 06, 09, 10 |
-| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11, 16–24 and 27 closed; 28 open; refund 1012 still processing, final reconciliation, updated-device and broader acceptance |
+| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11, 16–24, 27 and 28 closed; refund 1012 still processing, final reconciliation, updated-device and broader acceptance |
 | [13 — Deepen Return allocation](closed/13-deepen-return-allocation.md) | `ready-for-agent` at closure | Closed | None |
 | [14 — Deepen POS payment state](closed/14-deepen-pos-payment-state.md) | `ready-for-agent` at closure | Closed | None |
 | [15 — Deepen payment outcome application](closed/15-deepen-payment-outcome-application.md) | `ready-for-agent` at closure | Closed | None |
@@ -83,7 +83,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [25 — Download historical Revolut payment and refund receipts](closed/25-download-historical-payment-refund-receipts.md) | `ready-for-agent` at closure | Closed | None for local implementation and mocked verification |
 | [26 — Decide server-authorized cart and tip behavior](closed/26-decide-order-and-tip-authorization.md) | `ready-for-agent` at closure | Closed | None |
 | [27 — Enforce the authorized order balance before terminal dispatch](closed/27-enforce-authorized-terminal-allocation.md) | `ready-for-agent` at closure | Closed | 26 (closed); fix merged to main, staging/device acceptance remains ticket 12 |
-| [28 — Bind Revolut credential authority to the owning company](ready-for-agents/28-bind-merchant-credentials-to-company.md) | `ready-for-agent` | Open | None |
+| [28 — Bind Revolut credential authority to the owning company](closed/28-bind-merchant-credentials-to-company.md) | `ready-for-agent` at closure | Closed | None; integrated fix, migration evidence and independent verification accepted |
 | [29 — Determine the impact of concurrent payment status polling](ready-for-agents/29-investigate-concurrent-status-polling.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
 | [30 — Determine authorized access to shared POS sessions](ready-for-agents/30-investigate-shared-pos-session-authorization.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
 | [31 — Determine deployment upload and lock-file exploitability](needs-info/31-investigate-privileged-deployment-files.md) | `needs-info` | Open | Target host facts and authorized review access; partial evidence preserved |
@@ -197,7 +197,13 @@ coverage; the triage assessed reviewed main revision
   explicitly verified fixed. [Final evidence](../testing/ticket-27-cart-authority.md)
   records the commands, hashes and separate ticket 12 physical-device gate.
   The work branch awaits shared integration; the live POS was untouched.
-- **28** remediates the two confirmed company/credential-authority findings.
+- **28** is closed on 2026-10-01 after auditing the integrated company credential
+  authority fix and administrator-attestation correction at `57af76b`.
+  Independent Standards/Spec review found no actionable implementation defects;
+  both source claims were verified fixed. [Evidence](../testing/ticket-28-credential-authority-evidence.md)
+  distinguishes prior mocked Odoo install/upgrade/restart checks from today's
+  available checks and the unavailable fresh Docker rerun. Ticket 12 retains
+  final combined-runtime and live acceptance.
 - **29–33** investigate the eleven unresolved findings: concurrent polling,
   shared-register authorization, privileged deployment files, first-use SSH
   identity, and release-evidence disclosure. Every source ID remains in its

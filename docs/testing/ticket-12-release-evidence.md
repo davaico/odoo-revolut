@@ -33,7 +33,7 @@ cardholder credits or permission to spend/refund the remaining balance.
 | Terminal tips | Local mocked implementation evidence exists | Configure the supported untaxed Tip Product; observe explicit zero and nonzero tips, matching report identity, units and latency on the device |
 | Restaurant L03 | Local bridge acceptance exists | Install/enable Restaurant and the bridge through the guarded procedure when financial blockers are clear; test dine-in, takeaway and unchanged partially paid order recovery |
 | Failure / cancellation / interruption L04–L06 and L10 | Earlier decline, no-card cancellation, retry and reload subcases remain recorded | Controlled provider failure, decline-to-paid retry, processing/capture cancellation race, network/capture-to-persistence interruption and interrupted/failed refund recovery; record unavailable controlled methods explicitly |
-| Final release evidence | Prior focused refund install/upgrade, Restaurant and POS-state results remain recorded | Complete exact packaged-artifact acceptance and finalize operating guidance from the remaining observations; ticket 28 retains its separate open gate |
+| Final release evidence | Prior focused refund install/upgrade, Restaurant and POS-state results remain recorded | Complete exact packaged-artifact acceptance and finalize operating guidance from the remaining observations; [ticket 28 is closed](ticket-28-credential-authority-evidence.md); final combined-runtime acceptance remains |
 
 The operator is away from the terminal for this resume. No new physical-device
 scenario, Merchant request, configuration change, deployment or service restart

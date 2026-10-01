@@ -54,7 +54,7 @@ Controlled real-terminal acceptance establishes whether the documented addon is 
 - 23 — Preserve payment polling through valid processing states (closed after full, split and two-card live retests)
 - 24 — Bound financial snapshot processing before numeric expansion (closed; final combined release evidence remains required)
 - 27 — Enforce the authorized order balance before terminal dispatch (closed locally and merged; updated release still needs guarded deployment and target-device acceptance)
-- 28 — Bind Revolut credential authority to the owning company (open; fix and migration evidence required before final release acceptance)
+- 28 — Bind Revolut credential authority to the owning company (closed; [fix, migration and independent verification evidence](../../testing/ticket-28-credential-authority-evidence.md) accepted; final combined-runtime acceptance remains)
 
 ## Release gate update — 2026-09-25
 
