@@ -936,7 +936,8 @@ class TestRevolutPayment(TransactionCase):
 
         self.assertEqual(amount_minor, 12345)
 
-    def test_operation_from_another_company_is_not_pollable(self):
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_operation_from_another_company_is_not_pollable(self, request):
         other_company = self.env["res.company"].create({"name": "Other payment company"})
         order_uuid = str(uuid4())
         payment_line_uuid = str(uuid4())
@@ -949,7 +950,17 @@ class TestRevolutPayment(TransactionCase):
             payment_line_uuid,
         )
         values.update({"company_id": other_company.id, "state": "unresolved"})
+        with self.assertRaises(ValidationError), self.cr.savepoint():
+            self.env["pos.revolut.payment.operation"].sudo().create(values)
+        values["company_id"] = self.env.company.id
         operation = self.env["pos.revolut.payment.operation"].sudo().create(values)
+        # Simulate an inconsistent historical row: new operations cannot be
+        # created this way, but recovery must reject legacy evidence as well.
+        self.cr.execute(
+            "UPDATE pos_revolut_payment_operation SET company_id = %s WHERE id = %s",
+            [other_company.id, operation.id],
+        )
+        operation.invalidate_recordset()
 
         with self.assertRaises(AccessError):
             self.payment_method.with_context(
@@ -957,6 +968,7 @@ class TestRevolutPayment(TransactionCase):
             ).revolut_poll_payment(
                 operation.id, order_uuid, payment_line_uuid
             )
+        request.assert_not_called()
 
     @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
     @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
@@ -1429,7 +1441,7 @@ class TestRevolutOrderSettlement(CommonPosTest):
             "location_id": self.LOCATION_ID,
             "terminal_id": self.TERMINAL_ID,
             "fulfilment_type": "eat_in",
-            "secret_reference": "ODOO_REVOLUT_SECRET_SETTLEMENT_TEST",
+            "secret_reference": self.revolut_method.revolut_secret_reference,
             "state": state,
             "revolut_order_id": revolut_order_id,
             "revolut_payment_intent_id": revolut_intent_id,

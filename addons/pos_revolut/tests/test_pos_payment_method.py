@@ -90,6 +90,7 @@ class TestRevolutPaymentMethod(TransactionCase):
             },
             params={"operation_mode": "pos", "location_id": self.LOCATION_ID},
             timeout=10,
+            allow_redirects=False,
         )
         response.raise_for_status.assert_called_once_with()
         self.assertEqual(result["tag"], "display_notification")

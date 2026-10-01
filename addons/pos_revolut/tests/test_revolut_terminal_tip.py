@@ -552,6 +552,20 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
         self.order.invalidate_recordset()
         self.assertEqual(self.order.amount_total, 100.03)
         self.assertEqual(self.order.payment_ids.amount, 100.03)
+        # Polling commits in an owned cursor. Invalidate this fixture's cache
+        # before exercising the public checkout with the persisted evidence.
+        self.env.invalidate_all()
+        self.env["pos.order"].sync_from_ui([{
+            "uuid": self.order.uuid, "session_id": self.session.id, "state": "paid",
+            "date_order": fields.Datetime.to_string(fields.Datetime.now()), "sequence_number": 1,
+            "name": f"Order {self.order.uuid}", "amount_total": 100.03, "amount_paid": 100.03,
+            "amount_tax": 0, "amount_return": 0, "to_invoice": False,
+            "lines": [], "payment_ids": [],
+        }])
+        self.env.invalidate_all()
+        self.assertEqual(self.order.state, "paid")
+        self.assertEqual(self.order.amount_total, 100.03)
+        self.assertEqual(self.order.amount_paid, 100.03)
         self.assertEqual(self.order._get_rounded_amount(self.order.amount_total), 100.03)
         self.assertEqual(self.financial_post_count(), 2)
 

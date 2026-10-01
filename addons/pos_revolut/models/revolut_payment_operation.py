@@ -308,14 +308,14 @@ class PosRevolutPaymentOperation(models.Model):
         """Administrator attestation after independently reviewing old evidence."""
         if not self.env.user.has_group("base.group_system"):
             raise ValidationError(_("Only a system administrator can authorize historical Revolut attempts."))
-        for operation in self:
+        for operation in self.sudo():
             credential = self.env["pos.revolut.merchant.credential"]._for_snapshot(
                 operation.company_id.id, operation.environment, operation.secret_reference
             )
             # Historical operations have no direct write ACL. Apply the
             # administrator-approved binding with server authority only after
             # the group and exact frozen-credential checks above.
-            operation.sudo().with_context(_revolut_authorize_legacy_credential=True).write({
+            operation.with_context(_revolut_authorize_legacy_credential=True).write({
                 "credential_id": credential.id
             })
 
