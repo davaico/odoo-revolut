@@ -300,6 +300,45 @@ class PosPaymentMethod(models.Model):
         result = self._read_refund_owned(order_uuid=order_uuid, payment_line_uuid=payment_line_uuid)
         return result["snapshot"] if result else False
 
+    def revolut_confirm_refund_absence(self, order_uuid, payment_line_uuid):
+        """Prove a lost start never reserved this line before allowing a retry."""
+        self._check_refund_authority()
+        try:
+            order_uuid = str(UUID(order_uuid))
+            payment_line_uuid = str(UUID(payment_line_uuid))
+        except (TypeError, ValueError, AttributeError):
+            raise UserError(_("The refund identifiers are invalid.")) from None
+        for attempt in range(3):
+            try:
+                with self.env.registry.cursor() as cursor:
+                    env = api.Environment(cursor, self.env.uid, dict(self.env.context))
+                    env["pos.revolut.payment.operation"].sudo()._lock_order(
+                        self.company_id.id, order_uuid,
+                    )
+                    refunds = env["pos.revolut.refund.operation"].sudo().search([
+                        ("company_id", "=", self.company_id.id),
+                        ("order_uuid", "=", order_uuid),
+                    ])
+                    current = refunds.filtered(lambda item: item.payment_line_uuid == payment_line_uuid)
+                    if current and current[0].payment_method_id.id != self.id:
+                        result = False
+                    elif current:
+                        result = current[0]._snapshot()
+                    elif any(item.state not in {"verified", "failed"} for item in refunds):
+                        result = False
+                    else:
+                        result = {
+                            "dispatched": False,
+                            "order_uuid": order_uuid,
+                            "payment_line_uuid": payment_line_uuid,
+                            "start_rejected": "no_refund_attempt",
+                        }
+                    cursor.commit()
+                    return result
+            except (SerializationFailure, DeadlockDetected):
+                if attempt == 2:
+                    raise UserError(_("Could not confirm whether the refund was sent. Check status again.")) from None
+
     def revolut_poll_refund(self, operation_id, order_uuid, payment_line_uuid):
         operation = self._read_refund_owned(operation_id, order_uuid, payment_line_uuid)
         if operation["state"] in {"verified", "failed"}:

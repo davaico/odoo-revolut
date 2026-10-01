@@ -8,7 +8,7 @@ rollout. The procedures below have mocked runtime coverage; the checklist
 records the remaining checks on actual devices.
 
 This release supports cash plus Revolut and multiple Revolut payment lines on
-one POS order. Version `19.0.1.10.1` saves and prices the native draft on the
+one POS order. Version `19.0.1.10.2` saves and prices the native draft on the
 server, authorizes its base balance and tender plan, then reserves each card
 allocation before Merchant API dispatch. It verifies the captured payment and
 an authenticated payment report with an explicit tip amount, including zero.

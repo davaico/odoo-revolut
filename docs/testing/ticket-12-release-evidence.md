@@ -500,3 +500,22 @@ references against the independently verified historical source, bound only
 payment operation `16` to authority `1`. Readback showed operation `17`
 unbound, and the refund operation count remained five. The final penny of
 return `1012` has not yet been sent or settled.
+
+## Second-allocation recovery candidate — 2026-10-01
+
+The existing `1012 (Refund)` return has a verified one-penny refund from
+source `17` and a second one-penny line for source `16`. Confirming the second
+allocation reported a communication interruption; Check status remained
+unresolved. Read-only database and application-log checks establish that the
+start failed inside the reservation guard before a new refund operation or
+Merchant request was created. The guard did not allow an earlier verified
+refund from a closed session of the same register when reserving the next
+share of a split return.
+
+Candidate `19.0.1.10.2` permits that exact rollover under the unchanged cart,
+amount, company, source and terminal checks. It also adds a locked server
+absence proof so Check status can release an undispatched line only when no
+operation exists for that line and no other refund is in flight. The second
+line must not be removed or resent until this candidate is tested, deployed
+and Check status confirms the absence. This is a recovery candidate, not a
+completed live refund or release acceptance claim.

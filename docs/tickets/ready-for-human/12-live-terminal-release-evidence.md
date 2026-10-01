@@ -478,3 +478,26 @@ The real-administrator attestation of reviewed source `16` then succeeded;
 readback confirmed its authority binding and no change to the five provider
 refund operations. The final one-penny allocation on `1012` remains for the
 operator to issue and verify before its POS return can be finalized.
+
+## Second allocation blocked after register rollover — 2026-10-01
+
+On the existing `1012 (Refund)` two-penny return, the operator selected the
+remaining one-penny original Revolut source `16` after source `17` had already
+been refunded. The second refund start failed before reservation: the server
+logged **The return changed after a refund allocation was reserved**. The
+cashier UI instead reported a communication interruption and kept the second
+negative one-penny line unresolved after Check status. Read-only records still
+show exactly five provider refunds, all verified, and no operation for the
+second line. The provider was not called for the rejected attempt.
+
+The first refund had been reserved in closed POS session `5`; the same register
+was reopened in session `9`. The allocation guard rejected that prior verified
+refund solely because of the session change, although final settlement already
+allows this safe same-register rollover. Candidate `19.0.1.10.2` applies the
+same constraint to an additional allocation: prior refunds from another
+session must be verified, from a closed session of the same register, and the
+current session must be open. Its server-side absence check holds the order
+lock before telling the cashier that an empty lookup means no refund request
+was sent. A pending or mismatched line remains locked. The live second line
+must stay untouched until this candidate is deployed; then Check status and
+Resume on that same line can recover without creating a duplicate attempt.
