@@ -445,3 +445,24 @@ binding is still open. Final candidate checks and guarded deployment, target-
 device tip/report observations, Restaurant and remaining failure/recovery and
 refund scenarios remain release gates; earlier test matrices are dated
 checkpoints rather than current completion claims.
+
+## Completed refund blocked by POS session rollover — 2026-10-01
+
+The operator loaded the existing `1002 (Refund)` return. Its single £0.01
+Revolut refund showed **Refund Successful**, the return total was −£0.01,
+remaining was £0.00 and Validate was enabled. Clicking Validate produced
+**Invalid Operation: The return changed after a Revolut refund allocation was
+reserved.** Read-only checks found refund operation `1` still verified with no
+linked POS return or tender, and the total provider refund count remained five.
+The refund was reserved in now-closed POS session `5`; the same register is
+currently open in session `9`.
+
+A mocked Odoo regression reproduced the exact server error when the verified
+refund was finalized from a reopened same-register session. The correction
+permits that case only when the original session is closed, the new session is
+opened on the same register, and all existing refund, cart, tender, company
+and currency checks pass. The red test failed with the reported error; after
+the correction, the same test and the different-register rejection test passed.
+All 45 `TestRevolutRefund` tests passed. This candidate is **not yet deployed**;
+the five existing POS returns remain unfinished and must be retested on the
+upgraded register without creating another provider refund.

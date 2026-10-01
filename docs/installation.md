@@ -8,7 +8,7 @@ rollout. The procedures below have mocked runtime coverage; the checklist
 records the remaining checks on actual devices.
 
 This release supports cash plus Revolut and multiple Revolut payment lines on
-one POS order. Version `19.0.1.9.0` saves and prices the native draft on the
+one POS order. Version `19.0.1.9.1` saves and prices the native draft on the
 server, authorizes its base balance and tender plan, then reserves each card
 allocation before Merchant API dispatch. It verifies the captured payment and
 an authenticated payment report with an explicit tip amount, including zero.
@@ -605,6 +605,10 @@ provider references, and idempotency key. **Check status** and the scheduled
 reconciler read provider status; background reconciliation does not finish the
 POS return by itself. Resume the unchanged return to complete it after a late
 success. Failed refunds remain visible and cannot finish that return.
+If the register was closed after the refund was reserved, reopen that same
+register and load the existing return. A verified refund can finalize there
+only after the original session is closed and the return contents and tender
+still match the reserved allocation. Do not create a new refund.
 
 If a response was lost before the refund ID was saved, reconciliation searches
 by the stored merchant reference, then validates the refund's original order,
