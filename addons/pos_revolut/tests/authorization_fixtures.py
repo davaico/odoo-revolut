@@ -135,9 +135,15 @@ def zero_report_response(env, verb, url):
         operation = operations.search([("revolut_order_id", "=", order_id), ("authorization_id", "!=", False),
                                        ("captured_amount_minor", ">", 0)], limit=1)
         if operation:
+            verified_refunds = env["pos.revolut.refund.operation"].sudo().search([
+                ("original_operation_id", "=", operation.id), ("state", "=", "verified"),
+            ])
             response = Mock(status_code=200)
             response.json.return_value = {"id": order_id, "currency": operation.currency_code,
                                          "location_id": operation.location_id,
+                                         "type": "payment", "state": "completed",
+                                         "amount": operation.captured_amount_minor,
+                                         "refunded_amount": sum(verified_refunds.mapped("amount_minor")),
                                          "payments": [{"id": operation.revolut_payment_id,
                                                                         "state": "captured",
                                                                         "amount": operation.captured_amount_minor}]}

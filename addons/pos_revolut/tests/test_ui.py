@@ -974,6 +974,24 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
 
     def _run_terminal_busy_checkout(self, tour, resume):
         revolut_method = self._configure_revolut_checkout()
+        blocker_uuid = "d40466e0-2188-41d0-bebb-aa3a93066000"
+        blocker_line_uuid = "4ca74d24-7b42-451a-91fb-8aca308e2600"
+        blocker = self.env["pos.order"].with_user(self.pos_user).create({
+            "name": "Independent terminal blocker", "uuid": blocker_uuid,
+            "session_id": self.main_pos_config.current_session_id.id,
+            "user_id": self.pos_user.id, "state": "draft",
+            "pricelist_id": self.main_pos_config.pricelist_id.id,
+            "amount_total": 12.34, "amount_tax": 0, "amount_paid": 0, "amount_return": 0,
+            "lines": [Command.create({
+                "uuid": str(uuid4()), "product_id": self.desk_pad.id, "qty": 1,
+                "price_unit": 12.34, "discount": 0, "tax_ids": [Command.clear()],
+                "price_subtotal": 12.34, "price_subtotal_incl": 12.34,
+            })],
+            "payment_ids": [Command.create({
+                "uuid": blocker_line_uuid, "payment_method_id": revolut_method.id,
+                "amount": 12.34, "payment_status": "waiting",
+            })],
+        })
         recovered_order_id = "d40466e0-2188-41d0-bebb-aa3a930663a9"
         recovered_intent_id = "4ca74d24-7b42-451a-91fb-8aca308e2631"
         recovered_payment_id = "2c2f3842-c34d-4cc3-a0fc-9ae40b04dfc0"
@@ -1033,6 +1051,10 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
             ("payment_method_id", "=", revolut_method.id),
         ], order="id")
         self.assertEqual(len(operations), 2 if resume else 1)
+        self.assertEqual(operations[0].pos_order_id, blocker)
+        self.assertEqual(operations[0].order_uuid, blocker_uuid)
+        self.assertEqual(operations[0].payment_line_uuid, blocker_line_uuid)
+        self.assertTrue(operations[0].authorization_id)
         self.assertEqual(operations[0].state, "cancelled" if resume else "pending")
         self.assertNotEqual(operations[0].pos_order_id.state, "paid")
         posts = [call for call in calls if call[0] == "POST"]
