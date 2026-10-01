@@ -47,7 +47,8 @@ function observeRpc({ rejectPayment = false } = {}) {
             if (start && args[2] === saved.orderUuid) {
                 sessionStorage.setItem(STARTS_KEY, JSON.stringify([...starts(), {
                     orderUuid: args[2], lineUuid: args[3], amount: args[4],
-                    qty: args[method === "revolut_start_refund" ? 6 : 7].lines[0].qty,
+                    qty: method === "revolut_start_refund"
+                        ? args[6].lines[0].qty : pos.getOrder().lines[0].qty,
                     result,
                 }]));
             }
@@ -196,9 +197,17 @@ function rejectedSteps(refund) {
         {
             content: "Correct the real cart without replacing the order or payment line",
             trigger: ".payment-screen .send_payment_request:contains('Resume')",
-            run() {
-                window.posmodel.getOrder().lines[0].qty = refund ? -1 : 1;
+            async run() {
+                const pos = window.posmodel;
+                const order = pos.getOrder();
+                order.lines[0].setQuantity(refund ? -1 : 1);
                 checkUndispatchedLine(refund);
+                if (!refund) {
+                    // Preparation now saves a native draft before asking for
+                    // authority. Persist the human's correction through the
+                    // same native sync so reload cannot restore the old cart.
+                    await pos.syncAllOrders({ orders: [order], force: true, throw: true });
+                }
             },
         },
     ].flat();

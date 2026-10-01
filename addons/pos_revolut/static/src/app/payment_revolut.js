@@ -59,6 +59,17 @@ function financialSnapshot(order) {
     };
 }
 
+function restoreRefundTarget(line, result) {
+    if (isRevolutRefund(line) && result?.state === 'verified' &&
+        Number.isSafeInteger(result.return_total_minor) && result.return_total_minor > 0) {
+        // Display the server-checked return total even before native draft sync.
+        // Settlement still independently validates this return on the server.
+        line.pos_order_id.revolut_payable_target = -result.return_total_minor /
+            10 ** line.pos_order_id.currency.decimal_places;
+        line.pos_order_id.revolut_has_authority_exposure = true;
+    }
+}
+
 class RefundAllocationDialog extends Component {
     static template = "pos_revolut.RefundAllocationDialog";
     static components = { Dialog };
@@ -144,9 +155,17 @@ class RefundAllocationDialog extends Component {
     }
 }
 
-function chooseRefundAllocation(dialog, sources, paymentMethodId, amount, currency) {
+function chooseRefundAllocation(dialog, sources, paymentMethodId, line, currency) {
     const decimalPlaces = currency.decimal_places ?? 2;
-    const maximumMinor = Math.round(Math.abs(amount) * 10 ** decimalPlaces);
+    const factor = 10 ** decimalPlaces;
+    const totals = [...new Set(sources.map((source) => source.return_total_minor))];
+    // The server allocates the original collected base and tip. Native cash
+    // rounding of a newly created return can differ from that checked total.
+    const otherPaid = line.pos_order_id.payment_ids.filter((payment) => payment !== line)
+        .reduce((total, payment) => total + Math.round(-payment.amount * factor), 0);
+    const maximumMinor = totals.length === 1 && Number.isSafeInteger(totals[0]) && totals[0] > 0
+        ? Math.max(0, totals[0] - otherPaid)
+        : Math.round(Math.abs(line.amount) * factor);
     return new Promise((resolve) => {
         dialog.add(RefundAllocationDialog, {
             sources, paymentMethodId, maximumMinor, decimalPlaces,
@@ -170,7 +189,7 @@ export class PaymentRevolut extends PaymentInterface {
                 restoreRefundOriginals: (order) => restoreRefundOriginals(this.pos, order),
                 chooseAllocation: (sources, line) => chooseRefundAllocation(
                     this.env.services.dialog, sources, this.payment_method_id.id,
-                    line.amount, this.pos.currency
+                    line, this.pos.currency
                 ),
                 setRefundAmount: (line, amount) => {
                     line.uiState.revolutSelectingAllocation = true;
@@ -240,6 +259,7 @@ export class PaymentRevolut extends PaymentInterface {
         if (result.authorization_id || (isRevolutRefund(line) && Number.isInteger(line.pos_order_id.id))) {
             await this._refreshAuthorizedOrder(line.pos_order_id);
         }
+        restoreRefundTarget(line, result);
         line.transaction_id = result.payment_id;
         line.payment_ref_no = result.order_id;
         if (!line.uiState.revolutReceiptSet) {
@@ -353,6 +373,17 @@ patch(PosPayment.prototype, {
 });
 
 patch(PosStore.prototype, {
+    async afterProcessServerData() {
+        const result = await super.afterProcessServerData(...arguments);
+        // Native startup reloads shared draft statuses after local state was
+        // restored. Recover the checked action only after that final merge.
+        for (const line of this.models['pos.payment'].filter(isRevolut)) {
+            restorePaymentLine(line);
+            restoreRefundTarget(line, line.uiState.revolutSnapshot);
+        }
+        return result;
+    },
+
     async setTip() {
         if (hasRevolutExposure(this.getOrder())) {
             this.dialog.add(AlertDialog, { title: _t("Revolut terminal tip"),

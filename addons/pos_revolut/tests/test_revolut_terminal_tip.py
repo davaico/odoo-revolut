@@ -11,6 +11,7 @@ from uuid import uuid4
 import requests
 
 from odoo import Command, fields
+from odoo.exceptions import UserError
 from odoo.addons.point_of_sale.tests.common import CommonPosTest
 from odoo.tests.common import tagged
 
@@ -186,6 +187,162 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
         self.assertEqual(self.poll_payment(), verified)
         self.assertEqual(self.financial_post_count(), 2)
         self.assertEqual(self.report_post_count, 1)
+
+    def test_tip_product_reconfiguration_during_report_keeps_original_projection(self):
+        self.start_payment()
+        self.assertTrue(self.poll_payment()["awaiting_tip_details"])
+        replacement = self.env["product.product"].create({"name": "Replacement terminal tip",
+            "list_price": 0, "taxes_id": [Command.clear()]})
+        self.pos_config_usd.tip_product_id = replacement
+        self.env.flush_all()
+        self.env.invalidate_all()
+        self.report_status = "completed"
+        verified = self.poll_payment()
+        self.assertEqual(verified["state"], "verified")
+        self.env.invalidate_all()
+        tip = self.order.lines.filtered(lambda line: line.product_id == self.tip_product)
+        self.assertEqual(len(tip), 1)
+        self.assertFalse(self.order.lines.filtered(lambda line: line.product_id == replacement))
+        self.assertEqual(tip.price_subtotal_incl, 3)
+        self.assertEqual(self.order.amount_total, 103)
+        self.assertEqual(self.order.payment_ids.amount, 103)
+        self.assertEqual(self.financial_post_count(), 2)
+        self.env["pos.order"].sync_from_ui([{
+            "uuid": self.order.uuid, "session_id": self.session.id, "state": "paid",
+            "date_order": fields.Datetime.to_string(fields.Datetime.now()), "sequence_number": 1,
+            "name": f"Order {self.order.uuid}", "amount_total": 103, "amount_paid": 103,
+            "amount_tax": 0, "amount_return": 0, "to_invoice": False,
+            "lines": [], "payment_ids": [],
+        }])
+        self.env.invalidate_all()
+        returned = {"uuid": str(uuid4()), "session_id": self.session.id, "state": "draft",
+            "currency_id": self.order.currency_id.id, "pricelist_id": self.order.pricelist_id.id,
+            "fiscal_position_id": self.order.fiscal_position_id.id,
+            "amount_total": -103, "amount_paid": -103, "amount_tax": 0, "amount_return": 0,
+            "lines": [Command.create({"uuid": str(uuid4()), "product_id": line.product_id.id,
+                "qty": -line.qty, "price_unit": line.price_unit, "discount": 0,
+                "price_subtotal": -line.price_subtotal, "price_subtotal_incl": -line.price_subtotal_incl,
+                "tax_ids": [Command.set(line.tax_ids.ids)], "refunded_orderline_id": line.id})
+                for line in self.order.lines],
+            "payment_ids": [Command.create({"uuid": str(uuid4()), "payment_method_id": self.method.id,
+                "amount": -103, "payment_status": "waiting"})]}
+        sources = self.method.revolut_refund_sources(self.session.id, self.order.currency_id.id, returned)
+        self.assertEqual(len(sources), 1)
+        self.assertEqual((sources[0]["base_amount_minor"], sources[0]["tip_amount_minor"]), (10000, 300))
+        self.assertEqual((sources[0]["return_base_minor"], sources[0]["return_tip_minor"]), (10000, 300))
+        self.assertEqual(self.financial_post_count(), 2)
+
+    def test_sequential_tips_keep_one_original_product_after_configuration_change(self):
+        second_uuid = str(uuid4())
+        plan = [{"uuid": self.line_uuid, "payment_method_id": self.method.id, "amount": 40},
+                {"uuid": second_uuid, "payment_method_id": self.method.id, "amount": 60}]
+        prepared = self.env["pos.order"].revolut_prepare_payment(self.order.id, self.order.uuid, 0, plan)
+        self.base_minor, self.gross_minor, self.tip_minor = 4000, 4300, 300
+        self.report_status = "completed"
+        first = self.method.revolut_start_payment(self.session.id, self.order.uuid, self.line_uuid,
+            40, self.order.currency_id.id, False, False, prepared["authorization_id"],
+            prepared["cart_version"], prepared["tender_revision"])
+        self.operation_id = first["operation_id"]
+        self.assertEqual(self.poll_payment()["state"], "verified")
+        replacement = self.env["product.product"].create({"name": "New terminal tip configuration",
+            "list_price": 0, "taxes_id": [Command.clear()]})
+        self.pos_config_usd.tip_product_id = replacement
+        self.env.flush_all()
+        self.env.invalidate_all()
+        self.provider_order_id, self.provider_intent_id, self.provider_payment_id = [str(uuid4()) for _ in range(3)]
+        self.line_uuid = second_uuid
+        self.base_minor, self.gross_minor, self.tip_minor = 6000, 6200, 200
+        second = self.method.revolut_start_payment(self.session.id, self.order.uuid, second_uuid,
+            60, self.order.currency_id.id, False, False, prepared["authorization_id"],
+            prepared["cart_version"], prepared["tender_revision"])
+        self.operation_id = second["operation_id"]
+        self.assertEqual(self.poll_payment()["state"], "verified")
+        self.env.invalidate_all()
+        tips = self.order.lines.filtered(lambda line: line.product_id == self.tip_product)
+        self.assertEqual(len(tips), 1)
+        self.assertEqual(tips.price_subtotal_incl, 5)
+        self.assertFalse(self.order.lines.filtered(lambda line: line.product_id == replacement))
+        self.assertEqual(self.order.amount_total, 105)
+        self.assertEqual(sum(self.order.payment_ids.mapped("amount")), 105)
+        self.assertEqual(self.financial_post_count(), 4)
+
+    def test_changed_tip_tax_policy_keeps_capture_reserved_until_restored(self):
+        tax = self.env["account.tax"].create({"name": "Frozen terminal tip tax", "amount": 20,
+            "amount_type": "percent", "company_id": self.order.company_id.id})
+        self.tip_product.taxes_id = tax
+        self.env.ref("product.decimal_price").digits = 3
+        self.env.flush_all()
+        self.env.registry.clear_cache()
+        self.start_payment()
+        self.assertTrue(self.poll_payment()["awaiting_tip_details"])
+        tax.amount = 25
+        self.env.flush_all()
+        self.env.invalidate_all()
+        self.report_status = "completed"
+        unresolved = self.poll_payment()
+        self.assertEqual(unresolved["state"], "unresolved")
+        self.assertFalse(unresolved["retry_safe"])
+        self.env.invalidate_all()
+        self.assertFalse(self.order.payment_ids)
+        self.assertFalse(self.order.lines.filtered(lambda line: line.product_id == self.tip_product))
+        tax.amount = 20
+        self.env.flush_all()
+        self.env.invalidate_all()
+        self.assertEqual(self.poll_payment()["state"], "verified")
+        self.assertEqual(self.financial_post_count(), 2)
+
+    def test_changed_tip_tax_policy_blocks_later_base_dispatch_without_provider_post(self):
+        tax = self.env["account.tax"].create({"name": "Later allocation frozen tip tax", "amount": 20,
+            "amount_type": "percent", "company_id": self.order.company_id.id})
+        self.tip_product.taxes_id = tax
+        self.env.ref("product.decimal_price").digits = 3
+        self.env.flush_all()
+        self.env.registry.clear_cache()
+        second_uuid = str(uuid4())
+        plan = [{"uuid": self.line_uuid, "payment_method_id": self.method.id, "amount": 40},
+                {"uuid": second_uuid, "payment_method_id": self.method.id, "amount": 60}]
+        prepared = self.env["pos.order"].revolut_prepare_payment(self.order.id, self.order.uuid, 0, plan)
+        self.base_minor, self.gross_minor, self.tip_minor = 4000, 4300, 300
+        self.report_status = "completed"
+        first = self.method.revolut_start_payment(self.session.id, self.order.uuid, self.line_uuid,
+            40, self.order.currency_id.id, False, False, prepared["authorization_id"],
+            prepared["cart_version"], prepared["tender_revision"])
+        self.operation_id = first["operation_id"]
+        self.assertEqual(self.poll_payment()["state"], "verified")
+        self.env.ref("product.decimal_price").digits = 2
+        self.env.flush_all()
+        self.env.registry.clear_cache()
+        self.env.invalidate_all()
+        prior_calls = self.request.call_count
+        with self.assertRaisesRegex(UserError, "original terminal tip tax or precision policy changed"):
+            self.method.revolut_start_payment(self.session.id, self.order.uuid, second_uuid,
+                60, self.order.currency_id.id, False, False, prepared["authorization_id"],
+                prepared["cart_version"], prepared["tender_revision"])
+        self.assertEqual(self.request.call_count, prior_calls)
+        self.assertEqual(self.financial_post_count(), 2)
+        self.assertEqual(self.env["pos.revolut.payment.operation"].sudo().search_count([
+            ("order_uuid", "=", self.order.uuid)]), 1)
+
+    def test_reduced_tip_price_precision_keeps_capture_reserved_until_restored(self):
+        precision = self.env.ref("product.decimal_price")
+        original = precision.digits
+        self.start_payment()
+        self.assertTrue(self.poll_payment()["awaiting_tip_details"])
+        precision.digits = original - 1
+        self.env.flush_all()
+        self.env.registry.clear_cache()
+        self.report_status = "completed"
+        unresolved = self.poll_payment()
+        self.assertEqual(unresolved["state"], "unresolved")
+        self.assertFalse(unresolved["retry_safe"])
+        self.env.invalidate_all()
+        self.assertFalse(self.order.payment_ids)
+        self.assertFalse(self.order.lines.filtered(lambda line: line.product_id == self.tip_product))
+        precision.digits = original
+        self.env.flush_all()
+        self.env.registry.clear_cache()
+        self.assertEqual(self.poll_payment()["state"], "verified")
+        self.assertEqual(self.financial_post_count(), 2)
 
     def test_equal_gross_and_base_still_requires_explicit_report_zero(self):
         self.gross_minor, self.tip_minor = 10000, 0

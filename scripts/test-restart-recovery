@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-project_name="odoo-revolut-restart-test"
+project_name="${ODOO_REVOLUT_TEST_PROJECT:-odoo-revolut-restart-test}"
 database_name="odoo_revolut_restart_test"
 compose=(docker compose --project-name "$project_name" --file "$repository_root/compose.yaml")
 
@@ -13,6 +13,14 @@ trap cleanup EXIT
 
 cleanup
 "${compose[@]}" build odoo
+installed_version="$(
+    "${compose[@]}" run --rm --no-deps --entrypoint dpkg-query odoo \
+        --show --showformat='${Version}' odoo
+)"
+if [[ "$installed_version" != "19.0.20260908" ]]; then
+    echo "Expected Odoo 19.0.20260908, found $installed_version" >&2
+    exit 1
+fi
 "${compose[@]}" run --rm --no-deps --entrypoint python3 odoo \
     /opt/odoo-test-guard/verify_merchant_http_guard.py
 "${compose[@]}" up --detach --wait db
@@ -29,6 +37,7 @@ shell_phase() {
 }
 
 shell_phase restart_seed.py
+shell_phase restart_wait.py
 shell_phase restart_verify.py
 
-echo "Restart recovery passed across two Odoo processes"
+echo "Restart recovery passed across three Odoo processes"

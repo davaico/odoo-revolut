@@ -15,6 +15,25 @@ def _stamp(records):
             for record in records.sorted("id")]
 
 
+def _tip_tax_policy(taxes):
+    """Freeze calculation inputs, without treating a label edit as a tax change."""
+    records = taxes | taxes.flatten_taxes_hierarchy()
+    return [{"id": tax.id, "company_id": tax.company_id.id,
+             "amount": tax.amount, "amount_type": tax.amount_type,
+             "sequence": tax.sequence, "price_include": tax.price_include,
+             "include_base_amount": tax.include_base_amount,
+             "is_base_affected": tax.is_base_affected,
+             "type_tax_use": tax.type_tax_use, "tax_scope": tax.tax_scope,
+             "tax_group_id": tax.tax_group_id.id, "tax_exigibility": tax.tax_exigibility,
+             "children": tax.children_tax_ids.ids,
+             "repartition": [{"id": line.id, "factor_percent": line.factor_percent,
+                 "repartition_type": line.repartition_type, "document_type": line.document_type,
+                 "account_id": line.account_id.id, "tag_ids": sorted(line.tag_ids.ids),
+                 "sequence": line.sequence}
+                for line in tax.repartition_line_ids.sorted("id")]}
+            for tax in records.sorted("id")]
+
+
 class PosOrderCartPricing(models.Model):
     _inherit = "pos.order"
 
@@ -196,19 +215,45 @@ class PosOrderCartPricing(models.Model):
             }) for value in line.custom_attribute_value_ids],
         })
 
-    def _revolut_terminal_tip_values(self, tip_minor):
-        """Return a native tip price whose tax-inclusive amount is exactly paid."""
+    def _revolut_terminal_tip_policy(self):
         self.ensure_one()
         product = self.config_id.tip_product_id
-        if not product or not product.active or product.company_id and product.company_id != self.company_id:
-            raise UserError(_("Configure a valid terminal tip product before Revolut payment."))
         taxes = product.taxes_id.filtered(lambda tax: tax.company_id == self.company_id)
         mapped = self.fiscal_position_id.map_tax(taxes)
+        return {"product_id": product.id, "tax_ids": taxes.ids, "mapped_tax_ids": mapped.ids,
+                "tax_settings": _tip_tax_policy(taxes | mapped),
+                "price_precision": self.env["decimal.precision"].precision_get("Product Price"),
+                "company_tax_rounding": self.company_id.tax_calculation_rounding_method,
+                "currency_rounding": self.currency_id.rounding,
+                "currency_decimal_places": self.currency_id.decimal_places}
+
+    def _revolut_terminal_tip_values(self, tip_minor, *, preparing=False):
+        """Return a native tip price whose tax-inclusive amount is exactly paid."""
+        self.ensure_one()
+        authority = self.revolut_authorization_id.sudo()
+        frozen = authority and authority._exposed() and not preparing
+        policy = authority.canonical.get("tip_policy") if frozen else None
+        if frozen and not policy:
+            raise UserError(_("The original terminal tip policy is missing. Keep this captured payment for manager reconciliation."))
+        product = authority.tip_product_id if policy else self.config_id.tip_product_id
+        if not product or not product.active or product.company_id and product.company_id != self.company_id:
+            raise UserError(_("Configure a valid terminal tip product before Revolut payment."))
+        taxes = self.env["account.tax"].browse(policy["tax_ids"]).exists() if policy else product.taxes_id.filtered(lambda tax: tax.company_id == self.company_id)
+        mapped = self.fiscal_position_id.map_tax(taxes)
+        current_precision = self.env["decimal.precision"].precision_get("Product Price")
+        if policy and (product.id != policy["product_id"] or taxes.ids != policy["tax_ids"]
+                or mapped.ids != policy["mapped_tax_ids"]
+                or _tip_tax_policy(taxes | mapped) != policy["tax_settings"]
+                or self.company_id.tax_calculation_rounding_method != policy["company_tax_rounding"]
+                or self.currency_id.rounding != policy["currency_rounding"]
+                or self.currency_id.decimal_places != policy["currency_decimal_places"]
+                or current_precision < policy["price_precision"]):
+            raise UserError(_("The original terminal tip tax or precision policy changed. Restore it before reconciling this captured payment."))
         flattened = mapped.flatten_taxes_hierarchy()
         if any(tax.amount_type not in {"percent", "division"} or tax.amount < 0
                or tax.amount_type == "division" and tax.amount >= 100 for tax in flattened):
             raise UserError(_("Terminal tips require nonnegative proportional taxes; review the tip product configuration."))
-        precision = self.env["decimal.precision"].precision_get("Product Price")
+        precision = policy["price_precision"] if policy else current_precision
         slope = mapped._get_tax_details(
             price_unit=1, quantity=1, precision_rounding=self.currency_id.rounding,
             rounding_method="round_globally", product=product,
@@ -339,7 +384,8 @@ class PosOrderCartPricing(models.Model):
                     "is_tipped": False, "tip_amount": 0})
         # Test the smallest contribution as well as proving the price quantum
         # is no larger than one currency unit after proportional taxes.
-        self._revolut_terminal_tip_values(1)
+        self._revolut_terminal_tip_values(1, preparing=True)
+        tip_policy = self._revolut_terminal_tip_policy()
         pricelists = self.pricelist_id
         seen = set()
         frontier = pricelists
@@ -372,4 +418,5 @@ class PosOrderCartPricing(models.Model):
         return {"snapshot": normalize_snapshot(self._revolut_order_values(), native_order=True),
                 "total_minor": self.env["pos.revolut.payment.operation"].normalize_amount(self.currency_id, total)[1],
                 "basis": basis, "approval_required": approval_required, "corrections": corrections,
-                "contents": contents, "pricing_time": fields.Datetime.to_string(pricing_time)}
+                "contents": contents, "tip_policy": tip_policy,
+                "pricing_time": fields.Datetime.to_string(pricing_time)}

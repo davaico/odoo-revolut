@@ -174,7 +174,7 @@ class PosOrder(models.Model):
         "uuid", "session_id", "config_id", "company_id", "currency_id", "currency_rate", "date_order",
         "state", "pricelist_id", "fiscal_position_id", "lines", "payment_ids",
         "amount_total", "amount_tax", "amount_paid", "amount_return", "is_refund",
-        "partner_id", "preset_id", "is_tipped", "tip_amount",
+        "partner_id", "preset_id", "is_tipped", "tip_amount", "table_id",
     }
 
     def _revolut_return_source(self):
@@ -229,6 +229,8 @@ class PosOrder(models.Model):
                 raise UserError(_("The Revolut order company, currency, or POS ownership is invalid."))
             if exposed and order.state == "cancel":
                 raise UserError(_("Reconcile the exposed Revolut operation before cancelling this order."))
+            if (exposed or has_revolut_payment or return_source) and 'table_id' in order._fields and order.table_id and order.config_id not in order.table_id.floor_id.pos_config_ids:
+                raise UserError(_("The table must belong to the original POS configuration."))
             if exposed or (
                 order.state not in {"draft", "cancel"} and return_source
             ):
