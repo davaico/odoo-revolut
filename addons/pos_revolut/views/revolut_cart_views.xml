@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_pos_order_revolut_cart" model="ir.ui.view">
+        <field name="name">pos.order.revolut.cart.approval</field>
+        <field name="model">pos.order</field>
+        <field name="inherit_id" ref="point_of_sale.view_pos_pos_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                <button name="action_revolut_approve_cart" type="object" string="Approve Revolut Cart"
+                    groups="point_of_sale.group_pos_manager" invisible="not revolut_authorization_id or state != 'draft'"/>
+            </xpath>
+            <xpath expr="//sheet" position="inside">
+                <group string="Revolut Cart Authorization" groups="point_of_sale.group_pos_manager" invisible="not revolut_authorization_id">
+                    <field name="revolut_authorization_id" readonly="1"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+    <record id="view_revolut_cart_form" model="ir.ui.view">
+        <field name="name">pos.revolut.cart.authorization.form</field>
+        <field name="model">pos.revolut.cart.authorization</field>
+        <field name="arch" type="xml">
+            <form create="0" edit="0" delete="0"><sheet>
+                <group><field name="pos_order_id"/><field name="cart_version"/><field name="state"/>
+                    <field name="base_total_minor"/><field name="payable_minor"/><field name="expires_at"/>
+                    <field name="approved_by"/><field name="approved_at"/></group>
+                <group string="Exact pending cart and permitted edits"><field name="canonical"/></group>
+            </sheet></form>
+        </field>
+    </record>
+</odoo>

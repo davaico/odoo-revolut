@@ -12,3 +12,12 @@ from . import test_revolut_refund_concurrency
 from . import test_revolut_recovery_batches
 from . import test_revolut_receipt
 from . import test_revolut_receipt_ui
+
+from . import test_revolut_tip_refund
+
+from . import test_revolut_cart_authority
+
+from . import test_revolut_cart_pricing
+
+from . import test_revolut_terminal_tip
+from . import test_revolut_cart_authority_concurrency

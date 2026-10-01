@@ -6,6 +6,8 @@ import { Component, useState } from "@odoo/owl";
 import { PaymentScreenPaymentLines } from "@point_of_sale/app/screens/payment_screen/payment_lines/payment_lines";
 import { PaymentScreen } from "@point_of_sale/app/screens/payment_screen/payment_screen";
 import { register_payment_method } from "@point_of_sale/app/services/pos_store";
+import { PosStore } from "@point_of_sale/app/services/pos_store";
+import { PosOrderline } from "@point_of_sale/app/models/pos_order_line";
 import { PosPayment } from "@point_of_sale/app/models/pos_payment";
 import { PosOrder } from "@point_of_sale/app/models/pos_order";
 import { PaymentInterface } from "@point_of_sale/app/utils/payment/payment_interface";
@@ -70,6 +72,7 @@ class RefundAllocationDialog extends Component {
         this.state = useState({
             operationId: selectedId,
             amount: selectedId ? this.defaultAmount(eligible[0]) : "",
+            tipAmount: selectedId ? this.defaultTip(eligible[0]) : "0",
             error: "",
         });
     }
@@ -87,13 +90,22 @@ class RefundAllocationDialog extends Component {
     }
 
     defaultAmount(source) {
-        return (Math.min(source.remaining_minor, this.props.maximumMinor) /
+        const available = source.terminal_tip_evidence
+            ? Math.min(source.remaining_base_minor, source.return_base_minor)
+            : source.remaining_minor;
+        return (Math.min(available, this.props.maximumMinor) /
+            10 ** this.props.decimalPlaces).toFixed(this.props.decimalPlaces);
+    }
+
+    defaultTip(source) {
+        return ((source.terminal_tip_evidence ? Math.min(source.remaining_tip_minor, source.return_tip_minor) : 0) /
             10 ** this.props.decimalPlaces).toFixed(this.props.decimalPlaces);
     }
 
     selectSource(event) {
         this.state.operationId = Number(event.target.value);
         this.state.amount = this.defaultAmount(this.selectedSource);
+        this.state.tipAmount = this.defaultTip(this.selectedSource);
         this.state.error = "";
     }
 
@@ -102,19 +114,32 @@ class RefundAllocationDialog extends Component {
         this.state.error = "";
     }
 
+    updateTip(event) {
+        this.state.tipAmount = event.target.value;
+        this.state.error = "";
+    }
+
     confirm() {
         const source = this.selectedSource;
         const factor = 10 ** this.props.decimalPlaces;
         const numeric = Number(this.state.amount);
-        const minor = Math.round(numeric * factor);
+        const baseMinor = Math.round(numeric * factor);
+        const tipNumeric = source?.terminal_tip_evidence ? Number(this.state.tipAmount) : 0;
+        const tipMinor = Math.round(tipNumeric * factor);
+        const minor = baseMinor + tipMinor;
         if (!source || source.payment_method_id !== this.props.paymentMethodId ||
             !Number.isFinite(numeric) || minor <= 0 ||
-            Math.abs(numeric * factor - minor) > 0.000001 ||
+            baseMinor < 0 || tipMinor < 0 || !Number.isFinite(tipNumeric) ||
+            Math.abs(numeric * factor - baseMinor) > 0.000001 ||
+            Math.abs(tipNumeric * factor - tipMinor) > 0.000001 ||
+            (source.terminal_tip_evidence && (baseMinor > Math.min(source.remaining_base_minor, source.return_base_minor) ||
+                tipMinor > Math.min(source.remaining_tip_minor, source.return_tip_minor))) ||
             minor > source.remaining_minor || minor > this.props.maximumMinor) {
             this.state.error = _t("Choose an original Revolut payment and an amount within its remaining balance and this return.");
             return;
         }
-        this.props.onConfirm({ operationId: source.operation_id, amount: minor / factor });
+        this.props.onConfirm({ operationId: source.operation_id, amount: minor / factor,
+            ...(source.terminal_tip_evidence ? { baseAmountMinor: baseMinor, tipAmountMinor: tipMinor } : {}) });
         this.props.close();
     }
 }
@@ -141,6 +166,7 @@ export class PaymentRevolut extends PaymentInterface {
             adapter: {
                 call: (method, args) => this.pos.data.call("pos.payment.method", method, args),
                 financialSnapshot,
+                preparePayment: (order, line) => this._preparePayment(order, line),
                 restoreRefundOriginals: (order) => restoreRefundOriginals(this.pos, order),
                 chooseAllocation: (sources, line) => chooseRefundAllocation(
                     this.env.services.dialog, sources, this.payment_method_id.id,
@@ -171,7 +197,49 @@ export class PaymentRevolut extends PaymentInterface {
         return this.paymentState.cancel(order, order.getPaymentlineByUuid(uuid));
     }
 
-    _setVerified(line, result) {
+    async _refreshAuthorizedOrder(order) {
+        if (!Number.isInteger(order.id)) {
+            throw new Error(_t("Save this order online before preparing payment."));
+        }
+        const state = await this.pos.data.call("pos.order", "revolut_checkout_state", [order.id, order.uuid]);
+        const missing = await this.pos.data.missingRecursive(state.data);
+        this.pos.models.loadConnectedData(missing);
+        order.uiState.revolutAuthority = state.authority;
+        return state;
+    }
+
+    async _preparePayment(order) {
+        if (!order.revolut_has_authority_exposure) {
+            await this.pos.syncAllOrders({ orders: [order], force: true, throw: true });
+        }
+        const current = this.pos.models["pos.order"].getBy("uuid", order.uuid);
+        if (!current || !Number.isInteger(current.id)) {
+            throw new Error(_t("The draft was not saved. Reconnect and save it before payment."));
+        }
+        const plan = current.payment_ids.filter((payment) => payment.amount !== 0).map((payment) => ({
+            uuid: payment.uuid,
+            payment_method_id: payment.payment_method_id.id,
+            amount: payment.uiState.revolutSnapshot?.base_amount_minor !== undefined
+                ? payment.uiState.revolutSnapshot.base_amount_minor / 10 ** this.pos.currency.decimal_places
+                : payment.amount,
+        }));
+        const result = await this.pos.data.call("pos.order", "revolut_prepare_payment", [
+            current.id, current.uuid, current.uiState.revolutAuthority?.cart_version || 0, plan,
+        ]);
+        await this._refreshAuthorizedOrder(current);
+        if (result.status === "approval_required") {
+            throw new Error(_t("A POS manager must open this saved order in their own Odoo session and approve its exact Revolut cart version. Then use Resume."));
+        }
+        if (result.status === "review_required" || result.status === "stale") {
+            throw new Error(_t("The server updated this cart's prices, taxes or version. Review the displayed cart and payment allocations, then use Resume."));
+        }
+        return result;
+    }
+
+    async _setVerified(line, result) {
+        if (result.authorization_id || (isRevolutRefund(line) && Number.isInteger(line.pos_order_id.id))) {
+            await this._refreshAuthorizedOrder(line.pos_order_id);
+        }
         line.transaction_id = result.payment_id;
         line.payment_ref_no = result.order_id;
         if (!line.uiState.revolutReceiptSet) {
@@ -205,7 +273,7 @@ export class PaymentRevolut extends PaymentInterface {
     }
 
     _showResultError(line, state) {
-        if (state === "snapshot_invalid") {
+        if (["snapshot_invalid", "authority_required"].includes(state)) {
             const message = line.uiState.revolutRejectionMessage;
             this.env.services.dialog.add(AlertDialog, {
                 title: _t("Revolut cart needs correction"),
@@ -284,7 +352,75 @@ patch(PosPayment.prototype, {
     },
 });
 
+patch(PosStore.prototype, {
+    async setTip() {
+        if (hasRevolutExposure(this.getOrder())) {
+            this.dialog.add(AlertDialog, { title: _t("Revolut terminal tip"),
+                body: _t("The terminal records the customer's tip during payment. This exposed order cannot accept an Odoo tip edit.") });
+            return false;
+        }
+        return super.setTip(...arguments);
+    },
+
+    async addLineToOrder(values, order) {
+        if (hasRevolutExposure(order)) {
+            this.dialog.add(AlertDialog, { title: _t("Revolut cart frozen"),
+                body: _t("Recover or reconcile the original payment before changing this cart.") });
+            return false;
+        }
+        return super.addLineToOrder(...arguments);
+    },
+});
+
+patch(PosOrderline.prototype, {
+    setQuantity() {
+        return hasRevolutExposure(this.order_id) ? false : super.setQuantity(...arguments);
+    },
+    setUnitPrice() {
+        return hasRevolutExposure(this.order_id) ? false : super.setUnitPrice(...arguments);
+    },
+    setDiscount() {
+        return hasRevolutExposure(this.order_id) ? false : super.setDiscount(...arguments);
+    },
+    delete() {
+        return hasRevolutExposure(this.order_id) ? false : super.delete(...arguments);
+    },
+});
+
 patch(PosOrder.prototype, {
+    get priceIncl() {
+        return this.revolut_has_authority_exposure ? this.revolut_payable_target : super.priceIncl;
+    },
+
+    get totalDue() {
+        return this.revolut_has_authority_exposure ? this.revolut_payable_target : super.totalDue;
+    },
+
+    get roundedPriceIncl() {
+        return this.revolut_has_authority_exposure ? this.revolut_payable_target : super.roundedPriceIncl;
+    },
+
+    get remainingDue() {
+        return this.revolut_has_authority_exposure
+            ? this.currency.round(this.revolut_payable_target < 0
+                ? Math.min(0, this.revolut_payable_target - this.amountPaid)
+                : Math.max(0, this.revolut_payable_target - this.amountPaid))
+            : super.remainingDue;
+    },
+
+    get appliedRounding() {
+        return this.revolut_has_authority_exposure
+            ? this.currency.round(this.revolut_payable_target - super.priceIncl)
+            : super.appliedRounding;
+    },
+
+    get change() {
+        return this.revolut_has_authority_exposure
+            ? this.currency.round(this.revolut_payable_target < 0
+                ? Math.min(0, this.amountPaid - this.revolut_payable_target)
+                : Math.max(0, this.amountPaid - this.revolut_payable_target))
+            : super.change;
+    },
     electronicPaymentInProgress() {
         const actions = orderActions(this);
         if (!actions.hasRefundException) {
@@ -381,6 +517,9 @@ patch(PaymentScreen.prototype, {
 
 patch(PaymentScreenPaymentLines.prototype, {
     revolutPaymentStatus(line) {
+        if (line.uiState.revolutSnapshot?.awaiting_tip_details) {
+            return _t("Payment received — awaiting terminal tip details");
+        }
         const outcome = paymentOutcome(line);
         if (isRevolutRefund(line)) {
             const messages = {
@@ -400,6 +539,7 @@ patch(PaymentScreenPaymentLines.prototype, {
             discovery_timed_out: _t("Connection check timed out — no payment request sent"),
             discovery_cancelled: _t("No payment request sent"),
             snapshot_invalid: _t("Correct the cart — no payment request sent"),
+            authority_required: _t("Review or approve the cart — no new payment request sent"),
             terminal_busy: _t("Terminal busy — no payment request sent"),
             terminal_unavailable: _t("Terminal unavailable — no charge sent"),
             terminal_check_failed: _t("Terminal connection check failed — no charge sent"),
@@ -417,7 +557,7 @@ patch(PaymentScreenPaymentLines.prototype, {
     },
 
     revolutCanResume(line) {
-        return ["terminal_busy", "snapshot_invalid"].includes(line.uiState.revolutStartRejected) &&
+        return ["terminal_busy", "snapshot_invalid", "authority_required"].includes(line.uiState.revolutStartRejected) &&
             paymentActions(line).retrySafe;
     },
 });

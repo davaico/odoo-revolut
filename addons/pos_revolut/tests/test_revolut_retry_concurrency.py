@@ -13,6 +13,8 @@ from odoo.orm.registry import Registry
 from odoo.tests.common import TransactionCase, new_test_user, tagged
 from odoo.tools import mute_logger
 
+from .authorization_fixtures import financial_posts, install_zero_reports, native_products, prepare_fixture
+
 
 @tagged("post_install", "-at_install")
 class TestRevolutRetryConcurrency(TransactionCase):
@@ -41,6 +43,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
                 "payment_method_ids": [Command.link(method.id)],
                 "auto_validate_terminal_payment": True,
             })
+            self.product_id = native_products(env, config).id
             session = env["pos.session"].create({
                 "config_id": config.id, "state": "opened",
             })
@@ -50,11 +53,14 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.enterContext(patch.dict(os.environ, {
             "ODOO_REVOLUT_SECRET_RETRY_RACE_TEST": "test-only",
         }))
+        self.authorities = {}
+        self._prepare(self.order_uuid, self.line_uuid)
         self.request = self.enterContext(patch(
             "odoo.addons.pos_revolut.models.pos_payment_method.requests.request"
         ))
 
     def _rpc(self, name, *args, user_id=SUPERUSER_ID):
+        install_zero_reports(self.env, self.request)
         with self.registry.cursor() as cursor:
             env = api.Environment(cursor, user_id, self.context)
             result = getattr(env["pos.payment.method"].browse(self.method_id), name)(*args)
@@ -62,6 +68,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
             return result
 
     def _manager_rpc(self, operation_id, name, *args):
+        install_zero_reports(self.env, self.request)
         with self.registry.cursor() as cursor:
             env = api.Environment(cursor, SUPERUSER_ID, self.context)
             result = getattr(
@@ -85,25 +92,28 @@ class TestRevolutRetryConcurrency(TransactionCase):
             "terminal_id": self.terminal_id, "state": "pending",
         })
 
-    def _start(
-        self, previous_operation_id=None, user_id=SUPERUSER_ID,
-        *, order_uuid=None, line_uuid=None,
-    ):
-        order_uuid = order_uuid or self.order_uuid
-        line_uuid = line_uuid or self.line_uuid
-        snapshot = {
-            "pricelist_id": 0,
-            "fiscal_position_id": False,
-            "lines": [{
-                "uuid": order_uuid, "product_id": 1,
-                "qty": 1, "price_unit": 12.34, "discount": 0,
-                "tax_ids": [],
-            }],
-        }
+    def _prepare(self, order_uuid, line_uuid):
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            self.authorities[(order_uuid, line_uuid)] = prepare_fixture(
+                env["pos.payment.method"].browse(self.method_id), self.session_id,
+                order_uuid, line_uuid, 12.34, {
+                    "pricelist_id": 0, "fiscal_position_id": False,
+                    "lines": [{"uuid": order_uuid, "product_id": self.product_id,
+                               "qty": 1, "price_unit": 12.34, "discount": 0, "tax_ids": []}],
+                }, commit_draft=True,
+            )
+            cursor.commit()
+
+    def _start(self, previous_operation_id=None, user_id=SUPERUSER_ID,
+               *, order_uuid=None, line_uuid=None):
+        order_uuid, line_uuid = order_uuid or self.order_uuid, line_uuid or self.line_uuid
+        authority = self.authorities[(order_uuid, line_uuid)]
+        install_zero_reports(self.env, self.request)
         return self._rpc(
-            "revolut_start_payment", self.session_id, order_uuid,
-            line_uuid, 12.34, self.currency_id,
-            previous_operation_id or False, snapshot,
+            "revolut_start_payment", self.session_id, order_uuid, line_uuid,
+            12.34, self.currency_id, previous_operation_id or False, False,
+            authority["authorization_id"], authority["cart_version"], authority["tender_revision"],
             user_id=user_id,
         )
 
@@ -157,6 +167,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.request.side_effect = self._start_http
         blocker = self._start()
         other_order_uuid, other_line_uuid = str(uuid4()), str(uuid4())
+        self._prepare(other_order_uuid, other_line_uuid)
         self.request.reset_mock()
         busy_barrier = Barrier(3)
 
@@ -202,8 +213,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
         )
         self.assertEqual(cancelled["state"], "cancelled")
         self.assertTrue(cancelled["retry_safe"])
-        self.assertEqual(len([call for call in self.request.call_args_list
-                              if call.args[0] == "POST"]), 1)
+        self.assertEqual(len(financial_posts(self.request)), 1)
         self.request.reset_mock()
         self.assertFalse(self._rpc(
             "revolut_find_payment", other_order_uuid, other_line_uuid
@@ -234,7 +244,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.assertEqual({item["operation_id"] for item in started},
                          {recovered["operation_id"]})
         self.assertNotEqual(recovered["operation_id"], blocker["operation_id"])
-        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        posts = financial_posts(self.request)
         self.assertEqual(len(posts), 2, "Only one order and one intent may be dispatched")
         self.assertEqual(posts[0].kwargs["json"]["metadata"]["pos_order_uuid"], other_order_uuid)
         self.assertEqual(posts[0].kwargs["json"]["metadata"]["pos_payment_line_uuid"], other_line_uuid)
@@ -248,6 +258,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
         )
         self.assertTrue(cancelled["retry_safe"])
         other_order_uuid, other_line_uuid = str(uuid4()), str(uuid4())
+        self._prepare(other_order_uuid, other_line_uuid)
         self.provider_order, self.provider_intent = str(uuid4()), str(uuid4())
         self.request.side_effect = self._start_http
         blocker = self._start(order_uuid=other_order_uuid, line_uuid=other_line_uuid)
@@ -283,8 +294,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.assertEqual(self._rpc(
             "revolut_find_payment", self.order_uuid, self.line_uuid
         ), replacement)
-        self.assertEqual(len([call for call in self.request.call_args_list
-                              if call.args[0] == "POST"]), 2)
+        self.assertEqual(len(financial_posts(self.request)), 2)
 
     def _assert_creation_crash_keeps_dispatch(self, action, after_response):
         def http(method, url, **kwargs):
@@ -334,8 +344,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
             self.assertEqual(len(dispatch), 1)
             self.assertFalse(dispatch.completed_at)
         self.assertEqual(
-            len([call for call in self.request.call_args_list
-                 if call.args[0] == "POST"]),
+            len(financial_posts(self.request)),
             2 if action == "create_intent" else 1,
         )
 
@@ -390,8 +399,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
         )
         self.assertEqual(recovered["state"], "verified")
         self.assertEqual(recovered["payment_id"], self.provider_payment)
-        self.assertFalse([call for call in self.request.call_args_list
-                          if call.args[0] == "POST"])
+        self.assertFalse(financial_posts(self.request))
 
     def test_crash_after_cancel_response_never_replays_cancel(self):
         self.request.side_effect = self._start_http
@@ -436,8 +444,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
         )
         self.assertEqual(recovered["state"], "cancelled")
         self.assertTrue(recovered["retry_safe"])
-        self.assertEqual(len([call for call in self.request.call_args_list
-                              if call.args[0] == "POST"]), 1)
+        self.assertEqual(len(financial_posts(self.request)), 1)
 
     def test_scheduled_stale_poll_cannot_regress_foreground_success(self):
         self.request.side_effect = self._start_http
@@ -490,8 +497,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
         recovered = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
         self.assertEqual(recovered["state"], "verified")
         self.assertEqual(recovered["payment_id"], self.provider_payment)
-        self.assertFalse([call for call in self.request.call_args_list
-                          if call.args[0] == "POST"])
+        self.assertFalse(financial_posts(self.request))
 
     def test_simultaneous_safe_retries_create_one_replacement(self):
         self.request.side_effect = self._start_http
@@ -530,9 +536,17 @@ class TestRevolutRetryConcurrency(TransactionCase):
             ("retry-one", lambda: retry(cashier_ids[0])),
             ("retry-two", lambda: retry(cashier_ids[1])),
         ])
+        # The competing retry returns the committed replacement while its
+        # original caller is still dispatching. That provisional snapshot is
+        # unresolved until the original request acknowledges the intent.
+        self.assertTrue(all(result["state"] in {"pending", "unresolved"}
+                            for result in results), repr(results))
         self.assertEqual(len({result["operation_id"] for result in results}), 1)
         self.assertNotEqual(results[0]["operation_id"], first["operation_id"])
-        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        final = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
+        self.assertEqual(final["state"], "pending")
+        self.assertEqual(final["operation_id"], results[0]["operation_id"])
+        posts = financial_posts(self.request)
         self.assertEqual(len(posts), 2, "Only one order and one intent may be dispatched")
         with self.registry.cursor() as cursor:
             env = api.Environment(cursor, SUPERUSER_ID, self.context)
@@ -588,7 +602,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
         repeated = self._rpc("revolut_cancel_payment", *args)
         self.assertEqual(repeated["state"], "verified")
         self.assertFalse(repeated["retry_safe"])
-        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        posts = financial_posts(self.request)
         self.assertEqual(len(posts), 1)
 
     def test_cancel_cannot_release_attempt_while_payment_verification_is_pending(self):
@@ -645,7 +659,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
         final = self._rpc("revolut_poll_payment", *args)
         self.assertEqual(final["state"], "verified")
         self.assertFalse(final["retry_safe"])
-        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        posts = financial_posts(self.request)
         self.assertEqual(len(posts), 1, "Unsafe retry must dispatch no new payment")
 
     def test_association_audit_failure_rolls_back_references(self):
@@ -780,7 +794,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.assertEqual(final["payment_id"], self.provider_payment)
         self.assertFalse(final["retry_safe"])
         self.assertEqual(self._start(), final)
-        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        posts = financial_posts(self.request)
         self.assertEqual(len(posts), 1, "Recovery must not dispatch another intent")
         with self.registry.cursor() as cursor:
             env = api.Environment(cursor, SUPERUSER_ID, self.context)
@@ -828,7 +842,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.assertEqual(final["order_id"], self.provider_order)
         self.assertEqual(final["payment_intent_id"], self.provider_intent)
         self.assertFalse(final["retry_safe"])
-        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        posts = financial_posts(self.request)
         self.assertEqual(len(posts), 2, "Only the original order and one intent may dispatch")
 
     def test_order_only_association_before_intent_claim_allows_first_dispatch(self):
@@ -867,7 +881,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
         final = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
         self.assertEqual(final["state"], "pending")
         self.assertEqual(final["payment_intent_id"], self.provider_intent)
-        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        posts = financial_posts(self.request)
         self.assertEqual(len(posts), 2)
 
     def test_order_only_association_during_intent_dispatch_keeps_ack(self):
@@ -899,7 +913,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
         final = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
         self.assertEqual(final["state"], "pending")
         self.assertEqual(final["payment_intent_id"], self.provider_intent)
-        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        posts = financial_posts(self.request)
         self.assertEqual(len(posts), 2)
 
     def _assert_observation_during_creation_dispatch(self, action, observation):
@@ -937,7 +951,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.assertEqual(final["state"], "pending")
         self.assertEqual(final["order_id"], self.provider_order)
         self.assertEqual(final["payment_intent_id"], self.provider_intent)
-        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        posts = financial_posts(self.request)
         self.assertEqual(len(posts), 2)
         with self.registry.cursor() as cursor:
             env = api.Environment(cursor, SUPERUSER_ID, self.context)
@@ -1000,7 +1014,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.assertEqual(final["state"], "pending")
         self.assertEqual(final["order_id"], self.provider_order)
         self.assertEqual(final["payment_intent_id"], self.provider_intent)
-        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        posts = financial_posts(self.request)
         self.assertEqual(len(posts), 2)
         with self.registry.cursor() as cursor:
             env = api.Environment(cursor, SUPERUSER_ID, self.context)
