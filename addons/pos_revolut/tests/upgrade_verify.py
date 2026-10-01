@@ -16,7 +16,7 @@ def response(payload):
 
 history = json.loads(env["ir.config_parameter"].get_param("pos_revolut.upgrade_fixture"))
 assert len(history) == 6
-assert env["ir.module.module"].search([("name", "=", "pos_revolut")]).installed_version == "19.0.1.9.0"
+assert env["ir.module.module"].search([("name", "=", "pos_revolut")]).installed_version == "19.0.1.10.0"
 assert not env["pos.revolut.cart.authorization"].search_count([])
 with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request") as provider:
     for fixture in history:
@@ -26,6 +26,7 @@ with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
         operation = env["pos.revolut.payment.operation"].browse(fixture["operation_id"])
         assert not order.revolut_authorization_id, scenario
         if operation:
+            assert not operation.credential_id, scenario
             actual = operation.read(list(fixture["operation_values"]))[0]
             assert actual == fixture["operation_values"], (scenario, actual, fixture["operation_values"])
             assert not operation.authorization_id, scenario
@@ -68,6 +69,24 @@ with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
             env.cr.rollback()
             env.invalidate_all()
         provider.assert_not_called()
+
+    # This old-runtime fixture has one independently reviewed Merchant account.
+    # Authorization is explicit; the upgrade never infers it from old rows.
+    original_method = env["pos.payment.method"].browse(history[0]["method_id"])
+    env["pos.revolut.merchant.credential"].create({
+        "company_id": original_method.company_id.id,
+        "environment": original_method.revolut_environment,
+        "secret_reference": original_method.revolut_secret_reference,
+    })
+    for fixture in history:
+        if fixture["operation_id"]:
+            env["pos.revolut.payment.operation"].browse(
+                fixture["operation_id"]
+            ).action_revolut_authorize_legacy_credential()
+    # The payment entrypoint uses its own cursor, and later assertions roll
+    # this one back. Persist the administrator's explicit migration action.
+    env.cr.commit()
+    env.invalidate_all()
 
     # A confirmed undispatched failure may retry against fresh canonical
     # authority while keeping its historical operation and references intact.
