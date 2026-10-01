@@ -401,3 +401,13 @@ passes the full-card live subcase; split tender and multiple Revolut lines
 remain required before [ticket 23](../tickets/ready-for-human/23-preserve-polling-through-payment-processing.md)
 can close. The retained test capture must also be accounted for under ticket
 12's release reconciliation.
+
+## Cash/Revolut split live observation — 2026-10-01
+
+The operator's screenshot shows a £0.02 GBP sale completed with one £0.01
+Cash tender and one £0.01 Revolut tender. Read-only Odoo records show the
+Revolut operation `verified`, provider state `captured`, one GBP minor unit,
+a linked paid £0.02 order, two stored £0.01 payments on the expected tender
+methods, and no order or terminal lock. The operator confirmed the receipt
+opened automatically without Check status or Validate. The multiple-Revolut-line
+case and test-charge reconciliation remain open.

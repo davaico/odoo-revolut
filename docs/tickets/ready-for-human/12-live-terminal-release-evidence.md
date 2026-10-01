@@ -337,3 +337,15 @@ state `captured`, exact £0.01 amount, a paid £0.01 POS order and no remaining
 terminal/order lock. This passes ticket 23's full-card live subcase. Its split
 tender and multiple-card-line cases remain open, as do ticket 12's other
 release gates and test-sale reconciliation.
+
+## Cash/Revolut split receipt — 2026-10-01
+
+The operator prepared a £0.02 GBP cart, assigned £0.01 Cash and paid the
+£0.01 remainder by card. The supplied receipt screenshot shows both £0.01
+tenders on a successful £0.02 sale. Read-only server verification found the
+Revolut operation `verified` and underlying payment `captured` for one GBP
+minor unit, a paid £0.02 POS order, two stored £0.01 tender lines on the
+expected methods, and no remaining lock. The operator confirmed the receipt
+opened automatically without Check status or Validate. The multiple-Revolut-line
+live case and other ticket 12 release gates remain open.
+This new £0.01 card capture is part of the test-sale reconciliation still due.

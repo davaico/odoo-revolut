@@ -151,3 +151,14 @@ state `captured`, exact amount one GBP minor unit, a linked paid POS order of
 the operator's observed automatic transition. This passes the full-card live
 subcase. Split tender and multiple Revolut lines remain untested after the
 upgrade, so the last acceptance criterion and this ticket remain open.
+
+2026-10-01 Cash/Revolut split live retest: The operator prepared a £0.02 GBP
+sale with £0.01 Cash assigned and £0.01 remaining, then paid the balance by
+card. The supplied receipt screenshot shows a successful £0.02 sale with one
+£0.01 Revolut tender and one £0.01 Cash tender. A read-only server check found
+the card operation `verified`, provider state `captured`, amount one GBP minor
+unit, a linked paid £0.02 POS order, two stored £0.01 payments assigned to the
+expected Revolut and Cash methods, and no terminal/order lock. The operator
+confirmed the receipt opened automatically without Check status or Validate.
+This passes the Cash/Revolut split live subcase. The multiple-Revolut-line
+live case remains open.
