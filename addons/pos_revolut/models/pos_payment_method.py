@@ -68,6 +68,57 @@ class PosPaymentMethod(models.Model):
     def _get_payment_terminal_selection(self):
         return super()._get_payment_terminal_selection() + [("revolut", "Revolut")]
 
+    def _revolut_configuration_credential(self, *, provision=False):
+        self.ensure_one()
+        configuration = self.sudo()
+        credentials = self.env["pos.revolut.merchant.credential"]
+        if provision:
+            if not self.env.user.has_group("base.group_system"):
+                raise AccessError(_("Only a system administrator can authorize Revolut credentials."))
+            existing = credentials.sudo().search([
+                ("secret_reference", "=", configuration.revolut_secret_reference),
+            ], limit=1)
+            if not existing:
+                credentials.create({
+                    "company_id": configuration.company_id.id,
+                    "environment": configuration.revolut_environment,
+                    "secret_reference": configuration.revolut_secret_reference,
+                })
+        return credentials._for_snapshot(
+            configuration.company_id.id,
+            configuration.revolut_environment,
+            configuration.revolut_secret_reference,
+        )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        methods = super().create(vals_list)
+        for method in methods.filtered(lambda item: item.use_payment_terminal == "revolut"):
+            method._revolut_configuration_credential(
+                provision=self.env.user.has_group("base.group_system")
+            )
+        return methods
+
+    def write(self, values):
+        if "company_id" in values:
+            moved = self.filtered(lambda method: method.company_id.id != values["company_id"])
+            if moved and self.env["pos.revolut.payment.operation"].sudo().search_count([
+                ("payment_method_id", "in", moved.ids),
+            ]):
+                raise ValidationError(_(
+                    "A Revolut payment method with recorded attempts cannot change company."
+                ))
+        result = super().write(values)
+        changed_authority = bool({
+            "company_id", "use_payment_terminal", "revolut_environment",
+            "revolut_secret_reference",
+        }.intersection(values))
+        for method in self.filtered(lambda item: item.use_payment_terminal == "revolut"):
+            method._revolut_configuration_credential(
+                provision=changed_authority and self.env.user.has_group("base.group_system")
+            )
+        return result
+
     @api.constrains("use_payment_terminal", "revolut_secret_reference")
     def _check_revolut_secret_reference(self):
         for payment_method in self.filtered(
@@ -137,11 +188,8 @@ class PosPaymentMethod(models.Model):
         if self.use_payment_terminal != "revolut":
             raise UserError(_("This payment method does not use Revolut."))
 
-        if not REVOLUT_SECRET_REFERENCE_PATTERN.fullmatch(
-            self.revolut_secret_reference or ""
-        ):
-            raise UserError(_("The Revolut secret reference is invalid."))
-        secret = os.environ.get(self.revolut_secret_reference)
+        credential = self._revolut_configuration_credential()
+        secret = os.environ.get(credential.secret_reference)
         if not secret:
             raise UserError(
                 _("The Revolut credential is not available on the Odoo server.")
@@ -201,7 +249,8 @@ class PosPaymentMethod(models.Model):
         }
 
     def _validate_revolut_pos_request(
-        self, session_id, order_uuid, payment_line_uuid, amount, currency_id
+        self, session_id, order_uuid, payment_line_uuid, amount, currency_id,
+        require_current_credential=True,
     ):
         self.ensure_one()
         if not self.env.user.has_group("point_of_sale.group_pos_user"):
@@ -232,8 +281,10 @@ class PosPaymentMethod(models.Model):
             payment_line_uuid = str(UUID(payment_line_uuid))
         except (TypeError, ValueError, AttributeError):
             raise UserError(_("The POS payment identifiers are invalid.")) from None
-        if not os.environ.get(self.sudo().revolut_secret_reference or ""):
-            raise UserError(_("The Revolut credential is not available on the Odoo server."))
+        if require_current_credential:
+            credential = self._revolut_configuration_credential()
+            if not os.environ.get(credential.secret_reference):
+                raise UserError(_("The Revolut credential is not available on the Odoo server."))
         amount_decimal = self.env["pos.revolut.payment.operation"].normalize_amount(
             currency, amount
         )[0]
@@ -301,6 +352,7 @@ class PosPaymentMethod(models.Model):
             "terminal_id": configuration.revolut_terminal_id,
             "fulfilment_type": fulfilment_type,
             "secret_reference": configuration.revolut_secret_reference,
+            "credential_id": self._revolut_configuration_credential().id,
             "blocking_order_key": f"{self.company_id.id}:{order_uuid}",
             "financial_snapshot": snapshot,
             "blocking_terminal_key": (
@@ -467,6 +519,7 @@ class PosPaymentMethod(models.Model):
                 "terminal_id": operation.terminal_id,
                 "fulfilment_type": operation.fulfilment_type,
                 "secret_reference": operation.secret_reference,
+                "credential_operation_id": operation.id,
                 "amount_minor": operation.amount_minor,
                 "currency_code": operation.currency_code,
                 "order_id": operation.revolut_order_id,
@@ -552,8 +605,49 @@ class PosPaymentMethod(models.Model):
                 if attempt == 2:
                     raise
 
+    def _revolut_authorized_operation_secret(self, operation):
+        """Resolve the frozen operation authority before every provider request."""
+        self.ensure_one()
+        operation_id = operation.get("credential_operation_id")
+        def authorized_reference(source):
+            credential = source.credential_id if source else False
+            if (not source or source.payment_method_id.id != self.id
+                    or source.company_id != self.company_id or not credential
+                    or credential.company_id != source.company_id
+                    or credential.environment != source.environment
+                    or credential.secret_reference != source.secret_reference
+                    or any(operation.get(key) != source[key] for key in (
+                        "environment", "secret_reference"
+                    ))):
+                raise UserError(_(
+                    "Revolut credential authority for this attempt is unverified. "
+                    "Ask a system administrator to review and authorize its original Merchant account."
+                ))
+            return credential.secret_reference
+
+        source = self.env["pos.revolut.payment.operation"].sudo().browse(
+            operation_id if type(operation_id) is int else 0
+        ).exists()
+        if source:
+            reference = authorized_reference(source)
+        else:
+            # A payment/refund reservation commits through an owned cursor.
+            # The caller's repeatable-read snapshot may predate that commit.
+            with self.env.registry.cursor() as cursor:
+                owned_env = api.Environment(cursor, self.env.uid, dict(self.env.context))
+                source = owned_env["pos.revolut.payment.operation"].sudo().browse(
+                    operation_id if type(operation_id) is int else 0
+                ).exists()
+                reference = authorized_reference(source)
+        # The mapping can only be created or changed by a system administrator;
+        # the frozen operation never follows edits to the current POS method.
+        secret = os.environ.get(reference)
+        if not secret:
+            raise UserError(_("The Revolut credential is not available on the Odoo server."))
+        return secret
+
     def _revolut_api_request(self, operation, method, path, **kwargs):
-        secret = os.environ.get(operation["secret_reference"])
+        secret = self._revolut_authorized_operation_secret(operation)
         if not secret:
             raise UserError(_("The Revolut credential is not available on the Odoo server."))
         idempotency_key = kwargs.pop("idempotency_key", None)

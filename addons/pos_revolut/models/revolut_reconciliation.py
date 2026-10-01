@@ -25,7 +25,13 @@ class PosRevolutPaymentOperation(models.Model):
 
     def _compute_support_explanation(self):
         for operation in self:
-            if not operation.revolut_order_id:
+            if not operation._has_revolut_credential_authority():
+                explanation = _(
+                    "The original Merchant credential authority is unverified. "
+                    "Keep this attempt blocked and ask a system administrator to "
+                    "verify and authorize its original Merchant account."
+                )
+            elif not operation.revolut_order_id:
                 explanation = _(
                     "Revolut order reference missing. Locate the original order "
                     "and its payment intent in the same Merchant account; the "
@@ -50,7 +56,7 @@ class PosRevolutPaymentOperation(models.Model):
 
     @api.depends(
         "state", "provider_state", "local_outcome",
-        "revolut_order_id", "revolut_payment_intent_id",
+        "revolut_order_id", "revolut_payment_intent_id", "credential_id",
     )
     def _compute_sanitized_error(self):
         provider_messages = {
@@ -61,7 +67,9 @@ class PosRevolutPaymentOperation(models.Model):
             "cancelled": _("Revolut reported a cancelled payment."),
         }
         for operation in self:
-            if operation.local_outcome == "interrupted":
+            if not operation._has_revolut_credential_authority():
+                message = _("Original Merchant credential authority is unverified.")
+            elif operation.local_outcome == "interrupted":
                 message = _("Provider communication interrupted.")
             elif operation.local_outcome == "timed_out":
                 message = _("POS waiting limit expired.")
@@ -76,6 +84,17 @@ class PosRevolutPaymentOperation(models.Model):
             else:
                 message = False
             operation.sanitized_error = message
+
+    def _has_revolut_credential_authority(self):
+        self.ensure_one()
+        credential = self.credential_id.sudo()
+        return bool(
+            credential
+            and credential.company_id == self.company_id
+            and credential.environment == self.environment
+            and credential.secret_reference == self.secret_reference
+            and self.payment_method_id.company_id == self.company_id
+        )
 
     def _check_manager_reconciliation_access(self):
         self.ensure_one()
@@ -126,6 +145,7 @@ class PosRevolutPaymentOperation(models.Model):
         # The operation's original credential selects the Merchant account.
         # No browser input can select a credential or a company.
         provider_operation = {
+            "credential_operation_id": self.id,
             "secret_reference": self.secret_reference,
             "environment": self.environment,
         }

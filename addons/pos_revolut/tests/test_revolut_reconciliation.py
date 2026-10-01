@@ -169,6 +169,35 @@ class TestRevolutReconciliation(TransactionCase):
         request.assert_not_called()
 
     @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_unbound_upgraded_attempt_shows_admin_remedy_without_provider_io(self, request):
+        manager = new_test_user(
+            self.env, login="unbound_revolut_manager",
+            groups="point_of_sale.group_pos_manager",
+            company_id=self.env.company.id,
+        )
+        self.operation.sudo().write({
+            "revolut_order_id": self.order_reference,
+            "revolut_payment_intent_id": self.intent_reference,
+        })
+        self.cr.execute(
+            "UPDATE pos_revolut_payment_operation SET credential_id = NULL WHERE id = %s",
+            [self.operation.id],
+        )
+        self.operation.invalidate_recordset()
+        self.env["pos.revolut.payment.operation"]._cron_reconcile_payments()
+        with self.assertRaisesRegex(UserError, "administrator"):
+            self.operation.with_user(manager).action_revolut_associate(
+                self.order_reference, self.intent_reference
+            )
+        self.operation.with_user(manager).action_revolut_reconcile()
+        self.operation.invalidate_recordset()
+        self.assertIn("administrator", self.operation.with_user(manager).support_explanation)
+        self.assertIn("unverified", self.operation.with_user(manager).sanitized_error)
+        self.assertTrue(self.operation.blocking_order_key)
+        self.assertTrue(self.operation.blocking_terminal_key)
+        request.assert_not_called()
+
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
     def test_other_company_manager_cannot_see_or_reconcile_attempt(self, request):
         other_company = self.env["res.company"].create({"name": "Other company"})
         manager = new_test_user(

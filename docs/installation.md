@@ -37,8 +37,13 @@ Revolut defines retail as restaurant consumption.
 
 ## Provision the secret
 
-The addon never stores a Merchant secret in Odoo. A Point of Sale manager stores
-only the name of an environment variable. That name must begin with
+The addon never stores a Merchant secret in Odoo. A system administrator first
+authorizes the environment-variable reference for its owning company and
+environment under **Point of Sale → Revolut Merchant Authorities**. Verify the
+Merchant account and company outside Odoo before creating that record; the
+addon cannot infer account ownership from a variable name. A Point of Sale
+manager can then select only an authorized reference for the payment method's
+company. That name must begin with
 `ODOO_REVOLUT_SECRET_` and contain only uppercase letters, digits, and
 underscores, for example:
 
@@ -52,10 +57,15 @@ keep it outside this repository, owned by the Odoo service administrator, mode
 `0600`, and on encrypted storage. Never put the value in `odoo.conf`, an Odoo
 field, a command line, source control, or support logs.
 
-For rotation, replace the value behind the same reference, restart every Odoo
-worker so it receives the new environment, run **Check Connection**, and only
-then revoke the old key. If a new reference is required, provision it first,
-change the payment method, verify it, and then remove the old reference.
+For a key rotation within the same Merchant account, replace the value behind
+the same reference, restart every Odoo worker, run **Check Connection**, and
+only then revoke the old key. To change Merchant accounts or reference names,
+provision a new server variable and administrator authority record first,
+then change the payment method and verify it. Keep the old reference available
+while its historical payments or refunds still need reconciliation. Existing
+attempts retain their original authorized reference; changing the current POS
+method never redirects them to the new Merchant account. An authority record
+cannot be reassigned to another company or environment; create a new one.
 
 Sandbox and production credentials are independent. The addon maps the selected
 environment to these hosts; managers cannot enter a custom host:
@@ -75,6 +85,30 @@ not repeatedly create test intents while the provider issue remains unresolved.
 See the [terminal contract record](revolut-terminal-contract-2026-09-22.md).
 
 ## Install or upgrade
+
+Version `19.0.1.10.0` adds company-scoped Merchant authority records. On an
+existing database the upgrade deliberately creates **no** authority records
+from old payment methods or attempts. Those old references may have been
+misassigned; all unreviewed methods fail configuration and connection checks,
+and unreviewed attempts cannot contact Merchant. Their external references,
+outcomes and financial reservations remain intact. Before reopening POS, a
+system administrator must verify each existing variable's Merchant account and
+company, create the corresponding authority record, and explicitly attest each
+historical payment operation that still needs provider reconciliation or
+refunds. Do not start replacement payments or force-complete an uncertain
+attempt during this review. After attestation, keep the original variable
+available for recovery and verify the exact existing order and payment in
+Merchant before resuming POS. The administrator-only Odoo shell action for a
+reviewed historical record is:
+
+```python
+env["pos.revolut.payment.operation"].browse(REVIEWED_OPERATION_ID).action_revolut_authorize_legacy_credential()
+```
+
+It accepts only an exact company, environment and reference authority match;
+it performs no Merchant request or financial mutation. Leave any uncertain or
+inconsistent record unbound and escalate it for administrator investigation.
+No secret value belongs in the shell command, Odoo fields or review evidence.
 
 Place **both** `addons/pos_revolut` and `addons/pos_revolut_restaurant` from the
 same reviewed release in one directory on Odoo's `addons_path`. Refresh the
@@ -122,8 +156,9 @@ As a Point of Sale administrator:
    `eat_in` or `take_away` for each payment. Delivery and unknown no-table
    presets are guarded because the terminal contract does not define their
    mapping.
-7. Enter the environment-variable name, not its value, in **Revolut Secret
-   Reference** and save.
+7. Have a system administrator verify and authorize the company's Merchant
+   reference. Enter that environment-variable name, not its value, in
+   **Revolut Secret Reference** and save.
 8. Select **Check Connection**.
 9. Add the payment method to the intended POS configuration and keep
    **Automatically validate terminal payments** enabled. The server rejects a
