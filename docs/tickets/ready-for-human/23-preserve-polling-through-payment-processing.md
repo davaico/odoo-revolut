@@ -140,3 +140,14 @@ criterion remains unchecked; see [ticket 12's deployment checkpoint](12-live-ter
 retest passed and that ticket closed. The Cash smoke also passed. Neither
 exercises this ticket's real-card processing-to-capture path; the full and
 split/multiple-card automatic-status retests remain open.
+
+2026-10-01 full-card live retest: On the reviewed `97fcc2b` staging release,
+the operator paid a fresh £0.01 GBP sale entirely through Revolut. The POS
+opened the success receipt automatically, with one £0.01 Revolut tender; the
+operator reports pressing neither Check status nor Validate. A read-only
+server check found the matching operation `verified`, underlying provider
+state `captured`, exact amount one GBP minor unit, a linked paid POS order of
+£0.01, and no terminal/order lock. The supplied receipt screenshot supports
+the operator's observed automatic transition. This passes the full-card live
+subcase. Split tender and multiple Revolut lines remain untested after the
+upgrade, so the last acceptance criterion and this ticket remain open.

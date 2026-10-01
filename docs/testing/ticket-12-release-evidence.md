@@ -388,3 +388,16 @@ retry-safe, with no subsequent operation or lock. This supersedes the earlier
 ambiguous multiple-Resume observation and [closes ticket 22](../tickets/closed/22-recover-terminal-busy-rejection.md).
 It does not satisfy ticket 23's full/split/multiple-card automatic-payment
 criterion or ticket 12's remaining release gates.
+
+## Ticket 23 full-card automatic success — 2026-10-01
+
+The operator paid a fresh £0.01 GBP sale in full with Revolut on staging
+revision `97fcc2b`. They report that the success receipt opened automatically
+without Check status or Validate; their screenshot shows one £0.01 Revolut
+tender. A read-only ledger check independently found the payment operation
+`verified` with underlying provider state `captured`, one GBP minor unit, a
+linked paid POS order totalling £0.01, and no order or terminal lock. This
+passes the full-card live subcase; split tender and multiple Revolut lines
+remain required before [ticket 23](../tickets/ready-for-human/23-preserve-polling-through-payment-processing.md)
+can close. The retained test capture must also be accounted for under ticket
+12's release reconciliation.

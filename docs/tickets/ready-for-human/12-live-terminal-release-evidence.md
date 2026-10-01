@@ -326,3 +326,14 @@ remaining lock. This passes ticket 22's controlled live criterion, which is
 now [closed](../closed/22-recover-terminal-busy-rejection.md). Ticket 23's
 full and split/multiple-card automatic-status retests and ticket 12's other
 release requirements remain open.
+
+## Automatic full-card receipt — 2026-10-01
+
+On a fresh £0.01 GBP sale paid entirely by Revolut, the operator reports that
+the receipt opened automatically without Check status or Validate. The supplied
+receipt screenshot shows success and a single £0.01 Revolut tender. Read-only
+server verification found the linked payment operation `verified`, provider
+state `captured`, exact £0.01 amount, a paid £0.01 POS order and no remaining
+terminal/order lock. This passes ticket 23's full-card live subcase. Its split
+tender and multiple-card-line cases remain open, as do ticket 12's other
+release gates and test-sale reconciliation.
