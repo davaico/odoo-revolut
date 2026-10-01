@@ -499,5 +499,37 @@ session must be verified, from a closed session of the same register, and the
 current session must be open. Its server-side absence check holds the order
 lock before telling the cashier that an empty lookup means no refund request
 was sent. A pending or mismatched line remains locked. The live second line
-must stay untouched until this candidate is deployed; then Check status and
-Resume on that same line can recover without creating a duplicate attempt.
+must stay untouched until this candidate is deployed; then Check status and an
+explicit retry on that same line can recover without creating a duplicate
+attempt.
+
+## Deployed split-refund recovery and current gate — 2026-10-01
+
+Commit `25e096d74ca62ac7f39558e0257f609be85185d7` was pushed to `main`
+without conflicts. The guarded staging upgrade installed addon
+`19.0.1.10.2`, passed financial preflight and Odoo health checks, and saved a
+configuration backup at
+`/var/backups/odoo-revolut-deploy/20261001T122450Z-25e096d74ca6`.
+The focused real-Odoo refund suite passed 47 tests on fresh install and 47 on
+upgrade; nine Restaurant upgrade tests and 75 POS-state tests passed. A focused
+regression also verified that the reopened same register accepts a second
+allocation while a different register is rejected before provider HTTP. The
+longer exact packaged-artifact retail and migration runs were interrupted and
+are **not** counted as passed for this revision.
+
+The operator refreshed the existing `1012 (Refund)` line, used Check status to
+recover the earlier pre-reservation failure, then explicitly retried once.
+Read-only staging records show exactly one new one-penny refund operation `6`
+from original source `16`, alongside the prior verified operation `5` from
+source `17`; the new operation has a provider refund reference and no linked
+POS return yet. At 12:31 UTC, operation `6` was `unresolved` with provider
+state `processing`. The operator reports that Odoo still shows it processing
+or unresolved. Do not start another refund, use Force done, or finalize the
+return until authoritative reconciliation marks the new operation verified.
+
+Ticket 28 remains open for its own scope and closure decision. Tickets 22 and
+23 remain closed on their own controlled live retests. Ticket 12 remains open
+for this refund's final outcome and POS receipt, final test-money
+reconciliation, target-device
+tip/report observations, Restaurant checkout, remaining failure/recovery
+cases, and final release documentation/combined-artifact acceptance.

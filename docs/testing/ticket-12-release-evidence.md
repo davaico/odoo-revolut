@@ -519,3 +519,24 @@ operation exists for that line and no other refund is in flight. The second
 line must not be removed or resent until this candidate is tested, deployed
 and Check status confirms the absence. This is a recovery candidate, not a
 completed live refund or release acceptance claim.
+
+## Deployed second-allocation recovery — 2026-10-01
+
+The exact source revision `25e096d74ca62ac7f39558e0257f609be85185d7`
+was pushed to `main` and deployed to staging as addon `19.0.1.10.2`. The
+guarded deploy passed financial preflight, created the configuration backup
+`/var/backups/odoo-revolut-deploy/20261001T122450Z-25e096d74ca6`, and
+reported a healthy Odoo restart. The real-Odoo refund suite passed 47 tests on
+fresh install and 47 on upgrade, with nine Restaurant upgrade tests and 75
+POS-state tests also passing. The exact packaged-artifact retail and migration
+runs were interrupted, so they are not claimed as passing.
+
+On the existing `1012 (Refund)` line, the operator used Check status to
+recover the pre-reservation failure and then explicitly retried once. Staging
+records show one new one-penny refund operation `6` against original source
+`16`; the earlier operation `5` against source `17` remains verified. The new
+operation has a provider refund reference but is not linked to a finalized POS
+return. At 12:31 UTC its Odoo state was `unresolved` and its provider state
+was `processing`. The operator still sees it processing/unresolved. No final
+refund, receipt, or full reconciliation is claimed. Ticket 12 stays open;
+credential-authority ticket 28 remains open under its own scope.
