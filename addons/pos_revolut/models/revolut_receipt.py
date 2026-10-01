@@ -57,20 +57,34 @@ class RevolutReceipt(models.AbstractModel):
                 or (kind == "refund" and (source.state != "verified"
                     or not source.revolut_payment_id or not source.revolut_order_id
                     or source.amount_minor <= 0
-                    or operation.amount_minor > source.amount_minor))):
+                    or operation.amount_minor > source._revolut_paid_minor()))):
             raise UserError(_("Required verified receipt evidence is inconsistent. Contact a POS manager."))
         if operation.pos_order_id and (
             operation.pos_order_id.uuid != operation.order_uuid
             or operation.pos_order_id.currency_id != operation.currency_id
         ):
             raise UserError(_("The receipt sale does not match the verified operation. Contact a POS manager."))
+        if source.authorization_id and (
+            not source.terminal_tip_evidence
+            or source.terminal_tip_minor < 0
+            or source._revolut_paid_minor() != source.amount_minor + source.terminal_tip_minor
+        ):
+            raise UserError(_("Required verified base and terminal tip receipt evidence is inconsistent. Contact a POS manager."))
+        if kind == "refund" and source.authorization_id and (
+            not operation.allocation_explicit
+            or operation.base_amount_minor + operation.tip_amount_minor != operation.amount_minor
+            or operation.base_amount_minor > source.amount_minor
+            or operation.tip_amount_minor > source.terminal_tip_minor
+        ):
+            raise UserError(_("Required verified refund allocation evidence is inconsistent. Contact a POS manager."))
+        expected_tender_minor = source._revolut_paid_minor() if kind == "payment" else -operation.amount_minor
         tender = operation.pos_payment_id
         if tender and (
             tender.pos_order_id != operation.pos_order_id
             or tender.company_id != operation.company_id
             or tender.uuid != operation.payment_line_uuid
             or tender.payment_method_id != operation.payment_method_id
-            or operation.currency_id.compare_amounts(tender.amount, operation.amount if kind == "payment" else -operation.amount)
+            or self.env["pos.revolut.payment.operation"].normalize_amount(operation.currency_id, tender.amount)[1] != expected_tender_minor
             or tender.transaction_id != (operation.revolut_payment_id if kind == "payment" else operation.revolut_order_id)
             or (kind == "payment" and tender.revolut_operation_id != operation)
             or (kind == "refund" and tender.revolut_refund_operation_id != operation)
@@ -88,6 +102,11 @@ class RevolutReceipt(models.AbstractModel):
         source = operation if kind == "payment" else operation.original_operation_id
         merchant = operation.receipt_merchant_snapshot or operation._receipt_merchant_identity()
         sale = operation.pos_order_id or source.pos_order_id
+        scale = 10 ** operation.currency_id.decimal_places
+        gross_minor = operation._revolut_paid_minor() if kind == "payment" else operation.amount_minor
+        has_components = bool(source.authorization_id) if kind == "payment" else operation.allocation_explicit
+        base_minor = operation.amount_minor if kind == "payment" else operation.base_amount_minor
+        tip_minor = operation.terminal_tip_minor if kind == "payment" else operation.tip_amount_minor
         return {
             "kind": kind,
             "title": _("Odoo-generated Revolut payment receipt") if kind == "payment" else _("Odoo-generated Revolut refund receipt"),
@@ -96,7 +115,10 @@ class RevolutReceipt(models.AbstractModel):
             "merchant_label": _("Merchant identity recorded at verification") if operation.receipt_merchant_snapshot else _("Current merchant identity (historical identity not retained)"),
             "sale_reference": sale.name,
             "sale_uuid": operation.order_uuid,
-            "amount": f"{operation.amount:.{operation.currency_id.decimal_places}f}",
+            "amount": f"{Decimal(gross_minor) / scale:.{operation.currency_id.decimal_places}f}",
+            "base_amount": f"{Decimal(base_minor) / scale:.{operation.currency_id.decimal_places}f}" if has_components else False,
+            "tip_amount": f"{Decimal(tip_minor) / scale:.{operation.currency_id.decimal_places}f}" if has_components else False,
+            "terminal_tip_evidence": has_components,
             "currency": source.currency_code,
             "revolut_order_id": operation.revolut_order_id,
             "revolut_payment_id": source.revolut_payment_id if kind == "payment" else False,
@@ -169,8 +191,10 @@ class PosOrderReceipt(models.Model):
                     operation.original_operation_id.pos_order_id.ids if kind == "refund" else []
                 )))
                 label = _("Payment") if kind == "payment" else _("Refund")
+                amount_minor = operation._revolut_paid_minor() if kind == "payment" else operation.amount_minor
+                display_amount = Decimal(amount_minor) / (10 ** operation.currency_id.decimal_places)
                 options.append({"kind": kind, "operation_id": operation.id,
-                    "label": f"{label} {operation.amount:.{operation.currency_id.decimal_places}f} {operation.currency_id.name} - {operation.revolut_order_id or operation.id}",
+                    "label": f"{label} {display_amount:.{operation.currency_id.decimal_places}f} {operation.currency_id.name} - {operation.revolut_order_id or operation.id}",
                     "url": receipts._download_url(kind, operation.id)})
         return options
 

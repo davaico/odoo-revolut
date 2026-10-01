@@ -81,8 +81,8 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [23 — Preserve payment polling through valid processing states](ready-for-human/23-preserve-polling-through-payment-processing.md) | `ready-for-human` | Open | Reviewed fix merged; full/split/multiple-card live retests after financial/deployment preflight |
 | [24 — Bound financial snapshot processing before numeric expansion](closed/24-bound-financial-snapshot-processing.md) | `ready-for-agent` at closure | Closed | None for local validation and mocked implementation |
 | [25 — Download historical Revolut payment and refund receipts](closed/25-download-historical-payment-refund-receipts.md) | `ready-for-agent` at closure | Closed | None for local implementation and mocked verification |
-| [26 — Decide server-authorized cart and tip behavior](ready-for-agents/26-decide-order-and-tip-authorization.md) | `ready-for-agent` | Open | None |
-| [27 — Enforce the authorized order balance before terminal dispatch](ready-for-agents/27-enforce-authorized-terminal-allocation.md) | `ready-for-agent` | Open | 26 |
+| [26 — Decide server-authorized cart and tip behavior](closed/26-decide-order-and-tip-authorization.md) | `ready-for-agent` at closure | Closed | None |
+| [27 — Enforce the authorized order balance before terminal dispatch](closed/27-enforce-authorized-terminal-allocation.md) | `ready-for-agent` at closure | Closed | 26 (closed and integrated); complete local fix verified, awaiting shared integration |
 | [28 — Bind Revolut credential authority to the owning company](ready-for-agents/28-bind-merchant-credentials-to-company.md) | `ready-for-agent` | Open | None |
 | [29 — Determine the impact of concurrent payment status polling](ready-for-agents/29-investigate-concurrent-status-polling.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
 | [30 — Determine authorized access to shared POS sessions](ready-for-agents/30-investigate-shared-pos-session-authorization.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
@@ -181,9 +181,22 @@ retained findings from Codex Security scan
 coverage; the triage assessed reviewed main revision
 `1d549c11507878fd95fb91a38337599d486e7afc`, not proof of the deployed version.
 
-- **26** resolves the server-authorized cart and explicit-tip contract.
+- **26** selects validated native drafts, atomic base allocations and required customer-selected terminal tips verified through authenticated payments reports. The owner approved waiting safely for report details; the design is closed locally, with target-device/report acceptance remaining a release gate.
 - **27**, blocked by **26**, remediates the five confirmed amount-authority
-  findings as one complete checkout slice.
+  findings as one complete checkout slice. Ticket 26's reviewed design is now
+  integrated into its assigned branch. On 2026-10-01 the ticket's explicit
+  complete-slice stop condition was used to propose a [concrete development
+  breakdown](../ticket-27-implementation-breakdown.md); ticket 27 remains open
+  under `needs-triage` pending sequencing review at that point, with all five
+  source claims still open and no runtime guard in that documentation-only
+  proposal. The owner resumed complete implementation later on 2026-10-01;
+  P1–P6 became internal milestones of the complete candidate. Ticket 27 is now
+  closed locally on tested runtime `88c88a5`: both 340-test install/upgrade
+  phases, nine Restaurant checks and both exact-artifact scenarios pass.
+  Independent Standards/Spec review is clean and all five source claims were
+  explicitly verified fixed. [Final evidence](../testing/ticket-27-cart-authority.md)
+  records the commands, hashes and separate ticket 12 physical-device gate.
+  The work branch awaits shared integration; the live POS was untouched.
 - **28** remediates the two confirmed company/credential-authority findings.
 - **29–33** investigate the eleven unresolved findings: concurrent polling,
   shared-register authorization, privileged deployment files, first-use SSH

@@ -35,6 +35,9 @@ class PosRevolutRefundOperation(models.Model):
     amount = fields.Monetary(required=True, readonly=True)
     amount_minor = fields.Integer(required=True, readonly=True)
     return_total_minor = fields.Integer(readonly=True)
+    allocation_explicit = fields.Boolean(readonly=True)
+    base_amount_minor = fields.Integer(readonly=True)
+    tip_amount_minor = fields.Integer(readonly=True)
     currency_id = fields.Many2one("res.currency", required=True, readonly=True, ondelete="restrict")
     financial_snapshot = fields.Json(required=True, readonly=True)
     idempotency_key = fields.Char(required=True, readonly=True, default=lambda self: str(uuid4()))
@@ -57,9 +60,18 @@ class PosRevolutRefundOperation(models.Model):
     _unique_payment = models.Constraint("UNIQUE(pos_payment_id)", "A refund can only settle one payment.")
     _positive_amount = models.Constraint("CHECK(amount_minor > 0)", "Refund amounts must be positive.")
 
+    _component_amounts = models.Constraint(
+        "CHECK((COALESCE(allocation_explicit, FALSE) AND "
+        "COALESCE(base_amount_minor, -1) >= 0 AND COALESCE(tip_amount_minor, -1) >= 0 AND "
+        "base_amount_minor + tip_amount_minor = amount_minor) OR "
+        "(NOT COALESCE(allocation_explicit, FALSE) AND "
+        "COALESCE(base_amount_minor, 0) = 0 AND COALESCE(tip_amount_minor, 0) = 0))",
+        "Refund base and terminal tip amounts must match the refund total.",
+    )
+
     def write(self, values):
         immutable = {"original_operation_id", "pos_session_id", "order_uuid", "payment_line_uuid",
-                     "amount", "amount_minor", "return_total_minor", "currency_id", "financial_snapshot", "idempotency_key", "dispatched_at"}
+                     "amount", "amount_minor", "return_total_minor", "allocation_explicit", "base_amount_minor", "tip_amount_minor", "currency_id", "financial_snapshot", "idempotency_key", "dispatched_at"}
         if immutable.intersection(values):
             raise ValidationError(_("Refund operation details are immutable."))
         for operation in self:
@@ -83,6 +95,11 @@ class PosRevolutRefundOperation(models.Model):
             "payment_id": self.revolut_order_id or False,
             "original_order_id": self.related_order_id,
             "original_operation_id": self.original_operation_id.id,
+            "amount_minor": self.amount_minor,
+            "return_total_minor": self.return_total_minor,
+            "base_amount_minor": self.base_amount_minor if self.allocation_explicit else self.amount_minor,
+            "tip_amount_minor": self.tip_amount_minor,
+            "terminal_tip_evidence": self.allocation_explicit,
             "provider_state": self.provider_state or False,
             "local_outcome": self.local_outcome or False, "retry_safe": False,
         }
@@ -135,7 +152,7 @@ class PosPaymentMethod(models.Model):
             raise AccessError(_("This POS session is not available for Revolut refunds."))
         return ReturnAllocation(self.env).sources(session, financial_snapshot)
 
-    def revolut_start_refund(self, session_id, order_uuid, payment_line_uuid, amount, currency_id, financial_snapshot, original_operation_id=None):
+    def revolut_start_refund(self, session_id, order_uuid, payment_line_uuid, amount, currency_id, financial_snapshot, original_operation_id=None, base_amount_minor=None, tip_amount_minor=None):
         self._check_refund_authority()
         try:
             amount = Decimal(str(amount))
@@ -156,7 +173,7 @@ class PosPaymentMethod(models.Model):
                         env["pos.session"].browse(session.id), order_uuid,
                         payment_line_uuid, normalized, minor,
                         env["res.currency"].browse(currency.id),
-                        financial_snapshot, original_operation_id,
+                        financial_snapshot, original_operation_id, base_amount_minor, tip_amount_minor,
                     )
                     if reservation.existing_status is not None:
                         return reservation.existing_status
@@ -174,8 +191,12 @@ class PosPaymentMethod(models.Model):
         try:
             original = self._revolut_api_request(operation, "GET", f"/api/orders/{operation['original_order_id']}")
             if (original.get("id") != operation["original_order_id"] or original.get("state") != "completed"
+                    or type(original.get("amount")) is not int
                     or original.get("amount") != source_amount_minor or original.get("currency") != operation["currency_code"]
-                    or original.get("refunded_amount", verified_before_claim) != verified_before_claim):
+                    or original.get("refunded_amount", verified_before_claim) != verified_before_claim
+                    or (reservation.source_base_minor is not None and (
+                        type(original.get("refunded_amount")) is not int
+                        or reservation.source_base_minor + reservation.source_tip_minor != source_amount_minor))):
                 return self._update_refund_owned(operation_id, {"state": "failed", "provider_state": "original_ineligible"})
             result = self._revolut_api_request(
                 operation, "POST", f"/api/orders/{operation['original_order_id']}/refund",
@@ -217,8 +238,12 @@ class PosPaymentMethod(models.Model):
             try:
                 with self.env.registry.cursor() as cursor:
                     env = api.Environment(cursor, self.env.uid, dict(self.env.context))
+                    operation = env["pos.revolut.refund.operation"].sudo().browse(operation_id).exists()
+                    if not operation or operation.payment_method_id.id != self.id:
+                        raise AccessError(_("This refund is not accessible."))
+                    env["pos.revolut.payment.operation"]._lock_order(operation.company_id.id, operation.order_uuid)
                     cursor.execute("SELECT id FROM pos_revolut_refund_operation WHERE id = %s FOR UPDATE", [operation_id])
-                    operation = env["pos.revolut.refund.operation"].sudo().browse(operation_id)
+                    operation.invalidate_recordset()
                     if operation.state not in {"verified", "failed"}:
                         final = values.get("state") in {"verified", "failed"}
                         cause = values.get("local_outcome")
@@ -300,3 +325,35 @@ class PosPaymentMethod(models.Model):
     def revolut_mark_refund_timeout(self, operation_id, order_uuid, payment_line_uuid):
         self._read_refund_owned(operation_id, order_uuid, payment_line_uuid)
         return self._update_refund_owned(operation_id, {"state": "unresolved", "local_outcome": "timed_out"})
+
+
+class PosOrder(models.Model):
+    _inherit = "pos.order"
+
+    def _revolut_return_target_minor(self):
+        self.ensure_one()
+        original = self.lines.refunded_orderline_id.order_id
+        if (len(original) == 1 and original.revolut_authorization_id
+                and self.lines and all(line.refunded_orderline_id and line.qty < 0 for line in self.lines)):
+            allocation = ReturnAllocation(self.env)
+            snapshot = allocation._normalize_return(self._revolut_order_values(), native_order=True)
+            return -allocation._return_total_minor(snapshot, original, self.currency_id)
+        return None
+
+    def _compute_prices(self):
+        result = super()._compute_prices()
+        for order in self:
+            target = order._revolut_return_target_minor()
+            if target is not None:
+                order.amount_total = target / (10 ** order.currency_id.decimal_places)
+                order.amount_difference = order.amount_paid - order.amount_total
+        return result
+
+    def _get_rounded_amount(self, amount, force_round=False):
+        # A returned terminal tip must not enter global cash rounding again.
+        # Keep native original line prices/taxes and refund their frozen base
+        # allocation separately from the exact collected customer tip.
+        target = self._revolut_return_target_minor()
+        if target is not None:
+            return target / (10 ** self.currency_id.decimal_places)
+        return super()._get_rounded_amount(amount, force_round=force_round)

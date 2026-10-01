@@ -8,6 +8,8 @@ import { registry } from "@web/core/registry";
 
 const IDENTITY_KEY = "revolutBusyIdentity";
 const CALLS_KEY = "revolutBusyCalls";
+const BLOCKER_ORDER_UUID = "d40466e0-2188-41d0-bebb-aa3a93066000";
+const BLOCKER_LINE_UUID = "4ca74d24-7b42-451a-91fb-8aca308e2600";
 
 function identity() {
     return JSON.parse(sessionStorage.getItem(IDENTITY_KEY));
@@ -108,6 +110,20 @@ function checkStatusTwice() {
 function busySaleSteps() {
     return [
         Chrome.startPoS(),
+        {
+            content: "Use a customer order independent of the saved blocker draft",
+            trigger: ".product-screen",
+            run() {
+                const pos = window.posmodel;
+                const blocker = pos.models["pos.order"].getBy("uuid", BLOCKER_ORDER_UUID);
+                if (!blocker || !Number.isInteger(blocker.id)) {
+                    throw new Error("The terminal blocker was not saved as a native draft");
+                }
+                if (pos.getOrder().uuid === BLOCKER_ORDER_UUID) {
+                    pos.addNewOrder();
+                }
+            },
+        },
         ProductScreen.addOrderline("Desk Pad"),
         ProductScreen.clickPayButton(),
         {
@@ -121,26 +137,28 @@ function busySaleSteps() {
                 );
                 const saved = {
                     orderUuid: order.uuid,
-                    blockerOrderUuid: crypto.randomUUID(),
-                    blockerLineUuid: crypto.randomUUID(),
+                    blockerOrderUuid: BLOCKER_ORDER_UUID,
+                    blockerLineUuid: BLOCKER_LINE_UUID,
                     methodId: method.id,
                 };
+                const blockerOrder = pos.models["pos.order"].getBy("uuid", BLOCKER_ORDER_UUID);
+                if (order.uuid === blockerOrder.uuid || blockerOrder.session_id.id !== pos.session.id) {
+                    throw new Error("The blocker must remain a separate order in the original session");
+                }
                 sessionStorage.setItem(IDENTITY_KEY, JSON.stringify(saved));
                 sessionStorage.setItem(CALLS_KEY, "[]");
                 observeRpc();
+                const prepared = await pos.data.call("pos.order", "revolut_prepare_payment", [
+                    blockerOrder.id, saved.blockerOrderUuid, 0,
+                    [{ uuid: saved.blockerLineUuid, payment_method_id: method.id, amount: 12.34 }],
+                ]);
+                if (prepared.status !== "prepared") {
+                    throw new Error("The saved blocker did not obtain canonical cart authority");
+                }
                 const blocker = await pos.data.call("pos.payment.method", "revolut_start_payment", [
                     [method.id], pos.session.id, saved.blockerOrderUuid, saved.blockerLineUuid,
-                    12.34, pos.currency.id, false, {
-                        amount_total: 12.34,
-                        pricelist_id: order.pricelist_id?.id || false,
-                        fiscal_position_id: order.fiscal_position_id?.id || false,
-                        restaurant: false,
-                        lines: order.lines.map((line) => ({
-                            uuid: line.uuid, product_id: line.product_id.id,
-                            qty: line.qty, price_unit: line.price_unit, discount: line.discount || 0,
-                            tax_ids: line.tax_ids.map((tax) => tax.id),
-                        })),
-                    },
+                    12.34, pos.currency.id, false, false,
+                    prepared.authorization_id, prepared.cart_version, prepared.tender_revision,
                 ]);
                 if (!blocker.operation_id || blocker.state !== "pending") {
                     throw new Error("The independent order did not reserve the terminal");

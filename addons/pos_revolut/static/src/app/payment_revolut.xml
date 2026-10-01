@@ -23,10 +23,15 @@
                 </t>
             </div>
             <div class="mt-3">
-                <label class="form-label" for="revolut-refund-amount">Refund amount</label>
+                <label class="form-label" for="revolut-refund-amount"><t t-if="selectedSource?.terminal_tip_evidence">Base refund amount</t><t t-else="">Refund amount</t></label>
                 <input id="revolut-refund-amount" class="revolut-refund-amount form-control" type="number" min="0"
                     t-att-step="1 / 10 ** props.decimalPlaces" t-att-value="state.amount" t-on-input="updateAmount"/>
                 <small class="text-muted">Remaining on this return: <t t-esc="maximumAmount"/> <t t-esc="props.currencySymbol"/></small>
+            </div>
+            <div t-if="selectedSource?.terminal_tip_evidence" class="mt-3">
+                <label class="form-label" for="revolut-refund-tip">Terminal tip refund amount</label>
+                <input id="revolut-refund-tip" class="revolut-refund-tip form-control" type="number" min="0"
+                    t-att-step="1 / 10 ** props.decimalPlaces" t-att-value="state.tipAmount" t-on-input="updateTip"/>
             </div>
             <div t-if="state.error" class="alert alert-danger mt-2" role="alert" t-esc="state.error"/>
             <t t-set-slot="footer">
@@ -36,6 +41,13 @@
         </Dialog>
     </t>
     <t t-name="pos_revolut.PaymentScreenPaymentLines" t-inherit="point_of_sale.PaymentScreenPaymentLines" t-inherit-mode="extension">
+        <xpath expr="//t[@t-elif=&quot;line.payment_status == 'waitingCard'&quot;]//div[hasclass('electronic_status')]" position="replace">
+            <div class="electronic_status">
+                <t t-if="line.payment_method_id.use_payment_terminal === 'revolut' and line.uiState.revolutSnapshot?.awaiting_tip_details">Payment received — awaiting terminal tip details</t>
+                <t t-elif="this.props.isRefundOrder">Refund in process</t>
+                <t t-else="">Waiting for card</t>
+            </div>
+        </xpath>
         <xpath expr="//t[@t-elif=&quot;line.payment_status == 'retry'&quot;]/div[hasclass('electronic_status')]" position="replace">
             <div class="electronic_status">
                 <t t-if="line.payment_method_id.use_payment_terminal === 'revolut'" t-esc="this.revolutPaymentStatus(line)"/>
