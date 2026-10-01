@@ -94,7 +94,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [31 — Determine deployment upload and lock-file exploitability](needs-info/31-investigate-privileged-deployment-files.md) | `needs-info` | Open | Target host facts and authorized review access; partial evidence preserved |
 | [32 — Verify deployment host identity on first SSH use](needs-info/32-investigate-deployment-host-authentication.md) | `needs-info` | Open | Route/VM verified; Emile confirmed as administrator/device owner; workstation/replacement procedure missing |
 | [33 — Determine whether release evidence exposes restricted identifiers](ready-for-agents/33-investigate-release-evidence-disclosure.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
-| [34 — Provision and gate Odoo PDF generation](needs-triage/34-provision-and-gate-odoo-pdf-generation.md) | `needs-triage` | Open | None for local implementation; authorized staging access and existing safety gates for rollout |
+| [34 — Provision and gate Odoo PDF generation](ready-for-agents/34-provision-and-gate-odoo-pdf-generation.md) | `ready-for-agent` | Claimed | None for local implementation; authorized staging access and existing safety gates for rollout |
 
 ## Architecture triage — 2026-09-25
 

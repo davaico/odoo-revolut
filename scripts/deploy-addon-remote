@@ -24,6 +24,62 @@ class DeploymentError(RuntimeError):
 ADDONS = ("pos_revolut", "pos_revolut_restaurant")
 
 
+# No database, HTTP, provider credentials, or saved transaction data are used.
+PDF_PROBE = r"""
+import shutil
+import subprocess
+import tempfile
+from io import BytesIO
+from pathlib import Path
+
+
+class PDFProbeError(Exception):
+    pass
+
+
+def check():
+    executable = shutil.which("wkhtmltopdf")
+    if not executable:
+        raise PDFProbeError("renderer not found in the running Odoo service PATH")
+    version = subprocess.run([executable, "--version"], check=True, capture_output=True,
+                             text=True, timeout=5).stdout.strip()
+    if version != "wkhtmltopdf 0.12.6.1 (with patched qt)":
+        raise PDFProbeError("renderer incompatible; require wkhtmltopdf 0.12.6.1 with patched Qt")
+    from odoo.tools.pdf import PdfFileReader
+    with tempfile.TemporaryDirectory(prefix="odoo-pdf-preflight-") as directory:
+        root = Path(directory)
+        body, header, footer, output = [root / name for name in ("body.html", "header.html", "footer.html", "probe.pdf")]
+        for path, content in ((body, "ODOO PDF PREFLIGHT BODY"),
+                              (header, "ODOO PDF PREFLIGHT HEADER"),
+                              (footer, "ODOO PDF PREFLIGHT FOOTER")):
+            path.write_text("<html><body>" + content + "</body></html>")
+        subprocess.run([executable, "--quiet", "--disable-javascript", "--enable-local-file-access",
+                        "--margin-top", "25", "--margin-bottom", "25",
+                        "--header-html", str(header), "--footer-html", str(footer),
+                        str(body), str(output)], check=True, capture_output=True, timeout=20)
+        data = output.read_bytes()
+        if not data.startswith(b"%PDF-") or len(data) < 100:
+            raise PDFProbeError("renderer did not produce a nonempty PDF")
+        reader = PdfFileReader(BytesIO(data))
+        text = " ".join(" ".join(page.extractText() for page in reader.pages).split())
+        if not all("ODOO PDF PREFLIGHT " + part in text for part in ("BODY", "HEADER", "FOOTER")):
+            raise PDFProbeError("rendered PDF is unreadable or missing body/header/footer content")
+    print("ODOO_PDF_PREFLIGHT_OK")
+
+
+try:
+    check()
+except subprocess.TimeoutExpired:
+    raise SystemExit("PDF probe failed: renderer exceeded its deadline")
+except subprocess.CalledProcessError:
+    raise SystemExit("PDF probe failed: renderer could not execute or render the document")
+except Exception as error:
+    # Only our own diagnostic messages are safe to expose; do not print library exceptions.
+    detail = str(error) if type(error) is PDFProbeError else "cannot read or validate the rendered PDF"
+    raise SystemExit("PDF probe failed: " + detail)
+"""
+
+
 class CommandRunner:
     """Run target-host commands without invoking a shell."""
 
@@ -190,6 +246,50 @@ WHERE state IN (
                 f"Existing addons_path does not contain {required}; "
                 "configuration was not changed."
             )
+
+    def _pdf_preflight(self):
+        repair = (
+            "Run the reviewed odoo-hosting repair-pdf workflow, verify the Odoo "
+            "service PATH and renderer, then perform any authorized controlled "
+            "restart and retry deployment."
+        )
+        try:
+            service = self._run(
+                ["systemctl", "show", "odoo", "--property=User", "--property=MainPID"],
+                "PDF service environment lookup", capture_output=True, timeout=5,
+            ).stdout
+            properties = dict(line.split("=", 1) for line in service.splitlines() if "=" in line)
+            pid = properties.get("MainPID", "")
+            if properties.get("User") != "odoo" or not pid.isdigit() or int(pid) <= 0:
+                raise DeploymentError("PDF preflight requires a running service with User=odoo.")
+            raw = self._rooted(f"/proc/{pid}/environ").read_bytes()
+            # Keep only renderer/Python environment, never Merchant or other credentials.
+            allowed = {"PATH", "HOME", "LANG", "LANGUAGE", "PYTHONPATH", "VIRTUAL_ENV",
+                       "LD_LIBRARY_PATH", "FONTCONFIG_FILE", "FONTCONFIG_PATH", "QT_QPA_PLATFORM"}
+            environment = {}
+            for entry in raw.split(b"\0"):
+                name, separator, value = entry.partition(b"=")
+                key = os.fsdecode(name)
+                if separator and (key in allowed or key.startswith("LC_")):
+                    environment[key] = os.fsdecode(value)
+            if not environment.get("PATH"):
+                raise DeploymentError("PDF preflight cannot determine the running service PATH.")
+            python = "/usr/bin/python3"
+            venv = self._rooted("/opt/odoo-hosting/venv/bin/python")
+            if venv.is_file() and os.access(venv, os.X_OK):
+                python = "/opt/odoo-hosting/venv/bin/python"
+            result = self._run(
+                ["/usr/sbin/runuser", "--preserve-environment", "-u", "odoo", "--", python, "-"],
+                "PDF preflight",
+                # PAM may augment runuser's environment; restore only the captured allowlist.
+                input=f"import os\nos.environ.clear()\nos.environ.update({environment!r})\n" + PDF_PROBE,
+                env=environment,
+                capture_output=True, timeout=35,
+            )
+            if result.stdout.strip() != "ODOO_PDF_PREFLIGHT_OK":
+                raise DeploymentError("PDF preflight did not confirm readable body/header/footer output.")
+        except (DeploymentError, OSError, subprocess.TimeoutExpired) as error:
+            raise DeploymentError(f"PDF preflight refused deployment: {error}. {repair}") from error
 
     def _backup_configuration(self):
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -508,6 +608,7 @@ WHERE state IN (
                 "A financial operation blocks deployment: " + ", ".join(blockers)
             )
         self._verify_addons_path()
+        self._pdf_preflight()
         self._run(
             ["systemctl", "start", "odoo-backup.service"],
             "Database and filestore backup",

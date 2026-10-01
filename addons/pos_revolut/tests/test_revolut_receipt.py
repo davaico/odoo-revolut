@@ -109,6 +109,9 @@ class TestRevolutReceipt(CommonPosTest):
         )
 
     def _financial_evidence(self):
+        refunds = self.env["pos.revolut.refund.operation"].search([
+            ("original_operation_id", "=", self.source.id),
+        ], order="id")
         models = ("pos.revolut.payment.operation", "pos.revolut.refund.operation",
                   "pos.revolut.payment.dispatch", "pos.revolut.reconciliation.audit", "pos.payment", "pos.order",
                   "account.move", "ir.attachment")
@@ -118,8 +121,19 @@ class TestRevolutReceipt(CommonPosTest):
                     [("mimetype", "=", "application/pdf")] if name == "ir.attachment" else []
                 ) for name in models
             },
-            "payment": self.source.read(["state", "verified_at", "revolut_payment_id", "write_date"]),
-            "order": self.original.read(["state", "account_move", "write_date"]),
+            "payment": self.source.read([
+                "state", "provider_state", "verified_at", "amount", "amount_minor",
+                "currency_id", "revolut_order_id", "revolut_payment_id",
+                "financial_snapshot", "receipt_merchant_snapshot", "write_date",
+            ]),
+            "refunds": refunds.read([
+                "original_operation_id", "state", "provider_state", "verified_at",
+                "amount", "amount_minor", "currency_id", "revolut_order_id",
+                "financial_snapshot", "receipt_merchant_snapshot", "write_date",
+            ]),
+            "orders": (self.original | refunds.pos_order_id).read([
+                "state", "account_move", "write_date",
+            ]),
             "session": self.session.read(["state", "write_date"]),
         }
 
@@ -188,12 +202,16 @@ class TestRevolutReceipt(CommonPosTest):
     def test_verified_full_refund_has_distinct_pdf_and_preserves_original(self):
         refund = self._refund()
         self.session.write({"state": "closed"})
-        text = self._pdf("refund", refund)
-        for value in ("Odoo-generated", "refund receipt", "12.34", refund.revolut_order_id,
-                      self.source.revolut_order_id, self.source.revolut_payment_id, self.original.name,
-                      (self.event_time + timedelta(days=1)).strftime("%Y-%m-%d")):
-            self.assertIn(value, text)
-        self.assertIn(self.source.revolut_payment_id, self._pdf("payment", self.source))
+        self.env.flush_all()
+        before = self._financial_evidence()
+        for _download in range(2):
+            text = self._pdf("refund", refund)
+            for value in ("Odoo-generated", "refund receipt", "12.34", refund.revolut_order_id,
+                          self.source.revolut_order_id, self.source.revolut_payment_id, self.original.name,
+                          (self.event_time + timedelta(days=1)).strftime("%Y-%m-%d")):
+                self.assertIn(value, text)
+            self.assertIn(self.source.revolut_payment_id, self._pdf("payment", self.source))
+            self.assertEqual(self._financial_evidence(), before)
         expected = {("payment", self.source.id), ("refund", refund.id)}
         self.assertEqual({(item["kind"], item["operation_id"]) for item in self.original.revolut_receipt_options()}, expected)
         self.assertEqual([(item["kind"], item["operation_id"]) for item in refund.pos_order_id.revolut_receipt_options()],
@@ -303,4 +321,24 @@ class TestRevolutReceipt(CommonPosTest):
                 self._pdf("payment", self.source)
         self._pdf("payment", self.source)
         self.assertEqual(self._financial_evidence(), before)
+        self.request.assert_not_called()
+
+    def test_repeated_historical_payment_and_partial_refund_pdfs_preserve_evidence(self):
+        refunds = [self._refund(6.17), self._refund(6.17)]
+        self.session.write({"state": "closed"})
+        self.env.flush_all()
+        before = self._financial_evidence()
+        for _download in range(2):
+            payment = self._pdf("payment", self.source)
+            for value in ("payment receipt", "12.34", self.session.currency_id.name,
+                          self.source.revolut_payment_id):
+                self.assertIn(value, payment)
+            for refund in refunds:
+                text = self._pdf("refund", refund)
+                for value in ("refund receipt", "6.17", self.session.currency_id.name,
+                              refund.revolut_order_id, self.source.revolut_payment_id,
+                              (self.event_time + timedelta(days=1)).strftime("%Y-%m-%d")):
+                    self.assertIn(value, text)
+            self.assertEqual(self._financial_evidence(), before)
+        self.assertEqual(self.session.state, "closed")
         self.request.assert_not_called()

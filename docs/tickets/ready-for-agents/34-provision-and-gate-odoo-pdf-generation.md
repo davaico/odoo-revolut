@@ -6,9 +6,9 @@
 
 Create the integration work branch in `odoo-revolut`. In the VM repository, `odoo-hosting`, work on `feat/revolut-staging`; reuse it if it exists or create it if absent. Do not substitute a differently named hosting branch or require matching names across repositories. Inspect existing branch and worktree state first, incorporate reviewed upstream changes, and preserve other work. Do not reset an existing branch.
 
-**State:** open
+**State:** claimed
 
-**Triage:** needs-triage
+**Triage:** ready-for-agent
 
 **Work type:** Infrastructure and deployment reliability
 
