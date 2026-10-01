@@ -262,11 +262,13 @@ export class PaymentRevolut extends PaymentInterface {
         restoreRefundTarget(line, result);
         line.transaction_id = result.payment_id;
         line.payment_ref_no = result.order_id;
-        if (!line.uiState.revolutReceiptSet) {
-            line.setReceiptInfo(isRevolutRefund(line)
-                ? _t("Revolut refund: %s; original order: %s", result.order_id, result.original_order_id)
-                : _t("Revolut payment: %s", result.payment_id));
-            line.uiState.revolutReceiptSet = true;
+        const receipt = isRevolutRefund(line)
+            ? _t("Revolut refund: %s; original order: %s", result.order_id, result.original_order_id)
+            : _t("Revolut payment: %s", result.payment_id);
+        // A native server refresh can replace the ticket while retaining local
+        // UI state. Restore the actual reference without appending it twice.
+        if (!line.ticket?.includes(receipt)) {
+            line.setReceiptInfo(receipt);
         }
     }
 

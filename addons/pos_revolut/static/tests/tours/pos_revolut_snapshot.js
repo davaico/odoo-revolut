@@ -200,7 +200,14 @@ function rejectedSteps(refund) {
             async run() {
                 const pos = window.posmodel;
                 const order = pos.getOrder();
-                order.lines[0].setQuantity(refund ? -1 : 1);
+                if (refund) {
+                    // Restore the field corrupted by this fixture. Native
+                    // setQuantity rejects it because refundedQty counts the
+                    // injected current return as already refunded quantity.
+                    order.lines[0].qty = -1;
+                } else {
+                    order.lines[0].setQuantity(1);
+                }
                 checkUndispatchedLine(refund);
                 if (!refund) {
                     // Preparation now saves a native draft before asking for
@@ -224,15 +231,33 @@ for (const refund of [false, true]) {
                 run() {
                     observeRpc();
                     checkUndispatchedLine(refund);
+                    if (refund && window.posmodel.getOrder().lines[0].qty !== -1) {
+                        throw new Error(`Reload lost the corrected return quantity: ${window.posmodel.getOrder().lines[0].qty}`);
+                    }
                 },
             },
             checkStatusTwice(refund),
             {
                 content: "Explicit repeated Resume submits one corrected financial request",
                 trigger: ".payment-screen .send_payment_request:contains('Resume')",
-                run() {
+                async run() {
                     this.anchor.click();
                     this.anchor.click();
+                    if (refund) {
+                        const deadline = performance.now() + 3000;
+                        while (!document.querySelector(".revolut-refund-source:checked") && performance.now() < deadline) {
+                            await new Promise((resolve) => setTimeout(resolve, 100));
+                        }
+                        if (!document.querySelector(".revolut-refund-source:checked")) {
+                            const order = window.posmodel.getOrder();
+                            throw new Error(`Corrected return Resume did not offer allocation: ${JSON.stringify({
+                                qty: order.lines[0].qty, total: order.priceIncl,
+                                dialog: document.querySelector(".modal")?.textContent,
+                                payments: order.payment_ids.map((line) => ({ amount: line.amount,
+                                    status: line.payment_status, snapshot: line.uiState.revolutSnapshot })),
+                            })}`);
+                        }
+                    }
                 },
             },
             ...(refund ? [
