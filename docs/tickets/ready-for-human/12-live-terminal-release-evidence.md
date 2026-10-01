@@ -416,3 +416,19 @@ and nonzero-tip popup/report identity, amount-unit and latency observations,
 along with ticket 12's remaining Restaurant, failure/recovery and refund
 acceptance cases. The current live success of ticket 23 is not a live pass for
 the newer ticket 27 code.
+
+## Return finalization after session rollover — 2026-10-01
+
+The first existing completed refund (`1002 (Refund)`) could not finalize after
+the test register was closed and reopened. The unchanged one-penny return
+showed **Refund Successful** and £0.00 remaining, but Validate reported that
+the return had changed after allocation. Read-only records show the refund
+reserved in closed session `5` and the same register now open as session `9`;
+the provider refund remains verified and no POS return/tender was saved.
+The server guard also required the same session for settlement. A focused
+mocked test reproduced that error; candidate `19.0.1.9.1` allows a verified
+refund to settle in a later opened session of the same register only when
+the old session is closed and every existing allocation and cart check still
+passes. Two targeted tests and all 45 refund tests pass locally. Staging
+still needs the combined candidate upgrade and a live retest of the five
+existing returns before the refund and reconciliation criteria can pass.

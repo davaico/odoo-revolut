@@ -506,9 +506,17 @@ class ReturnAllocation:
                 if payment and payment.get("payment_status") == "done":
                     raise UserError(_("A failed Revolut refund cannot complete a return payment."))
                 continue
+            # A verified refund can outlive its closed POS session. Keep its
+            # original allocation fixed while allowing the same register to finish.
             if (not payment or snapshot != refund.financial_snapshot
                     or refund.original_order_id != original
-                    or refund.pos_session_id != session or refund.currency_id != session.currency_id
+                    or (refund.pos_session_id != session and (
+                        refund.state != "verified"
+                        or refund.pos_session_id.state != "closed"
+                        or session.state != "opened"
+                        or refund.pos_session_id.config_id != session.config_id
+                    ))
+                    or refund.currency_id != session.currency_id
                     or (refund.return_total_minor and refund.return_total_minor != -total_minor)
                     or (refund.pos_order_id and refund.pos_order_id != existing_order)
                     or payment.get("payment_method_id") != refund.payment_method_id.id

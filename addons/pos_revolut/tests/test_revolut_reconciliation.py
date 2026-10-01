@@ -198,6 +198,86 @@ class TestRevolutReconciliation(TransactionCase):
         request.assert_not_called()
 
     @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_two_company_public_recovery_rejects_foreign_ids_and_unbound_source(self, request):
+        other_company = self.env["res.company"].create({"name": "Other Merchant authority"})
+        other_reference = "ODOO_REVOLUT_SECRET_OTHER_MERCHANT_TEST"
+        other_location, other_terminal = str(uuid4()), str(uuid4())
+        other_method = self.env["pos.payment.method"].with_company(other_company).create({
+            "name": "Other Merchant terminal", "company_id": other_company.id,
+            "payment_method_type": "terminal", "use_payment_terminal": "revolut",
+            "revolut_environment": "sandbox", "revolut_location_id": other_location,
+            "revolut_terminal_id": other_terminal,
+            "revolut_fulfilment_type": "eat_in",
+            "revolut_secret_reference": other_reference,
+        })
+        other_config = self.env["pos.config"].with_company(other_company).create({
+            "name": "Other Merchant POS", "company_id": other_company.id,
+            "payment_method_ids": [Command.link(other_method.id)],
+            "auto_validate_terminal_payment": True,
+        })
+        other_session = self.env["pos.session"].with_company(other_company).create({
+            "config_id": other_config.id, "state": "opened",
+        })
+        other_order, other_line = str(uuid4()), str(uuid4())
+        source = self.env["pos.revolut.payment.operation"].sudo().with_company(other_company).create({
+            "payment_method_id": other_method.id, "company_id": other_company.id,
+            "pos_config_id": other_config.id, "pos_session_id": other_session.id,
+            "order_uuid": other_order, "payment_line_uuid": other_line,
+            "amount": 0.01, "amount_minor": 1,
+            "currency_id": other_session.currency_id.id,
+            "currency_code": other_session.currency_id.name,
+            "environment": "sandbox", "location_id": other_location,
+            "terminal_id": other_terminal, "fulfilment_type": "eat_in",
+            "secret_reference": other_reference, "state": "unresolved",
+            "revolut_order_id": str(uuid4()),
+            "revolut_payment_intent_id": str(uuid4()),
+        })
+        refund_order, refund_line = str(uuid4()), str(uuid4())
+        refund = self.env["pos.revolut.refund.operation"].sudo().with_company(other_company).create({
+            "original_operation_id": source.id, "pos_session_id": other_session.id,
+            "order_uuid": refund_order, "payment_line_uuid": refund_line,
+            "amount": -0.01, "amount_minor": 1,
+            "currency_id": other_session.currency_id.id,
+            "financial_snapshot": {"fixture": "historical return"},
+            "state": "unresolved", "revolut_order_id": str(uuid4()),
+        })
+        self.env.flush_all()
+        self.cr.execute(
+            "UPDATE pos_revolut_payment_operation SET credential_id = NULL WHERE id = %s",
+            [source.id],
+        )
+        source.invalidate_recordset()
+        manager = new_test_user(
+            self.env, login="two_company_merchant_manager",
+            groups="point_of_sale.group_pos_manager", company_id=self.env.company.id,
+            company_ids=[Command.set([self.env.company.id, other_company.id])],
+        )
+        method = self.method.with_user(manager).with_context(
+            allowed_company_ids=[self.env.company.id, other_company.id]
+        )
+        with self.assertRaises(AccessError):
+            method.revolut_poll_payment(source.id, other_order, other_line)
+        with self.assertRaises(AccessError):
+            method.revolut_poll_refund(refund.id, refund_order, refund_line)
+        with self.assertRaises(AccessError):
+            method.revolut_start_payment(
+                other_session.id, str(uuid4()), str(uuid4()), 0.01,
+                other_session.currency_id.id,
+            )
+        with self.assertRaises(AccessError):
+            method.revolut_start_refund(
+                other_session.id, str(uuid4()), str(uuid4()), -0.01,
+                other_session.currency_id.id, {},
+            )
+        with self.assertRaisesRegex(UserError, "administrator"):
+            source.with_user(manager).with_context(
+                allowed_company_ids=[self.env.company.id, other_company.id]
+            ).action_revolut_associate(source.revolut_order_id)
+        self.env["pos.revolut.payment.operation"]._cron_reconcile_payments()
+        self.env["pos.revolut.refund.operation"]._cron_reconcile_refunds()
+        request.assert_not_called()
+
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
     def test_other_company_manager_cannot_see_or_reconcile_attempt(self, request):
         other_company = self.env["res.company"].create({"name": "Other company"})
         manager = new_test_user(

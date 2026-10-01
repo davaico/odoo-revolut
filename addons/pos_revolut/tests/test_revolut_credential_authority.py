@@ -206,8 +206,12 @@ class TestRevolutCredentialAuthority(TransactionCase):
     def test_same_company_rotation_keeps_historical_attempt_on_original_account(self, request):
         old = self._operation(self.own_method)
         old.write({"state": "verified"})
-        # Odoo permits payment-method edits only after the old register closes.
-        self.session.write({"state": "closed"})
+        # This authority fixture has no full native checkout. Mark its prior
+        # register closed so Odoo allows a post-sale method rotation.
+        self.cr.execute(
+            "UPDATE pos_session SET state = 'closed' WHERE id = %s", [self.session.id]
+        )
+        self.session.invalidate_recordset()
         self.env["pos.revolut.merchant.credential"].create({
             "company_id": self.company.id, "environment": "sandbox",
             "secret_reference": "ODOO_REVOLUT_SECRET_COMPANY_A_ROTATED",
