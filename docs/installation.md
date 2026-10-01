@@ -8,10 +8,12 @@ rollout. The procedures below have mocked runtime coverage; the checklist
 records the remaining checks on actual devices.
 
 This release supports cash plus Revolut and multiple Revolut payment lines on
-one POS order. Odoo persists each line's operation before Merchant API dispatch,
-sends only that line's amount to its configured terminal, and verifies the
-underlying payment as `captured` or `completed`. A partial payment leaves the
-order open; normal automatic checkout runs only after the full order is paid.
+one POS order. Version `19.0.1.9.0` saves and prices the native draft on the
+server, authorizes its base balance and tender plan, then reserves each card
+allocation before Merchant API dispatch. It verifies the captured payment and
+an authenticated payment report with an explicit tip amount, including zero.
+A partial payment leaves the order open; automatic checkout runs only after
+the full authorized base and all proven tips are paid.
 
 ## Requirements
 
@@ -126,6 +128,16 @@ As a Point of Sale administrator:
 9. Add the payment method to the intended POS configuration and keep
    **Automatically validate terminal payments** enabled. The server rejects a
    payment start when this standard Odoo setting is disabled.
+10. Configure Odoo's **Tip Product**. Its taxes and Product Price precision must
+    represent collected currency minor units exactly; preparation checks this
+    before dispatch. The standard untaxed tip product is supported. Enable the
+    customer tip prompt on the physical terminal as required by your setup.
+11. Disable Restaurant **Add tips after payment** for this configuration.
+    Revolut tips are selected on the terminal during the payment. Remove any
+    unexposed Odoo-entered tip before selecting Revolut to avoid two prompts.
+12. Confirm the server credential can create, poll and download Merchant
+    `payments_report` runs. Report availability and terminal identity/units
+    still require the ticket 12 device acceptance checks.
 
 The check performs only `GET /api/terminals` with the location and
 `operation_mode=pos`. It reports success only when the configured terminal is
@@ -134,23 +146,50 @@ the payment method's company are rejected on the server.
 
 ## Payment behavior and current limitations
 
-When the cashier selects Revolut, the browser sends only the order UUID,
-payment-line UUID, amount, currency, session, and payment-method identifier to
-Odoo. The Merchant credential, terminal ID, location, fulfilment and all
-Merchant API calls stay on the Odoo server. Odoo uses bounded 10-second HTTP
-requests and converts the amount using the currency exponent, independently of
-POS cash rounding.
+When the cashier selects Revolut, the browser synchronizes the draft and asks
+Odoo to prepare its exact order ID/UUID and tender plan. The server derives
+permitted native prices and taxes, records an immutable cart version and admits
+only the named remaining base allocation. A changed price/tax calculation is
+shown for review; use **Resume** after reviewing the canonical cart. Restricted
+price overrides require a POS manager to open the saved order in their own
+Odoo session and choose **Approve Revolut cart**, then the cashier resumes.
+An employee selection or browser confirmation cannot grant this approval.
+
+Unexposed preparation expires after five minutes. Resume prepares a current
+version. Once a payment is exposed, the approved base stays frozen; expiry or
+refund does not restore card capacity. Cash corrections and the tender ledger
+are saved atomically during preparation of a subsequent card allocation.
+
+The Merchant credential, terminal ID, location, fulfilment and all Merchant API
+calls stay on the Odoo server. Requests have bounded 10-second HTTP timeouts.
+Base cash rounding is frozen separately from terminal tips: an approved 10.00
+base plus a collected 0.03 tip settles at 10.03.
 
 The successful flow is:
 
-1. persist the immutable local operation;
-2. verify that the configured terminal is online, at the expected location and
+1. save, price and authorize the base cart and tender allocation;
+2. reserve the immutable local operation;
+3. verify that the configured terminal is online, at the expected location and
    in Pay at Counter mode;
-3. durably claim and create the Revolut order;
-4. durably claim and create the terminal payment intent;
-5. poll the intent, then the underlying payment; and
-6. let Odoo's standard automatic terminal-payment validation complete the sale
-   only after the payment is `captured` or `completed`.
+4. durably claim and create the Revolut order and terminal payment intent;
+5. poll the intent and underlying payment, then retrieve the authenticated
+   payment report to prove the gross/base/tip decomposition;
+6. project the native tip line and gross tender once, then let Odoo's automatic
+   terminal-payment validation complete a fully paid sale.
+
+After capture, a delayed or unavailable report displays **Payment received —
+awaiting terminal tip details**. Keep the original order and payment line; use
+**Check status** or manager reconciliation. Background reconciliation can
+finish the report later. Do not create another charge. Full refunds include
+the proven tip; partial refunds select base and tip components separately.
+
+Upgrade from earlier versions does not invent authorizations or zero-tip
+evidence for old operations. Historical verified/uncertain attempts remain
+recoverable with their original references, receipts and refund limits. They
+cannot receive another new allocation without audited manager reconciliation.
+Safe failed drafts can be prepared under the new rules. Deliver both addons,
+run the stopped-service module update, and reopen POS to load the new assets.
+No credential is stored in Odoo and no automatic credential rotation occurs.
 
 Intent completion or payment authorisation is not success. Declined, failed and
 cancelled results remain explicit. A timeout, malformed/lost response, unknown

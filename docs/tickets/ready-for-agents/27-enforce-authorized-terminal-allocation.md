@@ -8,9 +8,9 @@
 
 Work in this worktree on the assigned branch; respect the blockers below and update from reviewed main before starting.
 
-**State:** open
+**State:** claimed
 
-**Triage:** needs-triage
+**Triage:** ready-for-agent
 
 **Work type:** Remediation
 
@@ -46,7 +46,7 @@ Source scan `95c73550-ed81-4cfe-9e81-b6f2be355a38` was canceled with partial cov
 
 26 — Decide server-authorized cart and tip behavior (closed; reviewed design integrated into the assigned branch at `719bae93390c3a326673af2d0e6b89aea0a84b65`).
 
-Implementation sequencing requires triage of the [concrete proposed breakdown](../../ticket-27-implementation-breakdown.md). The accepted design is unchanged; no additional product decision is required.
+The owner reauthorized complete implementation on 2026-10-01. The [breakdown](../../ticket-27-implementation-breakdown.md) guides development within this ticket; it is not an additional approval gate. The accepted design is unchanged.
 
 ## External prerequisites
 
@@ -77,3 +77,7 @@ The assigned branch was fast-forwarded from `080f3fb0a72df80fa772bb72b31eeba4fdc
 Following this ticket's explicit stop condition, record [P1–P6 development dependencies, public seams, acceptance gates and source-claim verification requirements](../../ticket-27-implementation-breakdown.md) before runtime implementation. The proposal introduces no partial financial guard and is awaiting triage of its sequencing. Planning labels are not new numbered tickets; publish those only after breakdown triage. Keep this ticket open as the complete remediation acceptance gate. All five linked source claims remain open, and none of the acceptance checkboxes is satisfied by this documentation change. Terminal-selected tips and the existing approved decisions remain required.
 
 The pinned temporary Odoo source extraction is absent. Docker image inspection after permitted escalation failed because `/var/run/docker.sock` is unavailable; fresh pinned-Odoo extraction/verification could not run here. This test-environment limitation is separate from the implementation scope assessment. Local checks and independent Standards/Spec review are recorded in the breakdown; they validate this proposal only, not payment behavior. Ticket 12 and deployment/live acceptance remain unchanged.
+
+## Implementation resumed — 2026-10-01
+
+Owner explicitly requested continuing implementation with Docker started. Ticket is claimed on its assigned branch. P1–P6 are internal milestones for one complete candidate; no newly numbered tickets or further scope approval are required. Previous documentation-only evidence remains historical, not remediation evidence.

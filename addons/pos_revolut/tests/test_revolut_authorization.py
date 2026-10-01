@@ -6,6 +6,8 @@ from odoo import Command
 from odoo.exceptions import AccessError
 from odoo.tests.common import TransactionCase, new_test_user
 
+from .authorization_fixtures import authorized_start, financial_posts, native_products
+
 
 class TestRevolutAuthorization(TransactionCase):
     @classmethod
@@ -35,7 +37,7 @@ class TestRevolutAuthorization(TransactionCase):
         )
         cls.cashier = new_test_user(
             cls.env, login="revolut_authorization_cashier",
-            groups="point_of_sale.group_pos_user",
+            groups="base.group_user,point_of_sale.group_pos_user",
             company_id=cls.company.id,
             company_ids=[Command.set([cls.company.id])],
         )
@@ -54,6 +56,7 @@ class TestRevolutAuthorization(TransactionCase):
             "payment_method_ids": [Command.link(cls.method.id)],
             "auto_validate_terminal_payment": True,
         })
+        cls.product = native_products(cls.env, cls.config)
         cls.session = cls.env["pos.session"].create({
             "config_id": cls.config.id, "state": "opened",
         })
@@ -251,13 +254,13 @@ class TestRevolutAuthorization(TransactionCase):
         cashier_method = self.method.with_user(self.cashier).with_context(
             allowed_company_ids=[self.company.id]
         )
-        started = cashier_method.revolut_start_payment(
+        started = authorized_start(cashier_method,
             self.session.id, order_uuid, line_uuid, 12.34,
             self.session.currency_id.id, False, {
                 "pricelist_id": self.config.pricelist_id.id,
                 "fiscal_position_id": False,
                 "lines": [{
-                    "uuid": order_uuid, "product_id": 1, "qty": 1,
+                    "uuid": order_uuid, "product_id": self.product.id, "qty": 1,
                     "price_unit": 12.34, "discount": 0, "tax_ids": [],
                 }],
             },
@@ -304,5 +307,6 @@ class TestRevolutAuthorization(TransactionCase):
         self.assertFalse(operation.retry_safe)
         self.assertEqual(dispatches.search_count([("operation_id", "=", operation.id)]), 2)
         self.assertEqual([call.args[0] for call in request.call_args_list], [
-            "GET", "POST", "POST", "GET", "GET",
+            "GET", "POST", "POST", "GET", "GET", "POST", "GET", "GET",
         ])
+        self.assertEqual(len(financial_posts(request)), 2)

@@ -1,4 +1,6 @@
 import logging
+from contextlib import contextmanager
+from contextvars import ContextVar
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import timedelta
 
@@ -11,6 +13,16 @@ from .financial_snapshot import normalize_snapshot
 
 
 _logger = logging.getLogger(__name__)
+_TIP_EVIDENCE_CURSOR = ContextVar("revolut_tip_evidence_cursor", default=None)
+
+
+@contextmanager
+def _tip_evidence_write(env):
+    token = _TIP_EVIDENCE_CURSOR.set(env.cr)
+    try:
+        yield
+    finally:
+        _TIP_EVIDENCE_CURSOR.reset(token)
 
 
 class PosRevolutPaymentOperation(models.Model):
@@ -47,6 +59,15 @@ class PosRevolutPaymentOperation(models.Model):
         required=True, readonly=True, currency_field="currency_id"
     )
     amount_minor = fields.Integer(required=True, readonly=True)
+    captured_amount_minor = fields.Integer(readonly=True, copy=False)
+    captured_payment_created_at = fields.Datetime(readonly=True, copy=False)
+    gross_amount_minor = fields.Integer(readonly=True, copy=False)
+    terminal_tip_minor = fields.Integer(readonly=True, copy=False)
+    terminal_tip_evidence = fields.Json(readonly=True, copy=False)
+    report_run_id = fields.Char(readonly=True, copy=False)
+    report_run_history = fields.Json(readonly=True, copy=False)
+    report_claim = fields.Char(readonly=True, copy=False)
+    report_claimed_at = fields.Datetime(readonly=True, copy=False)
     currency_id = fields.Many2one(
         "res.currency", required=True, readonly=True, ondelete="restrict"
     )
@@ -129,6 +150,15 @@ class PosRevolutPaymentOperation(models.Model):
         "UNIQUE(pos_payment_id)",
         "A verified Revolut operation can only settle one POS payment.",
     )
+    _terminal_tip_amounts = models.Constraint(
+        "CHECK(COALESCE(terminal_tip_minor, 0) >= 0 "
+        "AND (COALESCE(captured_amount_minor, 0) = 0 OR captured_amount_minor >= amount_minor) "
+        "AND (COALESCE(gross_amount_minor, 0) = 0 OR "
+        "(captured_amount_minor IS NOT NULL AND terminal_tip_minor IS NOT NULL "
+        "AND gross_amount_minor = captured_amount_minor "
+        "AND gross_amount_minor = amount_minor + terminal_tip_minor)))",
+        "Verified terminal tips must explain the captured gross above the requested base.",
+    )
 
     _IMMUTABLE_FIELDS = {
         "attempt_number",
@@ -200,6 +230,20 @@ class PosRevolutPaymentOperation(models.Model):
         return {"verified", "declined", "failed", "cancelled"}
 
     def write(self, values):
+        evidence_fields = {
+            "captured_amount_minor", "captured_payment_created_at",
+            "gross_amount_minor", "terminal_tip_minor", "terminal_tip_evidence",
+            "report_run_id", "report_run_history", "report_claim", "report_claimed_at",
+        }
+        if evidence_fields.intersection(values) and _TIP_EVIDENCE_CURSOR.get() is not self.env.cr:
+            raise ValidationError(_("Terminal tip evidence is recorded only by server reconciliation."))
+        for operation in self:
+            for name in {"captured_amount_minor", "captured_payment_created_at",
+                         "gross_amount_minor", "terminal_tip_evidence"}.intersection(values):
+                if operation[name] and values[name] != operation[name]:
+                    raise ValidationError(_("Captured payment and tip evidence are immutable."))
+            if operation.gross_amount_minor and "terminal_tip_minor" in values and values["terminal_tip_minor"] != operation.terminal_tip_minor:
+                raise ValidationError(_("Verified terminal tip evidence is immutable."))
         if self._IMMUTABLE_FIELDS.intersection(values):
             raise ValidationError(_("Revolut payment operation details are immutable."))
         reference_fields = {
@@ -220,6 +264,19 @@ class PosRevolutPaymentOperation(models.Model):
                     )
         return super().write(values)
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        if any({"captured_amount_minor", "captured_payment_created_at", "gross_amount_minor",
+                "terminal_tip_minor", "terminal_tip_evidence", "report_run_id",
+                "report_run_history", "report_claim", "report_claimed_at"}.intersection(values)
+               for values in vals_list):
+            raise ValidationError(_("Terminal tip evidence cannot be supplied when creating an operation."))
+        return super().create(vals_list)
+
+    def _revolut_paid_minor(self):
+        self.ensure_one()
+        return self.gross_amount_minor if self.authorization_id else self.amount_minor
+
     def _apply_payment_observation(self, kind, evidence=None):
         """Apply provider or local evidence to the current locked attempt.
 
@@ -231,11 +288,15 @@ class PosRevolutPaymentOperation(models.Model):
         evidence = evidence or {}
         if kind in {"intent", "payment"} and not isinstance(evidence, dict):
             kind, evidence = "unknown", {}
+        self._lock_order(self.company_id.id, self.order_uuid)
         self.env.cr.execute(
             "SELECT id FROM pos_revolut_payment_operation WHERE id = %s FOR UPDATE",
             [self.id],
         )
         self.invalidate_recordset()
+
+        if kind.startswith("tip_report_"):
+            return self._apply_terminal_tip_observation(kind, evidence)
 
         if kind.startswith("dispatch_"):
             return self._apply_dispatch_observation(kind, evidence)
@@ -278,6 +339,12 @@ class PosRevolutPaymentOperation(models.Model):
             intent = evidence
             if (intent.get("id") != self.revolut_payment_intent_id
                     or intent.get("order_id") != self.revolut_order_id
+                    or (self.authorization_id and (
+                        type(intent.get("amount")) is not int
+                        or intent.get("amount") != self.amount_minor
+                        or intent.get("currency") != self.currency_code
+                        or intent.get("terminal_id") != self.terminal_id
+                    ))
                     or not isinstance(intent.get("state"), str)
                     or intent["state"] not in {
                         "pending", "processing", "completed", "cancelled", "failed"
@@ -307,19 +374,34 @@ class PosRevolutPaymentOperation(models.Model):
                     kind = "unknown"
         elif kind == "payment":
             payment = evidence
+            terminal_capture = bool(self.authorization_id and payment.get("state") in {"captured", "completed"})
             if (not self.revolut_payment_id
                     or payment.get("id") != self.revolut_payment_id
                     or payment.get("order_id") != self.revolut_order_id
                     or type(payment.get("amount")) is not int
-                    or payment.get("amount") != self.amount_minor
+                    or (payment.get("amount") < self.amount_minor if terminal_capture else payment.get("amount") != self.amount_minor)
+                    or payment.get("amount") > 2147483647
+                    or (self.captured_amount_minor and payment.get("amount") != self.captured_amount_minor)
+                    or (self.captured_amount_minor and not terminal_capture)
                     or payment.get("currency") != self.currency_code
                     or not isinstance(payment.get("state"), str)):
                 kind = "unknown"
             else:
                 state = payment.get("state")
                 if state in {"captured", "completed"}:
-                    values = {"state": "verified", "provider_state": state,
-                              "verified_at": fields.Datetime.now()}
+                    if terminal_capture:
+                        try:
+                            created_at = self._terminal_payment_created_at(payment.get("created_at"))
+                        except (ValueError, TypeError):
+                            values = {"state": "unresolved", "provider_state": state,
+                                      "captured_amount_minor": payment["amount"]}
+                        else:
+                            values = {"state": "pending", "provider_state": state,
+                                      "captured_amount_minor": payment["amount"],
+                                      "captured_payment_created_at": created_at}
+                    else:
+                        values = {"state": "verified", "provider_state": state,
+                                  "verified_at": fields.Datetime.now()}
                 elif state in {"declined", "failed", "cancelled"}:
                     values = {"state": state, "provider_state": state}
                 elif state in {"pending", "authentication_challenge",
@@ -365,7 +447,8 @@ class PosRevolutPaymentOperation(models.Model):
                         ) else 0
                     ),
                 })
-        self.sudo().write(values)
+        with _tip_evidence_write(self.env):
+            self.sudo().write(values)
         return self.operation_snapshot(self)
 
     def _recover_legacy_final(self):
@@ -533,6 +616,10 @@ class PosRevolutPaymentOperation(models.Model):
             "provider_state": operation.provider_state or False,
             "retry_safe": operation.retry_safe,
             "local_outcome": operation.local_outcome or False,
+            "captured_amount_minor": operation.captured_amount_minor,
+            "gross_amount_minor": operation.gross_amount_minor,
+            "terminal_tip_minor": operation.terminal_tip_minor,
+            "awaiting_tip_details": bool(operation.authorization_id and operation.captured_amount_minor and operation.state != "verified"),
         }
 
 class PosRevolutPaymentDispatch(models.Model):

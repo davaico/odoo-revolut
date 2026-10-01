@@ -82,7 +82,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [24 — Bound financial snapshot processing before numeric expansion](closed/24-bound-financial-snapshot-processing.md) | `ready-for-agent` at closure | Closed | None for local validation and mocked implementation |
 | [25 — Download historical Revolut payment and refund receipts](closed/25-download-historical-payment-refund-receipts.md) | `ready-for-agent` at closure | Closed | None for local implementation and mocked verification |
 | [26 — Decide server-authorized cart and tip behavior](closed/26-decide-order-and-tip-authorization.md) | `ready-for-agent` at closure | Closed | None |
-| [27 — Enforce the authorized order balance before terminal dispatch](needs-triage/27-enforce-authorized-terminal-allocation.md) | `needs-triage` | Open | 26 (closed and integrated); proposed P1–P6 sequencing requires triage |
+| [27 — Enforce the authorized order balance before terminal dispatch](ready-for-agents/27-enforce-authorized-terminal-allocation.md) | `ready-for-agent` | Claimed | 26 (closed and integrated); implementation resumed |
 | [28 — Bind Revolut credential authority to the owning company](ready-for-agents/28-bind-merchant-credentials-to-company.md) | `ready-for-agent` | Open | None |
 | [29 — Determine the impact of concurrent payment status polling](ready-for-agents/29-investigate-concurrent-status-polling.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
 | [30 — Determine authorized access to shared POS sessions](ready-for-agents/30-investigate-shared-pos-session-authorization.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |

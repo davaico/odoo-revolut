@@ -50,7 +50,9 @@ const snapshotRejection = {
 };
 
 function fixture({ refund = false, call, chooseAllocation = async () => false,
-    restoreRefundOriginals = async () => {} } = {}) {
+    restoreRefundOriginals = async () => {},
+    preparePayment = async () => ({status:"prepared", authorization_id:1, cart_version:1, tender_revision:1}),
+    projectVerified = async () => {} } = {}) {
     const clock = new ControlledClock();
     const order = { uuid: "order-1", payment_ids: [], isRefund: refund };
     const line = {
@@ -66,6 +68,7 @@ function fixture({ refund = false, call, chooseAllocation = async () => false,
     const preparationErrors = [];
     const preparationMessages = [];
     const adapter = {
+        preparePayment,
         async call(method, args) {
             calls.push({ method, args });
             return call?.(method, args, calls) ?? false;
@@ -75,7 +78,8 @@ function fixture({ refund = false, call, chooseAllocation = async () => false,
         chooseAllocation,
         setRefundAmount(payment, amount) { payment.amount = -amount; },
         discardRefund(payment) { order.payment_ids = order.payment_ids.filter((item) => item !== payment); },
-        setVerified(payment, result) {
+        async setVerified(payment, result) {
+            await projectVerified(payment, result);
             payment.transaction_id = result.payment_id;
             payment.payment_ref_no = result.order_id;
         },
@@ -1153,4 +1157,42 @@ test("a failed refund can be removed for replacement but cannot be edited or set
     assert.equal(paymentActions(line).canEditAmount, false);
     assert.equal(orderActions(order).blocksAlternativeTender, false);
     assert.equal(orderActions(order).blocksCheckout, true);
+});
+
+
+test("preparation rejection keeps an untouched line editable and sends no start", async () => {
+    const {state, order, line, calls, errors} = fixture({
+        preparePayment: async () => { throw new Error("Review the canonical cart"); },
+    });
+    assert.equal(await state.request(order,line),false);
+    assert.equal(calls.some(({method}) => method === "revolut_start_payment"),false);
+    assert.equal(line.uiState.revolutUndispatched,true);
+    assert.equal(line.uiState.revolutStarted,false);
+    assert.equal(paymentActions(line).canEditAmount,true);
+    assert.equal(paymentActions(line).canDelete,true);
+    assert.equal(paymentActions(line).blocksCheckout,false);
+    assert.equal(paymentOutcome(line),"authority_required");
+    assert.deepEqual(errors,["authority_required"]);
+});
+
+test("verified checkout waits for the canonical gross and tip projection", async () => {
+    const projection = deferred();
+    const {state, order, line, calls} = fixture({
+        projectVerified: async () => projection.promise,
+        call(method) {
+            if (method === "revolut_start_payment") {
+                return {operation_id:1,state:"verified",payment_id:"captured",order_id:"provider-order"};
+            }
+            return false;
+        },
+    });
+    let finished = false;
+    const request = state.request(order,line).then((result) => {finished=true;return result;});
+    await tick();
+    assert.equal(finished,false);
+    assert.equal(line.transaction_id,false);
+    assert.equal(calls.filter(({method})=>method==="revolut_start_payment").length,1);
+    projection.resolve();
+    assert.equal(await request,true);
+    assert.equal(line.transaction_id,"captured");
 });

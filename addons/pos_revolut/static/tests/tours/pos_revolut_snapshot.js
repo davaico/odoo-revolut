@@ -79,7 +79,7 @@ function checkUndispatchedLine(refund) {
         line.uiState.revolutStarted || line.uiState.revolutSnapshot ||
         line.uiState.revolutOperationId || line.uiState.revolutOriginalOperationId ||
         line.transaction_id || line.payment_ref_no ||
-        line.uiState.revolutStartRejected !== "snapshot_invalid") {
+        line.uiState.revolutStartRejected !== (refund ? "snapshot_invalid" : "authority_required")) {
         throw new Error("Snapshot rejection lost identity or retained financial exposure");
     }
     const requestedAmount = refund ? -10 : 10;
@@ -95,6 +95,12 @@ function checkUndispatchedLine(refund) {
     }
     line.setAmount(refund ? -12.34 : 12.34);
     const rejected = starts().filter((request) => request.result?.start_rejected);
+    if (!refund) {
+        if (starts().length !== 0) {
+            throw new Error("Invalid preparation reached a financial start RPC");
+        }
+        return;
+    }
     if (rejected.length !== 1 || rejected[0].qty !== (refund ? -1e10 : 1e10) ||
         rejected[0].amount !== (refund ? -12.34 : 12.34)) {
         throw new Error("The actual POS adapter did not submit the invalid numeric cart");
@@ -176,12 +182,14 @@ function rejectedSteps(refund) {
                 },
             },
         ] : []),
-        { trigger: ".modal:contains('Revolut cart needs correction'):contains('Correct the cart before starting payment')" },
+        { trigger: refund
+            ? ".modal:contains('Revolut cart needs correction'):contains('Correct the cart before starting payment')"
+            : ".modal:contains('Revolut cart needs correction'):contains('Correct the cart')" },
         Dialog.confirm(),
         {
             content: "Actionable snapshot feedback leaves the original unpaid line editable",
             trigger: `.payment-screen .electronic_status:contains('${refund
-                ? "Correct the return" : "Correct the cart"}')`,
+                ? "Correct the return" : "Review or approve the cart"}')`,
             run() { checkUndispatchedLine(refund); },
         },
         checkStatusTwice(refund),
@@ -261,7 +269,7 @@ registry.category("web_tour.tours").add("pos_revolut_payment_snapshot_cash_alter
                 const order = window.posmodel.getOrder();
                 const saved = identity();
                 if (order.uuid !== saved.orderUuid || order.getPaymentlineByUuid(saved.lineUuid) ||
-                    starts().length !== 1) {
+                    starts().length !== 0) {
                     throw new Error("Cash checkout retained the rejected line or dispatched another payment");
                 }
                 sessionStorage.removeItem(IDENTITY_KEY);

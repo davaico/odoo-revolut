@@ -1,3 +1,6 @@
+import csv
+import io
+import json
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
@@ -8,6 +11,9 @@ from odoo.addons.point_of_sale.tests.test_frontend import (
     TestPointOfSaleHttpCommon,
 )
 from odoo.tests import tagged
+
+from .authorization_fixtures import install_zero_reports
+from .test_revolut_terminal_tip import TerminalTipFixtures
 
 
 @tagged("post_install", "-at_install")
@@ -107,6 +113,10 @@ class TestRevolutRestaurantPosStarts(TestPointOfSaleHttpCommon):
             "module_pos_restaurant": True,
             "payment_method_ids": [Command.link(method.id)],
             "auto_validate_terminal_payment": True,
+            "tip_product_id": self.env["product.product"].create({
+                "name": "Verified terminal tip", "list_price": 0,
+                "taxes_id": [Command.clear()],
+            }).id,
             "use_presets": True,
             "default_preset_id": self.env.ref(
                 "pos_restaurant.pos_takein_preset"
@@ -163,7 +173,8 @@ class TestRevolutRestaurantPosStarts(TestPointOfSaleHttpCommon):
         with patch(
             "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
             side_effect=request,
-        ):
+        ) as provider:
+            install_zero_reports(self.env, provider)
             self.start_pos_tour("pos_revolut_restaurant_checkout")
 
         self.env.invalidate_all()
@@ -272,6 +283,10 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                     *([Command.link(self.bank_payment_method.id)] if include_bank else []),
                 ],
                 "auto_validate_terminal_payment": True,
+                "tip_product_id": self.env["product.product"].create({
+                    "name": "Verified terminal tip", "list_price": 0,
+                    "taxes_id": [Command.clear()],
+                }).id,
             }
         )
         self.desk_pad.write({"list_price": 12.34, "taxes_id": [Command.clear()]})
@@ -346,7 +361,8 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         with patch(
             "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
             side_effect=request,
-        ):
+        ) as provider:
+            install_zero_reports(self.env, provider)
             self.start_pos_tour("pos_revolut_verified_checkout")
 
         self.env.invalidate_all()
@@ -365,6 +381,108 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.assertNotIn("PAN_CANARY_TICKET_11", repr(operation.read()[0]))
         mutating_calls = [call for call in calls if call[0] == "POST"]
         self.assertEqual(len(mutating_calls), 2)
+
+    def test_terminal_tip_waits_for_report_and_recovers_after_reload(self):
+        revolut_method = self._configure_revolut_checkout()
+        run_id = str(uuid4())
+        currency = self.main_pos_config.currency_id.name
+        created = TerminalTipFixtures.created_at
+        report_polls = 0
+        calls = []
+        output = io.StringIO(newline="")
+        writer = csv.DictWriter(output, fieldnames=TerminalTipFixtures.columns)
+        writer.writeheader()
+        writer.writerow({
+            "payment_id": self.PAYMENT_ID, "order_id": self.ORDER_ID,
+            "currency": currency, "location_id": self.LOCATION_ID,
+            "type": "PAYMENT", "state": "COMPLETED", "amount": "14.34",
+            "tip_amount": "2.00", "surcharge_amount": "", "refunded_amount": "0.00",
+            "created_date": created, "captured_date": "2026-10-01T10:00:10Z",
+        })
+        report_csv = output.getvalue().encode()
+
+        def response(payload):
+            content = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+            result = Mock(status_code=200)
+            result.json.return_value = payload
+            result.iter_content.return_value = [content]
+            return result
+
+        def request(method, url, **kwargs):
+            nonlocal report_polls
+            calls.append((method, url, kwargs))
+            if method == "GET" and url.endswith("/api/terminals"):
+                return response({"terminals": [{
+                    "id": self.TERMINAL_ID, "online": True, "operation_mode": "pos",
+                    "location_id": self.LOCATION_ID,
+                }]})
+            if method == "POST" and url.endswith("/api/orders"):
+                self.assertEqual(kwargs["json"]["amount"], 1234)
+                return response({"id": self.ORDER_ID})
+            if method == "POST" and url.endswith("/payment-intents"):
+                self.assertEqual(kwargs["json"]["amount"], 1234)
+                return response({"id": self.INTENT_ID, "state": "pending"})
+            if method == "GET" and url.endswith(f"/api/payment-intents/{self.INTENT_ID}"):
+                return response({
+                    "id": self.INTENT_ID, "order_id": self.ORDER_ID,
+                    "amount": 1234, "currency": currency, "terminal_id": self.TERMINAL_ID,
+                    "state": "completed", "payment_id": self.PAYMENT_ID,
+                })
+            if method == "GET" and url.endswith(f"/api/payments/{self.PAYMENT_ID}"):
+                return response({
+                    "id": self.PAYMENT_ID, "order_id": self.ORDER_ID,
+                    "amount": 1434, "currency": currency,
+                    "state": "captured", "created_at": created,
+                })
+            if method == "POST" and url.endswith("/api/report-runs"):
+                return response({"report_run_id": run_id, "status": "processing"})
+            if method == "GET" and url.endswith(f"/api/report-runs/{run_id}"):
+                report_polls += 1
+                if report_polls == 3:
+                    # Lose report transport after two processing observations;
+                    # the native POS must retain the captured operation on reload.
+                    raise requests.ConnectionError("Mocked report transport interruption")
+                return response({"report_run_id": run_id,
+                                 "status": "processing" if report_polls < 3 else "completed"})
+            if method == "GET" and url.endswith(f"/api/report-runs/{run_id}/file"):
+                return response(report_csv)
+            if method == "GET" and url.endswith(f"/api/orders/{self.ORDER_ID}"):
+                return response({
+                    "id": self.ORDER_ID, "currency": currency, "location_id": self.LOCATION_ID,
+                    "payments": [{"id": self.PAYMENT_ID, "state": "captured", "amount": 1434}],
+                })
+            raise AssertionError(f"Unexpected mocked Revolut request: {method} {url}")
+
+        with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+                   side_effect=request):
+            self.start_pos_tour("pos_revolut_terminal_tip_report_reload")
+
+        self.env.invalidate_all()
+        operation = self.env["pos.revolut.payment.operation"].search([
+            ("payment_method_id", "=", revolut_method.id),
+        ])
+        self.assertEqual(len(operation), 1)
+        self.assertEqual(operation.state, "verified")
+        self.assertEqual(operation.amount_minor, 1234)
+        self.assertEqual(operation.gross_amount_minor, 1434)
+        self.assertEqual(operation.terminal_tip_minor, 200)
+        self.assertEqual(operation.report_run_id, run_id)
+        order = operation.pos_order_id
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(order.amount_total, 14.34)
+        self.assertEqual(order.amount_paid, 14.34)
+        tips = order.lines.filtered(lambda line: line.product_id == order.config_id.tip_product_id)
+        self.assertEqual(len(tips), 1)
+        self.assertEqual(tips.price_subtotal_incl, 2.00)
+        self.assertEqual(operation.pos_payment_id.amount, 14.34)
+        self.assertEqual(operation.authorization_id.projection_revision, 1)
+        self.assertGreaterEqual(report_polls, 4)
+        financial_posts = [call for call in calls if call[0] == "POST" and "/api/report-runs" not in call[1]]
+        self.assertEqual(len(financial_posts), 2)
+        self.assertEqual(len([call for call in calls if call[0] == "POST" and call[1].endswith("/api/report-runs")]), 1)
+        document = self.env["pos.revolut.receipt"]._document("payment", operation.id)
+        self.assertEqual((document["base_amount"], document["tip_amount"], document["amount"]),
+                         ("12.34", "2.00", "14.34"))
 
     def test_cash_and_bank_still_checkout_without_revolut_dispatch(self):
         self._configure_revolut_checkout(include_bank=True)
@@ -419,7 +537,8 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         with patch(
             "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
             side_effect=request,
-        ):
+        ) as provider:
+            install_zero_reports(self.env, provider)
             self.start_pos_tour("pos_revolut_split_cash_checkout")
 
         self.env.invalidate_all()
@@ -481,7 +600,8 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         with patch(
             "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
             side_effect=request,
-        ):
+        ) as provider:
+            install_zero_reports(self.env, provider)
             self.start_pos_tour("pos_revolut_processing_multiple_cards")
 
         self.env.invalidate_all()
@@ -537,7 +657,8 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         with patch(
             "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
             side_effect=request,
-        ):
+        ) as provider:
+            install_zero_reports(self.env, provider)
             self.start_pos_tour("pos_revolut_reload_late_success")
 
         self.env.invalidate_all()
@@ -586,7 +707,8 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         with patch(
             "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
             side_effect=request,
-        ):
+        ) as provider:
+            install_zero_reports(self.env, provider)
             self.start_pos_tour("pos_revolut_pending_cancel")
 
         self.env.invalidate_all()
@@ -679,7 +801,8 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         with patch(
             "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
             side_effect=request,
-        ):
+        ) as provider:
+            install_zero_reports(self.env, provider)
             self.start_pos_tour(tour)
 
         self.env.invalidate_all()
@@ -860,7 +983,8 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         with patch(
             "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
             side_effect=request,
-        ):
+        ) as provider:
+            install_zero_reports(self.env, provider)
             self.start_pos_tour(tour)
 
         self.env.invalidate_all()
@@ -968,7 +1092,8 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         with patch(
             "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
             side_effect=request,
-        ):
+        ) as provider:
+            install_zero_reports(self.env, provider)
             self.start_pos_tour(tour, login="pos_admin")
         self.assertEqual(len(refund_posts), 0 if outcome == "undispatched" else 1)
         return calls
