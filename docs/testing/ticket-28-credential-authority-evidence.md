@@ -311,3 +311,11 @@ all workers and follow the explicit authority/attestation instructions in
 `docs/installation.md`. No secret rotation is required by this correction.
 Ticket 12 still owns staging deployment, physical-device checks and final
 financial reconciliation.
+
+The verified correction source and tests are committed in
+`bdf01eb7331eb4625c7695f474b2317d199b7477`. A concurrent ticket-documentation
+merge captured the staged ticket 28 files before their separate scoped commit
+could complete. Readback confirmed the committed addon diff matches the tested
+candidate, including `19.0.1.10.3`, both authority corrections, redirect guards
+and the strengthened regressions. The unrelated ticket 32/34 changes were
+preserved; this provenance follow-up changes documentation only.

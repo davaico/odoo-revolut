@@ -118,3 +118,7 @@ failures/errors. The 75 JavaScript tests also passed. Both original security
 findings remain independently assessed **fixed** after the corrections and
 fresh runtime verification. This records local acceptance; staging has not
 been upgraded by this re-audit.
+
+Verified correction revision: `bdf01eb7331eb4625c7695f474b2317d199b7477`.
+The concurrent documentation merge included the staged ticket 28 corrections;
+post-commit readback confirmed the tested addon source was preserved exactly.
