@@ -64,3 +64,22 @@ provider polling of a historical operation requires administrator attestation.
 Backups and isolated restore have been checked by the ticket 12 owner. Staging
 has not been upgraded or reopened as part of ticket 28, and no physical-terminal
 acceptance is claimed here.
+
+## Post-upgrade administrator action correction — 2026-10-01
+
+The guarded ticket 12 deployment installed `f303580` on staging. A system
+administrator created the reviewed Davai/production authority. Four existing
+verified refunds finalized locally without binding historical payment
+operations. The remaining two-card return requires a new one-penny refund
+from historical source `16`. Its recorded provider IDs matched the earlier
+independent Merchant GET, but the documented administrator attestation action
+raised the operation model's write ACL before saving anything. No new refund
+was dispatched.
+
+A real-administrator mocked Odoo test reproduced that exact `AccessError`.
+The action now checks the administrator group and exact original credential
+authority, then performs only its internal binding write with server
+authority. The red test failed with one access error; the corrected test passed,
+as did all 53 credential-authority and refund tests. Candidate addon version
+`19.0.1.10.1` still requires upgrade and a live retry of the same historical
+attestation before the remaining refund can proceed.

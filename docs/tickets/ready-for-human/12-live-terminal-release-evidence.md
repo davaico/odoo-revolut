@@ -432,3 +432,39 @@ the old session is closed and every existing allocation and cart check still
 passes. Two targeted tests and all 45 refund tests pass locally. Staging
 still needs the combined candidate upgrade and a live retest of the five
 existing returns before the refund and reconciliation criteria can pass.
+
+## Guarded upgrade and return settlement — 2026-10-01
+
+The exact combined `f303580` artifact passed delivered retail and migration
+acceptance with zero failures. The idle staging register passed financial
+preflight, database/filestore backup and the guarded upgrade to addon
+`19.0.1.10.0`; the Odoo service and local health check succeeded. The release
+archive SHA-256 was
+`b0ab7eb213e01b0ddd6b0f06baf07aaecd3661ef4f457e0deeafb4355388e8a3`.
+The configuration snapshot is
+`/var/backups/odoo-revolut-deploy/20261001T113028Z-f3035802518b`.
+The administrator created the Davai/production authority for the previously
+verified Test Guzman server reference. No historical attempt was bound by the
+upgrade. The five existing provider refunds stayed verified throughout.
+
+The operator resumed the existing POS return tabs. `1002 (Refund)` finalized
+its already-verified one-penny Revolut tender as paid after Validate.
+`1005 (Refund)` finalized its existing one-penny Revolut refund together with
+the original sale's one-penny test Cash share. `1007 (Refund)` and
+`1010 (Refund)` reached receipts after Check status and finalized their
+existing one-penny refunds. Read-only order/payment checks confirmed all four
+paid negative orders and their linked original refund operations. The provider
+refund operation count remained five; no replacement refund was sent.
+
+`1012 (Refund)` remains a two-penny return with one successful one-penny
+Revolut refund and one penny remaining. The original sale had two distinct
+captured one-penny Revolut payments. Source operation `17` has the completed
+refund; source `16` has no refund. Its recorded order, intent and payment IDs
+match the independent Merchant verification in the operator chronology.
+Before issuing the remaining one-penny refund, the administrator attestation
+action on source `16` raised an Odoo access-control error. The action wrote
+neither a credential binding nor a provider refund. A real-administrator Odoo
+test reproduced the error; a scoped server-authority fix passed that test and
+the surrounding 53 credential/refund tests. Keep `1012` untouched until the
+follow-up addon release is checked and deployed. Ticket 12 and the remaining
+Restaurant, failure/recovery, tip and full reconciliation gates stay open.

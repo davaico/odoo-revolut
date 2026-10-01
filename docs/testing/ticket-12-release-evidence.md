@@ -466,3 +466,21 @@ the correction, the same test and the different-register rejection test passed.
 All 45 `TestRevolutRefund` tests passed. This candidate is **not yet deployed**;
 the five existing POS returns remain unfinished and must be retested on the
 upgraded register without creating another provider refund.
+
+## Same-register refund retest on staging — 2026-10-01
+
+The combined `f303580` release deployed with a guarded backup and no active
+financial operation. On addon `19.0.1.10.0`, the operator finalized existing
+returns `1002`, `1005`, `1007` and `1010`; each reached a refund receipt.
+The mixed `1005` return used its original one-penny Revolut and one-penny test
+Cash shares. Read-only records show four paid negative POS orders, four linked
+verified refund operations and still exactly five provider refunds.
+
+The fifth tab, `1012`, has a two-penny return, one completed one-penny Revolut
+refund and one penny remaining on a second original card payment. The
+administrator-created company credential authority did not automatically bind
+historical operations. The documented administrator attestation for that
+second source failed on the operation model's write ACL, before any Merchant
+request or new refund. A real-administrator regression reproduced this and
+passed after the action was scoped to a server-side write. The remaining
+refund and ticket 12 acceptance are pending the follow-up deployment.
