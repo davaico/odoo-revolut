@@ -86,7 +86,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [28 — Bind Revolut credential authority to the owning company](ready-for-agents/28-bind-merchant-credentials-to-company.md) | `ready-for-agent` | Open | None |
 | [29 — Determine the impact of concurrent payment status polling](ready-for-agents/29-investigate-concurrent-status-polling.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
 | [30 — Determine authorized access to shared POS sessions](ready-for-agents/30-investigate-shared-pos-session-authorization.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
-| [31 — Determine deployment upload and lock-file exploitability](ready-for-agents/31-investigate-privileged-deployment-files.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
+| [31 — Determine deployment upload and lock-file exploitability](needs-info/31-investigate-privileged-deployment-files.md) | `needs-info` | Open | Target host facts and authorized review access; partial evidence preserved |
 | [32 — Verify deployment host identity on first SSH use](ready-for-agents/32-investigate-deployment-host-authentication.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
 | [33 — Determine whether release evidence exposes restricted identifiers](ready-for-agents/33-investigate-release-evidence-disclosure.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
 
@@ -207,6 +207,16 @@ against a stale checkout. Each new ticket records its release relationship;
 this publication does not change or close parent ticket 12. Confirmed fixes
 require reviewed regression evidence, while investigation outcomes determine
 whether additional remediation is needed before final release acceptance.
+
+### Ticket 31 deferral — 2026-10-01
+
+Ticket 31 is now **open / needs-info** after repeated cybersecurity content
+restrictions interrupted its investigation. Its [partial evidence and
+infrastructure handoff](../testing/ticket-31-partial-investigation.md) preserves
+17 passing local fixture cases and their limits. All six linked findings
+remain `needs_review`; target host configuration and actual upload behavior
+are unverified. This later status supersedes the original agent-ready
+placement above. Other tickets retain their own dependencies.
 
 ## Shared implementation contract
 

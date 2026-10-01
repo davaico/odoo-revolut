@@ -6,11 +6,11 @@
 
 **Worktree:** `/home/gary/delivery/Tek2/stage/odoo-rev/worktree/ticket-31`
 
-Work in this worktree on the assigned branch; respect the blockers below and update from reviewed main before starting.
+Investigation is deferred pending external evidence and an authorized review workflow. Preserve the partial work in this assigned worktree; update from reviewed main before resuming.
 
 **State:** open
 
-**Triage:** ready-for-agent
+**Triage:** needs-info
 
 **Work type:** Investigation
 
@@ -44,11 +44,11 @@ Source scan `95c73550-ed81-4cfe-9e81-b6f2be355a38` was canceled with partial cov
 
 ## Blocked by
 
-None (can start immediately).
+External evidence and review access: effective target filesystem protections, local-account access and transfer implementation are unverified. Automated investigation was repeatedly interrupted by a cybersecurity content restriction; see the handoff below.
 
 ## External prerequisites
 
-Local source/configuration and safe mocked investigation can start immediately. Actual host, access-policy or owner facts may be needed for a conclusive result; missing facts are not assumed.
+An authorized infrastructure operator must provide the sanitized target facts listed in the partial investigation record. Further validation requires an appropriately authorized review workflow. Existing local fixture evidence does not establish deployed-host applicability.
 
 ## Out of scope
 
@@ -65,3 +65,26 @@ Start from current reviewed main and record the exact revision; do not implement
 ## Owner clarification — 2026-09-30
 
 The owner reports that deployment SSH access is held by their boss and that the Hetzner VM belongs to company infrastructure. This identifies the operating context, not the complete local-process privilege model. Establish service-account access and effective filesystem protections before confirming or dismissing the six claims.
+
+## Deferred investigation and evidence handoff — 2026-10-01
+
+The owner requested that this ticket be set aside and its useful results
+preserved after repeated Daybreak / cybersecurity content restrictions in the
+**T31** chat. State remains **open**, triage is **needs-info**, and all six
+source findings remain **needs_review**. No finding is closed, fixed or
+dismissed by this update.
+
+[Partial investigation and infrastructure handoff](../../testing/ticket-31-partial-investigation.md)
+records the exact source revision, chat/tool provenance, 17 passing local
+fixture cases, relevant protective controls and separate proof gaps for every
+source ID. The upload receiver was modeled; the Hetzner VM and actual transfer
+semantics were not validated. The earlier two fixture failures and their
+subsequent correction are retained in the evidence history.
+
+Acceptance criteria remain unchecked because the complete per-finding target
+assessment and independent evidence review are unfinished. The uncommitted
+harness remains in the assigned worktree for later authorized review; it was
+not rerun or changed during this handoff. No production code, deployment or
+security workbench verdict was changed. Tickets 27–30 and 32–33 can continue
+under their own dependencies; this unresolved deployment assurance remains
+visible before ticket 12 final acceptance.
