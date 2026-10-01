@@ -49,12 +49,16 @@ POS lifecycle seams are present on reviewed main.
 
 Reviewed local implementation and mocked verification are complete at
 `97f5c0d4e427e232b5985cce121cf4adbf71049c`. Human deployment/retest remains
-gated by reconciliation of unresolved financial operations, including refunds.
+subject to a fresh read-only check of financial blockers, including all five
+test refunds, before deployment.
 
 ## Validation limits and live gates
 
 - The exact early live payload remains unavailable; existing probes do not exercise real ORM transactions/locks or replay captured network traffic.
-- Live deployment/retest requires reconciliation of unresolved financial operations; pending refunds must not be bypassed.
+- The five test refunds now appear Refunded in the operator's Revolut
+  screenshot, with Odoo completion operator-reported on 2026-10-01. Confirm
+  their local final state and any other blockers read-only before deployment;
+  retain the financial guard.
 
 ## Release gate
 
@@ -116,3 +120,11 @@ not establish the early payment-state payload behind this ticket's automatic
 polling defect. The reviewed local correction is merged into main but remains
 undeployed; live validation remains gated on authoritative refund
 reconciliation. See [ticket 12's refund checkpoint](12-live-terminal-release-evidence.md).
+
+2026-10-01: The operator reports Odoo Completed, and the supplied Revolut
+Merchant screenshot shows all five matching £0.01 refund orders as Refunded.
+This supersedes the preceding pending-refund observation; it does not establish
+the early payment-state payload relevant to this ticket. The merged fix remains
+undeployed. After read-only financial/deployment preflight, repeat controlled
+full and split/multiple-card payments and record whether each receipt opens
+automatically or needs Check status. The live criterion remains unchecked.

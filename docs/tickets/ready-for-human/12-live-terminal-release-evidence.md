@@ -215,3 +215,29 @@ customer credits alone. Compare each stored refund order with an authoritative
 Merchant final outcome; investigate the prolonged `processing` state with
 Revolut if it persists. The reviewed ticket 22 and 23 fixes are merged into
 main but remain undeployed; their live retests remain gated.
+
+## Refund final-state follow-up — 2026-10-01
+
+The operator now reports **Refunded** in Revolut and **Completed** in Odoo for
+the five £0.01 test refunds. The supplied Revolut Merchant Orders screenshot
+shows five refunded orders dated 2026-09-29; each displayed ID prefix matches
+one of the five Merchant refund orders in the
+[operator chronology](../../testing/ticket-12-operator-observations.md#refund-final-state-follow-up--2026-10-01).
+This supersedes the preceding pending-status checkpoint for those orders.
+Odoo completion is operator-reported; a new Odoo export or direct Merchant API
+response was not captured in this follow-up.
+
+Before a guarded staging upgrade or further live financial testing, perform a
+read-only check that all five Odoo refund operations are verified/completed,
+still linked to their original source payments, and no other payment/refund
+operation blocks deployment. The five one-penny refunds reconcile £0.05 of
+the prior £0.08 Revolut captures. Document the disposition of the remaining
+£0.03 Revolut captures and the mixed sale's £0.01 Cash portion. Do not infer
+that this final-state observation closes L08–L10 or authorizes additional
+charges, refunds, or Force done.
+
+Tickets 22 and 23 remain open for deployment of their reviewed corrections
+and controlled affected live retests. Ticket 12 also retains Restaurant,
+failure/race/interruption, final combined-candidate and operating-guidance
+gates. The new refund evidence removes the observed provider-processing
+discrepancy; it does not close this release ticket.

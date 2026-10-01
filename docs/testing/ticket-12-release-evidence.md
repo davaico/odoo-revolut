@@ -257,13 +257,14 @@ acceptance. Documentation-only commits can retain these results only when the
 addon trees and deployment/test tooling match the tested revision; record that
 comparison before deployment.
 
-Open release gaps: remaining L02–L10 subcases and complete refund/test-money
+Open release gaps: remaining L02–L10 subcases and complete test-money
 reconciliation; [terminal-busy recovery](../tickets/ready-for-human/22-recover-terminal-busy-rejection.md)
 and [automatic payment-status handling](../tickets/ready-for-human/23-preserve-polling-through-payment-processing.md);
 the Sandbox simulator issue for required non-production acceptance; and final
-guidance based on physical-terminal observations. Pending refunds block a live
-addon upgrade/restart. These findings require reviewed fixes and affected
-retests; documenting a narrow guard pass does not close the full scenario.
+guidance based on physical-terminal observations. Before a live addon
+upgrade/restart, confirm all refund final states and any other financial
+blockers read-only. These findings require reviewed fixes and affected retests;
+documenting a narrow guard pass does not close the full scenario.
 
 ## Local snapshot-resource candidate — 2026-09-30
 
@@ -309,3 +310,27 @@ unchanged isolated rerun and the final passing full suite.
 Ticket 24 still awaits PR integration into main; ticket 23's live retests and
 ticket 12's reconciliation/release requirements remain open. The branch update
 performs no deployment or real financial operation and does not merge PR #28.
+
+## Refund finality and next acceptance step — 2026-10-01
+
+The preceding matrix and 2026-09-29 reconciliation totals are historical
+checkpoints. The operator now reports **Completed** for all five test refunds
+in Odoo. Their Revolut Merchant Orders screenshot shows the five matching
+£0.01 refund-order prefixes as **Refunded**. The
+[dated follow-up](ticket-12-operator-observations.md#refund-final-state-follow-up--2026-10-01)
+lists all five IDs and evidence limits. PR #28 has also since merged into
+main; the preceding candidate paragraph describes its earlier state.
+
+Next, read all five Odoo refund records and the payment/refund worklists
+without financial mutation. Confirm completed/verified local states,
+original-payment links, amounts, no pending/unresolved reservations and no deployment
+blockers. Reconcile £0.05 refunded against £0.08 captured and document the
+remaining £0.03 Revolut and £0.01 Cash disposition. This update grants no
+new financial authorization; retain the existing budget and obtain fresh
+authorization for any operation outside it. If the read-only preflight is clear, prepare
+the reviewed combined candidate for a guarded staging upgrade, then perform
+ticket 22's independent-browser busy/recovery retest and ticket 23's full and
+split/multiple-card automatic-status retests. Restaurant and the other open
+L02–L10 subcases, final combined release evidence and operating instructions
+remain ticket 12 gates. No live deployment or financial operation was run by
+this documentation update.

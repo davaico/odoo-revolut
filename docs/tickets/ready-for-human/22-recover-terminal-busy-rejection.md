@@ -46,7 +46,10 @@ lock are present on reviewed main.
 
 ## Live validation gates
 
-- Live deployment/retest requires reconciliation of unresolved financial operations. Pending refund reservations must not be bypassed.
+- The five previously pending test refunds are now shown Refunded in the
+  operator's Revolut screenshot, with Odoo completion operator-reported on
+  2026-10-01. Before deployment/retest, verify all five local operations and
+  any other financial blockers read-only; retain the deployment guard.
 
 ## Release gate
 
@@ -106,3 +109,10 @@ refund's final API outcome or clear the staging deployment gate. The reviewed
 terminal-busy fix remains undeployed and its independent-browser no-card retest
 remains unchecked until the refund operations are reconciled safely. See
 [ticket 12's refund checkpoint](12-live-terminal-release-evidence.md).
+
+2026-10-01: The operator reports Odoo Completed, and the supplied Revolut
+Merchant screenshot shows the five matching £0.01 refund orders as Refunded.
+This supersedes the pending-refund observation above. The reviewed fix is
+still undeployed; perform the read-only financial/deployment preflight, then
+repeat the independent-browser no-card busy/recovery scenario on the deployed
+candidate. This refund evidence does not check the remaining live criterion.
