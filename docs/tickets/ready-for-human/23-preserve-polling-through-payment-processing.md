@@ -128,3 +128,10 @@ the early payment-state payload relevant to this ticket. The merged fix remains
 undeployed. After read-only financial/deployment preflight, repeat controlled
 full and split/multiple-card payments and record whether each receipt opens
 automatically or needs Check status. The live criterion remains unchecked.
+
+2026-10-01: The reviewed main revision `97fcc2b` passed the focused delivered
+retail and migration artifact checks and was guardedly upgraded on staging.
+Pre/post-quiescence financial blocker checks passed; Odoo is active and serves
+HTTP 200 from the new release. The operator could not complete the Cash smoke
+or full/split/multiple-card automatic-status retests in this session. The live
+criterion remains unchecked; see [ticket 12's deployment checkpoint](12-live-terminal-release-evidence.md#guarded-staging-upgrade--2026-10-01).

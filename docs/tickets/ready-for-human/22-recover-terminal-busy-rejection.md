@@ -116,3 +116,10 @@ This supersedes the pending-refund observation above. The reviewed fix is
 still undeployed; perform the read-only financial/deployment preflight, then
 repeat the independent-browser no-card busy/recovery scenario on the deployed
 candidate. This refund evidence does not check the remaining live criterion.
+
+2026-10-01: The reviewed main revision `97fcc2b` passed the focused delivered
+retail and migration artifact checks and was guardedly upgraded on staging.
+Pre/post-quiescence financial blocker checks passed; Odoo is active and serves
+HTTP 200 from the new release. The operator could not complete the Cash smoke
+or independent-browser no-card retest in this session. The last live acceptance
+criterion remains unchecked; see [ticket 12's deployment checkpoint](12-live-terminal-release-evidence.md#guarded-staging-upgrade--2026-10-01).

@@ -334,3 +334,20 @@ split/multiple-card automatic-status retests. Restaurant and the other open
 L02–L10 subcases, final combined release evidence and operating instructions
 remain ticket 12 gates. No live deployment or financial operation was run by
 this documentation update.
+
+## Staging upgrade checkpoint — 2026-10-01
+
+The owner confirmed staging idle, and reviewed `origin/main` revision
+`97fcc2b7e051e5d2037e1bd108bf365ac829f1a3` passed both focused
+delivered-artifact scenarios. The guarded upgrade completed after successful
+backup/restore-health checks and pre/post-quiescence financial blocker checks.
+Staging now serves the new immutable release with Odoo active and HTTP 200;
+`pos_revolut` is installed at `19.0.1.8.0`. The
+[ticket 12 deployment checkpoint](../tickets/ready-for-human/12-live-terminal-release-evidence.md#guarded-staging-upgrade--2026-10-01)
+records the archive hash, release and configuration-backup paths, test limits
+and server observations.
+
+The operator could not perform the post-upgrade Cash smoke or physical-terminal
+acceptance in this session. Tickets 22 and 23 remain open for their affected
+live retests, and ticket 12 remains open for its wider release gates. The
+successful deployment guard is not a per-refund reconciliation audit.

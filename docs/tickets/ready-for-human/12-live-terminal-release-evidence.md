@@ -241,3 +241,39 @@ and controlled affected live retests. Ticket 12 also retains Restaurant,
 failure/race/interruption, final combined-candidate and operating-guidance
 gates. The new refund evidence removes the observed provider-processing
 discrepancy; it does not close this release ticket.
+
+## Guarded staging upgrade — 2026-10-01
+
+The owner confirmed staging was idle. From a clean isolated test invocation,
+the exact reviewed `origin/main` revision
+`97fcc2b7e051e5d2037e1bd108bf365ac829f1a3` passed both delivered-artifact
+scenarios (`retail` and `migration`, exit 0) against pinned Odoo
+`19.0.20260908`; the two-addon archive SHA-256 was
+`329964852246be8330dc1ef8eafcb0321e59fd96bfbe2303235f68547586486a`.
+These focused artifact checks do not replace the earlier full mocked suites or
+the remaining physical-terminal tests.
+
+The staging host's latest `odoo-backup.service` and
+`odoo-restore-test.service` runs both reported success (2026-10-01 06:01 UTC
+and 03:02 UTC). The guarded upgrade then passed its financial-operation checks
+before and after checkout quiescence, took a fresh backup and upgraded the
+existing staging database. It reported the immutable release
+`/opt/odoo-releases/revolut/staging/97fcc2b7e051e5d2037e1bd108bf365ac829f1a3/pos_revolut`
+and configuration backup
+`/var/backups/odoo-revolut-deploy/20261001T090834Z-97fcc2b7e051`.
+Afterward Odoo was active, both addon symlinks resolved to that release, the
+local `/web/login` returned HTTP 200 and the service error journal since the
+upgrade had no entries. Odoo registered `pos_revolut` installed at
+`19.0.1.8.0`; the optional Restaurant bridge remained uninstalled in this
+retail database. This guard result does not independently audit every original
+payment/refund link or prove final Merchant settlement.
+
+The operator was unavailable for the Cash-only smoke order after the upgrade.
+No physical terminal action, new sale or refund, or ticket 22/23 live retest
+was performed during this checkpoint. Reopen the POS to load the new browser
+assets, complete the runbook's Cash smoke, then perform ticket 22's no-card
+two-browser scenario and ticket 23's full/split/multiple-card status tests.
+Keep all three tickets open pending observed results. The owner said to proceed
+with testing without first settling the previously retained £0.03 test spend;
+that preference is not evidence that every reconciliation and release gate is
+closed.
