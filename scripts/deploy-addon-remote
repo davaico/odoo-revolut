@@ -249,7 +249,7 @@ WHERE state IN (
 
     def _pdf_preflight(self):
         repair = (
-            "Run the reviewed odoo-hosting repair-pdf workflow, verify the Odoo "
+            "Follow odoo-hosting docs/PDF_RENDERING.md and run the reviewed python3 /usr/local/sbin/odoo-install-pdf repair, verify the Odoo "
             "service PATH and renderer, then perform any authorized controlled "
             "restart and retry deployment."
         )

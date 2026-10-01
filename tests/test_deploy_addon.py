@@ -334,7 +334,7 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
                     current.parent.mkdir(parents=True)
                     current.symlink_to("/previous/release")
                     before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
-                    with self.assertRaisesRegex(remote.DeploymentError, "PDF.*repair-pdf"):
+                    with self.assertRaisesRegex(remote.DeploymentError, "PDF.*odoo-install-pdf"):
                         self._deployment(remote, runner, root, archive).execute()
                     self.assertEqual({path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}, before)
                     self.assertEqual(current.readlink(), Path("/previous/release"))
@@ -373,7 +373,7 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
                 archive = self._artifact(root)
                 self._target_configuration(root)
                 runner = FakeRunner(["pos_revolut_payment_operation\n", "0\n"], service_response=service)
-                with self.assertRaisesRegex(remote.DeploymentError, "PDF preflight refused.*repair-pdf"):
+                with self.assertRaisesRegex(remote.DeploymentError, "PDF preflight refused.*odoo-install-pdf"):
                     self._deployment(remote, runner, root, archive).execute()
                 self.assertFalse(any(call[0][:2] in (["systemctl", "stop"], ["systemctl", "start"]) for call in runner.calls))
 

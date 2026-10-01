@@ -218,7 +218,7 @@ no automatic database restore or infrastructure mutation.
 ## PDF prerequisite and deployment refusal
 
 Provision the server renderer through the reviewed hosting workflow described
-in `../odoo-hosting/docs/OPERATIONS.md` (the `repair-pdf` operation for an
+in `../odoo-hosting/docs/PDF_RENDERING.md` (the dedicated installer for an
 existing host). The supported build is `wkhtmltox 1:0.12.6.1-3.jammy`, exposing
 `wkhtmltopdf 0.12.6.1 (with patched qt)` on Ubuntu 24.04 amd64/arm64. Hosting
 pins official release downloads and verifies SHA256 before installation; the

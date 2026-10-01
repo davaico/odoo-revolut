@@ -739,7 +739,7 @@ remove its reservation or restart a financial request based on a validation erro
 Payment and refund receipt downloads require a server-installed patched-Qt
 renderer. For the supported Ubuntu 24.04 hosting layout, provision
 `wkhtmltox 1:0.12.6.1-3.jammy` (`wkhtmltopdf 0.12.6.1 (with patched qt)`)
-through `odoo-hosting`; use its documented `repair-pdf` workflow on an existing
+through `odoo-hosting`; use its documented PDF repair workflow on an existing
 host. This is an Odoo server dependency. Installing software on the cashier's
 computer does not resolve a missing server renderer. The addon never installs
 packages at runtime. A controlled Odoo restart may be required to refresh its
