@@ -354,7 +354,13 @@ class ReturnAllocation:
         return_refunds = refunds.search([
             ("company_id", "=", method.company_id.id), ("order_uuid", "=", order_uuid),
         ])
-        if any(item.financial_snapshot != snapshot or item.pos_session_id.id != session.id
+        if any(item.financial_snapshot != snapshot
+               or (item.pos_session_id != session and (
+                   item.state != "verified"
+                   or item.pos_session_id.state != "closed"
+                   or session.state != "opened"
+                   or item.pos_session_id.config_id != session.config_id
+               ))
                or item.return_total_minor not in (0, return_total_minor) for item in return_refunds):
             raise UserError(_("The return changed after a refund allocation was reserved."))
         return_base, return_tip = self._return_components(snapshot, original, currency)

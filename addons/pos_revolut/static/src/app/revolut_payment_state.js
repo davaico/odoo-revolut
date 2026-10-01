@@ -250,9 +250,37 @@ export class RevolutPaymentState {
                 return false;
             }
             if (!result && started) {
-                // A lost start response cannot prove that dispatch did not occur.
-                this.showError(line, "interrupted");
-                return false;
+                // Refund reservations commit before any Merchant request. An
+                // empty lookup alone is not proof: confirm absence under the
+                // same order lock used by the reservation before unlocking.
+                if (refund && !line.uiState.revolutOperationId &&
+                    !line.transaction_id && !line.payment_ref_no) {
+                    const proof = await this.clock.before(this.adapter.call(
+                        "revolut_confirm_refund_absence", [[this.methodId], order.uuid, line.uuid]
+                    ), deadline);
+                    if (proof?.operation_id) {
+                        result = proof;
+                        discovered = true;
+                        this.remember(line, result);
+                    } else if (proof?.dispatched === false &&
+                        proof.start_rejected === "no_refund_attempt" &&
+                        proof.order_uuid === order.uuid && proof.payment_line_uuid === line.uuid &&
+                        !line.uiState.revolutOperationId && !line.uiState.revolutSnapshot &&
+                        !line.transaction_id && !line.payment_ref_no) {
+                        line.uiState.revolutOriginalOperationId = false;
+                        line.uiState.revolutStarted = false;
+                        line.uiState.revolutUndispatched = true;
+                        line.uiState.revolutLocalOutcome = "no_refund_attempt";
+                        line.setPaymentStatus("retry");
+                        this.showError(line, "no_refund_attempt");
+                        return false;
+                    }
+                }
+                if (!result) {
+                    // A lost start response cannot prove that dispatch did not occur.
+                    this.showError(line, "interrupted");
+                    return false;
+                }
             }
             if (checkOnly && (!result || result.retry_safe)) {
                 // Checking a rejected or provider-final attempt never starts

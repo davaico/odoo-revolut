@@ -774,6 +774,68 @@ for (const refund of [false, true]) {
         assert.equal(line.uuid, "line-1");
     });
 
+    if (refund) {
+        test("authoritative refund absence proof unlocks only the same undispatched line", async () => {
+            const { state, order, line, calls, errors } = fixture({
+                refund: true,
+                chooseAllocation: async () => ({ operationId: 10, amount: 12.34 }),
+                call(method) {
+                    if (method === "revolut_refund_sources") {
+                        return [{ operation_id: 10, payment_method_id: 7, remaining_minor: 1234 }];
+                    }
+                    if (method === "revolut_start_refund") {
+                        throw new Error("reservation rejected before dispatch");
+                    }
+                    if (method === "revolut_confirm_refund_absence") {
+                        return {
+                            dispatched: false, start_rejected: "no_refund_attempt",
+                            order_uuid: order.uuid, payment_line_uuid: line.uuid,
+                        };
+                    }
+                    return false;
+                },
+            });
+            assert.equal(await state.request(order, line), false);
+            assert.equal(paymentActions(line).canDelete, false);
+            assert.equal(await state.request(order, line, { checkOnly: true }), false);
+            assert.equal(paymentActions(line).canDelete, true);
+            assert.equal(paymentActions(line).retrySafe, true);
+            assert.equal(orderActions(order).blocksCheckout, false);
+            assert.equal(line.uiState.revolutOriginalOperationId, false);
+            assert.equal(line.uuid, "line-1");
+            assert.equal(calls.filter(({ method }) => method === "revolut_start_refund").length, 1);
+            assert.equal(calls.filter(({ method }) => method === "revolut_confirm_refund_absence").length, 1);
+            assert.equal(errors.at(-1), "no_refund_attempt");
+        });
+
+        test("refund absence proof for a different line never unlocks the uncertain line", async () => {
+            const { state, order, line, calls } = fixture({
+                refund: true,
+                chooseAllocation: async () => ({ operationId: 10, amount: 12.34 }),
+                call(method) {
+                    if (method === "revolut_refund_sources") {
+                        return [{ operation_id: 10, payment_method_id: 7, remaining_minor: 1234 }];
+                    }
+                    if (method === "revolut_start_refund") {
+                        throw new Error("response lost after dispatch");
+                    }
+                    if (method === "revolut_confirm_refund_absence") {
+                        return {
+                            dispatched: false, start_rejected: "no_refund_attempt",
+                            order_uuid: order.uuid, payment_line_uuid: "another-line",
+                        };
+                    }
+                    return false;
+                },
+            });
+            assert.equal(await state.request(order, line), false);
+            assert.equal(await state.request(order, line, { checkOnly: true }), false);
+            assert.equal(paymentActions(line).canDelete, false);
+            assert.equal(orderActions(order).blocksCheckout, true);
+            assert.equal(calls.filter(({ method }) => method === "revolut_start_refund").length, 1);
+        });
+    }
+
     test(`${refund ? "refund" : "payment"} restored legacy waiting state stays protected when discovery is empty`, async () => {
         const { state, order, line, calls } = fixture({
             refund,
@@ -1095,7 +1157,8 @@ test("surviving refund reference protects a line without a local start snapshot"
     assert.equal(await state.request(order, line), true);
     assert.equal(line.payment_ref_no, "rev-refund-43");
     assert.deepEqual(calls.map(({ method }) => method), [
-        "revolut_find_refund", "revolut_find_refund", "revolut_poll_refund",
+        "revolut_find_refund", "revolut_confirm_refund_absence",
+        "revolut_find_refund", "revolut_poll_refund",
     ]);
 });
 

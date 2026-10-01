@@ -371,6 +371,100 @@ class TestRevolutRefund(CommonPosTest):
         self.assertEqual(refund.pos_payment_id, order.payment_ids)
         self.request.assert_not_called()
 
+    def test_second_allocation_uses_verified_refund_from_closed_same_register_session(self):
+        first_source, second_source = self._split_original(second_revolut=True)
+        first_line = self.payload["payment_ids"][0][2]
+        first_line["amount"] = -6.17
+        second_line = dict(first_line, uuid=str(uuid4()))
+        self.payload["payment_ids"].append(Command.create(second_line))
+        self.request.side_effect = [
+            self._response(id=first_source.revolut_order_id, state="completed", amount=617,
+                           currency=self.session.currency_id.name),
+            self._refund_response(amount=617, source=first_source),
+        ]
+        first = self.revolut_method.revolut_start_refund(
+            self.session.id, self.payload["uuid"], first_line["uuid"], -6.17,
+            self.session.currency_id.id, self.payload, first_source.id,
+        )
+        self.request.side_effect = [self._refund_response("completed", amount=617, source=first_source)]
+        self.assertEqual(self.revolut_method.revolut_poll_refund(
+            first["operation_id"], self.payload["uuid"], first_line["uuid"],
+        )["state"], "verified")
+        first_line.update(payment_status="done", transaction_id=self.refund_id)
+        prior_session = self.session
+        prior_session.write({"state": "closed"})
+        other_config = self.pos_config_usd.copy({"name": "Other split-refund register"})
+        other_config.open_ui()
+        other_session = other_config.current_session_id
+        other_session.write({"state": "opened"})
+        self.payload["session_id"] = other_session.id
+        self.env.flush_all()
+        self.request.reset_mock()
+        with TestCase.assertRaisesRegex(self, UserError, "return changed after"):
+            self.revolut_method.revolut_start_refund(
+                other_session.id, self.payload["uuid"], second_line["uuid"], -6.17,
+                other_session.currency_id.id, self.payload, second_source.id,
+            )
+        self.request.assert_not_called()
+
+        self.pos_config_usd.open_ui()
+        reopened_session = self.pos_config_usd.current_session_id
+        reopened_session.write({"state": "opened"})
+        self.payload["session_id"] = reopened_session.id
+        self.refund_id = str(uuid4())
+        self.request.reset_mock()
+        self.request.side_effect = [
+            self._response(id=second_source.revolut_order_id, state="completed", amount=617,
+                           currency=reopened_session.currency_id.name),
+            self._refund_response(amount=617, source=second_source),
+        ]
+        prior_refund = self.env["pos.revolut.refund.operation"].browse(first["operation_id"])
+        self.assertEqual(prior_refund.financial_snapshot, self.env[
+            "pos.revolut.payment.operation"
+        ]._normalize_financial_snapshot(self.payload))
+        self.assertEqual(prior_refund.return_total_minor, 1234)
+        self.assertEqual(prior_refund.state, "verified")
+        self.assertEqual(prior_session.state, "closed")
+        self.assertEqual(reopened_session.state, "opened")
+        self.assertEqual(prior_session.config_id, reopened_session.config_id)
+        self.env.flush_all()
+        manager = self._mutation_actor()
+        proof = self._rpc_refund(manager, "pos.payment.method", "revolut_confirm_refund_absence", [
+            [self.revolut_method.id], self.payload["uuid"], second_line["uuid"],
+        ])
+        self.assertEqual(proof, {
+            "dispatched": False, "order_uuid": self.payload["uuid"],
+            "payment_line_uuid": second_line["uuid"], "start_rejected": "no_refund_attempt",
+        })
+        existing = self._rpc_refund(manager, "pos.payment.method", "revolut_confirm_refund_absence", [
+            [self.revolut_method.id], self.payload["uuid"], first_line["uuid"],
+        ])
+        self.assertEqual(existing["operation_id"], first["operation_id"])
+        self.assertEqual(existing["state"], "verified")
+
+        second = self.revolut_method.revolut_start_refund(
+            reopened_session.id, self.payload["uuid"], second_line["uuid"], -6.17,
+            reopened_session.currency_id.id, self.payload, second_source.id,
+        )
+        self.assertEqual(second["state"], "pending")
+        self.assertEqual(self.env["pos.revolut.refund.operation"].browse(
+            first["operation_id"],
+        ).pos_session_id, prior_session)
+        self.assertEqual(self.env["pos.revolut.refund.operation"].browse(
+            second["operation_id"],
+        ).pos_session_id, reopened_session)
+        self.env.flush_all()
+        pending = self._rpc_refund(manager, "pos.payment.method", "revolut_confirm_refund_absence", [
+            [self.revolut_method.id], self.payload["uuid"], second_line["uuid"],
+        ])
+        self.assertEqual(pending["operation_id"], second["operation_id"])
+        self.assertEqual(pending["state"], "pending")
+        self.assertFalse(self._rpc_refund(
+            manager, "pos.payment.method", "revolut_confirm_refund_absence", [
+                [self.revolut_method.id], self.payload["uuid"], str(uuid4()),
+            ],
+        ))
+
     def test_verified_refund_cannot_settle_in_another_register(self):
         manager = self._mutation_actor()
         started = self._pending()

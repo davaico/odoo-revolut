@@ -312,6 +312,7 @@ export class PaymentRevolut extends PaymentInterface {
             const messages = {
                 discovery_interrupted: _t("Could not check for an existing Revolut refund. No refund request was sent from this line. Retry after the connection returns, or remove this line and choose another eligible original payment method."),
                 discovery_timed_out: _t("The check for an existing Revolut refund timed out. No refund request was sent from this line. Retry after the connection returns, or remove this line and choose another eligible original payment method."),
+                no_refund_attempt: _t("Odoo confirmed that no refund request was sent from this line. You can use Resume to retry this same line, or remove it."),
                 failed: _t("The Revolut refund failed. A POS manager can remove this failed line and add a new refund line for the same remaining amount. Keep completed allocations unchanged."),
                 interrupted: _t("Communication with Revolut was interrupted. The refund may have succeeded. Choose Check status to reconcile the existing refund."),
                 timed_out: _t("The 60-second Revolut waiting limit expired. The refund remains unresolved. Choose Check status to reconcile the existing refund."),
@@ -559,6 +560,7 @@ patch(PaymentScreenPaymentLines.prototype, {
                 discovery_interrupted: _t("Connection check failed — no refund request sent"),
                 discovery_timed_out: _t("Connection check timed out — no refund request sent"),
                 discovery_cancelled: _t("No refund request sent"),
+                no_refund_attempt: _t("No refund request sent — Resume or remove this line"),
                 snapshot_invalid: _t("Correct the return — no refund request sent"),
                 failed: _t("Refund failed — remove this line to retry"),
                 pending: _t("Refund pending"),
