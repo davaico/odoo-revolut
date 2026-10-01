@@ -8,7 +8,6 @@ import hashlib
 import io
 import json
 import logging
-import os
 import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -137,7 +136,7 @@ class PosPaymentMethod(models.Model):
         return data
 
     def _revolut_report_request(self, operation, method, path, *, body=None, csv_file=False):
-        secret = os.environ.get(operation["secret_reference"])
+        secret = self._revolut_authorized_operation_secret(operation)
         if not secret:
             raise UserError(_("The Revolut credential is not available on the Odoo server."))
         response = requests.request(

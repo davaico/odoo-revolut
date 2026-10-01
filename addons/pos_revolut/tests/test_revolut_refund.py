@@ -80,6 +80,15 @@ class TestRevolutRefund(CommonPosTest):
             self.session.currency_id.id, self.payload,
         )
 
+    def test_missing_historical_credential_does_not_reserve_refund(self):
+        with patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_SETTLEMENT_TEST": ""}):
+            with self.assertRaises(UserError):
+                self._start()
+        self.request.assert_not_called()
+        self.assertFalse(self.env["pos.revolut.refund.operation"].sudo().search([
+            ("order_uuid", "=", self.payload["uuid"]),
+        ]))
+
     def _mutation_actor(self, manager=True):
         return new_test_user(
             self.env, login=f"refund_mutation_{uuid4()}",

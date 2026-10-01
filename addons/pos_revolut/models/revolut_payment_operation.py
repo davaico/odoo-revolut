@@ -85,6 +85,10 @@ class PosRevolutPaymentOperation(models.Model):
         readonly=True,
     )
     secret_reference = fields.Char(required=True, readonly=True)
+    credential_id = fields.Many2one(
+        "pos.revolut.merchant.credential", readonly=True, copy=False,
+        ondelete="restrict",
+    )
     state = fields.Selection(
         [
             ("created", "Created"),
@@ -178,6 +182,7 @@ class PosRevolutPaymentOperation(models.Model):
         "terminal_id",
         "fulfilment_type",
         "secret_reference",
+        "credential_id",
         "financial_snapshot",
     }
 
@@ -230,6 +235,21 @@ class PosRevolutPaymentOperation(models.Model):
         return {"verified", "declined", "failed", "cancelled"}
 
     def write(self, values):
+        legacy_binding = (
+            "credential_id" in values
+            and self.env.context.get("_revolut_authorize_legacy_credential")
+            and self.env.user.has_group("base.group_system")
+        )
+        if legacy_binding:
+            for operation in self:
+                if operation.credential_id:
+                    raise ValidationError(_("The Revolut attempt already has credential authority."))
+                credential = self.env["pos.revolut.merchant.credential"]._for_snapshot(
+                    operation.company_id.id, operation.environment, operation.secret_reference
+                )
+                if (credential.id != values["credential_id"]
+                        or operation.payment_method_id.company_id != operation.company_id):
+                    raise ValidationError(_("The Revolut attempt does not match this credential authority."))
         evidence_fields = {
             "captured_amount_minor", "captured_payment_created_at",
             "gross_amount_minor", "terminal_tip_minor", "terminal_tip_evidence",
@@ -244,7 +264,7 @@ class PosRevolutPaymentOperation(models.Model):
                     raise ValidationError(_("Captured payment and tip evidence are immutable."))
             if operation.gross_amount_minor and "terminal_tip_minor" in values and values["terminal_tip_minor"] != operation.terminal_tip_minor:
                 raise ValidationError(_("Verified terminal tip evidence is immutable."))
-        if self._IMMUTABLE_FIELDS.intersection(values):
+        if (self._IMMUTABLE_FIELDS - ({"credential_id"} if legacy_binding else set())).intersection(values):
             raise ValidationError(_("Revolut payment operation details are immutable."))
         reference_fields = {
             "revolut_order_id",
@@ -271,7 +291,30 @@ class PosRevolutPaymentOperation(models.Model):
                 "report_run_history", "report_claim", "report_claimed_at"}.intersection(values)
                for values in vals_list):
             raise ValidationError(_("Terminal tip evidence cannot be supplied when creating an operation."))
+        credentials = self.env["pos.revolut.merchant.credential"]
+        for values in vals_list:
+            method = self.env["pos.payment.method"].sudo().browse(values["payment_method_id"])
+            if method.company_id.id != values["company_id"]:
+                raise ValidationError(_("The payment method company does not match the Revolut attempt."))
+            credential = credentials._for_snapshot(
+                values["company_id"], values["environment"], values["secret_reference"]
+            )
+            if values.get("credential_id") and values["credential_id"] != credential.id:
+                raise ValidationError(_("The Revolut attempt does not match its credential authority."))
+            values["credential_id"] = credential.id
         return super().create(vals_list)
+
+    def action_revolut_authorize_legacy_credential(self):
+        """Administrator attestation after independently reviewing old evidence."""
+        if not self.env.user.has_group("base.group_system"):
+            raise ValidationError(_("Only a system administrator can authorize historical Revolut attempts."))
+        for operation in self:
+            credential = self.env["pos.revolut.merchant.credential"]._for_snapshot(
+                operation.company_id.id, operation.environment, operation.secret_reference
+            )
+            operation.with_context(_revolut_authorize_legacy_credential=True).write({
+                "credential_id": credential.id
+            })
 
     def _revolut_paid_minor(self):
         self.ensure_one()

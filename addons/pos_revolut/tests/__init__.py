@@ -22,3 +22,4 @@ from . import test_revolut_cart_pricing
 from . import test_revolut_terminal_tip
 from . import test_revolut_cart_authority_concurrency
 from . import test_revolut_restaurant_authority
+from . import test_revolut_credential_authority

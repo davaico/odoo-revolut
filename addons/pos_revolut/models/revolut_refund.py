@@ -161,7 +161,8 @@ class PosPaymentMethod(models.Model):
         except (ValueError, ArithmeticError):
             raise UserError(_("The Revolut return amount must be negative.")) from None
         session, currency, normalized, minor, order_uuid, payment_line_uuid = self._validate_revolut_pos_request(
-            session_id, order_uuid, payment_line_uuid, -amount, currency_id
+            session_id, order_uuid, payment_line_uuid, -amount, currency_id,
+            require_current_credential=False,
         )
         # The reservation and dispatch claim commit before any provider call.
         for attempt in range(3):
@@ -177,6 +178,14 @@ class PosPaymentMethod(models.Model):
                     )
                     if reservation.existing_status is not None:
                         return reservation.existing_status
+                    source = env["pos.revolut.refund.operation"].sudo().browse(
+                        reservation.operation_id
+                    ).original_operation_id
+                    env["pos.payment.method"].browse(self.id)._revolut_authorized_operation_secret({
+                        "credential_operation_id": source.id,
+                        "environment": source.environment,
+                        "secret_reference": source.secret_reference,
+                    })
                     cursor.commit()
                 break
             except FinancialSnapshotError as error:
@@ -228,6 +237,7 @@ class PosPaymentMethod(models.Model):
                 return False
             source = operation.original_operation_id
             return {"snapshot": operation._snapshot(), "id": operation.id,
+                    "credential_operation_id": source.id,
                     "environment": source.environment, "secret_reference": source.secret_reference,
                     "original_order_id": source.revolut_order_id, "amount_minor": operation.amount_minor,
                     "currency_code": operation.currency_id.name, "idempotency_key": operation.idempotency_key,
