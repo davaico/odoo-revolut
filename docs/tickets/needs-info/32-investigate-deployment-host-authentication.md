@@ -79,9 +79,40 @@ Tailscale SSH provisioning is versioned and can supply an independent identity
 anchor; its effective route, approved-node binding, grants, workstation trust
 provisioning and rotation process remain unverified.
 
-**Needs-info handoff:** obtain the four non-secret owner evidence items in the
+**Initial needs-info handoff:** obtain the four non-secret owner evidence items in the
 report's infrastructure-owner table, then determine whether a supported first
 deployment lacks an independent anchor. Keep the source claim open; do not close
 as safe or assume a production MITM. If a gap is confirmed, create a scoped
 remediation following the report before relying on the affected deployment
 workflow. No credential or infrastructure mutation is authorized by this handoff.
+
+## Broader search and verified staging route — 2026-10-01
+
+At the owner's request, the investigation expanded to complete tracked hosting
+source/history, the original setup chat, selectively extracted local state,
+workstation public trust records, Tailscale status, Hetzner metadata and pinned
+read-only staging checks. See the report's broader setup/live-evidence section.
+
+The current route is **Tailscale SSH**, verified by its protocol banner,
+`RunSSH: true`, and root authentication type `none`. The approved VM is Hetzner
+`166917896`, `odoo-revolut-staging`; its DMI serial matches. The current Tailscale
+device is `n6m6qZXtkD11CNTRL`, `odoo-revolut-staging.tail9f54b7.ts.net`,
+`100.94.15.48`, with the staging tag. Local/server node identities and the
+expected bootstrap marker match. An empty temporary known-host file check
+confirmed SSH first-use acceptance on this authenticated tailnet route without
+any upload. No genuinely new workstation was enrolled.
+
+This establishes an independent Tailscale node-authentication anchor for the
+observed route. It does not establish every enrollment/replacement control, so
+the supported-new-workstation criterion remains open and no claim is closed as
+safe. The earlier missing-route/VM questions are now resolved by evidence.
+
+Effective root rules include Gary's laptop, four Emile-owned device addresses,
+and two unmapped device principals. Current provisioning takes a manually
+supplied enrollment key; old OAuth/one-hour/single-use documentation is stale.
+
+**Revised needs-info handoff:** obtain administrative enrollment/tag-owner and
+Hetzner replacement permissions, identify the two other root-rule devices and
+their source network/SSH rules, and provide new-workstation/replacement approval
+procedures. The report lists exact non-secret evidence needed. No deployment or
+infrastructure setting was changed.

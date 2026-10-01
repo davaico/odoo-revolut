@@ -1,9 +1,13 @@
 # Ticket 32 — First-use deployment host identity
 
-Investigation date: 2026-10-01. Verdict: **wrapper trust-on-first-use and missing
-target binding demonstrated; actual approved-route exploitability needs info**.
-No production endpoint was contacted, no remote deployment ran, and no host,
-credential, tailnet policy or production code was changed.
+Investigation date: 2026-10-01. Initial local-only verdict: **wrapper
+trust-on-first-use and missing target binding demonstrated; approved-route
+exploitability needs info**. The broader follow-up below now verifies the actual
+approved staging route as Tailscale SSH and identifies its VM/device. Enrollment
+and replacement authority still need info. No remote deployment ran and no host,
+credential, tailnet policy or production code was changed. The initial pass made
+no production connection; the follow-up performed only pinned, read-only staging
+checks and a no-upload first-SSH-use observation.
 
 ## Exact inputs
 
@@ -39,7 +43,8 @@ credential, tailnet policy or production code was changed.
 | Hosting `scripts/odoo-instance`, `wait_ready`, lines 158–205 | Uses local Tailscale peers to resolve one matching hostname; checks a deployment marker and service readiness with `accept-new`. | Helpful provisioning identity check, but not called by this addon wrapper; remote marker output alone is not independent cryptographic server identity. |
 | [`ticket-12-operator-observations.md`](ticket-12-operator-observations.md), deployment record | Records successful prior deployment output and SSH/database checks. | Does not retain first-use host-key or effective connection-route evidence. |
 
-Only tracked instructions/configuration were inspected in hosting. No operator
+Only tracked instructions/configuration were inspected in hosting in the initial
+pass. No operator
 SSH configuration, Terraform state, private keys, known-host contents, account
 tokens, live DNS, tailnet status or production server was inspected.
 
@@ -224,3 +229,149 @@ creep were found. Conditional Tailscale claims agree with official documentation
 and are not presented as observed company configuration.
 
 Standards: 0 findings. Spec: 0 findings. Operational trust remains unresolved.
+
+## Broader setup and live evidence — 2026-10-01
+
+At the owner's request, the follow-up searched the complete tracked hosting tree,
+relevant Git history and local branch tips; the original `HOSTING - Setup` chat;
+ignored instance filenames and selectively extracted non-secret state metadata;
+local SSH public-key records/configuration; local Tailscale peer status; and the
+approved VM's current Hetzner metadata and pinned read-only identity/SSH rules.
+Hosting remained at `245f58ef7c8f2d96e0281f6451f992d0439cf8ec`. This expands the
+initial evidence scope; its earlier limitations are historical, not the final
+search result. Observations were completed by `2026-10-01T10:56:46Z`.
+Original setup chat ID: `01a0c3a5-2be8-7423-af94-4835349a8f6a`; creation/access
+turns `01a0c82b-d66b-7091-881a-7ab82a058527` and
+`01a0c840-a0ac-7ae2-8bb2-ca8c7bb61490`. Local Tailscale client: `1.102.4`.
+
+### 1. Actual connection route
+
+**Confirmed Tailscale SSH**, reached with the normal OpenSSH client. A connection
+to `root@odoo-revolut-staging` resolved to `100.94.15.48:22`. Verbose SSH reported:
+
+```text
+Remote protocol version 2.0, remote software version Tailscale
+Host 'odoo-revolut-staging' is known and matches the ED25519 host key.
+Authenticated to odoo-revolut-staging ([100.94.15.48]:22) using "none".
+```
+
+The server's selectively filtered `tailscale debug prefs` reported `RunSSH: true`
+and `WantRunning: true`. Checks used `-F /dev/null`, `BatchMode=yes`,
+`StrictHostKeyChecking=yes`, disabled identities/agent forwarding and no shared
+session. The pre-existing workstation pin was verified before the read-only
+commands. Public fingerprint:
+`SHA256:t0MCYZeMofYhedirgJ7DbgdQ7wrgwJv2JDkinuOVaaA` (`ssh-ed25519`).
+
+### 2. Exact approved VM/device association
+
+| Identity | Observed value and cross-check |
+| --- | --- |
+| Hetzner server | `166917896`, name `odoo-revolut-staging`; current API reports running, customer `revolut`, environment `staging`, managed by `odoo-hosting` |
+| Local provisioning state | Same server ID/name in `.instances/revolut/staging/terraform.tfstate`, serial 11; named CLI context `odoo-revolut`; applied profile is `revolut` / `staging` |
+| Actual VM serial | `/sys/class/dmi/id/product_serial` reports `166917896`, matching state and Hetzner API |
+| Tailscale name | `odoo-revolut-staging.tail9f54b7.ts.net` |
+| Tailscale IPv4 | `100.94.15.48` |
+| Stable Tailscale device ID | `n6m6qZXtkD11CNTRL`, matching both workstation peer status and server self status |
+| Device tag | `tag:odoo-revolut-staging`, observed on both sides, rather than inferred from the profile |
+| Bootstrap marker | The server's `/var/lib/odoo-hosting/bootstrap-complete` matches the expected tunnel ID from local Terraform instance output |
+
+The original setup chat records creation on 2026-09-22, successful enrollment,
+Tailscale SSH activation, a policy denial for Gary, and Gary's later confirmation
+that root SSH worked after access was granted. Current live cross-checks above
+are stronger evidence than that historical narrative alone. They establish the
+present association; the addon wrapper still does not enforce this association
+before every upload or bind its target to a stable node ID.
+
+### 3. First-use trust
+
+The actual route supplies **authenticated Tailscale node transport** in addition
+to the SSH session. Official [Tailscale SSH documentation](https://tailscale.com/docs/features/tailscale-ssh)
+identifies node keys as the authentication/authorization/encryption anchor and
+describes public SSH host-key distribution. Thus the earlier fixture's ordinary
+SSH trust-on-first-use observation does not establish an unauthenticated
+first-use route for this verified staging endpoint.
+
+The workstation has the matching host key recorded, but no dedicated host CA,
+explicit preinstalled host-key process or new-workstation procedure was found.
+Its system SSH configuration uses ordinary known-host handling. A safe follow-up
+used an empty temporary `UserKnownHostsFile`, disabled global host files,
+identities, agents and persistent configuration, and sent only `true`:
+
+| Mode, on the already authenticated tailnet workstation | Result |
+| --- | --- |
+| `StrictHostKeyChecking=yes` | Exit 255, host-key verification failed, temporary trust file remained empty |
+| `StrictHostKeyChecking=accept-new` | Exit 0, expected Tailscale endpoint/key, SSH authentication type `none`, key recorded only in the temporary file |
+
+No artifact or deployer was uploaded. This observes first SSH use without a
+stored SSH pin on the current authenticated tailnet workstation. It does not
+enroll a genuinely new workstation or demonstrate the organization's rules for
+approving one. Tailscale node authentication, company node authorization and
+initial SSH key acceptance remain distinct facts.
+
+### 4. Root access, enrollment and replacement
+
+The VM's current effective `SSHPolicy` has three accepting rules permitting
+`root`. Correlation with local Tailscale device/user records identifies:
+
+- Gary's current laptop, owned by `gary@davai.co`; root authentication was
+  directly exercised with no SSH private key or password.
+- Four device addresses belonging to `emile@davai.co`; their root permission
+  is present at the SSH-policy layer, not separately exercised from those devices.
+- Two additional IPv4 device principals, `100.106.119.120` and `100.125.232.36`,
+  whose owners cannot be mapped from either available peer map. Their SSH rule
+  permits root, but their current reachability/network authorization was not
+  tested. Do not silently omit these principals or infer their owners.
+
+The effective rules are expanded device principals, not the administrative
+source policy. They do not reveal `tagOwners`, user roles, groups, who can issue
+enrollment keys, who can edit policy, or Hetzner team membership.
+
+The source/history search found an important provisioning qualification:
+`d5c8aba5af2a3673d0b9e4a1cc686fa01cbeab1c` switched to an externally supplied
+`TAILSCALE_AUTH_KEY` and removed Terraform's key-creation resource. Current
+`scripts/odoo-instance:275–277` passes the supplied key; the variable validation
+checks its prefix, not expiry, reuse, preapproval or tags. The original setup
+chat ties the initial enrollment to the key owner's `emile@davai.co` identity
+and records a subsequent policy change, but it is not an admin-role inventory.
+The tag is now observed live; the precise tagging/change history is unavailable.
+
+README/HETZNER instructions describing Terraform OAuth-created, one-hour,
+single-use keys are stale for this manual-key workflow. Those properties must
+not be treated as established for the supplied enrollment key. No credentials
+were used from the historical chat or reproduced in this report.
+
+### Revised handoff and verdict
+
+Questions 1 and 2 are now answered with live evidence. Question 3's current
+route/authentication mechanism is established; a genuinely new workstation's
+organization-specific approval/process remains undocumented. Question 4 has
+partial concrete root-access evidence, but enrollment/replacement authority and
+two root-policy device owners remain unavailable.
+
+**Revised verdict:** the observed supported staging route has an independent
+Tailscale node-authentication anchor, so a generic unverified-public-SSH MITM is
+not established. The wrapper's permissive target handling remains demonstrated.
+Keep the claim needs-info until these narrower remaining facts are supplied:
+
+1. Current tailnet administrator/tag-owner and auth-key issuance rights, key
+   restrictions and enrollment approval process; Hetzner project members/token
+   permissions able to replace this VM. Root access is not proof of these rights.
+2. Owners/purpose of the two additional root-rule device principals, plus the
+   source network/SSH policy that explains all three effective rules.
+3. New-workstation approval and legitimate node/host-key replacement procedure,
+   including how the staging association is independently approved after change.
+
+The local raw network map requires root and the workstation has no passwordless
+sudo; it was not obtained by changing operator settings. The verified server's
+root account could expose its own effective SSH rules through a filtered read.
+Neither these rules nor status/API metadata grants access to the administrative
+policy/role inventory. No credential creation, device enrollment, policy changes,
+service changes, key rotation or deployment was performed.
+
+Follow-up verification: local evidence links, ticket index, preserved placeholder
+and `git diff --check` passed. No product code changed, so payment/deployment
+regression suites were not rerun for this documentation-only follow-up; the risky
+connection/identity observations were exercised as described above. Independent
+Standards and Spec reviewers assessed `git diff 790bfca...e1617b0`: 0 findings on
+each axis. The reviewers assessed the recorded evidence without repeating live
+queries. This final provenance/review note was added after their review.
