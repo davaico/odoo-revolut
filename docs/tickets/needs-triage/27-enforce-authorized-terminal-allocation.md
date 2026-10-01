@@ -10,7 +10,7 @@ Work in this worktree on the assigned branch; respect the blockers below and upd
 
 **State:** open
 
-**Triage:** ready-for-agent
+**Triage:** needs-triage
 
 **Work type:** Remediation
 
@@ -44,7 +44,9 @@ Source scan `95c73550-ed81-4cfe-9e81-b6f2be355a38` was canceled with partial cov
 
 ## Blocked by
 
-26 — Decide server-authorized cart and tip behavior (closed locally; integrate its reviewed closure/design before starting).
+26 — Decide server-authorized cart and tip behavior (closed; reviewed design integrated into the assigned branch at `719bae93390c3a326673af2d0e6b89aea0a84b65`).
+
+Implementation sequencing requires triage of the [concrete proposed breakdown](../../ticket-27-implementation-breakdown.md). The accepted design is unchanged; no additional product decision is required.
 
 ## External prerequisites
 
@@ -67,3 +69,11 @@ Start from current reviewed main and record the exact revision; do not implement
 Use [ADR 0001](../../adr/0001-authorize-revolut-cart-before-dispatch.md) and [the selected cart/terminal-tip contract](../../revolut-cart-authorization.md). The owner requires the customer's Revolut terminal tip popup, not mandatory Odoo tip pre-entry. Authorize the frozen base cart and reserve each base allocation; retrieve final payment and authenticated `payments_report` evidence (explicit tip, including zero), then project the tip and gross tender into Odoo once. Missing/late evidence remains exposed with recovery and no new charge. Customer terminal tips are permitted within provider limits; the 25%/manager rule applies only to cashier-entered Odoo tips. Preserve gross receipts and explicit base/tip full/partial refund accounting.
 
 The design's tables/matrix are part of this ticket's acceptance criteria. No invented tip field on payment retrieval, amount-difference inference, duplicate tip, browser-only authority or partial financial guard satisfies this ticket. Target-device tip/report timing and currency identity evidence remain release acceptance; local tests use documented fixtures and guarded mocked HTTP. If the complete native-pricing/tip/receipt/refund slice cannot fit this ticket, follow its existing concrete-breakdown requirement before implementing.
+
+## Implementation assessment — 2026-10-01
+
+The assigned branch was fast-forwarded from `080f3fb0a72df80fa772bb72b31eeba4fdc7d965` to reviewed main `719bae93390c3a326673af2d0e6b89aea0a84b65`, including ticket 26's closure and required terminal-tip contract. Independent read-only pricing and tip/receipt/refund assessments confirmed that current snapshot checks establish no canonical pricing authority, remaining-base ledger or authenticated report evidence. Capture verification, native snapshot/tender equality, receipts and refund ceilings all currently use the requested amount; the approved base/gross/tip flow needs coordinated changes to each.
+
+Following this ticket's explicit stop condition, record [P1–P6 development dependencies, public seams, acceptance gates and source-claim verification requirements](../../ticket-27-implementation-breakdown.md) before runtime implementation. The proposal introduces no partial financial guard and is awaiting triage of its sequencing. Planning labels are not new numbered tickets; publish those only after breakdown triage. Keep this ticket open as the complete remediation acceptance gate. All five linked source claims remain open, and none of the acceptance checkboxes is satisfied by this documentation change. Terminal-selected tips and the existing approved decisions remain required.
+
+The pinned temporary Odoo source extraction is absent. Docker image inspection after permitted escalation failed because `/var/run/docker.sock` is unavailable; fresh pinned-Odoo extraction/verification could not run here. This test-environment limitation is separate from the implementation scope assessment. Local checks and independent Standards/Spec review are recorded in the breakdown; they validate this proposal only, not payment behavior. Ticket 12 and deployment/live acceptance remain unchanged.
