@@ -84,3 +84,30 @@ Administrator provisioning and fail-closed migration are documented in
 `docs/installation.md`. Ticket 12 retains final combined-runtime, physical-device
 and outstanding financial acceptance. This closure neither deploys an addon
 nor authorizes a new live payment, refund or credential change.
+
+## Owner-requested re-audit and corrections — 2026-10-01
+
+The owner's follow-up requested fresh verification, correction of odd behavior
+and implementation provenance. The original code was committed at 13:11:45
+Europe/Paris on 1 October (`5033eb7`), followed by the first administrator ACL
+correction at 13:49:04 (`d52a407`). The **T12** chat shows the agent initiating
+ticket 28 as a release gate without an explicit request in that chat; reversing
+the ticket closure after the owner's objection left the committed code intact.
+This follow-up is authorized directly by the owner's request.
+
+Fresh mocked Odoo execution found and reproduced two additional defects:
+administrators without a POS role could not read historical attempts for
+attestation, and an administrator saving an unchanged legacy method could
+silently provision its old reference. Both are corrected in candidate
+`19.0.1.10.3`. Connection and adapter HTTP now disable and reject redirects,
+and shell instructions explicitly commit reviewed attestation. Test fixtures
+now exercise the intended authorization boundary and public checkout behavior
+without relying on unrelated configuration blockers, invalid fresh records or
+stale caches. No production rounding logic changed.
+
+The [updated evidence](../../testing/ticket-28-credential-authority-evidence.md)
+distinguishes reproduced failures, corrections and fresh checks from the earlier
+historical/static audit. Focused authority/recovery, upgrade from pre-authority
+code, restart recovery and corrected browser/tip tests passed. Independent
+Standards and Spec re-reviews found no actionable implementation findings.
+Deployment and live acceptance remain with ticket 12.

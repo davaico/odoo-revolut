@@ -43,6 +43,11 @@ Branches for tickets 19–21 are created from their committed definitions on
 `main`. Update the assigned branch from reviewed `main` before starting,
 without overwriting existing work.
 
+Ticket 34 requires a newly created, appropriately named integration branch in
+`odoo-revolut`, following this repository's conventions. Hosting changes must
+use `feat/revolut-staging` in `odoo-hosting`,
+reusing that branch if present or creating it if absent.
+
 Use `main` as the shared integration branch for this ticket set. Integrate
 reviewed, verified ticket work there, including its state and triage updates.
 Before starting a ticket, merge the latest integration branch into its assigned
@@ -89,6 +94,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [31 — Determine deployment upload and lock-file exploitability](needs-info/31-investigate-privileged-deployment-files.md) | `needs-info` | Open | Target host facts and authorized review access; partial evidence preserved |
 | [32 — Verify deployment host identity on first SSH use](ready-for-agents/32-investigate-deployment-host-authentication.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
 | [33 — Determine whether release evidence exposes restricted identifiers](ready-for-agents/33-investigate-release-evidence-disclosure.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
+| [34 — Provision and gate Odoo PDF generation](needs-triage/34-provision-and-gate-odoo-pdf-generation.md) | `needs-triage` | Open | None for local implementation; authorized staging access and existing safety gates for rollout |
 
 ## Architecture triage — 2026-09-25
 
