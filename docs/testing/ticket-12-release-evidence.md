@@ -351,3 +351,19 @@ The operator could not perform the post-upgrade Cash smoke or physical-terminal
 acceptance in this session. Tickets 22 and 23 remain open for their affected
 live retests, and ticket 12 remains open for its wider release gates. The
 successful deployment guard is not a per-refund reconciliation audit.
+
+## Post-upgrade retail Cash and terminal-busy observations — 2026-10-01
+
+The operator's £0.01 Cash-only sale reached its receipt automatically with the
+full amount assigned to Cash. The following two-browser, no-card Revolut test
+showed authoritative busy/no-dispatch feedback in the second browser while the
+first occupied the terminal. The initial read-only ledger check found no
+second-order operation; Validate remained disabled. After the first request
+was cancelled, the second browser reached the terminal and its request was
+cancelled without a card. A later read-only ledger check found two sequential
+second-order attempts on the same line, each provider-cancelled and retry-safe;
+the first ended before the second began. Neither holds an order or terminal
+lock. Operator-click chronology between those attempts remains unconfirmed,
+so the one-dispatch-per-explicit-Resume acceptance is still open. Ticket 23's
+automatic Revolut payment-status tests have not yet been performed after the
+upgrade. See the [ticket 12 live checkpoint](../tickets/ready-for-human/12-live-terminal-release-evidence.md#post-upgrade-cash-smoke-and-terminal-busy-retest--2026-10-01).

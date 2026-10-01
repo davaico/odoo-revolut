@@ -123,3 +123,17 @@ Pre/post-quiescence financial blocker checks passed; Odoo is active and serves
 HTTP 200 from the new release. The operator could not complete the Cash smoke
 or independent-browser no-card retest in this session. The last live acceptance
 criterion remains unchecked; see [ticket 12's deployment checkpoint](12-live-terminal-release-evidence.md#guarded-staging-upgrade--2026-10-01).
+
+2026-10-01: The post-upgrade two-browser no-card retest showed the expected
+pre-dispatch busy message in the second browser, with Resume/Check status,
+£0.01 still due and Validate disabled. No second-order operation was present
+in the first read-only ledger observation while the first request occupied the
+terminal. After its cancellation, a second-browser request reached the
+terminal and was cancelled without a card. The ledger then showed two
+**successive** attempts on the same second-order line, both provider-cancelled
+and retry-safe, with the first cancelled before the second started and no
+remaining payment lock. The precise operator action between those attempts
+is still being clarified. The final live criterion remains unchecked; this is
+partial positive evidence for the busy feedback and safe terminal release, not
+proof of one intended dispatch per explicit Resume. See
+[ticket 12's post-upgrade checkpoint](12-live-terminal-release-evidence.md#post-upgrade-cash-smoke-and-terminal-busy-retest--2026-10-01).

@@ -277,3 +277,29 @@ Keep all three tickets open pending observed results. The owner said to proceed
 with testing without first settling the previously retained £0.03 test spend;
 that preference is not evidence that every reconciliation and release gate is
 closed.
+
+## Post-upgrade Cash smoke and terminal-busy retest — 2026-10-01
+
+After reopening the upgraded POS, the operator completed a £0.01 sale entirely
+with **Cash - Davai GBP Test**. The receipt opened automatically and showed the
+Cash tender for the full £0.01. This passes the post-upgrade retail Cash smoke;
+it does not exercise Revolut payment polling.
+
+The operator then used two independent browsers for ticket 22's no-card
+terminal-busy scenario. While the first browser occupied the terminal, the
+second showed **Terminal busy — no payment request sent**, offered **Resume**
+and **Check status**, left £0.01 due and kept Validate disabled. A read-only
+operation-ledger observation at that point found no second-order operation.
+The first-browser terminal request was subsequently cancelled.
+
+After the terminal was released, the second browser reached the terminal's
+payment screen. The operator cancelled that request without presenting a card.
+The read-only ledger then showed two successive £0.01 GBP attempts on the same
+second-order payment line: the first was cancelled before the second began,
+and the second is now cancelled too. Both have provider state `cancelled`, are
+retry-safe and hold no order or terminal lock; no verified payment was observed
+in these records. The exact operator action between the two attempts remains
+unconfirmed, so this observation does not establish the ticket 22 requirement
+of one intended dispatch per explicit Resume. Leave ticket 22 and the broader
+ticket 12 live acceptance open until that sequence is resolved and the remaining
+affected tests are completed.
