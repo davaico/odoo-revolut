@@ -10,7 +10,7 @@ Work in this worktree on the assigned branch; respect the blockers below and upd
 
 **State:** open
 
-**Triage:** ready-for-agent
+**Triage:** needs-info
 
 **Work type:** Investigation
 
@@ -28,13 +28,13 @@ Source scan `95c73550-ed81-4cfe-9e81-b6f2be355a38` was canceled with partial cov
 
 ## Acceptance criteria
 
-- [ ] Inspect available versioned workstation/deployment instructions for known-host provisioning, dedicated host keys or SSH host CA, approved inventory and tailnet endpoint guarantees. Keep private key material and credentials out of evidence.
+- [x] Inspect available versioned workstation/deployment instructions for known-host provisioning, dedicated host keys or SSH host CA, approved inventory and tailnet endpoint guarantees. Keep private key material and credentials out of evidence.
 - [ ] Determine whether a supported first deployment can occur with no independent host identity anchor. Separate transport encryption, successful client authentication, target authorization and server identity.
-- [ ] Use an isolated mock/SSH fixture if needed to check first-seen, correctly pinned, changed-key and wrong-approved-target behavior before artifact transfer. No real MITM attempt or connection to an unapproved production endpoint.
-- [ ] Assess source disclosure and forged deployment-success acknowledgement separately from mutating the intended host; receiving a client SSH authentication does not disclose its private key.
-- [ ] Return an evidence-backed verdict and identify any missing provisioning/network fact. External tailnet or known-host guarantees must be demonstrated, not assumed present or absent.
-- [ ] If the gap is real, specify fail-closed approved-host authentication before upload, including first-use provisioning and legitimate host-key rotation. Preserve supported deployment and recovery without implementing the change here.
-- [ ] Retain exact revision and evidence, with a concrete needs-info handoff when target trust facts remain unavailable.
+- [x] Use an isolated mock/SSH fixture if needed to check first-seen, correctly pinned, changed-key and wrong-approved-target behavior before artifact transfer. No real MITM attempt or connection to an unapproved production endpoint.
+- [x] Assess source disclosure and forged deployment-success acknowledgement separately from mutating the intended host; receiving a client SSH authentication does not disclose its private key.
+- [x] Return an evidence-backed verdict and identify any missing provisioning/network fact. External tailnet or known-host guarantees must be demonstrated, not assumed present or absent.
+- [x] If the gap is real, specify fail-closed approved-host authentication before upload, including first-use provisioning and legitimate host-key rotation. Preserve supported deployment and recovery without implementing the change here.
+- [x] Retain exact revision and evidence, with a concrete needs-info handoff when target trust facts remain unavailable.
 
 ## Blocked by
 
@@ -59,3 +59,29 @@ Start from current reviewed main and record the exact revision; do not implement
 ## Owner clarification — 2026-09-30
 
 The owner reports that their boss operates SSH access to the company-managed Hetzner VM. The exact deployment connection route and first-use identity verification remain unknown. Versioned hosting setup enables Tailscale SSH; confirm the effective route and identity/access controls with the infrastructure owner rather than assuming ordinary public-host SSH semantics.
+
+## Investigation evidence — 2026-10-01
+
+Local investigation completed on reviewed main
+`719bae93390c3a326673af2d0e6b89aea0a84b65`; no production correction was
+implemented. See [the exact inputs, loopback observations, verdict and scoped
+correction](../../testing/ticket-32-deployment-host-authentication.md).
+
+Real OpenSSH observed first-seen acceptance, correct-pin acceptance, changed-key
+refusal before authentication/upload, and acceptance of a different correctly
+pinned target. A mock server received the archive/deployer and fabricated a
+success report without executing the deployer. These establish wrapper
+limitations, not a demonstrated attacker path through the company tailnet.
+
+The remaining unchecked criterion requires infrastructure-owner evidence. Gary
+confirmed that his boss handles this setup and he does not know these facts.
+Tailscale SSH provisioning is versioned and can supply an independent identity
+anchor; its effective route, approved-node binding, grants, workstation trust
+provisioning and rotation process remain unverified.
+
+**Needs-info handoff:** obtain the four non-secret owner evidence items in the
+report's infrastructure-owner table, then determine whether a supported first
+deployment lacks an independent anchor. Keep the source claim open; do not close
+as safe or assume a production MITM. If a gap is confirmed, create a scoped
+remediation following the report before relying on the affected deployment
+workflow. No credential or infrastructure mutation is authorized by this handoff.
