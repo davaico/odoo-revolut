@@ -303,3 +303,9 @@ unconfirmed, so this observation does not establish the ticket 22 requirement
 of one intended dispatch per explicit Resume. Leave ticket 22 and the broader
 ticket 12 live acceptance open until that sequence is resolved and the remaining
 affected tests are completed.
+
+The operator later recalled pressing Resume a few times, which plausibly
+explains the successive attempts without establishing a one-click-to-one-
+operation count. Removing the cancelled second-browser Revolut payment line
+left no payment line and the order still showed £0.01 due. The controlled
+single-Resume count and ticket 23's card-payment polling retests remain open.

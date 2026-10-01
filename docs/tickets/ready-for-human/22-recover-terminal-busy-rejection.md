@@ -137,3 +137,12 @@ is still being clarified. The final live criterion remains unchecked; this is
 partial positive evidence for the busy feedback and safe terminal release, not
 proof of one intended dispatch per explicit Resume. See
 [ticket 12's post-upgrade checkpoint](12-live-terminal-release-evidence.md#post-upgrade-cash-smoke-and-terminal-busy-retest--2026-10-01).
+
+2026-10-01 follow-up: The operator recalls pressing **Resume** a few times
+after the first request was cancelled. This plausibly accounts for the two
+successive, individually cancelled attempts, but does not prove the exact
+click-to-operation mapping. The operator then removed the cancelled Revolut
+payment line in the second browser: no payment line remained and the order
+still showed £0.01 due. This confirms safe line removal did not settle the
+order. Keep the final live criterion open until a controlled single-Resume
+observation establishes its dispatch count.

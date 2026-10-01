@@ -367,3 +367,9 @@ lock. Operator-click chronology between those attempts remains unconfirmed,
 so the one-dispatch-per-explicit-Resume acceptance is still open. Ticket 23's
 automatic Revolut payment-status tests have not yet been performed after the
 upgrade. See the [ticket 12 live checkpoint](../tickets/ready-for-human/12-live-terminal-release-evidence.md#post-upgrade-cash-smoke-and-terminal-busy-retest--2026-10-01).
+
+The operator subsequently recalled pressing Resume a few times, a plausible
+explanation for the sequential attempts but not a precise click count. They
+removed the cancelled second-browser payment line; no payment line remained
+and £0.01 was still due. The one-dispatch-per-explicit-Resume criterion
+remains open for a controlled observation.
