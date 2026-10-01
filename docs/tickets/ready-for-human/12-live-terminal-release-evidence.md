@@ -468,3 +468,13 @@ test reproduced the error; a scoped server-authority fix passed that test and
 the surrounding 53 credential/refund tests. Keep `1012` untouched until the
 follow-up addon release is checked and deployed. Ticket 12 and the remaining
 Restaurant, failure/recovery, tip and full reconciliation gates stay open.
+
+The follow-up `d52a4079522b9fd56ff282e02d3ec91f92147e5d` was pushed
+conflict-free to `main`. Its packaged migration test passed with zero
+failures/errors, and the guarded staging upgrade installed addon
+`19.0.1.10.1` with a configuration backup at
+`/var/backups/odoo-revolut-deploy/20261001T115207Z-d52a4079522b`.
+The real-administrator attestation of reviewed source `16` then succeeded;
+readback confirmed its authority binding and no change to the five provider
+refund operations. The final one-penny allocation on `1012` remains for the
+operator to issue and verify before its POS return can be finalized.

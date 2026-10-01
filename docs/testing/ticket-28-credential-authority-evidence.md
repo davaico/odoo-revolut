@@ -83,3 +83,12 @@ authority. The red test failed with one access error; the corrected test passed,
 as did all 53 credential-authority and refund tests. Candidate addon version
 `19.0.1.10.1` still requires upgrade and a live retry of the same historical
 attestation before the remaining refund can proceed.
+
+The exact follow-up commit `d52a4079522b9fd56ff282e02d3ec91f92147e5d`
+passed packaged migration acceptance (nine Restaurant tests in each phase,
+zero failures/errors) and was pushed to `main`. The guarded staging upgrade
+installed `19.0.1.10.1` with a configuration backup and healthy Odoo restart.
+Using the real administrator identity, the documented action bound only the
+independently reviewed historical payment operation `16` to authority `1`.
+Readback showed operation `17` remained unbound. Refund operation count was
+still five; this attestation made no Merchant request or new refund.

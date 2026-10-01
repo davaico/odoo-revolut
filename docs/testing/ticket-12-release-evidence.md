@@ -484,3 +484,19 @@ second source failed on the operation model's write ACL, before any Merchant
 request or new refund. A real-administrator regression reproduced this and
 passed after the action was scoped to a server-side write. The remaining
 refund and ticket 12 acceptance are pending the follow-up deployment.
+
+## Administrator attestation deployed — 2026-10-01
+
+The exact `d52a4079522b9fd56ff282e02d3ec91f92147e5d` artifact passed the
+isolated delivered migration scenario: nine Restaurant tests before and after
+the update, with zero failures/errors. Its archive SHA-256 was
+`d8536e2ec4a65332bc95af7803ea040d9ab8095b64e89044f4c5f6e2f12504b1`.
+The guarded staging upgrade installed addon `19.0.1.10.1`, backed up the
+configuration to
+`/var/backups/odoo-revolut-deploy/20261001T115207Z-d52a4079522b`, and
+restarted Odoo successfully. A real system-administrator Odoo shell action,
+after asserting the company, method, amount, state, order, intent and payment
+references against the independently verified historical source, bound only
+payment operation `16` to authority `1`. Readback showed operation `17`
+unbound, and the refund operation count remained five. The final penny of
+return `1012` has not yet been sent or settled.
