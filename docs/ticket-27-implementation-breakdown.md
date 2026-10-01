@@ -91,6 +91,16 @@ Checks of this documentation-only change on the assigned branch:
 | Typechecking | No configured typechecker found; runtime source is unchanged. No new TDD tests were added because this deliverable is the requested breakdown alternative. |
 | `git diff --check` | Passed. |
 
-Independent Standards/Spec review compares the committed proposal to fixed baseline `719bae93390c3a326673af2d0e6b89aea0a84b65`, using the original ticket and accepted contract as the spec. Record its outcome after review; it cannot supply security-fix verification for unchanged runtime behavior.
+Independent Standards/Spec review compared proposal commit `062de376917fa244d6d1c04314e66f26d3667069` to fixed baseline `719bae93390c3a326673af2d0e6b89aea0a84b65`, using the original ticket and accepted contract as the spec. Both reviews ran in separate agents and reported zero findings. This is review of the breakdown, not security-fix verification of unchanged runtime behavior.
+
+### Standards
+
+Zero findings. Tracker folder/label/index, retained identity/dependency history, repository boundary, domain terminology and ADR decisions conform to documented guidance. Cited source ranges support the assessment. Existing tooling passes are distinguished from financial evidence; native-source and runtime test limitations are explicit. No applicable baseline smell was identified.
+
+### Spec
+
+Zero findings for the permitted breakdown alternative. P1–P6 retain canonical native pricing, authenticated approval, atomic reservations, explicit asynchronous tip evidence, exact projection/rounding, native recovery/Restaurant/lifecycle, gross receipts, independent base/tip refunds, legacy compatibility and complete independent verification. The proposal forbids releasing partial guards or marking claims fixed before combined acceptance. Runtime implementation remains outstanding.
+
+Review totals: Standards 0; Spec 0; no worst issue in either axis.
 
 Triage the proposed P1–P6 dependency sequence, then create its numbered work tickets and implement on isolated candidates. Ticket 27 remains the complete remediation acceptance gate. No new design decision, real terminal experiment, provider message, deployment, credential change, or ticket 12 edit is part of this proposal. Target-device skip/preset/custom tip identity/units, report availability/latency and actual gross/base/tip refund/receipt acceptance remain ticket 12 release checks; local mocks do not replace them.
