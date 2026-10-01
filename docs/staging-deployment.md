@@ -29,13 +29,15 @@ existing release before trusting or reporting it.
 Before changing code, the deployer:
 
 1. refuses active or uncertain Revolut financial operations;
-2. runs the existing encrypted database and filestore backup service;
-3. copies `/etc/odoo/odoo.conf`, the `odoo.service.d` drop-ins, and the optional
+2. verifies the patched-Qt PDF renderer and readable body/header/footer output
+   under the running Odoo service identity and renderer environment;
+3. runs the existing encrypted database and filestore backup service;
+4. copies `/etc/odoo/odoo.conf`, the `odoo.service.d` drop-ins, and the optional
    `/etc/odoo-revolut` secret directory into a root-only local configuration
    snapshot, recording both previously active release targets;
-4. stops Odoo, which quiesces checkout and every payment/refund dispatch;
-5. repeats the financial-operation check after Odoo is fully stopped; and
-6. leaves Odoo stopped if that final check, extraction, module update, or any
+5. stops Odoo, which quiesces checkout and every payment/refund dispatch;
+6. repeats the financial-operation check after Odoo is fully stopped; and
+7. leaves Odoo stopped if that final check, extraction, module update, or any
    earlier stopped-service step fails.
 
 Financial operation models participate through the shared
@@ -212,3 +214,45 @@ replacement-VM procedure in `../odoo-hosting/docs/OPERATIONS.md`. Restore under
 a new database name, neutralize external integrations, review it without live
 traffic, and use a separately approved cutover. The deployment tool performs
 no automatic database restore or infrastructure mutation.
+
+## PDF prerequisite and deployment refusal
+
+Provision the server renderer through the reviewed hosting workflow described
+in `../odoo-hosting/docs/PDF_RENDERING.md` (the dedicated installer for an
+existing host). The supported build is `wkhtmltox 1:0.12.6.1-3.jammy`, exposing
+`wkhtmltopdf 0.12.6.1 (with patched qt)` on Ubuntu 24.04 amd64/arm64. Hosting
+pins official release downloads and verifies SHA256 before installation; the
+addon and its deployment tool never install OS packages.
+
+The deployer requires the existing `odoo` service to be running as `User=odoo`.
+It obtains `MainPID` from systemd and reads only renderer/Python environment
+variables from that process, including its actual `PATH`; it does not copy
+Merchant credentials into the probe. It uses the managed virtualenv Python
+when present, otherwise system Python. The probe creates temporary local HTML
+and PDF files as `odoo`, requires the exact patched-Qt version above, renders
+body/header/footer content, and parses the result using Odoo's PDF library.
+No database, saved report, payment/refund, provider endpoint, or network URL
+is involved. Individual subprocesses have deadlines (5 seconds for version,
+20 for rendering, 35 for the whole probe); service lookup is bounded at 5
+seconds. Temporary files are removed after success or failure.
+
+A `PDF preflight refused deployment` message stops before the backup service,
+configuration backup, Odoo stop, offline update, or release switch. It explains
+whether the live service/environment is unavailable, the executable is absent,
+the patched-Qt build is wrong, rendering failed/timed out, or expected PDF
+content is missing. Repair via hosting after obtaining the applicable staging
+maintenance authorization. Package installation cannot refresh Odoo's cached
+renderer detection: follow hosting's controlled restart procedure, then rerun
+the deployment. A synthetic renderer pass establishes runtime capability;
+actual Odoo report/asset rendering is separately exercised in disposable tests
+and must be checked by the operator on the authorized target.
+
+After separately authorized repair/rollout and satisfaction of tickets 12, 31
+and 32's applicable gates, open an **existing verified historical** Revolut
+payment and completed refund in Odoo, download each receipt twice, and inspect
+reference, amount/currency, original payment link and printable PDF output.
+Keep the original session closed. Record both deployed repository revisions,
+package build, timestamp and results without secrets; no new terminal charge
+or refund is needed. Installing software on the cashier workstation cannot
+fix this server prerequisite. These are Odoo-generated Revolut receipts;
+an accounting invoice is a separate document.

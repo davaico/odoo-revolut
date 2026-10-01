@@ -733,3 +733,20 @@ canonical form after upgrade, including signed zero, sorting and original return
 links. Historical evidence outside the bounds is retained; it must be reconciled
 with its original references. Never edit the stored snapshot to fit a limit,
 remove its reservation or restart a financial request based on a validation error.
+
+## Server PDF renderer prerequisite
+
+Payment and refund receipt downloads require a server-installed patched-Qt
+renderer. For the supported Ubuntu 24.04 hosting layout, provision
+`wkhtmltox 1:0.12.6.1-3.jammy` (`wkhtmltopdf 0.12.6.1 (with patched qt)`)
+through `odoo-hosting`; use its documented PDF repair workflow on an existing
+host. This is an Odoo server dependency. Installing software on the cashier's
+computer does not resolve a missing server renderer. The addon never installs
+packages at runtime. A controlled Odoo restart may be required to refresh its
+renderer detection, after financial and maintenance gates are met.
+
+See [PDF preflight and repair guidance](staging-deployment.md#pdf-prerequisite-and-deployment-refusal)
+for diagnostics and the existing historical receipt download/print check.
+Deployment rejects missing, incompatible or failing PDF capability before
+stopping Odoo or changing the addon release. A Revolut payment/refund receipt
+is distinct from an accounting invoice.

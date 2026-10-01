@@ -8,7 +8,7 @@ Create the integration work branch in `odoo-revolut`. In the VM repository, `odo
 
 **State:** open
 
-**Triage:** needs-triage
+**Triage:** ready-for-human
 
 **Work type:** Infrastructure and deployment reliability
 
@@ -28,13 +28,13 @@ Ticket 25 delivered Odoo-generated card transaction receipts, not accounting inv
 
 ## Acceptance criteria
 
-- [ ] Reproduce the reported failure in a disposable environment using the supported Odoo package and hosting configuration. Identify whether the renderer is absent, incompatible, inaccessible to the service user or missing from the service environment. Record target facts separately from local assumptions; live inspection requires authorized access.
-- [ ] Make the supported hosting workflow install an explicitly versioned, OS/architecture-compatible renderer and its required runtime dependencies from a verified source. Support both fresh provisioning and the documented repair of an existing host. Re-running the workflow must not disturb databases, filestores, credentials, unrelated services or the installed Odoo version.
-- [ ] Verify executable access and actual rendering under the Odoo service identity/environment. Exercise a real Odoo PDF report in a disposable database, checking that the result is a readable, nonempty PDF with expected content. A package/version check or successful provisioning command alone is insufficient.
-- [ ] Add a bounded, read-only/non-financial addon deployment preflight that detects missing, inaccessible or incompatible rendering capability and reports corrective operator steps before any Odoo service stop, offline module update or release switch. Keep existing financial, host-identity and reviewed-artifact guards intact; do not install or repair packages implicitly during addon deployment.
-- [ ] Test preflight rejection and success, including executable-not-found, execution/compatibility failure and rendering failure. Assert that rejection leaves the running service, active release and financial records unchanged. Use disposable report data and temporary output, not live credentials or Merchant calls, for rendering checks.
-- [ ] Render and inspect the actual historical payment and completed-refund receipt PDFs in isolated tests using stored verified evidence and mocked/blocked provider access. Cover repeat downloads and a closed original POS session; confirm no new payment/refund, provider request, evidence change or session reopening occurs.
-- [ ] Document the server prerequisite, provisioning/repair procedure, preflight diagnostics, any necessary controlled Odoo restart, and the manual receipt download/print check. Explain that installing software on the cashier's computer is not the fix and that an accounting invoice is a different document.
+- [x] Reproduce the reported failure in a disposable environment using the supported Odoo package and hosting configuration. Identify whether the renderer is absent, incompatible, inaccessible to the service user or missing from the service environment. Record target facts separately from local assumptions; live inspection requires authorized access.
+- [x] Make the supported hosting workflow install an explicitly versioned, OS/architecture-compatible renderer and its required runtime dependencies from a verified source. Support both fresh provisioning and the documented repair of an existing host. Re-running the workflow must not disturb databases, filestores, credentials, unrelated services or the installed Odoo version.
+- [x] Verify executable access and actual rendering under the Odoo service identity/environment. Exercise a real Odoo PDF report in a disposable database, checking that the result is a readable, nonempty PDF with expected content. A package/version check or successful provisioning command alone is insufficient.
+- [x] Add a bounded, read-only/non-financial addon deployment preflight that detects missing, inaccessible or incompatible rendering capability and reports corrective operator steps before any Odoo service stop, offline module update or release switch. Keep existing financial, host-identity and reviewed-artifact guards intact; do not install or repair packages implicitly during addon deployment.
+- [x] Test preflight rejection and success, including executable-not-found, execution/compatibility failure and rendering failure. Assert that rejection leaves the running service, active release and financial records unchanged. Use disposable report data and temporary output, not live credentials or Merchant calls, for rendering checks.
+- [x] Render and inspect the actual historical payment and completed-refund receipt PDFs in isolated tests using stored verified evidence and mocked/blocked provider access. Cover repeat downloads and a closed original POS session; confirm no new payment/refund, provider request, evidence change or session reopening occurs.
+- [x] Document the server prerequisite, provisioning/repair procedure, preflight diagnostics, any necessary controlled Odoo restart, and the manual receipt download/print check. Explain that installing software on the cashier's computer is not the fix and that an accounting invoice is a different document.
 - [ ] After separately authorized staging repair or rollout and satisfaction of applicable safety gates, download an existing verified historical receipt and verify its reference, amount/currency and printable PDF output. Record the exact deployed revisions, renderer build and result without secrets. If staging is blocked, preserve the blocker and distinguish local completion from unexecuted staging acceptance.
 
 ## Blocked by
@@ -52,3 +52,23 @@ No new terminal charge or refund for testing, forced verification of pending ope
 ## Working agreement
 
 Keep implementation in the repository that owns each concern and follow the separate branch instructions above: a newly created integration branch in `odoo-revolut`, and `feat/revolut-staging` in `odoo-hosting`. Preserve concurrent changes and run the narrowest relevant hosting, deployment and receipt-rendering tests. Record real PDF evidence, not just a passing build. No production mutation or live Merchant request is part of local automated verification.
+
+## Local implementation and handoff — 2026-10-01
+
+Local implementation is complete on integration branch
+`codex/34-provision-and-gate-odoo-pdf` (initial code commit `c2f0baf`), paired
+with hosting `feat/revolut-staging` commit
+`1f2aa0287f919a95a2268705f639ba616c8c8788`. The checkbox results are local
+verification only; target package/environment facts remain uninspected.
+See [the evidence record](../../testing/ticket-34-pdf-runtime.md) for actual
+missing-renderer reproduction, readable payment/full/partial refund PDFs,
+357 passing addon tests, 32 deployment tests, seven real probe regressions,
+46 hosting tests and corrected independent review findings.
+
+The remaining criterion requires separately authorized staging inspection,
+repair/restart or rollout and historical receipt download/print verification.
+No live infrastructure or Merchant API access was performed. Recheck current
+financial blockers and retain tickets 12, 31 and 32's applicable gates. Runtime
+ARM64 rendering and a full fresh-VM cloud-init/systemd run were not executed;
+architecture/build guards and wiring were verified locally. Ticket 25 remains
+closed. This ticket is open / ready-for-human until staging evidence is recorded.

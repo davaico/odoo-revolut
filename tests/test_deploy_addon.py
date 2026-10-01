@@ -23,13 +23,21 @@ def load_script(name):
 
 
 class FakeRunner:
-    def __init__(self, responses):
+    def __init__(self, responses, *, pdf_response="ODOO_PDF_PREFLIGHT_OK\n",
+                 service_response="User=odoo\nMainPID=123\n"):
+        self.pdf_response = pdf_response
+        self.service_response = service_response
         self.responses = list(responses)
         self.calls = []
 
     def run(self, command, **kwargs):
         self.calls.append((command, kwargs))
-        response = self.responses.pop(0)
+        if command[:3] == ["systemctl", "show", "odoo"]:
+            response = self.service_response
+        elif command[:2] == ["/usr/sbin/runuser", "--preserve-environment"]:
+            response = self.pdf_response
+        else:
+            response = self.responses.pop(0)
         if isinstance(response, Exception):
             raise response
         if callable(response):
@@ -283,6 +291,9 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             "addons_path = /opt/odoo-hosting/addons,"
             "/usr/lib/python3/dist-packages/odoo/addons\n"
         )
+        process = root / "proc" / "123"
+        process.mkdir(parents=True)
+        (process / "environ").write_bytes(b"PATH=/usr/local/bin:/usr/bin:/bin\0SECRET=do-not-forward\0")
         drop_in = root / "etc" / "systemd" / "system" / "odoo.service.d"
         drop_in.mkdir(parents=True)
         (drop_in / "python.conf").write_text("[Service]\nExecStart=/usr/bin/odoo\n")
@@ -301,6 +312,70 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             environment="staging",
             mode=mode,
         )
+
+    def test_pdf_failure_aborts_before_any_deployment_mutation(self):
+        remote = load_script("deploy-addon-remote")
+        failures = [
+            subprocess.CalledProcessError(1, ["runuser"], stderr="PDF probe: renderer missing"),
+            subprocess.CalledProcessError(1, ["runuser"], stderr="PDF probe: renderer incompatible"),
+            subprocess.CalledProcessError(1, ["runuser"], stderr="PDF probe: renderer could not execute"),
+            subprocess.CalledProcessError(1, ["runuser"], stderr="PDF probe: unreadable PDF"),
+            subprocess.TimeoutExpired(["runuser"], 35),
+            "unexpected output",
+        ]
+        for failure in failures:
+            with self.subTest(failure=str(failure)):
+                runner = FakeRunner(["pos_revolut_payment_operation\n", "0\n"], pdf_response=failure)
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    archive = self._artifact(root)
+                    self._target_configuration(root)
+                    current = root / "opt" / "odoo-hosting" / "addons" / "pos_revolut"
+                    current.parent.mkdir(parents=True)
+                    current.symlink_to("/previous/release")
+                    before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+                    with self.assertRaisesRegex(remote.DeploymentError, "PDF.*odoo-install-pdf"):
+                        self._deployment(remote, runner, root, archive).execute()
+                    self.assertEqual({path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}, before)
+                    self.assertEqual(current.readlink(), Path("/previous/release"))
+                    self.assertFalse((root / "opt" / "odoo-releases").exists())
+                    self.assertFalse((root / "var" / "backups").exists())
+                commands = [call[0] for call in runner.calls]
+                self.assertFalse(any(command[:2] in (["systemctl", "stop"], ["systemctl", "start"]) for command in commands))
+                self.assertTrue(all("SELECT" in command[-1] for command in commands if "psql" in command))
+
+    def test_pdf_probe_uses_running_service_environment_before_backup(self):
+        remote = load_script("deploy-addon-remote")
+
+        def inspect_probe(command, kwargs):
+            self.assertEqual(command[:6], ["/usr/sbin/runuser", "--preserve-environment", "-u", "odoo", "--", "/usr/bin/python3"])
+            self.assertEqual(kwargs["env"], {"PATH": "/usr/local/bin:/usr/bin:/bin"})
+            self.assertLessEqual(kwargs["timeout"], 35)
+            self.assertIn("--header-html", kwargs["input"])
+            return subprocess.CompletedProcess(command, 0, stdout="ODOO_PDF_PREFLIGHT_OK\n", stderr="")
+
+        # Reaching the backup refusal proves the successful probe permits the next phase.
+        backup_failure = subprocess.CalledProcessError(1, ["systemctl"], stderr="backup unavailable")
+        runner = FakeRunner(["pos_revolut_payment_operation\n", "0\n", backup_failure], pdf_response=inspect_probe)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = self._artifact(root)
+            self._target_configuration(root)
+            with self.assertRaisesRegex(remote.DeploymentError, "Database and filestore backup failed"):
+                self._deployment(remote, runner, root, archive).execute()
+        self.assertFalse(any(call[0][:2] == ["systemctl", "stop"] for call in runner.calls))
+
+    def test_pdf_preflight_requires_observable_running_odoo_service(self):
+        remote = load_script("deploy-addon-remote")
+        for service in ("User=root\nMainPID=123\n", "User=odoo\nMainPID=0\n", "User=odoo\nMainPID=999\n"):
+            with self.subTest(service=service), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                archive = self._artifact(root)
+                self._target_configuration(root)
+                runner = FakeRunner(["pos_revolut_payment_operation\n", "0\n"], service_response=service)
+                with self.assertRaisesRegex(remote.DeploymentError, "PDF preflight refused.*odoo-install-pdf"):
+                    self._deployment(remote, runner, root, archive).execute()
+                self.assertFalse(any(call[0][:2] in (["systemctl", "stop"], ["systemctl", "start"]) for call in runner.calls))
 
     def test_git_archive_parent_directory_is_accepted(self):
         remote = load_script("deploy-addon-remote")
