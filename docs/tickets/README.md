@@ -187,8 +187,11 @@ coverage; the triage assessed reviewed main revision
   integrated into its assigned branch. On 2026-10-01 the ticket's explicit
   complete-slice stop condition was used to propose a [concrete development
   breakdown](../ticket-27-implementation-breakdown.md); ticket 27 remains open
-  under `needs-triage` pending sequencing review, with all five source claims
-  still open and no runtime guard landed.
+  under `needs-triage` pending sequencing review at that point, with all five
+  source claims still open and no runtime guard in that documentation-only
+  proposal. The owner resumed complete implementation later on 2026-10-01;
+  ticket 27 is now claimed in `ready-for-agents/`, with runtime candidate
+  `b25082d` undergoing integrated validation and independent review.
 - **28** remediates the two confirmed company/credential-authority findings.
 - **29–33** investigate the eleven unresolved findings: concurrent polling,
   shared-register authorization, privileged deployment files, first-use SSH

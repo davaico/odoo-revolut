@@ -199,6 +199,9 @@ class RevolutCartAuthorization(models.Model):
                 raise UserError(_('Pricing or configuration changed. Review the cart before payment.'))
         elif _digest(order._revolut_authority_contents()) != _digest(self.projected_contents or self.native_contents):
             raise UserError(_('The authorized cart changed. Reconcile its existing payment.'))
+        if self._exposed():
+            # Check the frozen tip policy before another customer can pay.
+            order._revolut_terminal_tip_values(1)
         slot = next((slot for slot in self.tenders if slot['uuid'] == values['payment_line_uuid']), None)
         if not slot or slot['method_id'] != method.id or slot['minor'] != values['amount_minor'] or not slot['revolut']:
             raise UserError(_('The payment must match its authorized base allocation.'))

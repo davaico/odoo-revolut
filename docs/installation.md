@@ -160,6 +160,12 @@ version. Once a payment is exposed, the approved base stays frozen; expiry or
 refund does not restore card capacity. Cash corrections and the tender ledger
 are saved atomically during preparation of a subsequent card allocation.
 
+An exposed cart retains its original tip product and checked tax/rounding/price
+precision policy. Changing the configured tip product applies to new carts.
+If the original effective tax policy changes or price precision is reduced,
+restore the original policy before reconciling or sending a remaining card
+allocation; captured money stays reserved while that conflict is unresolved.
+
 The Merchant credential, terminal ID, location, fulfilment and all Merchant API
 calls stay on the Odoo server. Requests have bounded 10-second HTTP timeouts.
 Base cash rounding is frozen separately from terminal tips: an approved 10.00
@@ -517,8 +523,9 @@ ordinary cashiers, managers and restricted company contexts:
 ./scripts/test-addon --test-tags /pos_revolut:TestRevolutMutationBoundaries,/pos_revolut:TestRevolutRefund,/pos_revolut:TestRevolutAuthorization
 ```
 
-Run the separate-process recovery check to start a payment, stop Odoo, and
-reconcile the same persisted attempt from a fresh Odoo process:
+Run the three-process recovery check to prepare and start payments, restart
+with captured payments awaiting tip reports, then restart again to verify the
+reports and project the same operations exactly once:
 
 ```bash
 ./scripts/test-restart-recovery
