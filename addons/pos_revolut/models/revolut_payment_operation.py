@@ -312,7 +312,10 @@ class PosRevolutPaymentOperation(models.Model):
             credential = self.env["pos.revolut.merchant.credential"]._for_snapshot(
                 operation.company_id.id, operation.environment, operation.secret_reference
             )
-            operation.with_context(_revolut_authorize_legacy_credential=True).write({
+            # Historical operations have no direct write ACL. Apply the
+            # administrator-approved binding with server authority only after
+            # the group and exact frozen-credential checks above.
+            operation.sudo().with_context(_revolut_authorize_legacy_credential=True).write({
                 "credential_id": credential.id
             })
 

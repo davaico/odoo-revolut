@@ -170,7 +170,7 @@ class TestRevolutCredentialAuthority(TransactionCase):
             [self.own_reference, self.own_method.id],
         )
         self.own_method.invalidate_recordset()
-        operation.action_revolut_authorize_legacy_credential()
+        operation.with_user(self.env.ref("base.user_admin")).action_revolut_authorize_legacy_credential()
         self.assertEqual(operation.credential_id.company_id, self.company)
         response = Mock()
         response.json.return_value = {"orders": []}
