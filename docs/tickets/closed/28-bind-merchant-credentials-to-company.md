@@ -111,3 +111,10 @@ historical/static audit. Focused authority/recovery, upgrade from pre-authority
 code, restart recovery and corrected browser/tip tests passed. Independent
 Standards and Spec re-reviews found no actionable implementation findings.
 Deployment and live acceptance remain with ticket 12.
+
+Final complete mocked acceptance for `19.0.1.10.3` passed: 356 tests on clean
+installation, 356 after upgrade and nine Restaurant tests, all with zero
+failures/errors. The 75 JavaScript tests also passed. Both original security
+findings remain independently assessed **fixed** after the corrections and
+fresh runtime verification. This records local acceptance; staging has not
+been upgraded by this re-audit.

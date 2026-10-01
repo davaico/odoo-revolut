@@ -295,11 +295,17 @@ class TestRevolutMutationBoundaries(CommonPosTest):
                     values.update(amount=10, amount_minor=1000)
                 elif mismatch == "currency":
                     values["currency_id"] = self.env.ref("base.EUR").id
-                elif mismatch == "company":
-                    values["company_id"] = self.other_company.id
                 elif mismatch == "cart":
                     snapshot["lines"][0]["qty"] = "2"
                 operation = self._operation(payload["uuid"], payment["uuid"], **values)
+                if mismatch == "company":
+                    # The create boundary now prevents this mismatch. Preserve
+                    # coverage of corrupt pre-upgrade settlement evidence.
+                    self.cr.execute(
+                        "UPDATE pos_revolut_payment_operation SET company_id = %s WHERE id = %s",
+                        [self.other_company.id, operation.id],
+                    )
+                    operation.invalidate_recordset()
                 payment["transaction_id"] = operation.revolut_payment_id
                 with TestCase.assertRaises(self, UserError):
                     self._rpc("pos.order", "create", [payload])

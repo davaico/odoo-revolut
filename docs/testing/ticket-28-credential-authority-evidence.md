@@ -180,3 +180,134 @@ documentation commit. Its only files are ticket 12 evidence and the ticket 12
 tracker record; the audited addon runtime is unchanged. Those earlier edits were
 preserved; this completion commit only updates the two current ticket 28 gate
 references in those files. Dated checkpoints remain historical records.
+
+## Owner-requested runtime re-audit — 2026-10-01
+
+Baseline: `61f4359482a6c1f0ffac0b31867bf7ff098d69d0`. Candidate addon version:
+`19.0.1.10.3`. This follow-up supersedes the earlier static completion audit's
+assessment of completeness; the Docker harness became available and exposed
+additional defects and test gaps. All provider calls remained mocked, with the
+outbound-Merchant guard and an isolated test project. No staging deployment,
+live Merchant request, credential rotation or physical-terminal acceptance was
+performed during this re-audit.
+
+### Implementation provenance
+
+The original implementation commit `5033eb707c84730767d689b8b75259ca12c1c22e`
+was created on 1 October 2026 at **13:11:45 Europe/Paris**. The earlier
+administrator write-ACL correction
+`d52a4079522b9fd56ff282e02d3ec91f92147e5d` followed at **13:49:04**.
+The configured Git author identity does not establish who performed the work.
+
+The local **T12** chat records the agent announcing ticket 28 implementation
+as a ticket 12 release gate at **12:51:58 Europe/Paris**, then starting a
+credential-binding sub-agent. The owner later objected that ticket 28 had not
+been requested in that chat. The ticket closure was reverted, but the committed
+implementation remained. This explains the mismatch between the open ticket
+and already integrated code. The present re-audit and corrections are explicitly
+requested by the owner.
+
+### Reproduced defects and corrections
+
+- A system administrator without a POS role could pass the historical
+  attestation group check but fail the operation read ACL. A new real-Odoo
+  regression reproduced that access error. The guarded action now reads and
+  writes with server authority only after the explicit administrator check;
+  exact original company/environment/reference validation remains mandatory.
+- Saving an unchanged, unbound legacy method as an administrator silently
+  created authority from its existing reference. A new regression reproduced
+  that implicit grant. Existing-method writes now require a separately
+  provisioned authority. Intentional administrator creation of a new method
+  remains an authorization decision, documented explicitly; it never binds
+  historical operations.
+- Connection and adapter requests accepted provider redirects. Regressions
+  reproduced acceptance of plausible JSON in 302/307/308 responses. Both paths
+  now disable redirects and reject redirect responses before consuming JSON.
+  Public errors remain sanitized and the unresolved operation keeps its state
+  and original references.
+- The shell attestation instructions omitted a transaction commit. They now
+  persist the reviewed binding explicitly, invalidate cached readback and
+  explain rollback on validation failure.
+
+The foreign-reference create/write/copy tests now assert the specific authority
+error after removing unrelated Odoo configuration blockers, and assert that
+authority inventory is unchanged rather than assuming a globally empty test
+database. Corrupt historical-row tests create valid records then deliberately
+alter their stored company using SQL, so they exercise the public recovery and
+settlement guards rather than failing prematurely at the new-create invariant.
+Receipt/browser fixtures now use their actual authorized method reference and
+explicitly provision the authority before converting an existing method.
+
+The global-rounding/tip failure was a stale shared ORM cache in the fixture,
+not a demonstrated production rounding defect. The test now invalidates the
+fixture's cache and calls public `sync_from_ui`, proving that the 100.00 rounded
+base plus 0.03 terminal tip is paid and settled at 100.03 with exactly two
+financial dispatches. This is an in-process public-entrypoint test, not a
+separate RPC or transaction. No production rounding behavior was changed.
+
+### Fresh executed verification
+
+| Check | Result |
+| --- | --- |
+| New administrator-without-POS-role regression before the correction | One access error, reproducing the defect |
+| Legacy unchanged-method regression before the correction | Failed: expected authority rejection was absent |
+| Redirect regression before the correction | Three failing subcases: 302, 307 and 308 |
+| Focused real-Odoo authority, configuration, reconciliation and refund suite after corrections | 80 tests, zero failures/errors |
+| Corrected historical corruption and receipt/configuration browser fixtures | 11 tests, zero failures/errors |
+| Complete terminal-tip class, including public rounded checkout | 23 tests, zero failures/errors |
+| `scripts/test-credential-authority-upgrade` from `09c982d` | Passed: unbound evidence and reservations preserved, zero HTTP before attestation, GET-only recovery afterward |
+| `scripts/test-restart-recovery` | Passed across three Odoo processes; original authority/references retained and no financial POST replay |
+| JavaScript lifecycle suite | 75 tests passed, zero failures/skips |
+| Final full clean addon installation | 356 tests, zero failures/errors |
+| Final full addon upgrade on the populated installation | 356 tests, zero failures/errors |
+| Restaurant auto-install/upgrade acceptance | 9 tests, zero failures/errors |
+| Python AST / XML parsing and shell syntax | 48 Python files, 11 XML files and the three test scripts passed |
+
+The first full run exposed the fixture problems above (356 tests, two failures
+and nine errors). After their correction, fresh installation passed all 356
+tests. The following upgrade exposed one remaining global inventory-count
+assumption; rejection assertions passed, and its fixture now compares the
+before/after count. Final complete acceptance and independent reviews are
+recorded separately from these failed diagnostic runs. The final clean install
+and full upgrade both passed with the corrected fixture.
+
+`scripts/test-addon --verify-install-upgrade` completed with exit status zero.
+The pinned Odoo browser runtime still emitted read-only websocket cursor and
+translation warnings; the test-result summaries above are zero failures/errors,
+not a claim of a warning-free server log. Local diagnostic logs are retained
+under `/tmp/ticket28-final-acceptance.log`, `/tmp/ticket28-final-focused.log`,
+`/tmp/ticket28-final-upgrade.log` and `/tmp/ticket28-final-restart.log`.
+
+During the final run, `main` advanced to `8d7463851886cf8e39de431e40f7e14265b2bb63`
+through a concurrent ticket-documentation commit. That commit also included the
+pending ticket 28 re-audit paragraph; it contains no addon runtime change. The
+current correction preserves that commit and adds the completed acceptance
+results. The tested addon source remains the candidate described above.
+
+### Independent final reviews
+
+Standards: zero hard findings against `AGENTS.md`, `CONTEXT.md` and tracker
+guidelines; no actionable optional smells. The reviewer confirmed that the
+fixture corrections preserve meaningful negative-path assertions and the
+administrator privilege elevation stays behind the explicit group check.
+
+Spec: zero actionable production findings, missing requirements or scope creep.
+The reviewer confirmed fixed provider origins, explicit authority for existing
+method writes and immutable original authority for financial attempts. A
+reporting correction clarifies that the rounded checkout test calls the public
+entrypoint in-process after cache invalidation; it does not claim a separate
+request transaction.
+
+Independent security-fix verification reassessed both original findings
+`csf_80f049f2c08527348e7c02a1` and `csf_5563e82d2fa05c79f4d2223a` as **fixed**.
+The verifier traced configuration, connection, payment, refund, report and
+historical recovery paths, then independently read the fresh install, upgrade,
+Restaurant, migration and restart results. No remaining original-path authority
+bypass was identified. These verdicts concern the reported company credential
+selection findings, not live-device acceptance or an exhaustive security audit.
+
+Deploy both addons from this reviewed candidate, upgrade `pos_revolut`, restart
+all workers and follow the explicit authority/attestation instructions in
+`docs/installation.md`. No secret rotation is required by this correction.
+Ticket 12 still owns staging deployment, physical-device checks and final
+financial reconciliation.

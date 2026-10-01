@@ -4,6 +4,8 @@ import os
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
+import requests
+
 from odoo import Command
 from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.tests.common import TransactionCase, new_test_user
@@ -80,11 +82,24 @@ class TestRevolutCredentialAuthority(TransactionCase):
     def test_restricted_manager_cannot_select_known_foreign_reference(self):
         foreign = self.other_reference
         method = self.own_method.with_user(self.manager)
-        with self.assertRaises(UserError), self.cr.savepoint():
+        authority_count = self.env["pos.revolut.merchant.credential"].sudo().search_count([])
+        # Exercise credential authorization after Odoo's open-session guard.
+        self.cr.execute(
+            "UPDATE pos_session SET state = 'closed' WHERE id = %s", [self.session.id]
+        )
+        self.session.invalidate_recordset()
+        message = "credential authority is not configured for this company"
+        with self.assertRaisesRegex(UserError, message), self.cr.savepoint():
             method.write({"revolut_secret_reference": foreign})
-        with self.assertRaises(UserError), self.cr.savepoint():
-            method.copy(default={"revolut_secret_reference": foreign})
-        with self.assertRaises(UserError), self.cr.savepoint():
+        with self.assertRaisesRegex(UserError, message), self.cr.savepoint():
+            method.copy(default={
+                "revolut_environment": "sandbox",
+                "revolut_location_id": self.other_method.revolut_location_id,
+                "revolut_terminal_id": self.other_method.revolut_terminal_id,
+                "revolut_fulfilment_type": "eat_in",
+                "revolut_secret_reference": foreign,
+            })
+        with self.assertRaisesRegex(UserError, message), self.cr.savepoint():
             self.env["pos.payment.method"].with_user(self.manager).create({
                 "name": "Forbidden import equivalent", "company_id": self.company.id,
                 "payment_method_type": "terminal", "use_payment_terminal": "revolut",
@@ -95,7 +110,9 @@ class TestRevolutCredentialAuthority(TransactionCase):
                 "revolut_secret_reference": foreign,
             })
         self.assertEqual(self.own_method.revolut_secret_reference, self.own_reference)
-        self.assertEqual(self.env["pos.revolut.merchant.credential"].sudo().search_count([]), 2)
+        self.assertEqual(
+            self.env["pos.revolut.merchant.credential"].sudo().search_count([]), authority_count,
+        )
 
     @patch.dict(os.environ, {
         "ODOO_REVOLUT_SECRET_COMPANY_A_TEST": "private-a",
@@ -198,6 +215,27 @@ class TestRevolutCredentialAuthority(TransactionCase):
                 "revolut_secret_reference": self.other_reference,
             })
 
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_system_administrator_without_pos_role_can_attest_history(self, request):
+        administrator = new_test_user(
+            self.env, login="merchant_authority_system_only",
+            groups="base.group_system", company_id=self.company.id,
+            company_ids=[Command.set([self.company.id])],
+        )
+        self.assertFalse(administrator.has_group("point_of_sale.group_pos_manager"))
+        operation = self._operation(self.own_method)
+        self.cr.execute(
+            "UPDATE pos_revolut_payment_operation SET credential_id = NULL WHERE id = %s",
+            [operation.id],
+        )
+        operation.invalidate_recordset()
+
+        operation.with_user(administrator).action_revolut_authorize_legacy_credential()
+
+        self.assertEqual(operation.credential_id.company_id, self.company)
+        self.assertEqual(operation.state, "unresolved")
+        request.assert_not_called()
+
     @patch.dict(os.environ, {
         "ODOO_REVOLUT_SECRET_COMPANY_A_TEST": "private-a",
         "ODOO_REVOLUT_SECRET_COMPANY_A_ROTATED": "rotated-a",
@@ -246,3 +284,49 @@ class TestRevolutCredentialAuthority(TransactionCase):
         )
         self.assertNotIn("revolut_secret_reference", browser_fields)
         self.assertNotIn("credential_id", browser_fields)
+
+    def test_saving_unchanged_legacy_method_does_not_authorize_its_reference(self):
+        authority = self.env["pos.revolut.merchant.credential"]._for_snapshot(
+            self.company.id, "sandbox", self.own_reference,
+        )
+        authority.unlink()
+        administrator_method = self.own_method.with_user(self.env.ref("base.user_admin"))
+        self.cr.execute(
+            "UPDATE pos_session SET state = 'closed' WHERE id = %s", [self.session.id]
+        )
+        self.session.invalidate_recordset()
+
+        with self.assertRaisesRegex(UserError, "credential authority is not configured"), self.cr.savepoint():
+            administrator_method.write({"revolut_secret_reference": self.own_reference})
+
+        self.assertFalse(self.env["pos.revolut.merchant.credential"].search([
+            ("secret_reference", "=", self.own_reference),
+        ]))
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_COMPANY_A_TEST": "private-a"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.get")
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_redirects_cannot_change_the_authorized_provider_origin(self, request, request_get):
+        operation = self._operation(self.own_method)
+        method = self.own_method.with_user(self.manager)
+        for status in (302, 307, 308):
+            with self.subTest(status=status):
+                response = requests.Response()
+                response.status_code = status
+                response.headers["Location"] = "https://foreign.invalid/merchant"
+                # Even plausible JSON must not make a redirect acceptable.
+                response._content = b'{"terminals": [], "orders": []}'
+                request_get.return_value = response
+                request.return_value = response
+
+                with self.assertRaisesRegex(UserError, "terminal check could not be completed"):
+                    method.action_revolut_check_connection()
+                self.assertIs(request_get.call_args.kwargs.get("allow_redirects"), False)
+
+                with self.assertRaisesRegex(UserError, "evidence could not be retrieved"):
+                    operation.with_user(self.manager).action_revolut_associate(
+                        order_reference=str(uuid4()),
+                    )
+                self.assertIs(request.call_args.kwargs.get("allow_redirects"), False)
+                self.assertEqual(operation.state, "unresolved")
+                self.assertFalse(operation.revolut_order_id)

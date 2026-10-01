@@ -43,7 +43,16 @@ environment under **Point of Sale → Revolut Merchant Authorities**. Verify the
 Merchant account and company outside Odoo before creating that record; the
 addon cannot infer account ownership from a variable name. A Point of Sale
 manager can then select only an authorized reference for the payment method's
-company. That name must begin with
+company. Creating a new Revolut payment method as a system administrator also
+registers its explicitly selected company, environment and reference as an
+authority if none exists. Treat that new-method setup as an authorization
+decision and independently verify the Merchant account first. Saving or
+importing changes to an existing method never provisions authority; create
+its reviewed authority separately before configuring, converting or rotating it.
+New-method creation also authorizes matching existing configurations; it never
+attests historical financial operations. POS-manager creation and all existing
+method changes require an already provisioned authority.
+That name must begin with
 `ODOO_REVOLUT_SECRET_` and contain only uppercase letters, digits, and
 underscores, for example:
 
@@ -102,13 +111,30 @@ Merchant before resuming POS. The administrator-only Odoo shell action for a
 reviewed historical record is:
 
 ```python
-env["pos.revolut.payment.operation"].browse(REVIEWED_OPERATION_ID).action_revolut_authorize_legacy_credential()
+operation = env["pos.revolut.payment.operation"].browse(REVIEWED_OPERATION_ID)
+operation.action_revolut_authorize_legacy_credential()
+env.cr.commit()
+operation.invalidate_recordset(["credential_id"])
+assert operation.sudo().credential_id
 ```
 
 It accepts only an exact company, environment and reference authority match;
 it performs no Merchant request or financial mutation. Leave any uncertain or
 inconsistent record unbound and escalate it for administrator investigation.
 No secret value belongs in the shell command, Odoo fields or review evidence.
+The action requires the System Administrator group; POS-manager membership is
+not required. The explicit commit above persists successful shell attestation.
+If validation fails, roll back the shell transaction and investigate before
+trying again. Do not commit or manually edit an uncertain binding.
+
+Version `19.0.1.10.3` corrects historical attestation for system administrators
+without a POS role and prevents existing-method saves from silently authorizing
+unreviewed references. It also rejects redirects on connection, payment and
+reconciliation HTTP, keeping requests on the selected provider origin. Deploy
+both addons from the reviewed release, upgrade `pos_revolut` and restart every
+Odoo worker before reopening POS. No secret rotation or automatic historical
+binding is performed. Existing unbound records still require the independent
+review and committed attestation above.
 
 Place **both** `addons/pos_revolut` and `addons/pos_revolut_restaurant` from the
 same reviewed release in one directory on Odoo's `addons_path`. Refresh the

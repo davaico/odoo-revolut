@@ -22,6 +22,13 @@ class TestRevolutManagerUi(TestPointOfSaleHttpCommon):
     TERMINAL_ID = "0e53f673-7705-473a-a263-89a3e7647c3d"
 
     def test_manager_configures_and_checks_terminal_in_browser(self):
+        # The manager converts an existing method in the tour; that update
+        # requires an independently provisioned administrator authority.
+        self.env["pos.revolut.merchant.credential"].create({
+            "company_id": self.env.company.id,
+            "environment": "sandbox",
+            "secret_reference": "ODOO_REVOLUT_SECRET_TEST_TERMINAL",
+        })
         payment_method = self.env["pos.payment.method"].create(
             {
                 "name": "Browser Revolut",

@@ -109,14 +109,10 @@ class PosPaymentMethod(models.Model):
                     "A Revolut payment method with recorded attempts cannot change company."
                 ))
         result = super().write(values)
-        changed_authority = bool({
-            "company_id", "use_payment_terminal", "revolut_environment",
-            "revolut_secret_reference",
-        }.intersection(values))
         for method in self.filtered(lambda item: item.use_payment_terminal == "revolut"):
-            method._revolut_configuration_credential(
-                provision=changed_authority and self.env.user.has_group("base.group_system")
-            )
+            # Saving an existing method must not attest legacy references.
+            # Provision its independently reviewed authority explicitly first.
+            method._revolut_configuration_credential()
         return result
 
     @api.constrains("use_payment_terminal", "revolut_secret_reference")
@@ -207,8 +203,11 @@ class PosPaymentMethod(models.Model):
                     "location_id": self.revolut_location_id,
                 },
                 timeout=REVOLUT_REQUEST_TIMEOUT_SECONDS,
+                allow_redirects=False,
             )
             response.raise_for_status()
+            if response.status_code in range(300, 400):
+                raise ValueError("Revolut redirects are not accepted")
             payload = response.json()
         except (requests.RequestException, ValueError):
             raise UserError(
@@ -661,9 +660,12 @@ class PosPaymentMethod(models.Model):
                 **({"Idempotency-Key": idempotency_key} if idempotency_key else {}),
             },
             timeout=REVOLUT_REQUEST_TIMEOUT_SECONDS,
+            allow_redirects=False,
             **kwargs,
         )
         response.raise_for_status()
+        if response.status_code in range(300, 400):
+            raise ValueError("Revolut redirects are not accepted")
         payload = response.json()
         if not isinstance(payload, dict):
             raise ValueError("invalid Revolut response")
