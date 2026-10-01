@@ -161,7 +161,7 @@ function chooseRefundAllocation(dialog, sources, paymentMethodId, line, currency
     const totals = [...new Set(sources.map((source) => source.return_total_minor))];
     // The server allocates the original collected base and tip. Native cash
     // rounding of a newly created return can differ from that checked total.
-    const otherPaid = line.pos_order_id.payment_ids.filter((payment) => payment !== line)
+    const otherPaid = line.pos_order_id.payment_ids.filter((payment) => payment.uuid !== line.uuid)
         .reduce((total, payment) => total + Math.round(-payment.amount * factor), 0);
     const maximumMinor = totals.length === 1 && Number.isSafeInteger(totals[0]) && totals[0] > 0
         ? Math.max(0, totals[0] - otherPaid)

@@ -161,7 +161,7 @@ registry.category("web_tour.tours").add("pos_revolut_global_rounded_tip_return",
         },
         {
             content: "Verified refund automatically completes native checkout with the exact frozen target",
-            trigger: ".payment-screen, .receipt-screen",
+            trigger: ".modal .modal-content, body:not(:has(.modal)) .payment-screen, .receipt-screen",
             async run() {
                 const deadline = performance.now() + 8000;
                 while (!document.querySelector(".receipt-screen") && performance.now() < deadline) {
