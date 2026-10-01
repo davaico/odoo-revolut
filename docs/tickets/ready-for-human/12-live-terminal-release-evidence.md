@@ -37,6 +37,8 @@ Controlled real-terminal acceptance establishes whether the documented addon is 
 - 22 — Recover a POS line after a terminal-busy rejection (closed after live retest)
 - 23 — Preserve payment polling through valid processing states (closed after full, split and two-card live retests)
 - 24 — Bound financial snapshot processing before numeric expansion (closed; final combined release evidence remains required)
+- 27 — Enforce the authorized order balance before terminal dispatch (closed locally and merged; updated release still needs guarded deployment and target-device acceptance)
+- 28 — Bind Revolut credential authority to the owning company (open; fix and migration evidence required before final release acceptance)
 
 ## Release gate update — 2026-09-25
 
@@ -364,3 +366,53 @@ terminal/order lock. The initial £0.02 attempt was provider-cancelled and had
 no underlying card payment. This closes [ticket 23](../closed/23-preserve-polling-through-payment-processing.md).
 Ticket 12 remains open for its other release gates and reconciliation of these
 two additional £0.01 card captures.
+
+## Read-only staging reconciliation — 2026-10-01
+
+At 10:48 UTC, the staging operation ledger had 15 verified/captured GBP minor
+units and five verified/completed one-unit refunds. The nominal retained card
+balance is therefore £0.10. All five completed refund operations still have
+no linked finalized POS return order or POS payment. The order table likewise
+has no completed negative GBP return corresponding to them. Resume those
+existing return drafts and verify their completed allocations before closing
+them; do not dispatch replacement provider refunds for these five sources.
+
+| Original Revolut operation | Original POS order | Captured | Completed refund | Remaining card balance |
+| --- | --- | ---: | ---: | ---: |
+| 4 | 261-2-000001 | £0.01 | £0.01 | £0.00 |
+| 10 | 261-2-000004 | £0.01 | £0.01 | £0.00 |
+| 11 | 261-2-000006 | £0.03 | £0.01 | £0.02 |
+| 14 | 261-2-000009 | £0.01 | £0.01 | £0.00 |
+| 16 | 261-2-000011 | £0.01 | £0.00 | £0.01 |
+| 17 | 261-2-000011 | £0.01 | £0.01 | £0.00 |
+| 19 | 261-2-000013 | £0.01 | £0.00 | £0.01 |
+| 20 | 261-2-000014 | £0.01 | £0.00 | £0.01 |
+| 27 | 263-2-000004 | £0.01 | £0.00 | £0.01 |
+| 35 | 261-2-000017 | £0.01 | £0.00 | £0.01 |
+| 36 | 261-2-000018 | £0.01 | £0.00 | £0.01 |
+| 38 | 261-2-000019 | £0.01 | £0.00 | £0.01 |
+| 39 | 261-2-000019 | £0.01 | £0.00 | £0.01 |
+
+The dedicated GBP Cash test method has three recorded £0.01 tenders on orders
+`261-2-000004`, `261-2-000015` and `261-2-000018`; their physical cash or
+test-drawer disposition remains to be recorded separately. The £0.10 retained
+card balance needs an owner-approved refund or retention decision by source,
+including the separate `263-2-000004` sale. This table supersedes the earlier
+dated £0.08 captured/£0.05 refunded/£0.03 retained checkpoint.
+
+## Latest merged release gate — 2026-10-01
+
+Current `main` includes ticket 27's reviewed `19.0.1.9.0` cart-authority and
+terminal-tip implementation. Its addon and test-script trees match the tested
+`88c88a5` candidate exactly; that candidate passed 340 fresh-install, 340
+upgrade and nine Restaurant tests plus its recorded delivered-artifact and
+concurrency checks. Staging still runs reviewed `97fcc2b` / `19.0.1.8.0`,
+which passed the live payment retests above but does not exercise ticket 27.
+Before final release acceptance, complete ticket 28's company-credential
+binding and migration, refresh affected combined checks on the resulting
+candidate, then perform a guarded staging upgrade when the POS is idle and
+financial blockers are clear. The target device still needs explicit zero-
+and nonzero-tip popup/report identity, amount-unit and latency observations,
+along with ticket 12's remaining Restaurant, failure/recovery and refund
+acceptance cases. The current live success of ticket 23 is not a live pass for
+the newer ticket 27 code.

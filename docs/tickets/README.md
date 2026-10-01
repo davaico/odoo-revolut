@@ -67,7 +67,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [09 — Issue partial refunds across original payment allocations](closed/09-partial-allocated-refunds.md) | `ready-for-agent` at closure | Closed | 07 (closed), 08 (closed) |
 | [10 — Install and upgrade a reviewed revision on staging](closed/10-staging-install-upgrade.md) | `ready-for-human` at closure | Closed | 03 (closed) |
 | [11 — Verify the complete addon on the target Odoo version](closed/11-target-version-acceptance.md) | `ready-for-agent` at closure | Closed | 06, 09, 10 |
-| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11, 16–24 (closed); final reconciliation and broader acceptance |
+| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11, 16–24 and 27 closed; 28 open; final reconciliation, updated-device and broader acceptance |
 | [13 — Deepen Return allocation](closed/13-deepen-return-allocation.md) | `ready-for-agent` at closure | Closed | None |
 | [14 — Deepen POS payment state](closed/14-deepen-pos-payment-state.md) | `ready-for-agent` at closure | Closed | None |
 | [15 — Deepen payment outcome application](closed/15-deepen-payment-outcome-application.md) | `ready-for-agent` at closure | Closed | None |
@@ -82,7 +82,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [24 — Bound financial snapshot processing before numeric expansion](closed/24-bound-financial-snapshot-processing.md) | `ready-for-agent` at closure | Closed | None for local validation and mocked implementation |
 | [25 — Download historical Revolut payment and refund receipts](closed/25-download-historical-payment-refund-receipts.md) | `ready-for-agent` at closure | Closed | None for local implementation and mocked verification |
 | [26 — Decide server-authorized cart and tip behavior](closed/26-decide-order-and-tip-authorization.md) | `ready-for-agent` at closure | Closed | None |
-| [27 — Enforce the authorized order balance before terminal dispatch](closed/27-enforce-authorized-terminal-allocation.md) | `ready-for-agent` at closure | Closed | 26 (closed and integrated); complete local fix verified, awaiting shared integration |
+| [27 — Enforce the authorized order balance before terminal dispatch](closed/27-enforce-authorized-terminal-allocation.md) | `ready-for-agent` at closure | Closed | 26 (closed); fix merged to main, staging/device acceptance remains ticket 12 |
 | [28 — Bind Revolut credential authority to the owning company](ready-for-agents/28-bind-merchant-credentials-to-company.md) | `ready-for-agent` | Open | None |
 | [29 — Determine the impact of concurrent payment status polling](ready-for-agents/29-investigate-concurrent-status-polling.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
 | [30 — Determine authorized access to shared POS sessions](ready-for-agents/30-investigate-shared-pos-session-authorization.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |

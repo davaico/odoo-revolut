@@ -426,3 +426,22 @@ without an underlying payment; no order or terminal lock remains. This
 completes [ticket 23](../tickets/closed/23-preserve-polling-through-payment-processing.md)'s
 live full/split/multiple-line criterion. Ticket 12 retains the wider release
 and test-money reconciliation requirements, including these two new captures.
+
+## Current staging balance and newer release boundary — 2026-10-01
+
+A read-only staging ledger check at 10:48 UTC found 15 captured GBP minor units
+across verified payment operations and five completed one-unit provider refunds.
+The remaining card balance is £0.10, allocated by source in the
+[ticket 12 reconciliation table](../tickets/ready-for-human/12-live-terminal-release-evidence.md#read-only-staging-reconciliation--2026-10-01).
+The five completed refunds have no linked finalized Odoo POS return/tender yet;
+their existing return drafts need completion without another provider refund.
+Three one-penny GBP Cash test tenders also need drawer/test disposition.
+
+The observed automatic full, Cash/Revolut split and two-Revolut-line receipts
+passed on staging `97fcc2b` / addon `19.0.1.8.0`. Current `main` has the
+newer ticket 27 cart-authority/tip code, matching the locally tested
+`88c88a5` addon tree but not yet deployed to staging. Ticket 28's credential
+binding is still open. Final candidate checks and guarded deployment, target-
+device tip/report observations, Restaurant and remaining failure/recovery and
+refund scenarios remain release gates; earlier test matrices are dated
+checkpoints rather than current completion claims.
