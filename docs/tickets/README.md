@@ -77,7 +77,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [19 — Enforce verified settlement and internal-operation permissions](closed/19-enforce-payment-server-boundaries.md) | `ready-for-agent` at closure | Closed | None |
 | [20 — Recover POS lines after a failed pre-payment lookup](closed/20-recover-undispatched-pos-lines.md) | `ready-for-agent` at closure | Closed | None |
 | [21 — Keep reconciliation progressing after malformed provider responses](closed/21-isolate-reconciliation-failures.md) | `ready-for-agent` at closure | Closed | None |
-| [22 — Recover a POS line after a terminal-busy rejection](ready-for-human/22-recover-terminal-busy-rejection.md) | `ready-for-human` | Open | Reviewed fix merged; live two-browser retest after financial/deployment preflight |
+| [22 — Recover a POS line after a terminal-busy rejection](closed/22-recover-terminal-busy-rejection.md) | `ready-for-human` at closure | Closed | None; controlled two-browser no-card retest passed on staging |
 | [23 — Preserve payment polling through valid processing states](ready-for-human/23-preserve-polling-through-payment-processing.md) | `ready-for-human` | Open | Reviewed fix merged; full/split/multiple-card live retests after financial/deployment preflight |
 | [24 — Bound financial snapshot processing before numeric expansion](closed/24-bound-financial-snapshot-processing.md) | `ready-for-agent` at closure | Closed | None for local validation and mocked implementation |
 | [25 — Download historical Revolut payment and refund receipts](closed/25-download-historical-payment-refund-receipts.md) | `ready-for-agent` at closure | Closed | None for local implementation and mocked verification |

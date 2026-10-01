@@ -135,3 +135,8 @@ Pre/post-quiescence financial blocker checks passed; Odoo is active and serves
 HTTP 200 from the new release. The operator could not complete the Cash smoke
 or full/split/multiple-card automatic-status retests in this session. The live
 criterion remains unchecked; see [ticket 12's deployment checkpoint](12-live-terminal-release-evidence.md#guarded-staging-upgrade--2026-10-01).
+
+2026-10-01: Ticket 22's separate controlled two-browser no-card busy/recovery
+retest passed and that ticket closed. The Cash smoke also passed. Neither
+exercises this ticket's real-card processing-to-capture path; the full and
+split/multiple-card automatic-status retests remain open.

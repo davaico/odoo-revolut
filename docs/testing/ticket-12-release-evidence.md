@@ -258,7 +258,7 @@ addon trees and deployment/test tooling match the tested revision; record that
 comparison before deployment.
 
 Open release gaps: remaining L02–L10 subcases and complete test-money
-reconciliation; [terminal-busy recovery](../tickets/ready-for-human/22-recover-terminal-busy-rejection.md)
+reconciliation; [terminal-busy recovery](../tickets/closed/22-recover-terminal-busy-rejection.md)
 and [automatic payment-status handling](../tickets/ready-for-human/23-preserve-polling-through-payment-processing.md);
 the Sandbox simulator issue for required non-production acceptance; and final
 guidance based on physical-terminal observations. Before a live addon
@@ -373,3 +373,18 @@ explanation for the sequential attempts but not a precise click count. They
 removed the cancelled second-browser payment line; no payment line remained
 and £0.01 was still due. The one-dispatch-per-explicit-Resume criterion
 remains open for a controlled observation.
+
+## Controlled ticket 22 live recovery — 2026-10-01
+
+The second two-browser no-card run passed the physical terminal-busy recovery
+criterion on staging revision `97fcc2b`. A first-browser £0.01 GBP request
+held the terminal. The second browser showed explicit busy/no-dispatch feedback
+and disabled Validate; no second-order operation was created. The first
+request was provider-cancelled and its lock cleared. One second-browser Check
+status produced no operation. One Resume on the same visible line produced
+exactly one pending £0.01 GBP operation and terminal prompt. The operator
+cancelled it without a card. The ledger recorded it provider-cancelled and
+retry-safe, with no subsequent operation or lock. This supersedes the earlier
+ambiguous multiple-Resume observation and [closes ticket 22](../tickets/closed/22-recover-terminal-busy-rejection.md).
+It does not satisfy ticket 23's full/split/multiple-card automatic-payment
+criterion or ticket 12's remaining release gates.

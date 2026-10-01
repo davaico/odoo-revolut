@@ -34,7 +34,7 @@ Controlled real-terminal acceptance establishes whether the documented addon is 
 - 19 — Enforce verified settlement and internal-operation permissions
 - 20 — Recover POS lines after a failed pre-payment lookup
 - 21 — Keep reconciliation progressing after malformed provider responses
-- 22 — Recover a POS line after a terminal-busy rejection (reviewed local fix; live retest open)
+- 22 — Recover a POS line after a terminal-busy rejection (closed after live retest)
 - 23 — Preserve payment polling through valid processing states (reviewed local fix; live retest open)
 - 24 — Bound financial snapshot processing before numeric expansion (closed; final combined release evidence remains required)
 
@@ -131,7 +131,7 @@ allocations, selected cancellation/retry/reload paths, refund caps and locks,
 and both browser terminal guards have passing subcases. Initial automatic
 status handling failed on four later operations, and an independent browser
 remained stuck after a definitive busy-terminal rejection. Reports
-[22](../ready-for-human/22-recover-terminal-busy-rejection.md) and
+[22](../closed/22-recover-terminal-busy-rejection.md) and
 [23](../ready-for-human/23-preserve-polling-through-payment-processing.md) preserve
 these release findings and their mocked characterizations without claiming a
 fix or deployment. They are ready for local work; reviewed fixes/retests are
@@ -309,3 +309,20 @@ explains the successive attempts without establishing a one-click-to-one-
 operation count. Removing the cancelled second-browser Revolut payment line
 left no payment line and the order still showed £0.01 due. The controlled
 single-Resume count and ticket 23's card-payment polling retests remain open.
+
+## Controlled terminal-busy recovery passed — 2026-10-01
+
+A second no-card, two-browser run resolved the preceding ambiguous retry
+sequence. While the first browser's £0.01 GBP request held the terminal, the
+second browser showed clear **Terminal busy — no payment request sent**
+feedback, £0.01 due and disabled Validate. Read-only ledger checks found no
+new second-order operation. Cancelling the first request produced provider
+state `cancelled` and released the terminal lock. The second browser's one
+**Check status** call created no operation. One subsequent **Resume** on its
+same visible line created exactly one pending £0.01 GBP operation and displayed
+the payment on the terminal. The operator presented no card and cancelled it;
+the ledger recorded provider state `cancelled`, no further operation and no
+remaining lock. This passes ticket 22's controlled live criterion, which is
+now [closed](../closed/22-recover-terminal-busy-rejection.md). Ticket 23's
+full and split/multiple-card automatic-status retests and ticket 12's other
+release requirements remain open.

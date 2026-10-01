@@ -74,7 +74,7 @@ clearance or fixed provider completion time is inferred.
   cancellations/retries, selected reload paths, refund caps/amount locking,
   and same-browser/independent-browser terminal guards have narrow passing
   evidence. Other subcases and all final refund settlement remain open.
-- [Ticket 22](../tickets/ready-for-human/22-recover-terminal-busy-rejection.md)
+- [Ticket 22](../tickets/closed/22-recover-terminal-busy-rejection.md)
   records the terminal-busy rejection shown as a false communication failure,
   followed by an unrecoverable Check status loop with no dispatched payment.
 - [Ticket 23](../tickets/ready-for-human/23-preserve-polling-through-payment-processing.md)
