@@ -2013,7 +2013,13 @@ class TestRevolutRestaurantContext(TransactionCase):
             "payment_method_ids": [Command.link(cls.method.id)],
             "auto_validate_terminal_payment": True,
         })
-        cls.config.write({"module_pos_restaurant": True})
+        dine_in = cls.env.ref("pos_restaurant.pos_takein_preset")
+        takeout = cls.env.ref("pos_restaurant.pos_takeout_preset")
+        cls.config.write({
+            "module_pos_restaurant": True, "use_presets": True,
+            "default_preset_id": dine_in.id,
+            "available_preset_ids": [Command.link(dine_in.id), Command.link(takeout.id)],
+        })
         cls.product = native_products(cls.env, cls.config)
         cls.session = cls.env["pos.session"].create({
             "config_id": cls.config.id, "state": "opened",
@@ -2054,7 +2060,8 @@ class TestRevolutRestaurantContext(TransactionCase):
             self.config.currency_id.id, False, snapshot,
         )
 
-    def test_verified_draft_keeps_order_identity_across_table_change(self):
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_verified_draft_keeps_order_identity_across_table_change(self, request):
         other_table = self.env["restaurant.table"].create({
             "table_number": 2, "floor_id": self.table.floor_id.id, "seats": 2,
         })
@@ -2131,9 +2138,12 @@ class TestRevolutRestaurantContext(TransactionCase):
         self.assertEqual(draft.table_id, other_table)
         self.assertEqual(operation.pos_order_id, draft)
         self.assertEqual(operation.pos_payment_id.uuid, line_uuid)
-        calls_before_edit = request.call_count
-        with self.assertRaisesRegex(UserError, "contents cannot be changed"):
+        with self.assertRaisesRegex(UserError, "order changed while Revolut payment"):
             self.env["pos.order"].sync_from_ui([edited])
+        draft.invalidate_recordset()
+        self.assertEqual(draft.table_id, other_table)
+        self.assertEqual(draft.lines.qty, 1)
+        request.assert_not_called()
 
     @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_RESTAURANT_TEST": "test-only"})
     @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")

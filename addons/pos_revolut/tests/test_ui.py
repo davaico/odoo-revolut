@@ -467,6 +467,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                 return response({
                     "id": self.ORDER_ID, "currency": currency, "location_id": self.LOCATION_ID,
                     "type": "payment", "state": "completed", "amount": gross_minor,
+                    "refunded_amount": 0,
                     "payments": [{"id": self.PAYMENT_ID, "state": "captured", "amount": gross_minor}],
                 })
             if refund and method == "POST" and url.endswith("/refund"):
