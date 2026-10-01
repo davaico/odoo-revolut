@@ -8,10 +8,12 @@ rollout. The procedures below have mocked runtime coverage; the checklist
 records the remaining checks on actual devices.
 
 This release supports cash plus Revolut and multiple Revolut payment lines on
-one POS order. Odoo persists each line's operation before Merchant API dispatch,
-sends only that line's amount to its configured terminal, and verifies the
-underlying payment as `captured` or `completed`. A partial payment leaves the
-order open; normal automatic checkout runs only after the full order is paid.
+one POS order. Version `19.0.1.10.2` saves and prices the native draft on the
+server, authorizes its base balance and tender plan, then reserves each card
+allocation before Merchant API dispatch. It verifies the captured payment and
+an authenticated payment report with an explicit tip amount, including zero.
+A partial payment leaves the order open; automatic checkout runs only after
+the full authorized base and all proven tips are paid.
 
 ## Requirements
 
@@ -35,8 +37,13 @@ Revolut defines retail as restaurant consumption.
 
 ## Provision the secret
 
-The addon never stores a Merchant secret in Odoo. A Point of Sale manager stores
-only the name of an environment variable. That name must begin with
+The addon never stores a Merchant secret in Odoo. A system administrator first
+authorizes the environment-variable reference for its owning company and
+environment under **Point of Sale → Revolut Merchant Authorities**. Verify the
+Merchant account and company outside Odoo before creating that record; the
+addon cannot infer account ownership from a variable name. A Point of Sale
+manager can then select only an authorized reference for the payment method's
+company. That name must begin with
 `ODOO_REVOLUT_SECRET_` and contain only uppercase letters, digits, and
 underscores, for example:
 
@@ -50,10 +57,15 @@ keep it outside this repository, owned by the Odoo service administrator, mode
 `0600`, and on encrypted storage. Never put the value in `odoo.conf`, an Odoo
 field, a command line, source control, or support logs.
 
-For rotation, replace the value behind the same reference, restart every Odoo
-worker so it receives the new environment, run **Check Connection**, and only
-then revoke the old key. If a new reference is required, provision it first,
-change the payment method, verify it, and then remove the old reference.
+For a key rotation within the same Merchant account, replace the value behind
+the same reference, restart every Odoo worker, run **Check Connection**, and
+only then revoke the old key. To change Merchant accounts or reference names,
+provision a new server variable and administrator authority record first,
+then change the payment method and verify it. Keep the old reference available
+while its historical payments or refunds still need reconciliation. Existing
+attempts retain their original authorized reference; changing the current POS
+method never redirects them to the new Merchant account. An authority record
+cannot be reassigned to another company or environment; create a new one.
 
 Sandbox and production credentials are independent. The addon maps the selected
 environment to these hosts; managers cannot enter a custom host:
@@ -73,6 +85,30 @@ not repeatedly create test intents while the provider issue remains unresolved.
 See the [terminal contract record](revolut-terminal-contract-2026-09-22.md).
 
 ## Install or upgrade
+
+Version `19.0.1.10.0` adds company-scoped Merchant authority records. On an
+existing database the upgrade deliberately creates **no** authority records
+from old payment methods or attempts. Those old references may have been
+misassigned; all unreviewed methods fail configuration and connection checks,
+and unreviewed attempts cannot contact Merchant. Their external references,
+outcomes and financial reservations remain intact. Before reopening POS, a
+system administrator must verify each existing variable's Merchant account and
+company, create the corresponding authority record, and explicitly attest each
+historical payment operation that still needs provider reconciliation or
+refunds. Do not start replacement payments or force-complete an uncertain
+attempt during this review. After attestation, keep the original variable
+available for recovery and verify the exact existing order and payment in
+Merchant before resuming POS. The administrator-only Odoo shell action for a
+reviewed historical record is:
+
+```python
+env["pos.revolut.payment.operation"].browse(REVIEWED_OPERATION_ID).action_revolut_authorize_legacy_credential()
+```
+
+It accepts only an exact company, environment and reference authority match;
+it performs no Merchant request or financial mutation. Leave any uncertain or
+inconsistent record unbound and escalate it for administrator investigation.
+No secret value belongs in the shell command, Odoo fields or review evidence.
 
 Place **both** `addons/pos_revolut` and `addons/pos_revolut_restaurant` from the
 same reviewed release in one directory on Odoo's `addons_path`. Refresh the
@@ -120,12 +156,23 @@ As a Point of Sale administrator:
    `eat_in` or `take_away` for each payment. Delivery and unknown no-table
    presets are guarded because the terminal contract does not define their
    mapping.
-7. Enter the environment-variable name, not its value, in **Revolut Secret
-   Reference** and save.
+7. Have a system administrator verify and authorize the company's Merchant
+   reference. Enter that environment-variable name, not its value, in
+   **Revolut Secret Reference** and save.
 8. Select **Check Connection**.
 9. Add the payment method to the intended POS configuration and keep
    **Automatically validate terminal payments** enabled. The server rejects a
    payment start when this standard Odoo setting is disabled.
+10. Configure Odoo's **Tip Product**. Its taxes and Product Price precision must
+    represent collected currency minor units exactly; preparation checks this
+    before dispatch. The standard untaxed tip product is supported. Enable the
+    customer tip prompt on the physical terminal as required by your setup.
+11. Disable Restaurant **Add tips after payment** for this configuration.
+    Revolut tips are selected on the terminal during the payment. Remove any
+    unexposed Odoo-entered tip before selecting Revolut to avoid two prompts.
+12. Confirm the server credential can create, poll and download Merchant
+    `payments_report` runs. Report availability and terminal identity/units
+    still require the ticket 12 device acceptance checks.
 
 The check performs only `GET /api/terminals` with the location and
 `operation_mode=pos`. It reports success only when the configured terminal is
@@ -134,23 +181,56 @@ the payment method's company are rejected on the server.
 
 ## Payment behavior and current limitations
 
-When the cashier selects Revolut, the browser sends only the order UUID,
-payment-line UUID, amount, currency, session, and payment-method identifier to
-Odoo. The Merchant credential, terminal ID, location, fulfilment and all
-Merchant API calls stay on the Odoo server. Odoo uses bounded 10-second HTTP
-requests and converts the amount using the currency exponent, independently of
-POS cash rounding.
+When the cashier selects Revolut, the browser synchronizes the draft and asks
+Odoo to prepare its exact order ID/UUID and tender plan. The server derives
+permitted native prices and taxes, records an immutable cart version and admits
+only the named remaining base allocation. A changed price/tax calculation is
+shown for review; use **Resume** after reviewing the canonical cart. Restricted
+price overrides require a POS manager to open the saved order in their own
+Odoo session and choose **Approve Revolut cart**, then the cashier resumes.
+An employee selection or browser confirmation cannot grant this approval.
+
+Unexposed preparation expires after five minutes. Resume prepares a current
+version. Once a payment is exposed, the approved base stays frozen; expiry or
+refund does not restore card capacity. Cash corrections and the tender ledger
+are saved atomically during preparation of a subsequent card allocation.
+
+An exposed cart retains its original tip product and checked tax/rounding/price
+precision policy. Changing the configured tip product applies to new carts.
+If the original effective tax policy changes or price precision is reduced,
+restore the original policy before reconciling or sending a remaining card
+allocation; captured money stays reserved while that conflict is unresolved.
+
+The Merchant credential, terminal ID, location, fulfilment and all Merchant API
+calls stay on the Odoo server. Requests have bounded 10-second HTTP timeouts.
+Base cash rounding is frozen separately from terminal tips: an approved 10.00
+base plus a collected 0.03 tip settles at 10.03.
 
 The successful flow is:
 
-1. persist the immutable local operation;
-2. verify that the configured terminal is online, at the expected location and
+1. save, price and authorize the base cart and tender allocation;
+2. reserve the immutable local operation;
+3. verify that the configured terminal is online, at the expected location and
    in Pay at Counter mode;
-3. durably claim and create the Revolut order;
-4. durably claim and create the terminal payment intent;
-5. poll the intent, then the underlying payment; and
-6. let Odoo's standard automatic terminal-payment validation complete the sale
-   only after the payment is `captured` or `completed`.
+4. durably claim and create the Revolut order and terminal payment intent;
+5. poll the intent and underlying payment, then retrieve the authenticated
+   payment report to prove the gross/base/tip decomposition;
+6. project the native tip line and gross tender once, then let Odoo's automatic
+   terminal-payment validation complete a fully paid sale.
+
+After capture, a delayed or unavailable report displays **Payment received —
+awaiting terminal tip details**. Keep the original order and payment line; use
+**Check status** or manager reconciliation. Background reconciliation can
+finish the report later. Do not create another charge. Full refunds include
+the proven tip; partial refunds select base and tip components separately.
+
+Upgrade from earlier versions does not invent authorizations or zero-tip
+evidence for old operations. Historical verified/uncertain attempts remain
+recoverable with their original references, receipts and refund limits. They
+cannot receive another new allocation without audited manager reconciliation.
+Safe failed drafts can be prepared under the new rules. Deliver both addons,
+run the stopped-service module update, and reopen POS to load the new assets.
+No credential is stored in Odoo and no automatic credential rotation occurs.
 
 Intent completion or payment authorisation is not success. Declined, failed and
 cancelled results remain explicit. A timeout, malformed/lost response, unknown
@@ -478,8 +558,9 @@ ordinary cashiers, managers and restricted company contexts:
 ./scripts/test-addon --test-tags /pos_revolut:TestRevolutMutationBoundaries,/pos_revolut:TestRevolutRefund,/pos_revolut:TestRevolutAuthorization
 ```
 
-Run the separate-process recovery check to start a payment, stop Odoo, and
-reconcile the same persisted attempt from a fresh Odoo process:
+Run the three-process recovery check to prepare and start payments, restart
+with captured payments awaiting tip reports, then restart again to verify the
+reports and project the same operations exactly once:
 
 ```bash
 ./scripts/test-restart-recovery
@@ -559,6 +640,10 @@ provider references, and idempotency key. **Check status** and the scheduled
 reconciler read provider status; background reconciliation does not finish the
 POS return by itself. Resume the unchanged return to complete it after a late
 success. Failed refunds remain visible and cannot finish that return.
+If the register was closed after the refund was reserved, reopen that same
+register and load the existing return. A verified refund can finalize there
+only after the original session is closed and the return contents and tender
+still match the reserved allocation. Do not create a new refund.
 
 If a response was lost before the refund ID was saved, reconciliation searches
 by the stored merchant reference, then validates the refund's original order,

@@ -68,6 +68,57 @@ class PosPaymentMethod(models.Model):
     def _get_payment_terminal_selection(self):
         return super()._get_payment_terminal_selection() + [("revolut", "Revolut")]
 
+    def _revolut_configuration_credential(self, *, provision=False):
+        self.ensure_one()
+        configuration = self.sudo()
+        credentials = self.env["pos.revolut.merchant.credential"]
+        if provision:
+            if not self.env.user.has_group("base.group_system"):
+                raise AccessError(_("Only a system administrator can authorize Revolut credentials."))
+            existing = credentials.sudo().search([
+                ("secret_reference", "=", configuration.revolut_secret_reference),
+            ], limit=1)
+            if not existing:
+                credentials.create({
+                    "company_id": configuration.company_id.id,
+                    "environment": configuration.revolut_environment,
+                    "secret_reference": configuration.revolut_secret_reference,
+                })
+        return credentials._for_snapshot(
+            configuration.company_id.id,
+            configuration.revolut_environment,
+            configuration.revolut_secret_reference,
+        )
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        methods = super().create(vals_list)
+        for method in methods.filtered(lambda item: item.use_payment_terminal == "revolut"):
+            method._revolut_configuration_credential(
+                provision=self.env.user.has_group("base.group_system")
+            )
+        return methods
+
+    def write(self, values):
+        if "company_id" in values:
+            moved = self.filtered(lambda method: method.company_id.id != values["company_id"])
+            if moved and self.env["pos.revolut.payment.operation"].sudo().search_count([
+                ("payment_method_id", "in", moved.ids),
+            ]):
+                raise ValidationError(_(
+                    "A Revolut payment method with recorded attempts cannot change company."
+                ))
+        result = super().write(values)
+        changed_authority = bool({
+            "company_id", "use_payment_terminal", "revolut_environment",
+            "revolut_secret_reference",
+        }.intersection(values))
+        for method in self.filtered(lambda item: item.use_payment_terminal == "revolut"):
+            method._revolut_configuration_credential(
+                provision=changed_authority and self.env.user.has_group("base.group_system")
+            )
+        return result
+
     @api.constrains("use_payment_terminal", "revolut_secret_reference")
     def _check_revolut_secret_reference(self):
         for payment_method in self.filtered(
@@ -137,11 +188,8 @@ class PosPaymentMethod(models.Model):
         if self.use_payment_terminal != "revolut":
             raise UserError(_("This payment method does not use Revolut."))
 
-        if not REVOLUT_SECRET_REFERENCE_PATTERN.fullmatch(
-            self.revolut_secret_reference or ""
-        ):
-            raise UserError(_("The Revolut secret reference is invalid."))
-        secret = os.environ.get(self.revolut_secret_reference)
+        credential = self._revolut_configuration_credential()
+        secret = os.environ.get(credential.secret_reference)
         if not secret:
             raise UserError(
                 _("The Revolut credential is not available on the Odoo server.")
@@ -201,7 +249,8 @@ class PosPaymentMethod(models.Model):
         }
 
     def _validate_revolut_pos_request(
-        self, session_id, order_uuid, payment_line_uuid, amount, currency_id
+        self, session_id, order_uuid, payment_line_uuid, amount, currency_id,
+        require_current_credential=True,
     ):
         self.ensure_one()
         if not self.env.user.has_group("point_of_sale.group_pos_user"):
@@ -232,8 +281,10 @@ class PosPaymentMethod(models.Model):
             payment_line_uuid = str(UUID(payment_line_uuid))
         except (TypeError, ValueError, AttributeError):
             raise UserError(_("The POS payment identifiers are invalid.")) from None
-        if not os.environ.get(self.sudo().revolut_secret_reference or ""):
-            raise UserError(_("The Revolut credential is not available on the Odoo server."))
+        if require_current_credential:
+            credential = self._revolut_configuration_credential()
+            if not os.environ.get(credential.secret_reference):
+                raise UserError(_("The Revolut credential is not available on the Odoo server."))
         amount_decimal = self.env["pos.revolut.payment.operation"].normalize_amount(
             currency, amount
         )[0]
@@ -301,6 +352,7 @@ class PosPaymentMethod(models.Model):
             "terminal_id": configuration.revolut_terminal_id,
             "fulfilment_type": fulfilment_type,
             "secret_reference": configuration.revolut_secret_reference,
+            "credential_id": self._revolut_configuration_credential().id,
             "blocking_order_key": f"{self.company_id.id}:{order_uuid}",
             "financial_snapshot": snapshot,
             "blocking_terminal_key": (
@@ -322,7 +374,11 @@ class PosPaymentMethod(models.Model):
                 owned_env = api.Environment(cursor, self.env.uid, dict(self.env.context))
                 operations = owned_env["pos.revolut.payment.operation"].sudo()
                 try:
+                    # Session closure and the first reservation must conflict
+                    # even when no operation existed in the closing snapshot.
+                    cursor.execute("UPDATE pos_session SET write_date = write_date WHERE id = %s", [values['pos_session_id']])
                     operations._lock_order(values["company_id"], values["order_uuid"])
+                    from .cart_authorization import _authority_mutation
                     if owned_env["pos.revolut.refund.operation"].sudo().search_count([
                         ("company_id", "=", values["company_id"]), ("order_uuid", "=", values["order_uuid"]),
                     ]):
@@ -350,6 +406,7 @@ class PosPaymentMethod(models.Model):
                             or operation.currency_id.id != values["currency_id"]
                             or operation.pos_session_id.id != values["pos_session_id"]
                             or operation.payment_method_id.id != self.id
+                            or operation.authorization_id.id != values.get("authorization_id")
                             or (
                                 operation.financial_snapshot
                                 and operation.financial_snapshot != values["financial_snapshot"]
@@ -374,6 +431,18 @@ class PosPaymentMethod(models.Model):
                             "previous_operation_id": previous.id,
                             "attempt_number": previous.attempt_number + 1,
                         }
+                    authority = owned_env["pos.revolut.cart.authorization"].sudo().browse(
+                        values.get("authorization_id")
+                    ).exists()
+                    if not authority or (
+                        authority.company_id.id != values["company_id"]
+                        or authority.order_uuid != values["order_uuid"]
+                        or authority.session_id.id != values["pos_session_id"]
+                        or authority.currency_id.id != values["currency_id"]
+                    ):
+                        raise UserError(_("Prepare the exact original cart before payment."))
+                    with _authority_mutation(owned_env):
+                        values = {**values, **authority._admit(owned_env["pos.payment.method"].browse(self.id), values)}
                     # Earlier verified lines release the order lock so another
                     # allocation can start, but their cart and POS ownership
                     # remain bound to the original order.
@@ -450,6 +519,7 @@ class PosPaymentMethod(models.Model):
                 "terminal_id": operation.terminal_id,
                 "fulfilment_type": operation.fulfilment_type,
                 "secret_reference": operation.secret_reference,
+                "credential_operation_id": operation.id,
                 "amount_minor": operation.amount_minor,
                 "currency_code": operation.currency_code,
                 "order_id": operation.revolut_order_id,
@@ -467,52 +537,56 @@ class PosPaymentMethod(models.Model):
         registry = self.env.registry
         context = dict(self.env.context)
         user_id = self.env.uid
-        with registry.cursor() as cursor:
-            try:
-                owned_env = api.Environment(cursor, user_id, context)
-                cursor.execute(
-                    "SELECT id FROM pos_revolut_payment_operation "
-                    "WHERE id = %s FOR UPDATE",
-                    [operation_id],
-                )
-                operation = owned_env["pos.revolut.payment.operation"].sudo().browse(
-                    operation_id
-                )
-                if (action == "create_order" and (
-                    operation.state != "created" or operation.revolut_order_id
-                )) or (action == "create_intent" and (
-                    operation.state != "order_created"
-                    or not operation.revolut_order_id
-                    or operation.revolut_payment_intent_id
-                )) or (action == "cancel_intent" and (
-                    operation.state != "pending"
-                    or operation.provider_state != "pending"
-                    or operation.revolut_payment_id
-                )):
-                    return False
-                dispatches = owned_env["pos.revolut.payment.dispatch"].sudo()
-                if dispatches.search_count(
-                    [("operation_id", "=", operation_id), ("action", "=", action)]
-                ):
-                    cursor.commit()
-                    return False
+        for attempt in range(3):
+            with registry.cursor() as cursor:
                 try:
-                    with cursor.savepoint():
-                        dispatches.create(
-                            {"operation_id": operation_id, "action": action}
-                        )
-                except IntegrityError:
-                    return False
-                if action != "cancel_intent":
-                    operation.write({"state": {
-                        "create_order": "dispatching_order",
-                        "create_intent": "dispatching_intent",
-                    }[action]})
-                cursor.commit()
-            except SerializationFailure:
-                cursor.rollback()
-                return False
-        return True
+                    owned_env = api.Environment(cursor, user_id, context)
+                    locked_operation = owned_env["pos.revolut.payment.operation"].sudo().browse(operation_id)
+                    locked_operation._lock_order(locked_operation.company_id.id, locked_operation.order_uuid)
+                    cursor.execute(
+                        "SELECT id FROM pos_revolut_payment_operation "
+                        "WHERE id = %s FOR UPDATE",
+                        [operation_id],
+                    )
+                    operation = owned_env["pos.revolut.payment.operation"].sudo().browse(
+                        operation_id
+                    )
+                    if (action == "create_order" and (
+                        operation.state != "created" or operation.revolut_order_id
+                    )) or (action == "create_intent" and (
+                        operation.state != "order_created"
+                        or not operation.revolut_order_id
+                        or operation.revolut_payment_intent_id
+                    )) or (action == "cancel_intent" and (
+                        operation.state != "pending"
+                        or operation.provider_state != "pending"
+                        or operation.revolut_payment_id
+                    )):
+                        return False
+                    dispatches = owned_env["pos.revolut.payment.dispatch"].sudo()
+                    if dispatches.search_count(
+                        [("operation_id", "=", operation_id), ("action", "=", action)]
+                    ):
+                        cursor.commit()
+                        return False
+                    try:
+                        with cursor.savepoint():
+                            dispatches.create(
+                                {"operation_id": operation_id, "action": action}
+                            )
+                    except IntegrityError:
+                        return False
+                    if action != "cancel_intent":
+                        operation.write({"state": {
+                            "create_order": "dispatching_order",
+                            "create_intent": "dispatching_intent",
+                        }[action]})
+                    cursor.commit()
+                except SerializationFailure:
+                    cursor.rollback()
+                    continue
+            return True
+        return False
 
     def _apply_revolut_observation_owned(self, operation_id, kind, evidence=None):
         # Retry only local evidence application. Provider I/O and financial
@@ -531,8 +605,49 @@ class PosPaymentMethod(models.Model):
                 if attempt == 2:
                     raise
 
+    def _revolut_authorized_operation_secret(self, operation):
+        """Resolve the frozen operation authority before every provider request."""
+        self.ensure_one()
+        operation_id = operation.get("credential_operation_id")
+        def authorized_reference(source):
+            credential = source.credential_id if source else False
+            if (not source or source.payment_method_id.id != self.id
+                    or source.company_id != self.company_id or not credential
+                    or credential.company_id != source.company_id
+                    or credential.environment != source.environment
+                    or credential.secret_reference != source.secret_reference
+                    or any(operation.get(key) != source[key] for key in (
+                        "environment", "secret_reference"
+                    ))):
+                raise UserError(_(
+                    "Revolut credential authority for this attempt is unverified. "
+                    "Ask a system administrator to review and authorize its original Merchant account."
+                ))
+            return credential.secret_reference
+
+        source = self.env["pos.revolut.payment.operation"].sudo().browse(
+            operation_id if type(operation_id) is int else 0
+        ).exists()
+        if source:
+            reference = authorized_reference(source)
+        else:
+            # A payment/refund reservation commits through an owned cursor.
+            # The caller's repeatable-read snapshot may predate that commit.
+            with self.env.registry.cursor() as cursor:
+                owned_env = api.Environment(cursor, self.env.uid, dict(self.env.context))
+                source = owned_env["pos.revolut.payment.operation"].sudo().browse(
+                    operation_id if type(operation_id) is int else 0
+                ).exists()
+                reference = authorized_reference(source)
+        # The mapping can only be created or changed by a system administrator;
+        # the frozen operation never follows edits to the current POS method.
+        secret = os.environ.get(reference)
+        if not secret:
+            raise UserError(_("The Revolut credential is not available on the Odoo server."))
+        return secret
+
     def _revolut_api_request(self, operation, method, path, **kwargs):
-        secret = os.environ.get(operation["secret_reference"])
+        secret = self._revolut_authorized_operation_secret(operation)
         if not secret:
             raise UserError(_("The Revolut credential is not available on the Odoo server."))
         idempotency_key = kwargs.pop("idempotency_key", None)
@@ -614,6 +729,7 @@ class PosPaymentMethod(models.Model):
     def revolut_start_payment(
         self, session_id, order_uuid, payment_line_uuid, amount, currency_id,
         previous_operation_id=False, financial_snapshot=False,
+        authorization_id=False, cart_version=False, tender_revision=False,
     ):
         self.ensure_one()
         (
@@ -626,8 +742,11 @@ class PosPaymentMethod(models.Model):
         ) = self._validate_revolut_pos_request(
             session_id, order_uuid, payment_line_uuid, amount, currency_id
         )
-        if not financial_snapshot:
-            raise UserError(_("The original POS order contents are required before payment."))
+        if not authorization_id or type(authorization_id) is not int:
+            raise UserError(_("Prepare a server-authorized persisted cart before Revolut payment."))
+        authority = self.env["pos.revolut.cart.authorization"].sudo().browse(authorization_id).exists()
+        if not authority or authority.company_id != self.company_id or authority.order_uuid != order_uuid:
+            raise UserError(_("This cart authorization does not belong to the original sale."))
         try:
             operation_values = self._revolut_operation_values(
                 session,
@@ -636,15 +755,24 @@ class PosPaymentMethod(models.Model):
                 amount_minor,
                 order_uuid,
                 payment_line_uuid,
-                financial_snapshot,
+                {**authority.canonical["snapshot"], "restaurant": {
+                    "preset_id": authority.pos_order_id.preset_id.id,
+                    "table_id": authority.pos_order_id.table_id.id if "table_id" in authority.pos_order_id._fields else False,
+                }},
             )
+            # Restaurant context is derived from the frozen server cart.
+            operation_values.update({"authorization_id":authorization_id,
+                "cart_version":cart_version, "tender_revision":tender_revision})
         except FinancialSnapshotError as error:
             return self._reject_revolut_snapshot_owned(
                 order_uuid, payment_line_uuid, error, previous_operation_id
             )
-        snapshot, created = self._create_revolut_operation_owned(
-            operation_values, previous_operation_id
-        )
+        try:
+            snapshot, created = self._create_revolut_operation_owned(
+                operation_values, previous_operation_id
+            )
+        except UserError as error:
+            return self._reject_revolut_snapshot_owned(order_uuid, payment_line_uuid, error, previous_operation_id)
         if not created:
             return snapshot
         operation = self._read_revolut_operation_owned(snapshot["operation_id"])

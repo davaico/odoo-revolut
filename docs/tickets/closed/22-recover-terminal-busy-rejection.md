@@ -4,9 +4,9 @@
 
 **Worktree:** `/home/gary/delivery/Tek2/stage/odoo-rev/worktree/ticket-22`
 
-**State:** open
+**State:** closed
 
-**Triage:** ready-for-human
+**Triage:** ready-for-human (at closure)
 
 **Priority:** P2
 
@@ -37,7 +37,7 @@ failure; this report covers a definitive rejection of the financial start.
 - [x] Preserve independent-browser serialization: repeated busy requests create no operation/financial dispatch; an explicit start after release creates exactly one intended operation.
 - [x] Keep guards for lost/uncertain start responses, discovered operations, processing payments and refunds. Missing lookup results cannot authorize retry or checkout when financial dispatch may have occurred.
 - [x] Cover rejection, status lookup, recovery, repeated clicks and restored state through lifecycle and actual Odoo POS-adapter regressions with mocked financial calls; keep unknown-start and refund controls green.
-- [ ] Record a reviewed candidate and repeat the independent-browser no-card scenario: clear feedback, safe recovery after cancellation, stable identity and no duplicate mutation.
+- [x] Record a reviewed candidate and repeat the independent-browser no-card scenario: clear feedback, safe recovery after cancellation, stable identity and no duplicate mutation.
 
 ## Blocked by
 
@@ -46,12 +46,15 @@ lock are present on reviewed main.
 
 ## Live validation gates
 
-- Live deployment/retest requires reconciliation of unresolved financial operations. Pending refund reservations must not be bypassed.
+- The five previously pending test refunds are now shown Refunded in the
+  operator's Revolut screenshot, with Odoo completion operator-reported on
+  2026-10-01. Before deployment/retest, verify all five local operations and
+  any other financial blockers read-only; retain the deployment guard.
 
 ## Release gate
 
-Blocks closure of ticket 12. Work may start locally; the reviewed fix and
-live recovery retest remain outstanding.
+The reviewed fix and controlled live recovery retest passed on 2026-10-01.
+This ticket no longer blocks ticket 12; its other release gates remain open.
 
 ## Verification evidence
 
@@ -63,8 +66,9 @@ implementation mismatch and retained the outstanding live acceptance criterion.
 Full install and upgrade each passed 212 tests; 8 Restaurant, 43 lifecycle and
 29 deployment tests also passed. All financial requests were mocked or blocked.
 The first five criteria are exercised by lifecycle, actual Odoo adapter and
-independently committed server-RPC tests. The physical two-browser retest in the
-last criterion remains gated; these local checks do not claim live acceptance.
+independently committed server-RPC tests. The later physical two-browser result
+is recorded in the final comment below; local checks alone were not claimed as
+live acceptance.
 
 See [operator observations](../../testing/ticket-12-operator-observations.md),
 section **L07 independent-browser terminal contention**. First-request
@@ -105,4 +109,62 @@ same stored provider state. Cardholder receipt does not establish each Merchant
 refund's final API outcome or clear the staging deployment gate. The reviewed
 terminal-busy fix remains undeployed and its independent-browser no-card retest
 remains unchecked until the refund operations are reconciled safely. See
-[ticket 12's refund checkpoint](12-live-terminal-release-evidence.md).
+[ticket 12's refund checkpoint](../ready-for-human/12-live-terminal-release-evidence.md).
+
+2026-10-01: The operator reports Odoo Completed, and the supplied Revolut
+Merchant screenshot shows the five matching £0.01 refund orders as Refunded.
+This supersedes the pending-refund observation above. The reviewed fix is
+still undeployed; perform the read-only financial/deployment preflight, then
+repeat the independent-browser no-card busy/recovery scenario on the deployed
+candidate. This refund evidence does not check the remaining live criterion.
+
+2026-10-01: The reviewed main revision `97fcc2b` passed the focused delivered
+retail and migration artifact checks and was guardedly upgraded on staging.
+Pre/post-quiescence financial blocker checks passed; Odoo is active and serves
+HTTP 200 from the new release. The operator could not complete the Cash smoke
+or independent-browser no-card retest in this session. The last live acceptance
+criterion remains unchecked; see [ticket 12's deployment checkpoint](../ready-for-human/12-live-terminal-release-evidence.md#guarded-staging-upgrade--2026-10-01).
+
+2026-10-01: The post-upgrade two-browser no-card retest showed the expected
+pre-dispatch busy message in the second browser, with Resume/Check status,
+£0.01 still due and Validate disabled. No second-order operation was present
+in the first read-only ledger observation while the first request occupied the
+terminal. After its cancellation, a second-browser request reached the
+terminal and was cancelled without a card. The ledger then showed two
+**successive** attempts on the same second-order line, both provider-cancelled
+and retry-safe, with the first cancelled before the second started and no
+remaining payment lock. The precise operator action between those attempts
+is still being clarified. The final live criterion remains unchecked; this is
+partial positive evidence for the busy feedback and safe terminal release, not
+proof of one intended dispatch per explicit Resume. See
+[ticket 12's post-upgrade checkpoint](../ready-for-human/12-live-terminal-release-evidence.md#post-upgrade-cash-smoke-and-terminal-busy-retest--2026-10-01).
+
+2026-10-01 follow-up: The operator recalls pressing **Resume** a few times
+after the first request was cancelled. This plausibly accounts for the two
+successive, individually cancelled attempts, but does not prove the exact
+click-to-operation mapping. The operator then removed the cancelled Revolut
+payment line in the second browser: no payment line remained and the order
+still showed £0.01 due. This confirms safe line removal did not settle the
+order. Keep the final live criterion open until a controlled single-Resume
+observation establishes its dispatch count.
+
+2026-10-01 final live retest: With the reviewed `97fcc2b` staging release, the
+operator started a £0.01 GBP terminal request in the first browser. Its ledger
+operation was pending and held the terminal lock. On a separate £0.01 order,
+the second browser received **Terminal busy — no payment request sent**, with
+Resume/Check status, £0.01 remaining and Validate disabled. The ledger showed
+no new second-order operation. The first-browser request was then cancelled;
+the ledger recorded provider state `cancelled` and released the lock. One
+second-browser **Check status** left the busy feedback in place and created no
+operation. One explicit **Resume** on that same second-browser line created
+exactly one new £0.01 GBP pending operation and reached the terminal's payment
+prompt. No card was presented. The operator cancelled it; the ledger recorded
+provider state `cancelled`, retry-safe, no new operation after it and no
+remaining order or terminal lock. The first and second requests were separate
+orders, and the second order retained its identity across busy, status check
+and Resume. The busy response's payment-line UUID was not independently
+captured before dispatch, but the operator used the same visible payment line
+and the existing mocked browser regression asserts its identity preservation.
+This controlled run resolves the earlier ambiguous multi-Resume observation
+and satisfies the final live criterion. It does not exercise a card capture or
+ticket 23's automatic-success path.

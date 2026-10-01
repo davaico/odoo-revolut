@@ -7,6 +7,7 @@ from odoo.addons.point_of_sale.tests.test_frontend import TestPointOfSaleHttpCom
 from odoo.tests import tagged
 from odoo.tests.common import new_test_user
 
+from .authorization_fixtures import install_zero_reports
 from .test_revolut_payment import TestRevolutOrderSettlement
 from .test_revolut_receipt import TestRevolutReceipt
 from .test_ui import TestRevolutVerifiedCheckout
@@ -160,7 +161,8 @@ class TestRevolutReceiptUi(TestPointOfSaleHttpCommon):
         with patch(
             "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
             side_effect=request,
-        ), patch.object(report_model, "_render_qweb_pdf", render):
+        ) as provider, patch.object(report_model, "_render_qweb_pdf", render):
+            install_zero_reports(self.env, provider)
             self.start_pos_tour("pos_revolut_current_receipt_retry")
         self.env.invalidate_all()
         operation = self.env["pos.revolut.payment.operation"].search([

@@ -46,6 +46,8 @@
                             <tr><td style="padding: 8px;">Odoo sale reference</td><td t-out="document['sale_reference']"/></tr>
                             <tr><td style="padding: 8px;">Odoo operation order identifier</td><td t-out="document['sale_uuid']"/></tr>
                             <tr><td style="padding: 8px;">Verified transaction amount</td><td><strong t-out="document['amount']"/> <strong t-out="document['currency']"/></td></tr>
+                            <tr t-if="document['terminal_tip_evidence']"><td style="padding: 8px;">Base amount</td><td><span t-out="document['base_amount']"/> <span t-out="document['currency']"/></td></tr>
+                            <tr t-if="document['terminal_tip_evidence']"><td style="padding: 8px;">Customer-selected terminal tip</td><td><span t-out="document['tip_amount']"/> <span t-out="document['currency']"/></td></tr>
                             <tr><td style="padding: 8px;" t-out="'Revolut refund reference' if document['kind'] == 'refund' else 'Revolut order reference'"/><td t-out="document['revolut_order_id']"/></tr>
                             <tr t-if="document['revolut_payment_id']"><td style="padding: 8px;">Revolut payment reference</td><td t-out="document['revolut_payment_id']"/></tr>
                             <tr t-if="document['verified_at']"><td style="padding: 8px;">Verified in Odoo at (UTC)</td><td t-out="document['verified_at']"/></tr>

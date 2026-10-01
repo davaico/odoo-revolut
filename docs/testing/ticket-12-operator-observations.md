@@ -1,12 +1,42 @@
 # Ticket 12 — Operator observations
 
 Ticket 12 remains open. This record preserves observations from the guided
-acceptance session, including verified card payments, guard tests, pending
-refunds and two software findings. Refund completion and remaining acceptance
-subcases are still required. Entries below are chronological observations;
+acceptance session, including verified card payments, guard tests, refund
+reconciliation and two software findings. Remaining acceptance subcases and
+test-money reconciliation are still required. Entries below are dated observations;
 earlier prerequisites and planned steps are superseded by later dated results.
 Use the [release checklist](ticket-12-release-evidence.md) for all gates and
 required scenarios.
+
+## Refund final-state follow-up — 2026-10-01
+
+The operator reports that Revolut now says **Refunded** and Odoo says
+**Completed** for the five £0.01 test refunds. The supplied Revolut Merchant
+Orders screenshot shows five £0.01 **Refunded** orders dated 2026-09-29.
+Their displayed ID prefixes match the refund order IDs already recorded in
+this chronology:
+
+| Odoo refund operation | Merchant refund order | Screenshot state |
+| --- | --- | --- |
+| `1` | `6abb863a-e259-a83c-ba76-d11f47544160` | Refunded, £0.01 |
+| `2` | `6abb9ae7-0da0-a055-8a1d-3a0f1c459cb0` | Refunded, £0.01 |
+| `3` | `6abb9ef4-9ca7-af6e-96d2-368134e54254` | Refunded, £0.01 |
+| `4` | `6abbb3a9-c456-a39b-beb9-87ce71dc00d1` | Refunded, £0.01 |
+| `5` | `6abbbc70-d2d2-a4c0-a0e7-1e7d1c0cf28e` | Refunded, £0.01 |
+
+The screenshot also contains a 2026-09-24 refunded order; that older order
+is not counted among these five. The screenshot does not show each full
+Merchant ID or its completion timestamp, and no new Odoo export/API response
+was captured here. Odoo completion is operator-reported. A read-only preflight
+must confirm all five local refund rows are verified, reference-linked and
+nonblocking before an addon upgrade or further financial testing. No new
+refund or charge was requested by this evidence update.
+
+The five refunds account for £0.05 of the £0.08 captured Revolut test money
+at the prior checkpoint. The other £0.03 of Revolut captures and the mixed
+sale's £0.01 Cash portion still need an explicit disposition and reconciliation;
+this note does not authorize another financial operation. Tickets 22 and 23
+still need their reviewed fixes deployed and their affected live retests.
 
 ## Refund status follow-up — 2026-09-30 12:48–12:49 UTC
 
@@ -44,10 +74,10 @@ clearance or fixed provider completion time is inferred.
   cancellations/retries, selected reload paths, refund caps/amount locking,
   and same-browser/independent-browser terminal guards have narrow passing
   evidence. Other subcases and all final refund settlement remain open.
-- [Ticket 22](../tickets/ready-for-human/22-recover-terminal-busy-rejection.md)
+- [Ticket 22](../tickets/closed/22-recover-terminal-busy-rejection.md)
   records the terminal-busy rejection shown as a false communication failure,
   followed by an unrecoverable Check status loop with no dispatched payment.
-- [Ticket 23](../tickets/ready-for-human/23-preserve-polling-through-payment-processing.md)
+- [Ticket 23](../tickets/closed/23-preserve-polling-through-payment-processing.md)
   records approved payments requiring manual Check status. Classifier and
   foreground-loop characterizations identify a reproducible software gap;
   the exact early live provider payload remains unverified.

@@ -4,9 +4,9 @@
 
 **Worktree:** `/home/gary/delivery/Tek2/stage/odoo-rev/worktree/ticket-23`
 
-**State:** open
+**State:** closed
 
-**Triage:** ready-for-human
+**Triage:** ready-for-human (at closure)
 
 **Priority:** P2
 
@@ -40,7 +40,7 @@ Generic unresolved or malformed evidence must remain protected.
 - [x] Only verified captured/completed underlying payment marks a tender done. A fully paid unchanged order completes automatically; a partially paid order stays open with the correct remaining amount.
 - [x] Keep malformed, mismatched, unknown or uncertain evidence guarded. Do not make every unresolved result pollable/retry-safe; retain foreground timeout and later reconciliation.
 - [x] Add real ORM observation regressions and lifecycle/POS-adapter tests for intermediate-to-captured progression, split/multiple card lines, failures, invalid fields and timeouts. Financial calls are mocked or blocked.
-- [ ] Record a reviewed candidate and repeat controlled full and split/multiple-line live payments, explicitly recording whether Check status or Validate was needed. One automatic success does not cover previously failing paths.
+- [x] Record a reviewed candidate and repeat controlled full and split/multiple-line live payments, explicitly recording whether Check status or Validate was needed. One automatic success does not cover previously failing paths.
 
 ## Blocked by
 
@@ -48,18 +48,23 @@ None for local diagnosis/mocked implementation; verification/classifier and
 POS lifecycle seams are present on reviewed main.
 
 Reviewed local implementation and mocked verification are complete at
-`97f5c0d4e427e232b5985cce121cf4adbf71049c`. Human deployment/retest remains
-gated by reconciliation of unresolved financial operations, including refunds.
+`97f5c0d4e427e232b5985cce121cf4adbf71049c`. The reviewed release
+`97fcc2b7e051e5d2037e1bd108bf365ac829f1a3` was deployed to staging after
+read-only financial blocker checks. The full-card, Cash/Revolut split and
+two-Revolut-line live retests passed there.
 
-## Validation limits and live gates
+## Validation limits
 
-- The exact early live payload remains unavailable; existing probes do not exercise real ORM transactions/locks or replay captured network traffic.
-- Live deployment/retest requires reconciliation of unresolved financial operations; pending refunds must not be bypassed.
+- The exact early payload behind the 2026-09-29 failures was not captured, so
+  those incidents cannot be attributed to one specific provider state.
+- The live retests establish automatic completion for the observed full-card,
+  Cash/Revolut split and two-card flows on the deployed staging release.
+  Ticket 12 retains the broader release and test-money reconciliation gates.
 
 ## Release gate
 
-Blocks closure of ticket 12. Diagnosis and mocked implementation may start
-locally; the reviewed fix and affected live retests remain outstanding.
+The reviewed fix and affected live retests passed. This ticket no longer
+blocks ticket 12; its other release gates remain open.
 
 ## Verification evidence
 
@@ -68,8 +73,9 @@ records real committed ORM regressions, lifecycle tests and actual POS tours.
 The reviewed candidate passed **221 fresh-install**, **221 upgrade** and
 **8 Restaurant** tests, plus **49 lifecycle** and **29 deployment-tooling**
 tests. Independent Standards and Spec review found no remaining actionable
-issues after correcting a stale-final-intent timeout regression. Deployment and
-physical acceptance stay gated by financial reconciliation; none was performed.
+issues after correcting a stale-final-intent timeout regression. At that
+local-review checkpoint, deployment and physical acceptance had not yet been
+performed; the dated live results below supersede that limitation.
 
 See [operator observations](../../testing/ticket-12-operator-observations.md),
 sections covering the Cash/Revolut split, three-unit sale and separate
@@ -115,4 +121,60 @@ refund `1` showed the same stored provider state. These refund observations do
 not establish the early payment-state payload behind this ticket's automatic
 polling defect. The reviewed local correction is merged into main but remains
 undeployed; live validation remains gated on authoritative refund
-reconciliation. See [ticket 12's refund checkpoint](12-live-terminal-release-evidence.md).
+reconciliation. See [ticket 12's refund checkpoint](../ready-for-human/12-live-terminal-release-evidence.md).
+
+2026-10-01: The operator reports Odoo Completed, and the supplied Revolut
+Merchant screenshot shows all five matching £0.01 refund orders as Refunded.
+This supersedes the preceding pending-refund observation; it does not establish
+the early payment-state payload relevant to this ticket. The merged fix remains
+undeployed. After read-only financial/deployment preflight, repeat controlled
+full and split/multiple-card payments and record whether each receipt opens
+automatically or needs Check status. The live criterion remains unchecked.
+
+2026-10-01: The reviewed main revision `97fcc2b` passed the focused delivered
+retail and migration artifact checks and was guardedly upgraded on staging.
+Pre/post-quiescence financial blocker checks passed; Odoo is active and serves
+HTTP 200 from the new release. The operator could not complete the Cash smoke
+or full/split/multiple-card automatic-status retests in this session. The live
+criterion remains unchecked; see [ticket 12's deployment checkpoint](../ready-for-human/12-live-terminal-release-evidence.md#guarded-staging-upgrade--2026-10-01).
+
+2026-10-01: Ticket 22's separate controlled two-browser no-card busy/recovery
+retest passed and that ticket closed. The Cash smoke also passed. Neither
+exercises this ticket's real-card processing-to-capture path; the full and
+split/multiple-card automatic-status retests remain open.
+
+2026-10-01 full-card live retest: On the reviewed `97fcc2b` staging release,
+the operator paid a fresh £0.01 GBP sale entirely through Revolut. The POS
+opened the success receipt automatically, with one £0.01 Revolut tender; the
+operator reports pressing neither Check status nor Validate. A read-only
+server check found the matching operation `verified`, underlying provider
+state `captured`, exact amount one GBP minor unit, a linked paid POS order of
+£0.01, and no terminal/order lock. The supplied receipt screenshot supports
+the operator's observed automatic transition. This passes the full-card live
+subcase. Split tender and multiple Revolut lines remain untested after the
+upgrade, so the last acceptance criterion and this ticket remain open.
+
+2026-10-01 Cash/Revolut split live retest: The operator prepared a £0.02 GBP
+sale with £0.01 Cash assigned and £0.01 remaining, then paid the balance by
+card. The supplied receipt screenshot shows a successful £0.02 sale with one
+£0.01 Revolut tender and one £0.01 Cash tender. A read-only server check found
+the card operation `verified`, provider state `captured`, amount one GBP minor
+unit, a linked paid £0.02 POS order, two stored £0.01 payments assigned to the
+expected Revolut and Cash methods, and no terminal/order lock. The operator
+confirmed the receipt opened automatically without Check status or Validate.
+This passes the Cash/Revolut split live subcase. The multiple-Revolut-line
+live case remains open.
+
+2026-10-01 two-Revolut-line live retest: The operator prepared a £0.02 GBP
+sale. Selecting Revolut initially dispatched £0.02; they cancelled it before
+presenting a card, then edited the cancelled line to £0.01 and retried once.
+The first £0.01 card payment succeeded automatically and correctly left £0.01
+due without opening a receipt. A second Revolut line for the remaining £0.01
+was paid, and the operator reports Odoo opened the success receipt
+automatically without Check status or Validate. Read-only server verification
+found order `261-2-000019` paid for £0.02, two distinct verified/captured
+one-minor-unit GBP operations (`38` and `39`) on separate payment lines, two
+stored £0.01 Revolut tenders, two distinct provider payment references, and
+no remaining order or terminal lock. The initial £0.02 attempt (`37`) is
+provider-cancelled, retry-safe and has no underlying payment. This passes the
+multiple-card-line live subcase and completes this ticket's live criterion.

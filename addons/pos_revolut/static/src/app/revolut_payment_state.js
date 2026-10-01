@@ -241,7 +241,7 @@ export class RevolutPaymentState {
             }
             if (owner.cancelDiscovery) {
                 if (result?.state === "verified") {
-                    this.adapter.setVerified(line, result);
+                    await this.adapter.setVerified(line, result);
                     return true;
                 }
                 if (!started && !result) {
@@ -250,9 +250,37 @@ export class RevolutPaymentState {
                 return false;
             }
             if (!result && started) {
-                // A lost start response cannot prove that dispatch did not occur.
-                this.showError(line, "interrupted");
-                return false;
+                // Refund reservations commit before any Merchant request. An
+                // empty lookup alone is not proof: confirm absence under the
+                // same order lock used by the reservation before unlocking.
+                if (refund && !line.uiState.revolutOperationId &&
+                    !line.transaction_id && !line.payment_ref_no) {
+                    const proof = await this.clock.before(this.adapter.call(
+                        "revolut_confirm_refund_absence", [[this.methodId], order.uuid, line.uuid]
+                    ), deadline);
+                    if (proof?.operation_id) {
+                        result = proof;
+                        discovered = true;
+                        this.remember(line, result);
+                    } else if (proof?.dispatched === false &&
+                        proof.start_rejected === "no_refund_attempt" &&
+                        proof.order_uuid === order.uuid && proof.payment_line_uuid === line.uuid &&
+                        !line.uiState.revolutOperationId && !line.uiState.revolutSnapshot &&
+                        !line.transaction_id && !line.payment_ref_no) {
+                        line.uiState.revolutOriginalOperationId = false;
+                        line.uiState.revolutStarted = false;
+                        line.uiState.revolutUndispatched = true;
+                        line.uiState.revolutLocalOutcome = "no_refund_attempt";
+                        line.setPaymentStatus("retry");
+                        this.showError(line, "no_refund_attempt");
+                        return false;
+                    }
+                }
+                if (!result) {
+                    // A lost start response cannot prove that dispatch did not occur.
+                    this.showError(line, "interrupted");
+                    return false;
+                }
             }
             if (checkOnly && (!result || result.retry_safe)) {
                 // Checking a rejected or provider-final attempt never starts
@@ -263,6 +291,8 @@ export class RevolutPaymentState {
                 const previousSnapshot = result;
                 const previousOperationId = result?.retry_safe ? result.operation_id : false;
                 let originalOperationId = false;
+                let authorization = false;
+                let refundAllocation = false;
                 if (refund) {
                     line.uiState.revolutOperationId = false;
                     let sources;
@@ -296,10 +326,29 @@ export class RevolutPaymentState {
                         return false;
                     }
                     originalOperationId = allocation.operationId;
+                    refundAllocation = allocation;
                     deadline = this.clock.now() + PAYMENT_TIMEOUT_MS;
                     line.uiState.revolutDiscovering = false;
                     this.adapter.setRefundAmount(line, allocation.amount);
                     line.uiState.revolutOriginalOperationId = originalOperationId;
+                } else {
+                    try {
+                        authorization = await this.clock.before(this.adapter.preparePayment(order, line), deadline);
+                        if (authorization?.status !== "prepared") {
+                            throw new Error(authorization?.message || "Review or approve the current cart before payment.");
+                        }
+                    } catch (error) {
+                        line.uiState.revolutDiscovering = false;
+                        if (!previousSnapshot) {
+                            line.uiState.revolutStarted = false;
+                            line.uiState.revolutUndispatched = true;
+                        }
+                        line.uiState.revolutStartRejected = "authority_required";
+                        line.uiState.revolutLocalOutcome = "authority_required";
+                        line.uiState.revolutRejectionMessage = error?.data?.message || error.message;
+                        this.showError(line, "authority_required");
+                        return false;
+                    }
                 }
                 line.uiState.revolutPreviousOperationId = previousOperationId;
                 line.uiState.revolutSnapshot = false;
@@ -318,7 +367,9 @@ export class RevolutPaymentState {
                             line.amount, this.currencyId,
                             ...(!refund ? [previousOperationId] : []),
                             this.adapter.financialSnapshot(order),
-                            ...(refund ? [originalOperationId] : [])]
+                            ...(refund ? [originalOperationId,
+                                refundAllocation.baseAmountMinor ?? null, refundAllocation.tipAmountMinor ?? null]
+                                : [authorization.authorization_id, authorization.cart_version, authorization.tender_revision])]
                     ), deadline);
                 } finally {
                     line.uiState.revolutStarting = false;
@@ -373,7 +424,7 @@ export class RevolutPaymentState {
                 }
                 result = line.uiState.revolutSnapshot;
                 if (result.state === "verified") {
-                    this.adapter.setVerified(line, result);
+                    await this.adapter.setVerified(line, result);
                     return true;
                 }
                 if (FINAL_FAILURE_STATES.has(result.state)) {
@@ -391,7 +442,7 @@ export class RevolutPaymentState {
             throw new ForegroundTimeout();
         } catch (error) {
             if (line.uiState.revolutSnapshot?.state === "verified") {
-                this.adapter.setVerified(line, line.uiState.revolutSnapshot);
+                await this.adapter.setVerified(line, line.uiState.revolutSnapshot);
                 return true;
             }
             const failure = error instanceof ForegroundTimeout ? "timed_out" : "interrupted";
@@ -489,7 +540,7 @@ export class RevolutPaymentState {
             ));
             const result = line.uiState.revolutSnapshot;
             if (result.state === "verified") {
-                this.adapter.setVerified(line, result);
+                await this.adapter.setVerified(line, result);
                 line.setPaymentStatus("done");
                 return false;
             }
@@ -498,7 +549,7 @@ export class RevolutPaymentState {
             return result.retry_safe === true;
         } catch (error) {
             if (line.uiState.revolutSnapshot?.state === "verified") {
-                this.adapter.setVerified(line, line.uiState.revolutSnapshot);
+                await this.adapter.setVerified(line, line.uiState.revolutSnapshot);
                 line.setPaymentStatus("done");
                 return false;
             }

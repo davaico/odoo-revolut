@@ -257,13 +257,14 @@ acceptance. Documentation-only commits can retain these results only when the
 addon trees and deployment/test tooling match the tested revision; record that
 comparison before deployment.
 
-Open release gaps: remaining L02–L10 subcases and complete refund/test-money
-reconciliation; [terminal-busy recovery](../tickets/ready-for-human/22-recover-terminal-busy-rejection.md)
-and [automatic payment-status handling](../tickets/ready-for-human/23-preserve-polling-through-payment-processing.md);
+Open release gaps: remaining L02–L10 subcases and complete test-money
+reconciliation; [terminal-busy recovery](../tickets/closed/22-recover-terminal-busy-rejection.md)
+and [automatic payment-status handling](../tickets/closed/23-preserve-polling-through-payment-processing.md);
 the Sandbox simulator issue for required non-production acceptance; and final
-guidance based on physical-terminal observations. Pending refunds block a live
-addon upgrade/restart. These findings require reviewed fixes and affected
-retests; documenting a narrow guard pass does not close the full scenario.
+guidance based on physical-terminal observations. Before a live addon
+upgrade/restart, confirm all refund final states and any other financial
+blockers read-only. These findings require reviewed fixes and affected retests;
+documenting a narrow guard pass does not close the full scenario.
 
 ## Local snapshot-resource candidate — 2026-09-30
 
@@ -309,3 +310,233 @@ unchanged isolated rerun and the final passing full suite.
 Ticket 24 still awaits PR integration into main; ticket 23's live retests and
 ticket 12's reconciliation/release requirements remain open. The branch update
 performs no deployment or real financial operation and does not merge PR #28.
+
+## Refund finality and next acceptance step — 2026-10-01
+
+The preceding matrix and 2026-09-29 reconciliation totals are historical
+checkpoints. The operator now reports **Completed** for all five test refunds
+in Odoo. Their Revolut Merchant Orders screenshot shows the five matching
+£0.01 refund-order prefixes as **Refunded**. The
+[dated follow-up](ticket-12-operator-observations.md#refund-final-state-follow-up--2026-10-01)
+lists all five IDs and evidence limits. PR #28 has also since merged into
+main; the preceding candidate paragraph describes its earlier state.
+
+Next, read all five Odoo refund records and the payment/refund worklists
+without financial mutation. Confirm completed/verified local states,
+original-payment links, amounts, no pending/unresolved reservations and no deployment
+blockers. Reconcile £0.05 refunded against £0.08 captured and document the
+remaining £0.03 Revolut and £0.01 Cash disposition. This update grants no
+new financial authorization; retain the existing budget and obtain fresh
+authorization for any operation outside it. If the read-only preflight is clear, prepare
+the reviewed combined candidate for a guarded staging upgrade, then perform
+ticket 22's independent-browser busy/recovery retest and ticket 23's full and
+split/multiple-card automatic-status retests. Restaurant and the other open
+L02–L10 subcases, final combined release evidence and operating instructions
+remain ticket 12 gates. No live deployment or financial operation was run by
+this documentation update.
+
+## Staging upgrade checkpoint — 2026-10-01
+
+The owner confirmed staging idle, and reviewed `origin/main` revision
+`97fcc2b7e051e5d2037e1bd108bf365ac829f1a3` passed both focused
+delivered-artifact scenarios. The guarded upgrade completed after successful
+backup/restore-health checks and pre/post-quiescence financial blocker checks.
+Staging now serves the new immutable release with Odoo active and HTTP 200;
+`pos_revolut` is installed at `19.0.1.8.0`. The
+[ticket 12 deployment checkpoint](../tickets/ready-for-human/12-live-terminal-release-evidence.md#guarded-staging-upgrade--2026-10-01)
+records the archive hash, release and configuration-backup paths, test limits
+and server observations.
+
+The operator could not perform the post-upgrade Cash smoke or physical-terminal
+acceptance in this session. Tickets 22 and 23 remain open for their affected
+live retests, and ticket 12 remains open for its wider release gates. The
+successful deployment guard is not a per-refund reconciliation audit.
+
+## Post-upgrade retail Cash and terminal-busy observations — 2026-10-01
+
+The operator's £0.01 Cash-only sale reached its receipt automatically with the
+full amount assigned to Cash. The following two-browser, no-card Revolut test
+showed authoritative busy/no-dispatch feedback in the second browser while the
+first occupied the terminal. The initial read-only ledger check found no
+second-order operation; Validate remained disabled. After the first request
+was cancelled, the second browser reached the terminal and its request was
+cancelled without a card. A later read-only ledger check found two sequential
+second-order attempts on the same line, each provider-cancelled and retry-safe;
+the first ended before the second began. Neither holds an order or terminal
+lock. Operator-click chronology between those attempts remains unconfirmed,
+so the one-dispatch-per-explicit-Resume acceptance is still open. Ticket 23's
+automatic Revolut payment-status tests have not yet been performed after the
+upgrade. See the [ticket 12 live checkpoint](../tickets/ready-for-human/12-live-terminal-release-evidence.md#post-upgrade-cash-smoke-and-terminal-busy-retest--2026-10-01).
+
+The operator subsequently recalled pressing Resume a few times, a plausible
+explanation for the sequential attempts but not a precise click count. They
+removed the cancelled second-browser payment line; no payment line remained
+and £0.01 was still due. The one-dispatch-per-explicit-Resume criterion
+remains open for a controlled observation.
+
+## Controlled ticket 22 live recovery — 2026-10-01
+
+The second two-browser no-card run passed the physical terminal-busy recovery
+criterion on staging revision `97fcc2b`. A first-browser £0.01 GBP request
+held the terminal. The second browser showed explicit busy/no-dispatch feedback
+and disabled Validate; no second-order operation was created. The first
+request was provider-cancelled and its lock cleared. One second-browser Check
+status produced no operation. One Resume on the same visible line produced
+exactly one pending £0.01 GBP operation and terminal prompt. The operator
+cancelled it without a card. The ledger recorded it provider-cancelled and
+retry-safe, with no subsequent operation or lock. This supersedes the earlier
+ambiguous multiple-Resume observation and [closes ticket 22](../tickets/closed/22-recover-terminal-busy-rejection.md).
+It does not satisfy ticket 23's full/split/multiple-card automatic-payment
+criterion or ticket 12's remaining release gates.
+
+## Ticket 23 full-card automatic success — 2026-10-01
+
+The operator paid a fresh £0.01 GBP sale in full with Revolut on staging
+revision `97fcc2b`. They report that the success receipt opened automatically
+without Check status or Validate; their screenshot shows one £0.01 Revolut
+tender. A read-only ledger check independently found the payment operation
+`verified` with underlying provider state `captured`, one GBP minor unit, a
+linked paid POS order totalling £0.01, and no order or terminal lock. This
+passes the full-card live subcase; split tender and multiple Revolut lines
+remain required before [ticket 23](../tickets/closed/23-preserve-polling-through-payment-processing.md)
+can close. The retained test capture must also be accounted for under ticket
+12's release reconciliation.
+
+## Cash/Revolut split live observation — 2026-10-01
+
+The operator's screenshot shows a £0.02 GBP sale completed with one £0.01
+Cash tender and one £0.01 Revolut tender. Read-only Odoo records show the
+Revolut operation `verified`, provider state `captured`, one GBP minor unit,
+a linked paid £0.02 order, two stored £0.01 payments on the expected tender
+methods, and no order or terminal lock. The operator confirmed the receipt
+opened automatically without Check status or Validate. The multiple-Revolut-line
+case and test-charge reconciliation remain open.
+
+## Ticket 23 two-card automatic success — 2026-10-01
+
+The operator prepared a £0.02 GBP sale. They cancelled the initial £0.02
+Revolut request without presenting a card, edited the cancelled line to £0.01
+and retried. The first £0.01 card payment succeeded automatically, leaving
+£0.01 due. A second £0.01 Revolut payment completed the order and the operator
+reports the receipt opened automatically without Check status or Validate.
+Read-only staging records show paid order `261-2-000019` for £0.02, two
+distinct verified/captured one-minor-unit operations and two matching £0.01
+Revolut tender lines. The original £0.02 operation is provider-cancelled
+without an underlying payment; no order or terminal lock remains. This
+completes [ticket 23](../tickets/closed/23-preserve-polling-through-payment-processing.md)'s
+live full/split/multiple-line criterion. Ticket 12 retains the wider release
+and test-money reconciliation requirements, including these two new captures.
+
+## Current staging balance and newer release boundary — 2026-10-01
+
+A read-only staging ledger check at 10:48 UTC found 15 captured GBP minor units
+across verified payment operations and five completed one-unit provider refunds.
+The remaining card balance is £0.10, allocated by source in the
+[ticket 12 reconciliation table](../tickets/ready-for-human/12-live-terminal-release-evidence.md#read-only-staging-reconciliation--2026-10-01).
+The five completed refunds have no linked finalized Odoo POS return/tender yet;
+their existing return drafts need completion without another provider refund.
+Three one-penny GBP Cash test tenders also need drawer/test disposition.
+
+The observed automatic full, Cash/Revolut split and two-Revolut-line receipts
+passed on staging `97fcc2b` / addon `19.0.1.8.0`. Current `main` has the
+newer ticket 27 cart-authority/tip code, matching the locally tested
+`88c88a5` addon tree but not yet deployed to staging. Ticket 28's credential
+binding is still open. Final candidate checks and guarded deployment, target-
+device tip/report observations, Restaurant and remaining failure/recovery and
+refund scenarios remain release gates; earlier test matrices are dated
+checkpoints rather than current completion claims.
+
+## Completed refund blocked by POS session rollover — 2026-10-01
+
+The operator loaded the existing `1002 (Refund)` return. Its single £0.01
+Revolut refund showed **Refund Successful**, the return total was −£0.01,
+remaining was £0.00 and Validate was enabled. Clicking Validate produced
+**Invalid Operation: The return changed after a Revolut refund allocation was
+reserved.** Read-only checks found refund operation `1` still verified with no
+linked POS return or tender, and the total provider refund count remained five.
+The refund was reserved in now-closed POS session `5`; the same register is
+currently open in session `9`.
+
+A mocked Odoo regression reproduced the exact server error when the verified
+refund was finalized from a reopened same-register session. The correction
+permits that case only when the original session is closed, the new session is
+opened on the same register, and all existing refund, cart, tender, company
+and currency checks pass. The red test failed with the reported error; after
+the correction, the same test and the different-register rejection test passed.
+All 45 `TestRevolutRefund` tests passed. This candidate is **not yet deployed**;
+the five existing POS returns remain unfinished and must be retested on the
+upgraded register without creating another provider refund.
+
+## Same-register refund retest on staging — 2026-10-01
+
+The combined `f303580` release deployed with a guarded backup and no active
+financial operation. On addon `19.0.1.10.0`, the operator finalized existing
+returns `1002`, `1005`, `1007` and `1010`; each reached a refund receipt.
+The mixed `1005` return used its original one-penny Revolut and one-penny test
+Cash shares. Read-only records show four paid negative POS orders, four linked
+verified refund operations and still exactly five provider refunds.
+
+The fifth tab, `1012`, has a two-penny return, one completed one-penny Revolut
+refund and one penny remaining on a second original card payment. The
+administrator-created company credential authority did not automatically bind
+historical operations. The documented administrator attestation for that
+second source failed on the operation model's write ACL, before any Merchant
+request or new refund. A real-administrator regression reproduced this and
+passed after the action was scoped to a server-side write. The remaining
+refund and ticket 12 acceptance are pending the follow-up deployment.
+
+## Administrator attestation deployed — 2026-10-01
+
+The exact `d52a4079522b9fd56ff282e02d3ec91f92147e5d` artifact passed the
+isolated delivered migration scenario: nine Restaurant tests before and after
+the update, with zero failures/errors. Its archive SHA-256 was
+`d8536e2ec4a65332bc95af7803ea040d9ab8095b64e89044f4c5f6e2f12504b1`.
+The guarded staging upgrade installed addon `19.0.1.10.1`, backed up the
+configuration to
+`/var/backups/odoo-revolut-deploy/20261001T115207Z-d52a4079522b`, and
+restarted Odoo successfully. A real system-administrator Odoo shell action,
+after asserting the company, method, amount, state, order, intent and payment
+references against the independently verified historical source, bound only
+payment operation `16` to authority `1`. Readback showed operation `17`
+unbound, and the refund operation count remained five. The final penny of
+return `1012` has not yet been sent or settled.
+
+## Second-allocation recovery candidate — 2026-10-01
+
+The existing `1012 (Refund)` return has a verified one-penny refund from
+source `17` and a second one-penny line for source `16`. Confirming the second
+allocation reported a communication interruption; Check status remained
+unresolved. Read-only database and application-log checks establish that the
+start failed inside the reservation guard before a new refund operation or
+Merchant request was created. The guard did not allow an earlier verified
+refund from a closed session of the same register when reserving the next
+share of a split return.
+
+Candidate `19.0.1.10.2` permits that exact rollover under the unchanged cart,
+amount, company, source and terminal checks. It also adds a locked server
+absence proof so Check status can release an undispatched line only when no
+operation exists for that line and no other refund is in flight. The second
+line must not be removed or resent until this candidate is tested, deployed
+and Check status confirms the absence. This is a recovery candidate, not a
+completed live refund or release acceptance claim.
+
+## Deployed second-allocation recovery — 2026-10-01
+
+The exact source revision `25e096d74ca62ac7f39558e0257f609be85185d7`
+was pushed to `main` and deployed to staging as addon `19.0.1.10.2`. The
+guarded deploy passed financial preflight, created the configuration backup
+`/var/backups/odoo-revolut-deploy/20261001T122450Z-25e096d74ca6`, and
+reported a healthy Odoo restart. The real-Odoo refund suite passed 47 tests on
+fresh install and 47 on upgrade, with nine Restaurant upgrade tests and 75
+POS-state tests also passing. The exact packaged-artifact retail and migration
+runs were interrupted, so they are not claimed as passing.
+
+On the existing `1012 (Refund)` line, the operator used Check status to
+recover the pre-reservation failure and then explicitly retried once. Staging
+records show one new one-penny refund operation `6` against original source
+`16`; the earlier operation `5` against source `17` remains verified. The new
+operation has a provider refund reference but is not linked to a finalized POS
+return. At 12:31 UTC its Odoo state was `unresolved` and its provider state
+was `processing`. The operator still sees it processing/unresolved. No final
+refund, receipt, or full reconciliation is claimed. Ticket 12 stays open;
+credential-authority ticket 28 remains open under its own scope.

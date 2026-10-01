@@ -67,7 +67,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [09 — Issue partial refunds across original payment allocations](closed/09-partial-allocated-refunds.md) | `ready-for-agent` at closure | Closed | 07 (closed), 08 (closed) |
 | [10 — Install and upgrade a reviewed revision on staging](closed/10-staging-install-upgrade.md) | `ready-for-human` at closure | Closed | 03 (closed) |
 | [11 — Verify the complete addon on the target Odoo version](closed/11-target-version-acceptance.md) | `ready-for-agent` at closure | Closed | 06, 09, 10 |
-| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11, 16–21 (closed); 22, 23 (open findings); 24 (closed locally, awaiting integration) |
+| [12 — Validate real terminal payments and publish release evidence](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | 02, 11, 16–24 and 27 closed; 28 open; refund 1012 still processing, final reconciliation, updated-device and broader acceptance |
 | [13 — Deepen Return allocation](closed/13-deepen-return-allocation.md) | `ready-for-agent` at closure | Closed | None |
 | [14 — Deepen POS payment state](closed/14-deepen-pos-payment-state.md) | `ready-for-agent` at closure | Closed | None |
 | [15 — Deepen payment outcome application](closed/15-deepen-payment-outcome-application.md) | `ready-for-agent` at closure | Closed | None |
@@ -77,16 +77,16 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [19 — Enforce verified settlement and internal-operation permissions](closed/19-enforce-payment-server-boundaries.md) | `ready-for-agent` at closure | Closed | None |
 | [20 — Recover POS lines after a failed pre-payment lookup](closed/20-recover-undispatched-pos-lines.md) | `ready-for-agent` at closure | Closed | None |
 | [21 — Keep reconciliation progressing after malformed provider responses](closed/21-isolate-reconciliation-failures.md) | `ready-for-agent` at closure | Closed | None |
-| [22 — Recover a POS line after a terminal-busy rejection](ready-for-human/22-recover-terminal-busy-rejection.md) | `ready-for-human` | Open | Reviewed local fix complete; live two-browser retest gated by financial reconciliation |
-| [23 — Preserve payment polling through valid processing states](ready-for-human/23-preserve-polling-through-payment-processing.md) | `ready-for-human` | Open | Reviewed local fix complete; full/split/multiple-card live retests gated by financial reconciliation |
+| [22 — Recover a POS line after a terminal-busy rejection](closed/22-recover-terminal-busy-rejection.md) | `ready-for-human` at closure | Closed | None; controlled two-browser no-card retest passed on staging |
+| [23 — Preserve payment polling through valid processing states](closed/23-preserve-polling-through-payment-processing.md) | `ready-for-human` at closure | Closed | None; full, Cash/Revolut split and two-card live retests passed |
 | [24 — Bound financial snapshot processing before numeric expansion](closed/24-bound-financial-snapshot-processing.md) | `ready-for-agent` at closure | Closed | None for local validation and mocked implementation |
 | [25 — Download historical Revolut payment and refund receipts](closed/25-download-historical-payment-refund-receipts.md) | `ready-for-agent` at closure | Closed | None for local implementation and mocked verification |
 | [26 — Decide server-authorized cart and tip behavior](closed/26-decide-order-and-tip-authorization.md) | `ready-for-agent` at closure | Closed | None |
-| [27 — Enforce the authorized order balance before terminal dispatch](ready-for-agents/27-enforce-authorized-terminal-allocation.md) | `ready-for-agent` | Open | 26 (closed locally; integrate reviewed design first) |
+| [27 — Enforce the authorized order balance before terminal dispatch](closed/27-enforce-authorized-terminal-allocation.md) | `ready-for-agent` at closure | Closed | 26 (closed); fix merged to main, staging/device acceptance remains ticket 12 |
 | [28 — Bind Revolut credential authority to the owning company](ready-for-agents/28-bind-merchant-credentials-to-company.md) | `ready-for-agent` | Open | None |
 | [29 — Determine the impact of concurrent payment status polling](ready-for-agents/29-investigate-concurrent-status-polling.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
 | [30 — Determine authorized access to shared POS sessions](ready-for-agents/30-investigate-shared-pos-session-authorization.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
-| [31 — Determine deployment upload and lock-file exploitability](ready-for-agents/31-investigate-privileged-deployment-files.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
+| [31 — Determine deployment upload and lock-file exploitability](needs-info/31-investigate-privileged-deployment-files.md) | `needs-info` | Open | Target host facts and authorized review access; partial evidence preserved |
 | [32 — Verify deployment host identity on first SSH use](needs-info/32-investigate-deployment-host-authentication.md) | `needs-info` | Open | Route/VM verified; Emile confirmed as administrator/device owner; workstation/replacement procedure missing |
 | [33 — Determine whether release evidence exposes restricted identifiers](ready-for-agents/33-investigate-release-evidence-disclosure.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
 
@@ -183,7 +183,20 @@ coverage; the triage assessed reviewed main revision
 
 - **26** selects validated native drafts, atomic base allocations and required customer-selected terminal tips verified through authenticated payments reports. The owner approved waiting safely for report details; the design is closed locally, with target-device/report acceptance remaining a release gate.
 - **27**, blocked by **26**, remediates the five confirmed amount-authority
-  findings as one complete checkout slice.
+  findings as one complete checkout slice. Ticket 26's reviewed design is now
+  integrated into its assigned branch. On 2026-10-01 the ticket's explicit
+  complete-slice stop condition was used to propose a [concrete development
+  breakdown](../ticket-27-implementation-breakdown.md); ticket 27 remains open
+  under `needs-triage` pending sequencing review at that point, with all five
+  source claims still open and no runtime guard in that documentation-only
+  proposal. The owner resumed complete implementation later on 2026-10-01;
+  P1–P6 became internal milestones of the complete candidate. Ticket 27 is now
+  closed locally on tested runtime `88c88a5`: both 340-test install/upgrade
+  phases, nine Restaurant checks and both exact-artifact scenarios pass.
+  Independent Standards/Spec review is clean and all five source claims were
+  explicitly verified fixed. [Final evidence](../testing/ticket-27-cart-authority.md)
+  records the commands, hashes and separate ticket 12 physical-device gate.
+  The work branch awaits shared integration; the live POS was untouched.
 - **28** remediates the two confirmed company/credential-authority findings.
 - **29–33** investigate the eleven unresolved findings: concurrent polling,
   shared-register authorization, privileged deployment files, first-use SSH
@@ -207,6 +220,16 @@ against a stale checkout. Each new ticket records its release relationship;
 this publication does not change or close parent ticket 12. Confirmed fixes
 require reviewed regression evidence, while investigation outcomes determine
 whether additional remediation is needed before final release acceptance.
+
+### Ticket 31 deferral — 2026-10-01
+
+Ticket 31 is now **open / needs-info** after repeated cybersecurity content
+restrictions interrupted its investigation. Its [partial evidence and
+infrastructure handoff](../testing/ticket-31-partial-investigation.md) preserves
+17 passing local fixture cases and their limits. All six linked findings
+remain `needs_review`; target host configuration and actual upload behavior
+are unverified. This later status supersedes the original agent-ready
+placement above. Other tickets retain their own dependencies.
 
 ## Shared implementation contract
 

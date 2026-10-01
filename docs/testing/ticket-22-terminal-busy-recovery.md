@@ -147,3 +147,21 @@ Improvements, by impact: execute and record the physical retest after financial
 reconciliation; keep subsequent status reports concise and link this evidence.
 Self-check: the user can review and run the local correction directly, with
 the remaining live requirement clearly assigned to human validation.
+
+## Final live result — 2026-10-01
+
+The reviewed `97fcc2b` release was deployed to staging, and the operator
+completed a controlled two-browser, no-card terminal-busy recovery. The
+second browser received the definitive busy/no-dispatch message while the
+first request held the terminal; no second-order operation existed. After
+provider cancellation of the first request, one second-browser Check status
+created no operation. One explicit Resume on the same visible line created
+exactly one new £0.01 GBP operation and displayed it on the terminal. The
+operator presented no card and cancelled that operation. The ledger recorded
+both requests provider-cancelled and retry-safe, with no remaining order or
+terminal lock. The earlier ambiguous run included several operator Resume
+clicks and is superseded by this controlled count. The busy response's line
+UUID was not captured independently before dispatch; same-line UI use and
+the mocked browser identity regression support the identity criterion.
+[Ticket 22](../tickets/closed/22-recover-terminal-busy-rejection.md) is closed;
+ticket 23's real-card automatic-status retests remain outstanding.

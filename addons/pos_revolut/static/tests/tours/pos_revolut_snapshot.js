@@ -47,7 +47,8 @@ function observeRpc({ rejectPayment = false } = {}) {
             if (start && args[2] === saved.orderUuid) {
                 sessionStorage.setItem(STARTS_KEY, JSON.stringify([...starts(), {
                     orderUuid: args[2], lineUuid: args[3], amount: args[4],
-                    qty: args[method === "revolut_start_refund" ? 6 : 7].lines[0].qty,
+                    qty: method === "revolut_start_refund"
+                        ? args[6].lines[0].qty : pos.getOrder().lines[0].qty,
                     result,
                 }]));
             }
@@ -79,7 +80,7 @@ function checkUndispatchedLine(refund) {
         line.uiState.revolutStarted || line.uiState.revolutSnapshot ||
         line.uiState.revolutOperationId || line.uiState.revolutOriginalOperationId ||
         line.transaction_id || line.payment_ref_no ||
-        line.uiState.revolutStartRejected !== "snapshot_invalid") {
+        line.uiState.revolutStartRejected !== (refund ? "snapshot_invalid" : "authority_required")) {
         throw new Error("Snapshot rejection lost identity or retained financial exposure");
     }
     const requestedAmount = refund ? -10 : 10;
@@ -95,6 +96,12 @@ function checkUndispatchedLine(refund) {
     }
     line.setAmount(refund ? -12.34 : 12.34);
     const rejected = starts().filter((request) => request.result?.start_rejected);
+    if (!refund) {
+        if (starts().length !== 0) {
+            throw new Error("Invalid preparation reached a financial start RPC");
+        }
+        return;
+    }
     if (rejected.length !== 1 || rejected[0].qty !== (refund ? -1e10 : 1e10) ||
         rejected[0].amount !== (refund ? -12.34 : 12.34)) {
         throw new Error("The actual POS adapter did not submit the invalid numeric cart");
@@ -176,21 +183,38 @@ function rejectedSteps(refund) {
                 },
             },
         ] : []),
-        { trigger: ".modal:contains('Revolut cart needs correction'):contains('Correct the cart before starting payment')" },
+        { trigger: refund
+            ? ".modal:contains('Revolut cart needs correction'):contains('Correct the cart before starting payment')"
+            : ".modal:contains('Revolut cart needs correction'):contains('Correct the cart')" },
         Dialog.confirm(),
         {
             content: "Actionable snapshot feedback leaves the original unpaid line editable",
             trigger: `.payment-screen .electronic_status:contains('${refund
-                ? "Correct the return" : "Correct the cart"}')`,
+                ? "Correct the return" : "Review or approve the cart"}')`,
             run() { checkUndispatchedLine(refund); },
         },
         checkStatusTwice(refund),
         {
             content: "Correct the real cart without replacing the order or payment line",
             trigger: ".payment-screen .send_payment_request:contains('Resume')",
-            run() {
-                window.posmodel.getOrder().lines[0].qty = refund ? -1 : 1;
+            async run() {
+                const pos = window.posmodel;
+                const order = pos.getOrder();
+                if (refund) {
+                    // Restore the field corrupted by this fixture. Native
+                    // setQuantity rejects it because refundedQty counts the
+                    // injected current return as already refunded quantity.
+                    order.lines[0].qty = -1;
+                } else {
+                    order.lines[0].setQuantity(1);
+                }
                 checkUndispatchedLine(refund);
+                if (!refund) {
+                    // Preparation now saves a native draft before asking for
+                    // authority. Persist the human's correction through the
+                    // same native sync so reload cannot restore the old cart.
+                    await pos.syncAllOrders({ orders: [order], force: true, throw: true });
+                }
             },
         },
     ].flat();
@@ -207,15 +231,33 @@ for (const refund of [false, true]) {
                 run() {
                     observeRpc();
                     checkUndispatchedLine(refund);
+                    if (refund && window.posmodel.getOrder().lines[0].qty !== -1) {
+                        throw new Error(`Reload lost the corrected return quantity: ${window.posmodel.getOrder().lines[0].qty}`);
+                    }
                 },
             },
             checkStatusTwice(refund),
             {
                 content: "Explicit repeated Resume submits one corrected financial request",
                 trigger: ".payment-screen .send_payment_request:contains('Resume')",
-                run() {
+                async run() {
                     this.anchor.click();
                     this.anchor.click();
+                    if (refund) {
+                        const deadline = performance.now() + 3000;
+                        while (!document.querySelector(".revolut-refund-source:checked") && performance.now() < deadline) {
+                            await new Promise((resolve) => setTimeout(resolve, 100));
+                        }
+                        if (!document.querySelector(".revolut-refund-source:checked")) {
+                            const order = window.posmodel.getOrder();
+                            throw new Error(`Corrected return Resume did not offer allocation: ${JSON.stringify({
+                                qty: order.lines[0].qty, total: order.priceIncl,
+                                dialog: document.querySelector(".modal")?.textContent,
+                                payments: order.payment_ids.map((line) => ({ amount: line.amount,
+                                    status: line.payment_status, snapshot: line.uiState.revolutSnapshot })),
+                            })}`);
+                        }
+                    }
                 },
             },
             ...(refund ? [
@@ -261,7 +303,7 @@ registry.category("web_tour.tours").add("pos_revolut_payment_snapshot_cash_alter
                 const order = window.posmodel.getOrder();
                 const saved = identity();
                 if (order.uuid !== saved.orderUuid || order.getPaymentlineByUuid(saved.lineUuid) ||
-                    starts().length !== 1) {
+                    starts().length !== 0) {
                     throw new Error("Cash checkout retained the rejected line or dispatched another payment");
                 }
                 sessionStorage.removeItem(IDENTITY_KEY);

@@ -4,6 +4,7 @@ import { patch } from "@web/core/utils/patch";
 import { PosStore } from "@point_of_sale/app/services/pos_store";
 import { SplitBillScreen } from "@pos_restaurant/app/screens/split_bill_screen/split_bill_screen";
 import { hasRevolutExposure } from "@pos_revolut/app/payment_revolut";
+import { TipScreen } from "@pos_restaurant/app/screens/tip_screen/tip_screen";
 
 function explainGuard(dialog) {
     dialog.add(AlertDialog, {
@@ -61,5 +62,16 @@ patch(SplitBillScreen.prototype, {
             return false;
         }
         return super.transferSplittedOrder(...arguments);
+    },
+});
+
+patch(TipScreen.prototype, {
+    async validateTip() {
+        if (hasRevolutExposure(this.pos.getOrder())) {
+            this.dialog.add(AlertDialog, { title: _t("Revolut terminal tip"),
+                body: _t("Revolut records terminal tips during payment. Post-payment tip adjustment is unsupported for this order.") });
+            return false;
+        }
+        return super.validateTip(...arguments);
     },
 });

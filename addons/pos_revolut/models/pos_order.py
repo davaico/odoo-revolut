@@ -55,7 +55,7 @@ class _RevolutMutation:
     def watch(self, orders):
         if self.validating:
             return
-        for order in orders:
+        for order in orders.sorted(lambda item: (item.company_id.id, item.uuid or '')):
             if order.id in self.order_ids:
                 continue
             self.order_ids.add(order.id)
@@ -69,6 +69,9 @@ class _RevolutMutation:
             self.watch_payments(order.payment_ids)
 
     def validate(self):
+        from .cart_authorization import _authority_internal
+        if _authority_internal(self.env):
+            return
         self.validating = True
         for order in self.env["pos.order"].browse(sorted(self.return_sources)).exists():
             if not order._revolut_return_source():
@@ -89,7 +92,9 @@ class _RevolutMutation:
             line = self.env["pos.order.line"].browse(line_id).exists()
             if not line or _line_contents(line) != contents:
                 raise UserError(_("Exposed Revolut order contents cannot be changed."))
-        self.env["pos.order"].browse(sorted(self.order_ids)).exists()._check_revolut_order()
+        orders = self.env["pos.order"].browse(sorted(self.order_ids)).exists()
+        orders._check_revolut_authority_mutation()
+        orders._check_revolut_order()
 
     def watch_payments(self, payments):
         if self.validating:
@@ -169,6 +174,7 @@ class PosOrder(models.Model):
         "uuid", "session_id", "config_id", "company_id", "currency_id", "currency_rate", "date_order",
         "state", "pricelist_id", "fiscal_position_id", "lines", "payment_ids",
         "amount_total", "amount_tax", "amount_paid", "amount_return", "is_refund",
+        "partner_id", "preset_id", "is_tipped", "tip_amount", "table_id",
     }
 
     def _revolut_return_source(self):
@@ -223,6 +229,8 @@ class PosOrder(models.Model):
                 raise UserError(_("The Revolut order company, currency, or POS ownership is invalid."))
             if exposed and order.state == "cancel":
                 raise UserError(_("Reconcile the exposed Revolut operation before cancelling this order."))
+            if (exposed or has_revolut_payment or return_source) and 'table_id' in order._fields and order.table_id and order.config_id not in order.table_id.floor_id.pos_config_ids:
+                raise UserError(_("The table must belong to the original POS configuration."))
             if exposed or (
                 order.state not in {"draft", "cancel"} and return_source
             ):
@@ -314,6 +322,9 @@ class PosOrder(models.Model):
         for command in order.get("payment_ids", []):
             if command[0] == 5:
                 payments.clear()
+            elif command[0] == 6 and existing_order:
+                retained = existing_order.payment_ids.filtered(lambda payment:payment.id in command[2])
+                payments = {payment.uuid:{**_payment_proof(payment),'id':payment.id} for payment in retained}
             elif command[0] in (2, 3) and existing_order:
                 payment = existing_order.payment_ids.filtered(lambda item: item.id == command[1])
                 if payment:
@@ -333,6 +344,55 @@ class PosOrder(models.Model):
                     **payments.get(payment_uuid, {}), **values, "uuid": payment_uuid,
                 }
         return payments
+
+    def _revolut_effective_order_values(self, order, existing_order):
+        """Validate complete contents when native synchronization sends deltas.
+
+        Preparation saves the draft before checkout. Native serialization then
+        sends only changed one2many commands; an empty command list retains
+        its persisted lines. Reconstruct those commands for validation without
+        replacing the original payload sent to Odoo.
+        """
+        if not existing_order:
+            return order
+        if not (existing_order._revolut_has_exposure() or existing_order._revolut_return_source()
+                or any(payment.payment_method_id.use_payment_terminal == 'revolut' for payment in existing_order.payment_ids)):
+            return order
+        commands = order.get('lines', [])
+        if not isinstance(commands,list):
+            raise UserError(_('The POS line commands are invalid.'))
+        check_line_count_size(len(commands))
+        original = existing_order._revolut_order_values()
+        lines = {line.id:values for line,values in zip(existing_order.lines,original['lines'])}
+        by_uuid = {values['uuid']:identifier for identifier,values in lines.items()}
+        new_key = -1
+        for command in commands:
+            if not isinstance(command,(list,tuple)) or len(command) != 3:
+                raise UserError(_('The POS line commands are invalid.'))
+            kind,identifier,values = command
+            if kind in (0,1):
+                if not isinstance(values,dict) or (kind == 1 and identifier not in lines):
+                    raise UserError(_('Update only lines belonging to this order.'))
+                key = identifier if kind == 1 else by_uuid.get(values.get('uuid'),new_key)
+                lines[key] = {**lines.get(key,{}),**values}
+                new_key -= 1
+            elif kind in (2,3):
+                lines.pop(identifier,None)
+            elif kind == 5:
+                lines.clear()
+            elif kind == 6:
+                if not isinstance(values,list) or any(type(value) is not int for value in values):
+                    raise UserError(_('The POS line identifiers are invalid.'))
+                check_line_count_size(len(values))
+                if any(identifier not in lines for identifier in values):
+                    raise UserError(_('Retain only lines belonging to this order.'))
+                lines = {identifier:lines[identifier] for identifier in values}
+            elif kind == 4 and identifier in lines:
+                continue
+            else:
+                raise UserError(_('The POS line command is not supported for this persisted cart.'))
+            check_line_count_size(len(lines))
+        return {**original,**order,'lines':list(lines.values())}
 
     def _locked_revolut_operations_for_order(self, company_id, order_uuid):
         self.env["pos.revolut.payment.operation"].sudo()._lock_order(
@@ -417,7 +477,7 @@ class PosOrder(models.Model):
                     "The original Revolut order contents are unavailable. "
                     "Reconcile this payment before completing the sale."
                 ))
-            if current_snapshot != operation.financial_snapshot:
+            if current_snapshot != operation._revolut_expected_snapshot():
                 raise UserError(_(
                     "The order changed while Revolut payment was pending. "
                     "Reconcile it before completing the sale."
@@ -438,7 +498,7 @@ class PosOrder(models.Model):
                 or operation.pos_session_id != session
                 or operation.pos_config_id != session.config_id
                 or operation.payment_method_id.company_id != session.company_id
-                or payment_minor != operation.amount_minor
+                or payment_minor != (operation._revolut_paid_minor() if operation.state == "verified" else operation.amount_minor)
             ):
                 raise UserError(_("The Revolut amount, currency, or POS ownership is invalid."))
             if operation.state != "verified":
@@ -492,11 +552,12 @@ class PosOrder(models.Model):
 
     def _process_order(self, order, existing_order):
         with _revolut_mutation(self.env) as mutation:
+            effective = self._revolut_effective_order_values(order,existing_order)
             refunds = ReturnAllocation(self.env).validate_settlement(
-                order, existing_order, self._revolut_payment_values(order, existing_order)
+                effective, existing_order, self._revolut_payment_values(order, existing_order)
             )
             if refunds is None:
-                self._validate_revolut_settlement(order, existing_order)
+                self._validate_revolut_settlement(effective, existing_order)
             order_id = super()._process_order(order, existing_order)
             mutation.watch(self.browse(order_id))
             return order_id
@@ -509,6 +570,7 @@ class PosOrderLine(models.Model):
         "uuid", "order_id", "company_id", "product_id", "qty", "price_unit", "discount",
         "tax_ids", "price_subtotal", "price_subtotal_incl", "refunded_orderline_id",
         "extra_tax_data", "combo_parent_id", "combo_item_id",
+        "price_extra", "price_type", "attribute_value_ids", "custom_attribute_value_ids",
     }
 
     @api.model_create_multi

@@ -50,7 +50,9 @@ const snapshotRejection = {
 };
 
 function fixture({ refund = false, call, chooseAllocation = async () => false,
-    restoreRefundOriginals = async () => {} } = {}) {
+    restoreRefundOriginals = async () => {},
+    preparePayment = async () => ({status:"prepared", authorization_id:1, cart_version:1, tender_revision:1}),
+    projectVerified = async () => {} } = {}) {
     const clock = new ControlledClock();
     const order = { uuid: "order-1", payment_ids: [], isRefund: refund };
     const line = {
@@ -66,6 +68,7 @@ function fixture({ refund = false, call, chooseAllocation = async () => false,
     const preparationErrors = [];
     const preparationMessages = [];
     const adapter = {
+        preparePayment,
         async call(method, args) {
             calls.push({ method, args });
             return call?.(method, args, calls) ?? false;
@@ -75,7 +78,8 @@ function fixture({ refund = false, call, chooseAllocation = async () => false,
         chooseAllocation,
         setRefundAmount(payment, amount) { payment.amount = -amount; },
         discardRefund(payment) { order.payment_ids = order.payment_ids.filter((item) => item !== payment); },
-        setVerified(payment, result) {
+        async setVerified(payment, result) {
+            await projectVerified(payment, result);
             payment.transaction_id = result.payment_id;
             payment.payment_ref_no = result.order_id;
         },
@@ -770,6 +774,68 @@ for (const refund of [false, true]) {
         assert.equal(line.uuid, "line-1");
     });
 
+    if (refund) {
+        test("authoritative refund absence proof unlocks only the same undispatched line", async () => {
+            const { state, order, line, calls, errors } = fixture({
+                refund: true,
+                chooseAllocation: async () => ({ operationId: 10, amount: 12.34 }),
+                call(method) {
+                    if (method === "revolut_refund_sources") {
+                        return [{ operation_id: 10, payment_method_id: 7, remaining_minor: 1234 }];
+                    }
+                    if (method === "revolut_start_refund") {
+                        throw new Error("reservation rejected before dispatch");
+                    }
+                    if (method === "revolut_confirm_refund_absence") {
+                        return {
+                            dispatched: false, start_rejected: "no_refund_attempt",
+                            order_uuid: order.uuid, payment_line_uuid: line.uuid,
+                        };
+                    }
+                    return false;
+                },
+            });
+            assert.equal(await state.request(order, line), false);
+            assert.equal(paymentActions(line).canDelete, false);
+            assert.equal(await state.request(order, line, { checkOnly: true }), false);
+            assert.equal(paymentActions(line).canDelete, true);
+            assert.equal(paymentActions(line).retrySafe, true);
+            assert.equal(orderActions(order).blocksCheckout, false);
+            assert.equal(line.uiState.revolutOriginalOperationId, false);
+            assert.equal(line.uuid, "line-1");
+            assert.equal(calls.filter(({ method }) => method === "revolut_start_refund").length, 1);
+            assert.equal(calls.filter(({ method }) => method === "revolut_confirm_refund_absence").length, 1);
+            assert.equal(errors.at(-1), "no_refund_attempt");
+        });
+
+        test("refund absence proof for a different line never unlocks the uncertain line", async () => {
+            const { state, order, line, calls } = fixture({
+                refund: true,
+                chooseAllocation: async () => ({ operationId: 10, amount: 12.34 }),
+                call(method) {
+                    if (method === "revolut_refund_sources") {
+                        return [{ operation_id: 10, payment_method_id: 7, remaining_minor: 1234 }];
+                    }
+                    if (method === "revolut_start_refund") {
+                        throw new Error("response lost after dispatch");
+                    }
+                    if (method === "revolut_confirm_refund_absence") {
+                        return {
+                            dispatched: false, start_rejected: "no_refund_attempt",
+                            order_uuid: order.uuid, payment_line_uuid: "another-line",
+                        };
+                    }
+                    return false;
+                },
+            });
+            assert.equal(await state.request(order, line), false);
+            assert.equal(await state.request(order, line, { checkOnly: true }), false);
+            assert.equal(paymentActions(line).canDelete, false);
+            assert.equal(orderActions(order).blocksCheckout, true);
+            assert.equal(calls.filter(({ method }) => method === "revolut_start_refund").length, 1);
+        });
+    }
+
     test(`${refund ? "refund" : "payment"} restored legacy waiting state stays protected when discovery is empty`, async () => {
         const { state, order, line, calls } = fixture({
             refund,
@@ -1091,7 +1157,8 @@ test("surviving refund reference protects a line without a local start snapshot"
     assert.equal(await state.request(order, line), true);
     assert.equal(line.payment_ref_no, "rev-refund-43");
     assert.deepEqual(calls.map(({ method }) => method), [
-        "revolut_find_refund", "revolut_find_refund", "revolut_poll_refund",
+        "revolut_find_refund", "revolut_confirm_refund_absence",
+        "revolut_find_refund", "revolut_poll_refund",
     ]);
 });
 
@@ -1153,4 +1220,42 @@ test("a failed refund can be removed for replacement but cannot be edited or set
     assert.equal(paymentActions(line).canEditAmount, false);
     assert.equal(orderActions(order).blocksAlternativeTender, false);
     assert.equal(orderActions(order).blocksCheckout, true);
+});
+
+
+test("preparation rejection keeps an untouched line editable and sends no start", async () => {
+    const {state, order, line, calls, errors} = fixture({
+        preparePayment: async () => { throw new Error("Review the canonical cart"); },
+    });
+    assert.equal(await state.request(order,line),false);
+    assert.equal(calls.some(({method}) => method === "revolut_start_payment"),false);
+    assert.equal(line.uiState.revolutUndispatched,true);
+    assert.equal(line.uiState.revolutStarted,false);
+    assert.equal(paymentActions(line).canEditAmount,true);
+    assert.equal(paymentActions(line).canDelete,true);
+    assert.equal(paymentActions(line).blocksCheckout,false);
+    assert.equal(paymentOutcome(line),"authority_required");
+    assert.deepEqual(errors,["authority_required"]);
+});
+
+test("verified checkout waits for the canonical gross and tip projection", async () => {
+    const projection = deferred();
+    const {state, order, line, calls} = fixture({
+        projectVerified: async () => projection.promise,
+        call(method) {
+            if (method === "revolut_start_payment") {
+                return {operation_id:1,state:"verified",payment_id:"captured",order_id:"provider-order"};
+            }
+            return false;
+        },
+    });
+    let finished = false;
+    const request = state.request(order,line).then((result) => {finished=true;return result;});
+    await tick();
+    assert.equal(finished,false);
+    assert.equal(line.transaction_id,false);
+    assert.equal(calls.filter(({method})=>method==="revolut_start_payment").length,1);
+    projection.resolve();
+    assert.equal(await request,true);
+    assert.equal(line.transaction_id,"captured");
 });
