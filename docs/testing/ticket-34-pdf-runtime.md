@@ -6,7 +6,9 @@ Local work on 2026-10-01 started from integration
 `dad0e1515ee7b936834906f810f50999f3e33da9` and hosting `245f58e`.
 Initial integration implementation is `c2f0baf` on
 `codex/34-provision-and-gate-odoo-pdf`; hosting implementation is `1f2aa0287f919a95a2268705f639ba616c8c8788` on
-`feat/revolut-staging`.
+`feat/revolut-staging`. Final integration executable/test revision is
+`b3b734a` (repair guidance and seven durable probe regressions included);
+subsequent evidence-only commits do not change tested source.
 Fetched integration `origin/main` matched the baseline. Both initial checkouts
 were clean; existing worktrees and hosting branch were retained.
 
@@ -116,6 +118,10 @@ same internal-network compose environment and guarded image. An evidence
 archive with runtime scenario scripts, logs and fixture PDFs is locally saved
 at `/tmp/ticket34-pdf-evidence.tar.gz`; it contains no live financial data.
 
+The final workstation suite passed 39 tests with the three Odoo-dependent
+cases skipped there (`/tmp/ticket34-final-unit-tests.log`); those same three
+cases passed in the separate seven-test supported-image run.
+
 No static typechecker is configured for the deployment scripts; Python
 compilation and the executable tests are the applicable checks. A passing
 compilation or package version alone is not treated as rendering evidence.
@@ -176,3 +182,8 @@ branches and real successful rendering in the supported network-disabled image.
 An unrelated replacement-VM documentation link accidentally changed during
 that correction was restored to hosting `docs/OPERATIONS.md`. No financial
 behavior or staging gate was changed. Staging acceptance remains open.
+
+Final independent review: Standards 0 remaining findings (worst: none);
+Spec 0 remaining findings (worst: none), including final `dad0e151...b3b734a`
+and the open human handoff. Both initial findings and their fixes remain
+recorded above rather than being represented as an initially clean review.
