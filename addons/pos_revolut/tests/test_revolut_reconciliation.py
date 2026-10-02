@@ -156,6 +156,7 @@ class TestRevolutReconciliation(TransactionCase):
             groups="point_of_sale.group_pos_user",
             company_id=self.env.company.id,
         )
+        self.config.sudo().write({"revolut_user_ids": [Command.link(cashier.id)]})
         snapshot = self.method.with_user(cashier).revolut_find_payment(
             self.order_uuid, self.line_uuid
         )
@@ -175,6 +176,7 @@ class TestRevolutReconciliation(TransactionCase):
             groups="point_of_sale.group_pos_manager",
             company_id=self.env.company.id,
         )
+        self.config.sudo().write({"revolut_user_ids": [Command.link(manager.id)]})
         self.operation.sudo().write({
             "revolut_order_id": self.order_reference,
             "revolut_payment_intent_id": self.intent_reference,
@@ -252,6 +254,9 @@ class TestRevolutReconciliation(TransactionCase):
             groups="point_of_sale.group_pos_manager", company_id=self.env.company.id,
             company_ids=[Command.set([self.env.company.id, other_company.id])],
         )
+        (self.config | other_config).sudo().write({
+            "revolut_user_ids": [Command.link(manager.id)],
+        })
         method = self.method.with_user(manager).with_context(
             allowed_company_ids=[self.env.company.id, other_company.id]
         )

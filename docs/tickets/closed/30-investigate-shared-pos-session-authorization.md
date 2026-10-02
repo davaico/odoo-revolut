@@ -85,7 +85,7 @@ four existing failures reproduced without the investigation class; these are
 explicitly preserved in the evidence, not treated as passing acceptance.
 
 This closes the investigation, **not the authorization defect**. No permission
-change was implemented. [Ticket 35](../ready-for-agents/35-enforce-shared-register-authorization.md)
+change was implemented. [Ticket 35](35-enforce-shared-register-authorization.md)
 records the server-owned grant/recovery remediation, subsequently approved
 as agent-ready on 2026-10-02. Ticket 12's physical-device and financial
 acceptance remains open.

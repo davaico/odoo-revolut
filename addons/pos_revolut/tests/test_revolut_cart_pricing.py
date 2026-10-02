@@ -12,6 +12,7 @@ class TestRevolutCartPricing(CommonPosTest):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        cls.pos_config_usd.sudo().write({"revolut_user_ids": [Command.link(cls.env.uid)]})
         cls.method = cls.bank_payment_method.copy({
             "name": "Revolut canonical pricing", "payment_method_type": "terminal",
             "use_payment_terminal": "revolut", "revolut_environment": "sandbox",
@@ -218,6 +219,7 @@ class TestRevolutCartPricing(CommonPosTest):
         manager = new_test_user(self.env, login="canonical_pricing_manager",
                                 groups="point_of_sale.group_pos_manager",
                                 company_id=self.company.id, company_ids=[Command.set(self.company.ids)])
+        self.pos_config_usd.sudo().write({"revolut_user_ids": [Command.link(manager.id)]})
         order = self._order(price=7, price_type="manual")
         prepared = self._prepare(order, amount=7)
         self.assertEqual(prepared["status"], "approval_required")

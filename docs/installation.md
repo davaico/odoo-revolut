@@ -166,6 +166,48 @@ run these commands by hand. Use the reviewed-revision deployment tool and its
 financial-operation guard in the [staging deployment and recovery
 runbook](staging-deployment.md).
 
+## Provision backend-user register access
+
+Version `19.0.1.11.0` adds explicit register grants. After installing or upgrading,
+an **administrator** opens **Point of Sale → Configuration → Point of Sale**,
+opens each register's form and sets **Revolut register access → Revolut backend
+users**. Add every backend till login and each supervisor who oversees that
+register. Save the form. POS managers need a grant for every register they
+supervise; their manager role alone does not grant access. An administrator
+acting as a POS manager also needs a grant.
+
+Existing and newly created registers start with an empty list. Upgrading or
+copying a register does not grant company users, managers, or its session opener
+access. Provision reviewed users before interactive Revolut checkout resumes.
+An ungranted user receives an actionable request to contact an administrator.
+There is no emergency override. Ordinary POS config edits, imports and browser
+employee fields cannot provision grants.
+
+Multiple granted colleagues can start and recover each other's attempts. A
+shared backend till login can continue native employee switching; employee
+selection, a PIN and whether a backend user has a linked employee do not change
+the backend entitlement. A cashier grant does not permit manager-only refunds,
+cart approval or manual reconciliation. Native config/session/order permissions
+and the active company still apply.
+
+To revoke access, remove the backend user from the register's list and save.
+Their next interactive request is denied, including known transaction IDs,
+refund sources, checkout state, financial worklists and receipt downloads.
+Revocation does not cancel a terminal attempt, clear a reservation or remove
+evidence. Keep the root-owned reconciliation scheduled actions enabled; they
+continue to reconcile existing financial exposure and late success. Regranting
+the original register restores recovery of the same attempt. Historical access
+follows the persisted original register and session even if the payment method
+is later reassigned. Refunds and session rollover remain on the original register.
+
+Follow the offline upgrade procedure and reopen POS to load the register-aware
+refund recovery flow. When a lost request created no return or financial record,
+the persisted open POS session supplies authority for proving absence. Existing
+financial records always use their original register, regardless of a session ID
+from the browser. Ordinary cash-only checkout and native order reads remain available.
+No credential rotation is required by this change. Actual user provisioning and
+physical-terminal acceptance remain part of the authorized rollout.
+
 ## Configure and check a terminal
 
 As a Point of Sale administrator:

@@ -40,6 +40,7 @@ class TestRevolutCredentialAuthority(TransactionCase):
             "name": "Merchant authority POS",
             "payment_method_ids": [Command.link(cls.own_method.id)],
             "auto_validate_terminal_payment": True,
+            "revolut_user_ids": [Command.set((cls.manager | cls.broad_manager | cls.cashier).ids)],
         })
         cls.session = cls.env["pos.session"].create({
             "config_id": cls.config.id, "state": "opened",

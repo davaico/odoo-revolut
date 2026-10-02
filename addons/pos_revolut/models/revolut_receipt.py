@@ -17,9 +17,29 @@ class RevolutReceipt(models.AbstractModel):
         if not orders or not orders.exists():
             raise AccessError(_("The receipt sale is not accessible."))
         orders.check_access("read")
+        for order in orders:
+            order.config_id._check_revolut_register_access(session=order.session_id, order=order)
         allowed = set(self.env.companies.ids) & set(self.env.user.company_ids.ids)
         if any(order.company_id.id not in allowed for order in orders):
             raise AccessError(_("The receipt company is not active or accessible."))
+
+    @api.model
+    def _check_operation_access(self, kind, operation):
+        # Receipt access follows sale ACLs for cashiers, while authorization
+        # still uses the persisted financial session rather than a newer order
+        # session. Sudo only resolves identity; native checks use the caller.
+        identity = operation.sudo()
+        source = identity if kind == "payment" else identity.original_operation_id
+        source.with_env(self.env)._check_revolut_register_access()
+        if kind == "refund":
+            session = self.env["pos.session"].browse(identity.pos_session_id.id)
+            orders = identity.pos_order_id | self.env["pos.order"].sudo().search([
+                ("company_id", "=", identity.company_id.id), ("uuid", "=", identity.order_uuid),
+            ])
+            order = orders.with_env(self.env)
+            session.config_id._check_revolut_register_access(session=session, order=order)
+            if session.config_id.id != source.pos_config_id.id:
+                raise AccessError(_("The refund receipt belongs to another register."))
 
     @api.model
     def _operation(self, kind, operation_id):
@@ -35,6 +55,7 @@ class RevolutReceipt(models.AbstractModel):
         ], limit=1)
         if not operation:
             raise AccessError(_("The Revolut receipt is not accessible."))
+        self._check_operation_access(kind, operation)
         order_ids = operation.pos_order_id.ids
         if kind == "refund":
             order_ids += operation.original_operation_id.pos_order_id.ids
@@ -185,6 +206,7 @@ class PosOrderReceipt(models.Model):
         options = []
         for kind, operations in (("payment", payments), ("refund", refunds)):
             for operation in operations:
+                receipts._check_operation_access(kind, operation)
                 # An inconsistent verified record remains visible to staff;
                 # the document endpoint supplies an actionable evidence error.
                 receipts._check_order_access(self.env["pos.order"].browse(operation.pos_order_id.ids + (
@@ -198,9 +220,17 @@ class PosOrderReceipt(models.Model):
                     "url": receipts._download_url(kind, operation.id)})
         return options
 
+    @api.depends_context("uid", "allowed_company_ids")
+    @api.depends("config_id.revolut_user_ids")
     def _compute_revolut_receipt_links(self):
         for order in self:
-            options = order.revolut_receipt_options() if order.id else []
+            try:
+                options = order.revolut_receipt_options() if order.id else []
+            except AccessError:
+                # Native cash-only order reads must continue. The explicit
+                # receipt RPC and document endpoint still deny financial access.
+                order.revolut_receipt_links = False
+                continue
             order.revolut_receipt_links = Markup("<ul>{}</ul>").format(Markup("").join(
                 Markup('<li><a href="{}" target="_blank">{}</a></li>').format(option["url"], option["label"])
                 for option in options

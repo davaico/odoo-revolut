@@ -1,21 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <record id="rule_revolut_native_payment_register" model="ir.rule">
+        <field name="name">Revolut native tenders require register access</field>
+        <field name="model_id" ref="point_of_sale.model_pos_payment"/>
+        <field name="domain_force">['|', '&amp;', '&amp;', ('revolut_operation_id', '=', False), ('revolut_refund_operation_id', '=', False), ('payment_method_id.use_payment_terminal', '!=', 'revolut'), ('pos_order_id.config_id.revolut_user_ids', 'in', [user.id])] if user.has_group('point_of_sale.group_pos_user') else [('revolut_operation_id', '=', False), ('revolut_refund_operation_id', '=', False), ('payment_method_id.use_payment_terminal', '!=', 'revolut')]</field>
+    </record>
     <record id="rule_revolut_cart_company_manager" model="ir.rule">
         <field name="name">Revolut cart authority in allowed companies</field>
         <field name="model_id" ref="model_pos_revolut_cart_authorization"/>
-        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="domain_force">[('company_id', 'in', company_ids), ('config_id.revolut_user_ids', 'in', [user.id])]</field>
         <field name="groups" eval="[(4, ref('point_of_sale.group_pos_manager'))]"/>
     </record>
     <record id="rule_revolut_operation_company_manager" model="ir.rule">
         <field name="name">Revolut operations in allowed companies</field>
         <field name="model_id" ref="model_pos_revolut_payment_operation"/>
-        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="domain_force">[('company_id', 'in', company_ids), ('pos_config_id.revolut_user_ids', 'in', [user.id])]</field>
         <field name="groups" eval="[(4, ref('point_of_sale.group_pos_manager'))]"/>
     </record>
     <record id="rule_revolut_dispatch_company_manager" model="ir.rule">
         <field name="name">Revolut dispatch claims in allowed companies</field>
         <field name="model_id" ref="model_pos_revolut_payment_dispatch"/>
-        <field name="domain_force">[('operation_id.company_id', 'in', company_ids)]</field>
+        <field name="domain_force">[('operation_id.company_id', 'in', company_ids), ('operation_id.pos_config_id.revolut_user_ids', 'in', [user.id])]</field>
         <field name="groups" eval="[(4, ref('point_of_sale.group_pos_manager'))]"/>
     </record>
     <record id="rule_revolut_order_lock_company_manager" model="ir.rule">
@@ -27,13 +32,13 @@
     <record id="rule_revolut_audit_company_manager" model="ir.rule">
         <field name="name">Revolut audit in allowed companies</field>
         <field name="model_id" ref="model_pos_revolut_reconciliation_audit"/>
-        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="domain_force">[('company_id', 'in', company_ids), ('operation_id.pos_config_id.revolut_user_ids', 'in', [user.id])]</field>
         <field name="groups" eval="[(4, ref('point_of_sale.group_pos_manager'))]"/>
     </record>
     <record id="rule_revolut_refund_company_manager" model="ir.rule">
         <field name="name">Revolut refunds in allowed companies</field>
         <field name="model_id" ref="model_pos_revolut_refund_operation"/>
-        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+        <field name="domain_force">[('company_id', 'in', company_ids), ('original_operation_id.pos_config_id.revolut_user_ids', 'in', [user.id]), ('pos_session_id.config_id.revolut_user_ids', 'in', [user.id])]</field>
         <field name="groups" eval="[(4, ref('point_of_sale.group_pos_manager'))]"/>
     </record>
 </odoo>

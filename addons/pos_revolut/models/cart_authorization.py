@@ -224,20 +224,34 @@ class PosOrder(models.Model):
     revolut_payable_target = fields.Float(compute='_compute_revolut_target')
     revolut_has_authority_exposure = fields.Boolean(compute='_compute_revolut_target')
 
-    @api.depends('revolut_authorization_id.payable_minor', 'revolut_authorization_id.operation_ids.state',
+    @api.depends_context('uid', 'allowed_company_ids')
+    @api.depends('config_id.revolut_user_ids', 'revolut_authorization_id.payable_minor', 'revolut_authorization_id.operation_ids.state',
                  'revolut_authorization_id.operation_ids.terminal_tip_minor', 'lines.refunded_orderline_id', 'lines.qty')
     def _compute_revolut_target(self):
         for order in self:
-            authority = order.revolut_authorization_id.sudo()
-            exposed = authority._exposed() if authority else False
-            order.revolut_has_authority_exposure = bool(exposed)
-            order.revolut_payable_target = ((authority.payable_minor + sum(
-                op.terminal_tip_minor for op in authority._operations() if op.state == 'verified'
-            )) / 10**order.currency_id.decimal_places) if exposed else 0
-            return_target = order._revolut_return_target_minor()
-            if return_target is not None:
-                order.revolut_has_authority_exposure = True
-                order.revolut_payable_target = return_target / 10**order.currency_id.decimal_places
+            try:
+                order.config_id._check_revolut_register_access(session=order.session_id, order=order)
+                authority = order.revolut_authorization_id.sudo()
+                if authority:
+                    authority.config_id.with_env(order.env)._check_revolut_register_access(
+                        session=authority.session_id, order=order,
+                    )
+                    for operation in authority._operations():
+                        operation.with_env(order.env)._check_revolut_register_access()
+                exposed = authority._exposed() if authority else False
+                order.revolut_has_authority_exposure = bool(exposed)
+                order.revolut_payable_target = ((authority.payable_minor + sum(
+                    op.terminal_tip_minor for op in authority._operations() if op.state == 'verified'
+                )) / 10**order.currency_id.decimal_places) if exposed else 0
+                return_target = order._revolut_return_target_minor()
+                if return_target is not None:
+                    order.revolut_has_authority_exposure = True
+                    order.revolut_payable_target = return_target / 10**order.currency_id.decimal_places
+            except AccessError:
+                # Native order reads continue, while derived financial state
+                # honors the original authority/session even after rollover.
+                order.revolut_has_authority_exposure = False
+                order.revolut_payable_target = 0
 
     @api.model
     def _load_pos_data_fields(self, config):
@@ -276,6 +290,7 @@ class PosOrder(models.Model):
         if not self.env.user.has_group('point_of_sale.group_pos_user'):
             raise AccessError(_('Only POS staff can authorize checkout.'))
         self.check_access('write')
+        self.config_id._check_revolut_register_access(session=self.session_id, order=self)
         if self.uuid != uuid or self.company_id not in self.env.companies or self.state != 'draft' or self.is_refund:
             raise UserError(_('Select the exact original draft sale for Revolut payment.'))
         if self.session_id.state != 'opened' or self.company_id != self.session_id.company_id or self.config_id != self.session_id.config_id or self.currency_id != self.session_id.currency_id:
@@ -300,6 +315,7 @@ class PosOrder(models.Model):
                     order = env['pos.order'].browse(order_id).exists()
                     if not order:
                         raise UserError(_('Save the draft online before preparing Revolut payment.'))
+                    order._revolut_check_prepare_identity(uuid)
                     cursor.execute("UPDATE pos_session SET write_date = write_date WHERE id = %s", [order.session_id.id])
                     env['pos.revolut.payment.operation'].sudo()._lock_order(order.company_id.id,uuid)
                     order.invalidate_recordset()
@@ -410,6 +426,7 @@ class PosOrder(models.Model):
                     order = env['pos.order'].browse(order_id).exists()
                     if not order:
                         raise UserError(_('The cart is unavailable.'))
+                    order._revolut_check_prepare_identity(uuid)
                     cursor.execute("UPDATE pos_session SET write_date = write_date WHERE id = %s", [order.session_id.id])
                     env['pos.revolut.payment.operation'].sudo()._lock_order(order.company_id.id,uuid)
                     order.invalidate_recordset()
@@ -437,6 +454,7 @@ class PosOrder(models.Model):
         if not order or not self.env.user.has_group('point_of_sale.group_pos_user'):
             raise AccessError(_('The checkout is unavailable.'))
         order.check_access('read')
+        order.config_id._check_revolut_register_access(session=order.session_id, order=order)
         if order.uuid != uuid or order.company_id not in self.env.companies:
             raise AccessError(_('Recover the exact original checkout.'))
         return {'data':order.read_pos_data([],order.config_id),

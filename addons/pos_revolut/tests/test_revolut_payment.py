@@ -1011,6 +1011,7 @@ class TestRevolutPayment(TransactionCase):
             groups="point_of_sale.group_pos_manager",
             company_id=self.env.company.id,
         )
+        self.config.sudo().write({"revolut_user_ids": [Command.link(manager.id)]})
         install_zero_reports(self.env, request)
         operation.with_user(manager).action_revolut_associate(
             self.revolut_order_id, self.revolut_intent_id
@@ -1032,6 +1033,7 @@ class TestRevolutPayment(TransactionCase):
             self.env, login="snapshot_bounds_cashier",
             groups="base.group_user,point_of_sale.group_pos_user", company_id=self.env.company.id,
         )
+        self.config.sudo().write({"revolut_user_ids": [Command.link(cashier.id)]})
         order_uuid, line_uuid = str(uuid4()), str(uuid4())
         snapshot = self._financial_snapshot(order_uuid)
         snapshot["lines"][0].update(qty="1e1000", price_unit="1e-1000", discount="1e1000")
@@ -1390,6 +1392,7 @@ class TestRevolutOrderSettlement(CommonPosTest):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        cls.pos_config_usd.sudo().write({"revolut_user_ids": [Command.link(cls.env.uid)]})
         cls.revolut_method = cls.bank_payment_method.copy(
             {
                 "name": "Revolut settlement test",

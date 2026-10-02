@@ -95,6 +95,7 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        cls.pos_config_usd.sudo().write({"revolut_user_ids": [Command.link(cls.env.uid)]})
         cls.method = cls.bank_payment_method.copy({
             "name": "Revolut report evidence", "payment_method_type": "terminal",
             "use_payment_terminal": "revolut", "revolut_environment": "sandbox",

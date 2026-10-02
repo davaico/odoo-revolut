@@ -103,6 +103,7 @@ class PosRevolutPaymentOperation(models.Model):
         self.check_access("read")
         if self.company_id not in self.env.companies:
             raise AccessError(_("This payment belongs to another company."))
+        self._check_revolut_register_access()
 
     def _record_reconciliation_audit(self, action, evidence_reference):
         self.ensure_one()

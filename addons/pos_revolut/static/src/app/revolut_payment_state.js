@@ -256,7 +256,7 @@ export class RevolutPaymentState {
                 if (refund && !line.uiState.revolutOperationId &&
                     !line.transaction_id && !line.payment_ref_no) {
                     const proof = await this.clock.before(this.adapter.call(
-                        "revolut_confirm_refund_absence", [[this.methodId], order.uuid, line.uuid]
+                        "revolut_confirm_refund_absence", [[this.methodId], order.uuid, line.uuid, this.sessionId]
                     ), deadline);
                     if (proof?.operation_id) {
                         result = proof;

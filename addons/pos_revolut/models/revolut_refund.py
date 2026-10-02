@@ -86,6 +86,20 @@ class PosRevolutRefundOperation(models.Model):
     def _revolut_deployment_terminal_states(self):
         return {"verified", "failed"}
 
+    def _check_revolut_register_access(self):
+        self.ensure_one()
+        if self.env.su:
+            return
+        self.check_access("read")
+        self.original_operation_id._check_revolut_register_access()
+        session = self.pos_session_id
+        order = self.pos_order_id or self.env["pos.order"].sudo().search([
+            ("company_id", "=", self.company_id.id), ("uuid", "=", self.order_uuid),
+        ], limit=1).with_env(self.env)
+        session.config_id._check_revolut_register_access(session=session, order=order)
+        if session.config_id != self.original_operation_id.pos_config_id:
+            raise AccessError(_("The refund belongs to another Point of Sale register."))
+
     def _snapshot(self):
         self.ensure_one()
         return {
@@ -150,6 +164,7 @@ class PosPaymentMethod(models.Model):
         if (not session or session.company_id != self.company_id or session.currency_id.id != currency_id
                 or session.state != "opened" or self not in session.config_id.payment_method_ids):
             raise AccessError(_("This POS session is not available for Revolut refunds."))
+        session.config_id._check_revolut_register_access(session=session)
         return ReturnAllocation(self.env).sources(session, financial_snapshot)
 
     def revolut_start_refund(self, session_id, order_uuid, payment_line_uuid, amount, currency_id, financial_snapshot, original_operation_id=None, base_amount_minor=None, tip_amount_minor=None):
@@ -168,7 +183,7 @@ class PosPaymentMethod(models.Model):
         for attempt in range(3):
             try:
                 with self.env.registry.cursor() as cursor:
-                    env = api.Environment(cursor, self.env.uid, dict(self.env.context))
+                    env = api.Environment(cursor, self.env.uid, dict(self.env.context), su=self.env.su)
                     reservation = ReturnAllocation(env).reserve(
                         env["pos.payment.method"].browse(self.id),
                         env["pos.session"].browse(session.id), order_uuid,
@@ -222,7 +237,7 @@ class PosPaymentMethod(models.Model):
     def _read_refund_owned(self, operation_id=None, order_uuid=None, payment_line_uuid=None):
         self._check_refund_authority()
         with self.env.registry.cursor() as cursor:
-            env = api.Environment(cursor, self.env.uid, dict(self.env.context))
+            env = api.Environment(cursor, self.env.uid, dict(self.env.context), su=self.env.su)
             domain = [("payment_method_id", "=", self.id), ("company_id", "in", self.env.companies.ids)]
             if operation_id:
                 domain.append(("id", "=", operation_id))
@@ -235,6 +250,7 @@ class PosPaymentMethod(models.Model):
                 if operation_id:
                     raise AccessError(_("This refund is not accessible."))
                 return False
+            operation.with_env(env)._check_revolut_register_access()
             source = operation.original_operation_id
             return {"snapshot": operation._snapshot(), "id": operation.id,
                     "credential_operation_id": source.id,
@@ -247,10 +263,11 @@ class PosPaymentMethod(models.Model):
         for attempt in range(3):
             try:
                 with self.env.registry.cursor() as cursor:
-                    env = api.Environment(cursor, self.env.uid, dict(self.env.context))
+                    env = api.Environment(cursor, self.env.uid, dict(self.env.context), su=self.env.su)
                     operation = env["pos.revolut.refund.operation"].sudo().browse(operation_id).exists()
                     if not operation or operation.payment_method_id.id != self.id:
                         raise AccessError(_("This refund is not accessible."))
+                    operation.with_env(env)._check_revolut_register_access()
                     env["pos.revolut.payment.operation"]._lock_order(operation.company_id.id, operation.order_uuid)
                     cursor.execute("SELECT id FROM pos_revolut_refund_operation WHERE id = %s FOR UPDATE", [operation_id])
                     operation.invalidate_recordset()
@@ -300,7 +317,7 @@ class PosPaymentMethod(models.Model):
         result = self._read_refund_owned(order_uuid=order_uuid, payment_line_uuid=payment_line_uuid)
         return result["snapshot"] if result else False
 
-    def revolut_confirm_refund_absence(self, order_uuid, payment_line_uuid):
+    def revolut_confirm_refund_absence(self, order_uuid, payment_line_uuid, session_id=None):
         """Prove a lost start never reserved this line before allowing a retry."""
         self._check_refund_authority()
         try:
@@ -311,14 +328,39 @@ class PosPaymentMethod(models.Model):
         for attempt in range(3):
             try:
                 with self.env.registry.cursor() as cursor:
-                    env = api.Environment(cursor, self.env.uid, dict(self.env.context))
-                    env["pos.revolut.payment.operation"].sudo()._lock_order(
-                        self.company_id.id, order_uuid,
-                    )
+                    env = api.Environment(cursor, self.env.uid, dict(self.env.context), su=self.env.su)
                     refunds = env["pos.revolut.refund.operation"].sudo().search([
                         ("company_id", "=", self.company_id.id),
                         ("order_uuid", "=", order_uuid),
                     ])
+                    if refunds:
+                        for refund in refunds.with_env(env):
+                            refund._check_revolut_register_access()
+                    else:
+                        order = env["pos.order"].sudo().search([
+                            ("company_id", "=", self.company_id.id), ("uuid", "=", order_uuid),
+                        ], limit=1).with_env(env)
+                        if order:
+                            order.config_id._check_revolut_register_access(session=order.session_id, order=order)
+                        else:
+                            # With no persisted return/attempt, the existing POS
+                            # session supplies initial authority. Known financial
+                            # identity always wins over this caller-selected ID.
+                            charges = env["pos.revolut.payment.operation"].sudo().search([
+                                ("company_id", "=", self.company_id.id), ("order_uuid", "=", order_uuid),
+                            ])
+                            for charge in charges.with_env(env):
+                                charge._check_revolut_register_access()
+                            if charges:
+                                return False
+                            session = env["pos.session"].browse(session_id).exists() if type(session_id) is int else env["pos.session"]
+                            if (not session or session.company_id != self.company_id
+                                    or session.state != "opened" or self not in session.config_id.payment_method_ids):
+                                raise AccessError(_("Select an authorized POS session before checking refund absence."))
+                            session.config_id._check_revolut_register_access(session=session)
+                    env["pos.revolut.payment.operation"].sudo()._lock_order(
+                        self.company_id.id, order_uuid,
+                    )
                     current = refunds.filtered(lambda item: item.payment_line_uuid == payment_line_uuid)
                     if current and current[0].payment_method_id.id != self.id:
                         result = False
