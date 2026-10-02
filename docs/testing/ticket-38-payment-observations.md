@@ -101,13 +101,13 @@ four independent authenticated browser sessions. All provider waits are
 bounded mocks; the network is internal and Merchant HTTP guard is enabled.
 
 The measured four-tab shared-operation scenario made **one provider GET**.
-Three duplicate RPCs returned in 0.116, 0.184 and 0.154 seconds while the
-winner's read was held. An unrelated authorized RPC completed in 0.011 seconds
+Three duplicate RPCs returned in 0.113, 0.173 and 0.193 seconds while the
+winner's read was held. An unrelated authorized RPC completed in 0.015 seconds
 while that read remained held. The next shared-operation provider start was
-1.122 seconds after the earlier start. No financial POST occurred.
+1.100 seconds after the earlier start. No financial POST occurred.
 
 Two distinct operations still made two concurrent held GETs in the two workers.
-The unrelated RPC then took 2.055 seconds across a deliberate 2.000-second hold.
+The unrelated RPC then took 2.052 seconds across a deliberate 2.000-second hold.
 Coalescing therefore solves duplicate-operation contention without guaranteeing
 capacity for different operations or account-wide admission. These are local
 fixture measurements, not production latency or Merchant quota guarantees.
@@ -122,8 +122,7 @@ and mocked transport. Existing payment, tip and financial-race fixtures advance
 the controlled clock when explicitly asking for a new observation; cache
 comparisons preserve all financial fields and require non-fresh metadata.
 
-Final commands and results are recorded below after execution. The initial
-full run exposed legacy fixture assumptions about instantaneous fresh polls
+The initial full run exposed legacy fixture assumptions about instantaneous fresh polls
 and one fast browser-reload regression. Those failures were corrected and
 verified narrowly before repeating full acceptance. Upgrade testing also
 exposed a Retry-After advice assertion discrepancy. Scoped cron fixtures and
@@ -134,3 +133,42 @@ There is no
 configured static type checker in this Odoo repository; Python compilation,
 JavaScript syntax/unit checks, shell checks and the actual Odoo runtime tests
 provide the applicable validation.
+
+Validation uses isolated Docker Compose project names with mocked provider
+transport and the outbound Merchant guard. The final implementation is pinned
+at `a8d90a7`; a subsequent fetch confirmed `origin/main` remained `12ad4bf` and
+is an ancestor of the work branch.
+
+| Verification | Result |
+| --- | --- |
+| `scripts/test-addon --verify-install-upgrade` | 446 install, 446 upgrade, 9 Restaurant tests; zero failures/errors, exit 0 |
+| `scripts/test-addon --test-tags /pos_revolut:TestRevolutPaymentObservation --verify-install-upgrade` | 15 install, 15 upgrade, 9 Restaurant tests; zero failures/errors |
+| Observation and existing payment/cart concurrency suites | 53 tests passed before the added conflict regression |
+| Conflict recovery regression and existing recovery batches | 26 tests passed; regression failed before the fencing fix |
+| Recovery batch and shared-register metadata suites | 51 tests passed |
+| Two-worker `scripts/investigate-status-poll-workers --coalesced` | Passed; counts, timings and distinct-operation limitation recorded above |
+| `node --test --test-isolation=none addons/pos_revolut/static/tests/revolut_payment_state.test.mjs` | 76 passed, zero skips |
+| `python3 -m unittest discover -s tests` | 40 tests, zero failures; three opt-in Docker integration cases skipped |
+| Python compilation, shell syntax and `git diff --check` | Passed |
+
+Full acceptance completed on 2026-10-02 against `a8d90a7` with exit 0.
+The final two-worker probe also passed against that revision. All financial
+transport was mocked; no production deployment or real terminal operation
+was performed.
+
+## Standards
+
+No documented-standard violations or actionable baseline smells found in
+`git diff 12ad4bf...a8d90a7`. The final ORM flush/cache invalidation and scoped
+regression fixtures follow the repository's safe reconciliation and mocked
+testing rules. **0 findings.**
+
+## Spec
+
+No remaining requirement gaps, incorrect behavior or scope creep found in
+`git diff 12ad4bf...a8d90a7`. The exhausted-conflict fallback finding was fixed
+under the original token and verified against a successor's pending evidence
+and due time. The Retry-After deadline regression retains strict persisted
+deadline and cadence-advice assertions with coherent clocks. **0 findings.**
+
+Review totals: Standards 0; Spec 0.
