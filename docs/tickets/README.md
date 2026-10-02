@@ -98,7 +98,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [35 — Enforce explicit backend-user access to shared registers](closed/35-enforce-shared-register-authorization.md) | `ready-for-agent` at closure | Closed | Explicit grants verified; 406 install/406 upgrade/9 Restaurant; rollout remains 12 |
 | [36 — Remove custom Revolut receipts and preserve native printing](closed/36-remove-custom-revolut-receipts.md) | `ready-for-agent` at closure | Closed | 398 install/398 upgrade/9 Restaurant; actual native PDF and old-release preservation verified; physical/staging gates remain 12/34 |
 | [37 — Reconcile refunds created outside Odoo](closed/37-reconcile-external-terminal-refunds.md) | `ready-for-agent` at closure | Closed | GET-only discovery and separate native reconciliation verified; 430 install + tip regression/431 upgrade/9 Restaurant; rollout and live reconciliation remain 12 |
-| [38 — Coalesce concurrent payment status polls](needs-triage/38-coalesce-concurrent-payment-status-polls.md) | `needs-triage` | Open | 29 closed; owner approval of remediation/cadence and recovery-delay tradeoff |
+| [38 — Coalesce concurrent payment status polls](ready-for-agents/38-coalesce-concurrent-payment-status-polls.md) | `ready-for-agent` | Claimed | 29 closed; owner approved implementation |
 
 ## Architecture triage — 2026-09-25
 
@@ -290,8 +290,8 @@ mocked probe, resolve that handoff. Ticket 29 is **closed as an investigation**:
 duplicate reads for one cashier's operation occupy both workers and delay an
 unrelated authenticated RPC while provider responses are held. No production
 outage or fixed Merchant quota exhaustion is claimed, and no runtime behavior
-changed. [Ticket 38](needs-triage/38-coalesce-concurrent-payment-status-polls.md)
-preserves the scoped remediation proposal under needs-triage for approval.
+changed. [Ticket 38](ready-for-agents/38-coalesce-concurrent-payment-status-polls.md)
+is claimed under ready-for-agent following the owner implementation request on 2026-10-02.
 
 ### Shared-register investigation — 2026-10-02
 

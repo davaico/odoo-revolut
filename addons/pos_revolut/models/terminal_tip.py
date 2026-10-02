@@ -144,7 +144,7 @@ class PosPaymentMethod(models.Model):
             headers={"Authorization": f"Bearer {secret}", "Revolut-Api-Version": REVOLUT_API_VERSION,
                      "Accept": "text/csv" if csv_file else "application/json",
                      "Content-Type": "application/json"},
-            timeout=REVOLUT_REQUEST_TIMEOUT_SECONDS, allow_redirects=False, stream=True,
+            timeout=self._revolut_observation_remaining(operation), allow_redirects=False, stream=True,
             **({"json": body} if body is not None else {}),
         )
         try:
@@ -153,6 +153,7 @@ class PosPaymentMethod(models.Model):
                 raise ValueError("report redirects are not accepted")
             content = bytearray()
             for chunk in response.iter_content(chunk_size=8192):
+                self._revolut_observation_remaining(operation)
                 if len(content) + len(chunk) > REPORT_MAX_BYTES:
                     raise ValueError("report response exceeds byte limit")
                 content.extend(chunk)

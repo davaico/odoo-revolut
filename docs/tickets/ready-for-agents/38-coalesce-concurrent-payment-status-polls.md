@@ -2,11 +2,11 @@
 
 **Work branch:** `codex/38-coalesce-payment-status-polls`
 
-**State:** open
+**State:** claimed
 
-**Triage:** needs-triage
+**Triage:** ready-for-agent
 
-**Work type:** Implementation proposal; approval required before implementation.
+**Work type:** Approved implementation (owner request, 2026-10-02).
 
 ## Problem and intended behavior
 

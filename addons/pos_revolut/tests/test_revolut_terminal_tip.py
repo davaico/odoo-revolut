@@ -126,6 +126,11 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
         mode = self.enter_registry_test_mode()
         mode.__enter__()
         self.addCleanup(mode.__exit__, None, None, None)
+        self.observation_time = fields.Datetime.now()
+        self.enterContext(patch(
+            "odoo.addons.pos_revolut.models.payment_observation.observation_now",
+            side_effect=lambda: max(self.observation_time, fields.Datetime.now()),
+        ))
         self.pos_config_usd.open_ui()
         self.session = self.pos_config_usd.current_session_id
         self.session.write({"state": "opened"})
@@ -163,6 +168,8 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
         return started
 
     def poll_payment(self):
+        # Each helper call requests a new provider observation after cadence.
+        self.observation_time = max(self.observation_time, fields.Datetime.now()) + timedelta(seconds=1)
         return self.method.revolut_poll_payment(self.operation_id, self.order.uuid, self.line_uuid)
 
     def financial_post_count(self):
@@ -185,7 +192,7 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
         self.order.invalidate_recordset()
         self.assertEqual(self.order.amount_total, 103)
         self.assertEqual(len(self.order.lines.filtered(lambda line: line.product_id == self.tip_product)), 1)
-        self.assertEqual(self.poll_payment(), verified)
+        self.assertEqual(self.poll_payment(), {**verified, "observation_fresh": False})
         self.assertEqual(self.financial_post_count(), 2)
         self.assertEqual(self.report_post_count, 1)
 

@@ -567,6 +567,7 @@ class PosPaymentMethod(models.Model):
                         operation.state != "pending"
                         or operation.provider_state != "pending"
                         or operation.revolut_payment_id
+                        or not self._revolut_cancel_observation_is_current(operation)
                     )):
                         return False
                     dispatches = owned_env["pos.revolut.payment.dispatch"].sudo()
@@ -666,7 +667,7 @@ class PosPaymentMethod(models.Model):
                 "Content-Type": "application/json",
                 **({"Idempotency-Key": idempotency_key} if idempotency_key else {}),
             },
-            timeout=REVOLUT_REQUEST_TIMEOUT_SECONDS,
+            timeout=self._revolut_observation_remaining(operation),
             allow_redirects=False,
             **kwargs,
         )

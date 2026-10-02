@@ -284,7 +284,7 @@ class TestRevolutPayment(TransactionCase):
         )
         self.assertEqual(result["state"], "cancelled")
         self.assertTrue(result["retry_safe"])
-        self.assertEqual(repeated, result)
+        self.assertEqual(repeated, {**result, "observation_fresh": False})
         cancellations = [call for call in request.call_args_list
                          if call.args[1].endswith("/cancel")]
         self.assertEqual(len(cancellations), 1)
@@ -321,7 +321,7 @@ class TestRevolutPayment(TransactionCase):
         self.assertNotEqual(retry["order_id"], old_order)
         self.assertEqual(self.payment_method.revolut_poll_payment(
             first["operation_id"], order_uuid, line_uuid
-        ), failed)
+        ), {**failed, "observation_fresh": False})
         self.assertEqual(len(financial_posts(request)), 4)
 
     @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
