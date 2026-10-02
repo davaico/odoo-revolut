@@ -89,7 +89,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [26 — Decide server-authorized cart and tip behavior](closed/26-decide-order-and-tip-authorization.md) | `ready-for-agent` at closure | Closed | None |
 | [27 — Enforce the authorized order balance before terminal dispatch](closed/27-enforce-authorized-terminal-allocation.md) | `ready-for-agent` at closure | Closed | 26 (closed); fix merged to main, staging/device acceptance remains ticket 12 |
 | [28 — Bind Revolut credential authority to the owning company](closed/28-bind-merchant-credentials-to-company.md) | `ready-for-agent` at closure | Closed | None; integrated fix, migration evidence and independent verification accepted |
-| [29 — Determine the impact of concurrent payment status polling](needs-info/29-investigate-concurrent-status-polling.md) | `needs-info` | Open | Effective Odoo/proxy capacity and Merchant quota; bounded local evidence preserved |
+| [29 — Determine the impact of concurrent payment status polling](closed/29-investigate-concurrent-status-polling.md) | `ready-for-agent` at closure | Closed | Investigation complete; duplicate-read HTTP contention confirmed, separate proposal in 38 |
 | [30 — Determine authorized access to shared POS sessions](closed/30-investigate-shared-pos-session-authorization.md) | `ready-for-agent` at closure | Closed | Investigation complete; confirmed policy gap and recovery bypass proposed as ticket 35 |
 | [31 — Determine deployment upload and lock-file exploitability](wontfix/31-investigate-privileged-deployment-files.md) | `wontfix` | Closed | Owner stopped investigation after Daybreak interruptions; six findings closed locally as wontfix; workbench unchanged |
 | [32 — Verify deployment host identity on first SSH use](wontfix/32-investigate-deployment-host-authentication.md) | `wontfix` | Closed | Owner scope decision (2026-10-02): client/hosting operator handles deployment access; evidence retained, first-deployment procedure unresolved |
@@ -98,6 +98,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [35 — Enforce explicit backend-user access to shared registers](closed/35-enforce-shared-register-authorization.md) | `ready-for-agent` at closure | Closed | Explicit grants verified; 406 install/406 upgrade/9 Restaurant; rollout remains 12 |
 | [36 — Remove custom Revolut receipts and preserve native printing](closed/36-remove-custom-revolut-receipts.md) | `ready-for-agent` at closure | Closed | 398 install/398 upgrade/9 Restaurant; actual native PDF and old-release preservation verified; physical/staging gates remain 12/34 |
 | [37 — Reconcile refunds created outside Odoo](closed/37-reconcile-external-terminal-refunds.md) | `ready-for-agent` at closure | Closed | GET-only discovery and separate native reconciliation verified; 430 install + tip regression/431 upgrade/9 Restaurant; rollout and live reconciliation remain 12 |
+| [38 — Coalesce concurrent payment status polls](needs-triage/38-coalesce-concurrent-payment-status-polls.md) | `needs-triage` | Open | 29 closed; owner approval of remediation/cadence and recovery-delay tradeoff |
 
 ## Architecture triage — 2026-09-25
 
@@ -272,7 +273,7 @@ Read the project instructions, API validation report and development-environment
 
 ### Ticket 29 investigation — 2026-10-02
 
-Ticket 29 is now **open / needs-info**. Its
+The initial ticket 29 handoff was **open / needs-info**. Its
 [concurrent-status evidence](../testing/ticket-29-concurrent-status-polling.md)
 records three simultaneous mocked provider reads for the same operation and
 successful financial/late-success controls. Source claim
@@ -282,6 +283,15 @@ limits and Merchant endpoint/account quotas are required for a final verdict.
 The owner's requested recommendation and a separate scoped lease proposal are
 recorded; runtime polling was unchanged. This supersedes ticket 29's original
 agent-ready placement without changing ticket 12's release gates.
+
+The subsequent owner-supplied Revolut response and unfiltered Cloudflare Free
+zone dashboard, together with verified host settings and an actual two-HTTP-worker
+mocked probe, resolve that handoff. Ticket 29 is **closed as an investigation**:
+duplicate reads for one cashier's operation occupy both workers and delay an
+unrelated authenticated RPC while provider responses are held. No production
+outage or fixed Merchant quota exhaustion is claimed, and no runtime behavior
+changed. [Ticket 38](needs-triage/38-coalesce-concurrent-payment-status-polls.md)
+preserves the scoped remediation proposal under needs-triage for approval.
 
 ### Shared-register investigation — 2026-10-02
 

@@ -1,0 +1,16 @@
+services:
+  odoo:
+    volumes:
+      - ${ODOO_REVOLUT_WORKER_FIXTURE_DIR}:/opt/status-poll-probe:ro
+    entrypoint: ["python3", "/opt/status-poll-probe/server.py"]
+    command:
+      - --database=odoo_revolut_worker_probe
+      - --db_host=db
+      - --db_user=odoo
+      - --db_password=odoo
+      - --workers=2
+      - --max-cron-threads=1
+      - --http-interface=127.0.0.1
+      - --limit-time-real=120
+      - --limit-time-cpu=60
+      - --log-level=warn

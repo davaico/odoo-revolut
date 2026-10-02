@@ -5,7 +5,41 @@ Assessment date: 2026-10-02. Exact source claim:
 and Revolut API with concurrent status checks**. Parent scan
 `95c73550-ed81-4cfe-9e81-b6f2be355a38` was cancelled with partial coverage.
 
-## Verdict and remaining evidence
+## Final verdict — 2026-10-02
+
+**`confirmed` for duplicate-read HTTP worker contention under controlled slow
+provider responses.** On current reviewed main, two authorized tabs for the
+same cashier/operation can occupy both HTTP workers in the effective target
+configuration. During a bounded two-second mocked-provider hold, a separate
+authenticated RPC and the other cashier's two status requests could not
+progress. The unrelated RPC completed after release, taking 2.090344 seconds
+versus 0.017291 seconds before the hold and 0.109142 seconds with only one
+provider read held. All four status results remained pending; no payment or
+refund was dispatched by the status experiment.
+
+This confirms avoidable duplicate observation work can exhaust the **two HTTP
+request slots for the duration of the provider wait**, within the recommended
+two-cashier/four-tab assessment target. It is not a sustained resource-exhaustion
+test, production-outage observation, quantified checkout-SLA breach or claim
+that arbitrary callers can make Revolut slow. The measured delay is deliberately
+bounded by the fixture; it is not a prediction of real provider latency.
+
+**Merchant quota exhaustion is not demonstrated.** Revolut's owner-forwarded
+support response says no explicit endpoint/account limits are imposed, while
+unpublished gateway safety thresholds can return 429 with `Retry-After`.
+Cloudflare's supplied unfiltered Free-zone dashboard has no configured
+rate-limit or custom rule protecting the POS RPCs. Automatic DDoS protection is
+not assumed to prevent legitimate duplicated status requests.
+
+The requested external facts are now supplied and the missing actual-worker
+experiment is complete. This closes **the investigation, not the contention
+defect**. [Ticket 38](../tickets/needs-triage/38-coalesce-concurrent-payment-status-polls.md)
+retains the narrow server-owned coalescing proposal for separate approval and
+implementation. No runtime addon, hosting setting, financial dispatch behavior,
+deployment or release acceptance gate changed; ticket 12's physical/device and
+rollout work remains open.
+
+## Initial verdict and remaining evidence — superseded by follow-up below
 
 **`needs_review`**. Three authorized calls for the same pending operation can
 simultaneously enter independent provider reads. They occupy three local
@@ -14,7 +48,7 @@ financial evidence but do not coalesce these reads. This establishes duplicate
 work and a plausible availability concern, not a deployed outage, exhausted
 Merchant quota, or a demonstrated breach of the supported capacity.
 
-Ticket 29 remains **open / needs-info**. The minimum unresolved fact for the
+At that checkpoint ticket 29 remained **open / needs-info**. The minimum unresolved fact for the
 outage claim is the effective supported deployment's admission/capacity boundary
 under slow provider reads. The independent quota claim needs the applicable
 Merchant account/endpoint limits. Neither can be inferred from local thread
@@ -30,10 +64,12 @@ provider latency. Existing asynchronous tip-report availability and minute
 cron scheduling prevent promising a one-second checkout or recovery SLA.
 
 No production behavior, financial dispatch, hosting configuration, or release
-gate changed. No live terminal, Merchant traffic, stress test or host inspection
-was performed. The source claim remains open, including under ticket 12.
+gate changed. The initial characterization made no live terminal, Merchant
+traffic, stress test or host inspection. Subsequent authorized read-only host
+inspection and owner-provided evidence are recorded below; no live stress test
+or Merchant request was added by the follow-up.
 
-## Revisions and reproducible scope
+## Initial revisions and reproducible scope (historical)
 
 - Assigned branch: `codex/29-investigate-concurrent-status-polling`, in
   `../worktree/ticket-29`; clean assigned worktree fast-forwarded from `080f3fb`
@@ -248,7 +284,7 @@ while outage severity is unresolved. This investigation implements none of it.
    so this is not a global authenticated-request admission or account-wide
    quota guarantee across distinct operations.
 
-## Concrete human evidence request and where to find it
+## Initial human evidence request — answered in follow-up below
 
 Ask the deployment administrator for a redacted, read-only record of:
 
@@ -278,7 +314,233 @@ Compare those facts with the proposed two-cashier/four-tab target and a chosen
 maximum acceptable observation delay. Reclassify the exact claim only then;
 do not close it as safe based on successful mocked financial controls.
 
-## Verification
+## External evidence supplied during follow-up — 2026-10-02
+
+The owner authorized read-only inspection of the established staging host and
+subsequently asked to complete this ticket. The host connection used the
+previously verified Tailscale/OpenSSH route, with `StrictHostKeyChecking=yes`,
+no agent forwarding and no deployment. Reads printed only allowlisted limit
+values and service/resource metadata. No credential file, secret environment
+value, full launch command, Merchant account identifier or API token is retained
+here. The tested source revision below is separate from the deployed addon;
+the latter's revision was not established by these capacity reads.
+
+### Effective Odoo/server capacity
+
+Host: `odoo-revolut-staging`; installed Odoo package `19.0.20260908`.
+`/etc/odoo/odoo.conf`, the installed package's configuration parser, the service
+launch options and running process options were compared. No numeric launch
+override of these options was found.
+
+| Option | Effective value | Meaning/limit |
+| --- | --- | --- |
+| `workers` | 2 | Two HTTP request workers; independent of cron/evented workers |
+| `max_cron_threads` | 1 | Separate scheduled-work capacity |
+| `db_maxconn` | 64 | Connection-pool setting; does not create HTTP worker slots |
+| `limit_request` | 65536 | Worker recycling count, not a request-rate allowance |
+| `limit_time_cpu` | 60 seconds | CPU-time request limit |
+| `limit_time_real` | 120 seconds | Elapsed-time request limit |
+| `limit_time_real_cron` | -1 | Package sentinel; not interpreted here as unlimited |
+| `limit_memory_soft` | 2147483648 bytes | 2 GiB worker soft limit |
+| `limit_memory_hard` | 2684354560 bytes | 2.5 GiB worker hard limit |
+
+Systemd reported `CPUQuotaPerSecUSec=infinity`, `MemoryHigh=infinity`,
+`MemoryMax=infinity`, and `TasksMax=9255`: no additional configured service CPU
+or memory quota, not unlimited physical resources. The host resource snapshot
+reported four logical CPUs, 7751.2 MiB total RAM and 6727.8 MiB available,
+without swap. The quiet snapshot is not peak-load or checkout-capacity proof.
+Cloudflared was active; nginx, Caddy and Apache systemd services were not found.
+This service inventory does not rule out every possible container or upstream
+proxy; no additional proxy is inferred or provisioned by the investigation.
+
+### Cloudflare zone admission rules
+
+An initial authorized API inspection could read zone details but received 403
+for WAF/rate-limit reads. That denial did not establish absent rules. The owner
+then joined the Davai organization with administrator access and supplied the
+unfiltered **Security rules** dashboard for `davaiodoo.com`, on the **Free**
+plan. It showed **0/5 custom rules**, **0/1 rate limiting rules**, and **No
+Managed rules created**, with both rule-type and status filters showing all.
+No configured zone rate-limit rule or custom Skip rule therefore restricts these
+POS RPCs in the supplied configuration. This is a dashboard observation, not a
+claim that Cloudflare's automatic protections are disabled or unlimited.
+
+[Cloudflare's account-level rate limiting documentation](https://developers.cloudflare.com/waf/account/rate-limiting-rulesets/create-dashboard/)
+requires Enterprise zones for deployment of account rate-limit rulesets. The
+supplied Free zone is not treated as covered by an unobserved Enterprise
+ruleset. Automatic DDoS thresholds remain unpublished and cannot be relied on
+to coalesce legitimate authenticated status requests. No Cloudflare settings,
+rules or account credentials were changed.
+
+### Revolut Merchant quota and 429 guidance
+
+The owner supplied Revolut's response to the listed intent, payment, order and
+report endpoint questions. Revolut stated that there are no explicit endpoint
+or account limits imposed on these accounts, with potential DDoS protection;
+unpublished edge/gateway safety thresholds may produce HTTP 429. The response
+also says `Retry-After` gives the server-generated number of seconds to wait
+before subsequent requests. There is no numeric threshold the provider can
+share. This is an owner-forwarded support response, not a measured allowance
+or an independently authenticated support transcript.
+
+No fixed Merchant-account quota is therefore used in this assessment. The
+Business API's 60-request/minute guidance is inapplicable without explicit
+Merchant confirmation. Transient gateway throttling remains possible; absence
+of a disclosed threshold is not proof of unlimited throughput. The narrowly
+proposed remediation must treat 429 as unresolved evidence, respect valid
+`Retry-After` advice without sleeping in a losing HTTP worker, and preserve
+late-payment recovery. No new support request or real Merchant HTTP call was
+sent by Codex.
+
+## Two actual HTTP workers: bounded follow-up experiment
+
+The clean assigned branch was fast-forwarded from its previously merged
+characterization commit `dd5c157` to fetched reviewed main
+**`3dfe7bd691a3b89b806e5e03ef1bfd9d600394b7`** before follow-up work. Runtime
+addon code remains byte-for-byte unchanged from that main revision. The test
+launcher and fixtures live outside shipped `addons/`:
+
+- [scripts/investigate-status-poll-workers](../../scripts/investigate-status-poll-workers)
+  launches a fresh disposable Compose project, verifies the pinned package and
+  Merchant HTTP guard, installs the actual addon, seeds data and starts Odoo.
+- [tests/worker_poll_fixture](../../tests/worker_poll_fixture) holds the
+  test-only server launcher, native-cart seed, real HTTP client probe and
+  Compose override. No test route or provider patch is installed in the addon.
+- [Machine-readable worker observation](ticket-29-http-worker-observation.json)
+  retains the measured delays, actual HTTP-worker PIDs and bounded counts.
+
+Reproduce from this branch with:
+
+```bash
+ODOO_REVOLUT_TEST_PROJECT=odoo-revolut-t29-worker-probe \
+  ./scripts/investigate-status-poll-workers
+```
+
+The existing Compose network is `internal: true`, with no published port. HTTP
+clients connect to loopback within the Odoo container. Both production and
+sandbox Merchant hosts are rejected by the verified test-image guard unless a
+test mock handles them. The worker launcher accepts only the exact two seeded
+pending intent GETs; unexpected Merchant methods/paths fail. Financial seed
+calls are independently mocked: two native authorized carts, two explicitly
+register-granted internal POS users, two terminals, two pending operations and
+exactly four setup financial POSTs. These setup POSTs are excluded from status
+counts. Only synthetic credentials/references are used and the runner destroys
+its volumes and processes on exit.
+
+Worker counts are asserted before the fork: two HTTP workers and one cron
+worker. The launcher sets 60-second CPU/120-second elapsed request limits.
+Scheduled jobs are
+quiesced **only in this disposable fixture** to isolate HTTP admission; the
+original transaction tests independently exercise cron/cancellation overlap.
+The probe authenticates five separate HTTP sessions: four tab simulations
+(two per cashier) plus an unrelated authenticated user-read control. Separate
+cookies avoid an Odoo/browser-session serialization explanation.
+
+First, one status RPC enters the provider mock and is held. The unrelated RPC
+must finish while that poll remains held, then the poll is released. Next, two
+tabs for cashier one enter the same operation's intent GET, in different
+HTTP-worker PIDs. Their release files are absent, so both waits are still live.
+Cashier two's two tab calls and the unrelated RPC are submitted. After the
+unrelated client signals entry, both original reads stay held for two seconds;
+the unrelated RPC remains incomplete and no queued status call reaches the
+provider. Provider responses are then released one complete RPC at a time to
+isolate admission from state-write serialization retries. Every wait/request
+has a timeout, each provider hold expires after 25 seconds, and cleanup releases
+all fixture waits. No sustained traffic generator or production request is used.
+
+| Observation | Recorded value |
+| --- | --- |
+| HTTP provider worker PIDs simultaneously held | 9 and 10 (master PID 1) |
+| Maximum simultaneous held provider reads | 2, both cashier one's same operation |
+| Main status provider reads | 4: two per cashier |
+| Main status financial POSTs | 0; the mock rejects every POST |
+| Including one-held control | 5 mocked intent GETs |
+| Four returned status snapshots | Pending, original operation references preserved |
+| Explicit both-worker hold | 2.000106 seconds |
+| Unrelated RPC before hold | 0.017291 seconds |
+| Unrelated RPC with one provider read held | 0.109142 seconds |
+| Unrelated RPC with both workers held | 2.090344 seconds |
+| Unrelated RPC after release | 0.007817 seconds |
+
+The cashier-two calls are submitted while both workers are occupied; they reach
+the provider only after a worker is released. This is real Odoo HTTP-process
+queueing, distinct from the initial three-thread ORM characterization. The
+control RPC neither reads Revolut nor shares a tab session with any held call.
+The probe models one bounded wave of browser requests, not the full browser UI,
+continuous one-second polling, peak production traffic, or unknown edge DDoS
+thresholds. Coalescing one operation cannot guarantee spare capacity when two
+different operations both genuinely need provider I/O.
+
+Initial fixture setup failed because the shell-created POS user lacked the
+internal-user group. Adding that group to the fixture allowed native cart
+creation without weakening runtime authorization. The final probe passed with
+explicit register grants, unchanged addon code and the guard enabled.
+
+Tested fixture SHA-256 values:
+
+| File | SHA-256 |
+| --- | --- |
+| `scripts/investigate-status-poll-workers` | `a7d3de43c17524b9bc0135e38e9369a66d93f2d59ee7c6e42fec000f88d3833e` |
+| `tests/worker_poll_fixture/compose.yaml` | `f708ea2c3d0eba66231ab5f835885cdd218c39d658e5a184789c9bf72e2ef556` |
+| `tests/worker_poll_fixture/seed.py` | `65a93ede9b592cb90d5bbad81055d73d3b2b87108fc6fc76c91704725f013671` |
+| `tests/worker_poll_fixture/server.py` | `47070e542747b73d07fb83bf5f5223d4e6f7d85a07b19dbb1ed08fc1a9aef76a` |
+| `tests/worker_poll_fixture/probe.py` | `35cce27a26f85f91377c63205c96f41177aa49a97af8c5b7a3d2d9a3d33f9b19` |
+
+### Follow-up verification history
+
+The final two-worker probe passed. Shell syntax (`bash -n`), Python compilation
+of its fixtures and diff whitespace checks passed; there is no configured static
+typechecker. The current lifecycle runner passed all 75 tests. Host unit checks
+passed 40 tests with three environment-dependent skips. These static/host checks
+are not substituted for the actual HTTP-worker experiment.
+
+The first current-main full install run completed 431 checks with one failure:
+`TestRevolutVerifiedCheckout.test_invalid_refund_snapshot_recovers_after_correction_and_reload`
+timed out waiting for the receipt screen. Later browser starts also reported
+headless/debugger startup problems during that run; it is not presented as green
+acceptance. The addon tree was unchanged from the pinned main during this run.
+All seven original `TICKET29_POLL_EVIDENCE` records matched the retained JSONL,
+including cron/cancellation overlap and late verified success. The failed UI
+test then passed alone in a fresh project (one check, zero failures/errors).
+An earlier attempt at that isolated run was interrupted by the user before a
+result, and was restarted; it contributes no passing evidence.
+
+The subsequent complete acceptance rerun finished with **431 install, 431
+upgrade and nine Restaurant checks, zero failures/errors, exit 0**. No
+headless/debugger startup failure was reported in that final run. Both phases'
+seven characterization records exactly matched the retained JSONL (14 records
+total), preserving financial/late-success and cron/cancel controls on current
+main. The first failed run and the isolated pass above remain part of the
+history; only this completed repeat is the final green acceptance run.
+
+```bash
+ODOO_REVOLUT_TEST_PROJECT=odoo-revolut-ticket29-final \
+  ./scripts/test-addon --verify-install-upgrade
+node addons/pos_revolut/static/tests/revolut_payment_state.test.mjs
+python3 -m unittest discover -s tests -p 'test*.py'
+```
+
+During validation, fetched main advanced to
+`3e4328b3af6110993ba5077c7329c66a20923486` with only ticket 31/32 documentation
+changes. Addon, scripts, Docker and Compose runtime inputs are identical to the
+assessed `3dfe7bd` baseline; preserving those concurrent tracker updates does
+not require repeating the unchanged runtime tests.
+
+Independent completion review used immutable
+`3dfe7bd691a3b89b806e5e03ef1bfd9d600394b7...4ccbe1e03d35bd9beb5131ef38e40f9553642917`:
+**Standards: 0 findings; Spec: 0 findings**. The reviews inspected the actual
+HTTP-worker reproduction, mock/network isolation, source-claim calibration,
+ticket closure and separate unapproved remediation proposal. The final result
+recording changes only documentation, not the reviewed/tested fixture or addon.
+
+Supporting session logs: `/tmp/ticket29-worker-probe-run2.log`,
+`/tmp/ticket29-final-acceptance.log`, `/tmp/ticket29-ui-isolation-resumed.log`,
+`/tmp/ticket29-final-acceptance-repeat.log`, `/tmp/ticket29-lifecycle-direct.log`
+and `/tmp/ticket29-host-tests.log`. The
+durable worker counts/timings and reproduction are retained above and in JSON;
+temporary log paths are not claimed as permanently available artifacts.
+
+## Initial verification (retained historical run)
 
 Commands run from the assigned worktree with project isolation:
 
