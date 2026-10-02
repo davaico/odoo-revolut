@@ -8,11 +8,27 @@
 
 Work in this worktree on the assigned branch; respect the blockers below and update from reviewed main before starting.
 
-**State:** open
+**State:** closed
 
-**Triage:** needs-info
+**Triage:** wontfix
 
 **Work type:** Investigation
+
+## Closure decision — 2026-10-02
+
+Closed as **wontfix** at Gary's request after discussion with Emile. The team's
+agreed scope is to deliver the addon to the client. Workstation authorization,
+host identity provisioning and VM/device/key replacement procedures are outside
+this team's delivery scope; Gary reports that the client and its Odoo/Revolut
+support or operations teams will handle these human tasks. Emile mentioned SaaS,
+but no particular hosting platform or provider responsibility was established.
+
+The investigation and exact evidence remain available for the eventual hosting
+operator. The remaining first-deployment criterion is unresolved and is not
+marked complete. Closure records an owner scope decision, not proof that the
+workflow is safe or that a defect was fixed. The earlier needs-info requests are
+superseded; Gary need not obtain the missing procedure to close this ticket.
+No deployment, runtime or infrastructure change accompanies this decision.
 
 ## What to build
 
@@ -50,7 +66,7 @@ No credential rotation, production key replacement, tailnet changes or broad net
 
 ## Release and integration relationship
 
-Independent of ticket 31: host identity and local file integrity require different evidence. A demonstrated host-authentication defect must be resolved before the affected deployment workflow is relied on.
+Independent of ticket 31: host identity and local file integrity require different evidence. The original investigation required a demonstrated host-authentication defect to be resolved before relying on the affected deployment workflow. Under the 2026-10-02 scope decision, any such follow-up belongs to the eventual hosting operator rather than this addon-delivery ticket.
 
 ## Working agreement
 
@@ -125,7 +141,7 @@ Emile, Gary's boss. These owner-supplied facts resolve those identification
 questions without claiming an independently verified administrative inventory.
 
 Gary does not have the approved new-workstation and VM/key replacement procedure.
-**Current needs-info handoff:** obtain Emile's documented or approved procedure
+**Needs-info handoff as of 2026-10-01 (superseded by the closure decision):** obtain Emile's documented or approved procedure
 for workstation authorization, first-upload staging identity verification, and
 legitimate replacement/re-verification of the VM, Tailscale node or SSH host key.
 Retain the ticket as open/needs-info for that procedure. No message, deployment

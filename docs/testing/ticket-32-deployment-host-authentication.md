@@ -5,7 +5,9 @@ trust-on-first-use and missing target binding demonstrated; approved-route
 exploitability needs info**. The broader follow-up below now verifies the actual
 approved staging route as Tailscale SSH and identifies its VM/device. Gary's
 subsequent clarification identifies Emile as the administrator and owner of the
-remaining devices; the new-workstation/replacement procedure still needs info.
+remaining devices. The new-workstation/replacement procedure remains unverified;
+on 2026-10-02 Gary closed the ticket as **wontfix** because that operational work
+is outside the addon-delivery scope (see the final closure decision below).
 No remote deployment ran and no host,
 credential, tailnet policy or production code was changed. The initial pass made
 no production connection; the follow-up performed only pinned, read-only staging
@@ -394,7 +396,7 @@ They resolve the administrator and two-device ownership questions; they do not
 constitute an independently exported role/policy inventory or prove enrollment
 key restrictions. No exclusivity of administrative rights is inferred.
 
-**Current needs-info handoff:** Emile should provide or approve the procedure
+**Needs-info handoff as of 2026-10-01 (superseded below):** Emile should provide or approve the procedure
 for authorizing a new workstation, verifying the approved staging association
 before its first upload, and approving/re-verifying a legitimate VM, Tailscale
 node or SSH host-key replacement. The procedure should specify enrollment-key
@@ -405,3 +407,22 @@ to identify the administrator and the two device owners are resolved.
 This clarification changes documentation only. Evidence links, the ticket index
 and whitespace were checked; runtime suites were not repeated because no code
 or deployed behavior changed.
+
+
+## Owner scope decision and closure — 2026-10-02
+
+After discussing the remaining work with Emile, Gary requested that ticket 32
+be set aside and closed. The team will deliver the addon to the client; it will
+not own workstation setup, deployment access or host/VM/device/key replacement
+procedures. Gary reports that the client and its Odoo/Revolut support or
+operations teams will handle these human tasks. SaaS was mentioned, but a
+specific hosting platform and allocation of provider responsibilities were not
+verified by this investigation.
+
+[Ticket 32](../tickets/wontfix/32-investigate-deployment-host-authentication.md)
+is therefore **closed / wontfix**, by owner scope decision. No further owner
+procedure is requested from Gary under this ticket. The evidence and conditional
+correction proposal are retained for the eventual hosting operator; the
+first-deployment procedure remains unresolved. This disposition does not change
+the technical verdict, establish safety, or claim a remediation. No runtime,
+deployment, credential or infrastructure change was made.
