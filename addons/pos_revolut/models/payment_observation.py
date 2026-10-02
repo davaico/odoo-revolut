@@ -173,11 +173,15 @@ class PosPaymentMethod(models.Model):
                     if kind != "legacy_final" and snapshot["state"] == "unresolved":
                         scope["failed"] = True
                     if scope.get("defer_until"):
+                        # Flush the outcome's scheduled ORM write before SQL
+                        # extends it, so commit cannot overwrite Retry-After.
+                        operation.flush_recordset(["next_reconcile_at"])
                         cursor.execute(
                             "UPDATE pos_revolut_payment_operation SET observation_not_before = %s, "
                             "next_reconcile_at = GREATEST(next_reconcile_at, %s) WHERE id = %s",
                             [scope["defer_until"], scope["defer_until"], operation_id],
                         )
+                        operation.invalidate_recordset(["observation_not_before", "next_reconcile_at"])
                     cursor.commit()
                     return snapshot
             except (SerializationFailure, DeadlockDetected):

@@ -1,5 +1,6 @@
 """Exercise persisted provider observations through authorized public RPCs."""
 
+from contextlib import nullcontext
 from datetime import datetime, timedelta
 from threading import Event, current_thread
 from unittest.mock import Mock, patch
@@ -76,7 +77,21 @@ class TestRevolutPaymentObservation(TransactionCase):
         install_zero_reports(self.env, self.request)
         with self.registry.cursor() as cursor:
             env = api.Environment(cursor, SUPERUSER_ID, self.context)
-            env["pos.revolut.payment.operation"]._cron_reconcile_payments(1)
+            model = env["pos.revolut.payment.operation"]
+            original_search = type(model).search
+
+            def own_operations(operations, domain, *args, **kwargs):
+                # Independently committed fixtures survive into the upgrade
+                # run; this cron scenario observes only this test's register.
+                return original_search(operations, [
+                    *domain, ("payment_method_id", "=", self.method_id),
+                ], *args, **kwargs)
+
+            scheduler_clock = (patch("odoo.fields.Datetime.now", return_value=self.observation_time)
+                               if hasattr(self, "observation_time") else nullcontext())
+            with scheduler_clock, patch.object(type(model), "search", autospec=True,
+                                                side_effect=own_operations):
+                model._cron_reconcile_payments(1)
             cursor.commit()
 
     def test_four_cashier_tabs_cron_and_cancel_share_held_observation(self):
@@ -188,6 +203,7 @@ class TestRevolutPaymentObservation(TransactionCase):
     def test_retry_after_defers_without_http_and_recovers_late_capture(self):
         started = self._pending()
         self._controlled_clock()
+        self.enterContext(patch("odoo.fields.Datetime.now", side_effect=lambda: self.observation_time))
         self.request.side_effect = requests.HTTPError(response=Mock(
             status_code=429, headers={"Retry-After": " 120 "},
         ))
@@ -202,10 +218,16 @@ class TestRevolutPaymentObservation(TransactionCase):
         self.assertEqual(values["observation_not_before"], self.observation_time + timedelta(seconds=120))
         self.assertGreaterEqual(values["next_reconcile_at"], values["observation_not_before"])
         self._advance(119)
+        self.assertEqual(self.observation_time, datetime(2026, 10, 2, 12, 1, 59))
         cached = self._poll(started)
-        self._cron()
         self.assertEqual(cached["state"], "unresolved")
-        self.assertEqual(cached["next_check_seconds"], 1)
+        self.assertEqual(cached["next_check_seconds"], 1, {
+            "clock": self.observation_time, "snapshot": cached,
+            "durable": self._operation_values(started["operation_id"], [
+                "observation_started_at", "observation_expires_at", "observation_not_before",
+            ]),
+        })
+        self._cron()
         self.assertEqual(len(self._provider_reads("/api/payment-intents/")), 1)
         self.assertEqual(self._operation_values(started["operation_id"], [
             "observation_not_before", "next_reconcile_at",
