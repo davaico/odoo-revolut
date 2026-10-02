@@ -96,7 +96,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [33 — Determine whether release evidence exposes restricted identifiers](needs-info/33-investigate-release-evidence-disclosure.md) | `needs-info` | Open | Owner policy resolved and sample references confirmed; permanent private retention, custodian and recovery remain unverified |
 | [34 — Provision and gate Odoo PDF generation](ready-for-human/34-provision-and-gate-odoo-pdf-generation.md) | `ready-for-human` | Open | Local implementation verified; remaining acceptance uses a native Odoo invoice; see 36 |
 | [35 — Enforce explicit backend-user access to shared registers](closed/35-enforce-shared-register-authorization.md) | `ready-for-agent` at closure | Closed | Explicit grants verified; 406 install/406 upgrade/9 Restaurant; rollout remains 12 |
-| [36 — Remove custom Revolut receipts and preserve native printing](ready-for-agents/36-remove-custom-revolut-receipts.md) | `ready-for-agent` | Open | Approved removal; coordinate 34 PDF checks and 35 access changes; before 12 |
+| [36 — Remove custom Revolut receipts and preserve native printing](ready-for-agents/36-remove-custom-revolut-receipts.md) | `ready-for-agent` | Claimed | Approved removal; coordinate 34 PDF checks and 35 access changes; before 12 |
 
 ## Architecture triage — 2026-09-25
 

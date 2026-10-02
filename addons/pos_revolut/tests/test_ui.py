@@ -525,9 +525,10 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         financial_posts = [call for call in calls if call[0] == "POST" and "/api/report-runs" not in call[1]]
         self.assertEqual(len(financial_posts), 3 if refund else 2)
         self.assertEqual(len([call for call in calls if call[0] == "POST" and call[1].endswith("/api/report-runs")]), 1)
-        document = self.env["pos.revolut.receipt"]._document("payment", operation.id)
-        self.assertEqual((document["base_amount"], document["tip_amount"], document["amount"]),
-                         (f"{base_minor / 100:.2f}", f"{tip:.2f}", f"{gross:.2f}"))
+        self.assertEqual(operation.pos_payment_id.transaction_id, operation.revolut_payment_id)
+        self.assertEqual(operation.pos_payment_id.payment_ref_no, operation.revolut_order_id)
+        self.assertEqual(operation.pos_payment_id.ticket.count(operation.revolut_payment_id), 1)
+        self.assertTrue(operation.verified_at)
         if refund:
             returned = self.env["pos.revolut.refund.operation"].search([
                 ("original_operation_id", "=", operation.id),

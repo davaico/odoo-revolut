@@ -11,7 +11,18 @@ const PAYMENT_REFERENCE = "2c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf";
 const REFUND_REFERENCE = "6c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf";
 
 function receiptContainsReference(reference) {
-    return { trigger: `.receipt-screen .pos-payment-terminal-receipt:contains('${reference}')` };
+    return {
+        trigger: `.receipt-screen .pos-payment-terminal-receipt:contains('${reference}')`,
+        run() {
+            if (document.querySelector(".revolut-receipt-download, .revolut-receipt-selection")) {
+                throw new Error("Retired Revolut document controls remain on checkout");
+            }
+            const receipt = document.querySelector(".receipt-screen .pos-receipt");
+            if (receipt.textContent.split(reference).length !== 2) {
+                throw new Error("Native receipt must contain its Revolut reference exactly once");
+            }
+        },
+    };
 }
 
 registry.category("web_tour.tours").add("pos_revolut_manager_configuration", {

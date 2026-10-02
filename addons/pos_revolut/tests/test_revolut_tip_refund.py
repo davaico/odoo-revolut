@@ -1,4 +1,4 @@
-"""Public refund/receipt behavior for verified terminal-tip decomposition."""
+"""Public refund/native tender behavior for verified terminal-tip decomposition."""
 import os
 from unittest.mock import patch
 from uuid import uuid4
@@ -217,19 +217,17 @@ class TestRevolutTipRefund(CommonPosTest):
             base_minor, tip_minor,
         ])
 
-    def test_full_refund_includes_terminal_tip_and_gross_receipt(self):
+    def test_full_refund_includes_terminal_tip_and_preserves_native_tender(self):
         self._terminal_sale()
         self._tip_return()
         source = self._rpc_refund_sources(self._mutation_actor())[0]
         self.assertEqual((source["amount_minor"], source["base_amount_minor"], source["tip_amount_minor"]),
                          (1434, 1234, 200))
-        options = self.original.revolut_receipt_options()
-        self.assertIn("14.34", options[0]["label"])
-        payment_receipt = self.env["ir.actions.report"]._render_qweb_html(
-            "pos_revolut.action_report_revolut_payment_receipt", [self.source.id],
-        )[0].decode()
-        for text in ("14.34", "12.34", "2.00", "Customer-selected terminal tip"):
-            self.assertIn(text, payment_receipt)
+        self.assertEqual(self.source.pos_payment_id.amount, 14.34)
+        self.assertEqual(self.source.pos_payment_id.transaction_id, self.source.revolut_payment_id)
+        self.assertEqual((self.source.amount_minor, self.source.terminal_tip_minor,
+                          self.source.gross_amount_minor), (1234, 200, 1434))
+        self.assertTrue(self.source.verified_at)
         self.request.assert_not_called()
         self.request.side_effect = [
             self._response(id=self.source.revolut_order_id, state="completed", amount=1434,
@@ -242,11 +240,16 @@ class TestRevolutTipRefund(CommonPosTest):
         self.revolut_method.revolut_poll_refund(started["operation_id"], self.payload["uuid"], payment["uuid"])
         payment.update(payment_status="done", transaction_id=self.refund_id)
         self.env["pos.order"].sync_from_ui([self.payload])
-        receipt = self.env["ir.actions.report"]._render_qweb_html(
-            "pos_revolut.action_report_revolut_refund_receipt", [started["operation_id"]],
-        )[0].decode()
-        for text in ("14.34", "12.34", "2.00", "Customer-selected terminal tip", self.source.revolut_order_id):
-            self.assertIn(text, receipt)
+        refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
+        refund.invalidate_recordset()
+        self.assertEqual(refund.state, "verified")
+        self.assertTrue(refund.verified_at)
+        self.assertEqual((refund.amount_minor, refund.base_amount_minor, refund.tip_amount_minor),
+                         (1434, 1234, 200))
+        self.assertEqual(refund.pos_payment_id.amount, -14.34)
+        self.assertEqual(refund.pos_payment_id.transaction_id, self.refund_id)
+        self.assertEqual(refund.original_operation_id, self.source)
+        self.assertEqual(refund.pos_order_id.state, "paid")
         remaining = self._rpc_refund_sources(self._mutation_actor())[0]
         self.assertEqual((remaining["remaining_base_minor"], remaining["remaining_tip_minor"]), (0, 0))
         self.assertEqual([call.args[0] for call in self.request.call_args_list], ["GET", "POST", "GET"])

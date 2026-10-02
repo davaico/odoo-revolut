@@ -2,7 +2,7 @@
 
 # 36 — Remove custom Revolut receipts and preserve native printing
 
-**State:** open
+**State:** claimed
 
 **Category:** enhancement
 
