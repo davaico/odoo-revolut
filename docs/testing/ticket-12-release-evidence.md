@@ -269,9 +269,16 @@ Use this template for subsequent attempts/allocations, including unsuccessful on
 | Pass/fail/NOT REPRODUCIBLE, discrepancy and restricted evidence location | NOT RUN |
 
 Keep credentials, headers, raw API responses, cardholder names, card numbers,
-PINs and customer screenshots out of this shared record. Sanitized reference
-UUIDs/aliases, amounts, timestamps and final-state observations suffice; retain
-a restricted mapping for authoritative manager reconciliation.
+PINs and customer screenshots out of this shared record. Under the owner's
+2026-10-02 decision, shared release records must use consistent aliases for
+original device, transaction and local correlation identifiers; originals and
+the authoritative mapping stay in a Davai-only evidence archive. Review amounts,
+timestamps and other operational metadata for correlation before publication.
+The archive is planned, not established, and historical entries below have not
+been redacted. Public publication remains gated by the
+[ticket 33 preservation, aliasing and history plan](ticket-33-release-evidence-disclosure.md).
+Preserve original evidence for authoritative manager reconciliation before any
+separately approved cleanup.
 
 At session end, match every charge/refund to the same Merchant account and Odoo
 reconciliation/refund worklists. For each original payment, completed refunds
