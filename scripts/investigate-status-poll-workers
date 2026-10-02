@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+project_name="${ODOO_REVOLUT_TEST_PROJECT:-odoo-revolut-t29-worker-probe}"
+database_name="odoo_revolut_worker_probe"
+export ODOO_REVOLUT_WORKER_FIXTURE_DIR="$repository_root/tests/worker_poll_fixture"
+compose=(docker compose --project-name "$project_name" --file "$repository_root/compose.yaml"
+    --file "$ODOO_REVOLUT_WORKER_FIXTURE_DIR/compose.yaml")
+
+cleanup() {
+    "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+cleanup
+"${compose[@]}" build odoo
+installed_version="$("${compose[@]}" run --rm --no-deps --entrypoint dpkg-query odoo \
+    --show --showformat='${Version}' odoo)"
+if [[ "$installed_version" != "19.0.20260908" ]]; then
+    echo "Expected Odoo 19.0.20260908, found $installed_version" >&2
+    exit 1
+fi
+"${compose[@]}" run --rm --no-deps --entrypoint python3 odoo \
+    /opt/odoo-test-guard/verify_merchant_http_guard.py
+"${compose[@]}" up --detach --wait db
+"${compose[@]}" run --rm --entrypoint odoo odoo \
+    --database "$database_name" --db_host db --db_user odoo --db_password odoo \
+    --init pos_revolut --stop-after-init --workers 0 --max-cron-threads 0 --log-level warn
+"${compose[@]}" run --rm -T --entrypoint odoo odoo shell \
+    --database "$database_name" --db_host db --db_user odoo --db_password odoo \
+    --no-http --max-cron-threads 0 --shell-interface python --log-level warn \
+    < "$ODOO_REVOLUT_WORKER_FIXTURE_DIR/seed.py"
+"${compose[@]}" up --detach odoo
+"${compose[@]}" exec -T odoo python3 /opt/status-poll-probe/probe.py
