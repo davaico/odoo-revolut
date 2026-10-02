@@ -11,8 +11,8 @@ from . import test_revolut_refund
 
 from . import test_revolut_refund_concurrency
 from . import test_revolut_recovery_batches
-from . import test_revolut_receipt
-from . import test_revolut_receipt_ui
+from . import test_revolut_native_documents
+from . import test_revolut_native_printing
 
 from . import test_revolut_tip_refund
 

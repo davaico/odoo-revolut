@@ -17,7 +17,7 @@ from odoo.tests.common import tagged
 
 
 class TerminalTipFixtures:
-    """Provider fixtures shared with integrated refund/receipt tests.
+    """Provider fixtures shared with integrated refund tests.
 
     CSV columns and values follow Report-Run-Csv-Payments and Res-Payments-Report
     in the official 2026-08-17 OpenAPI, including blank surcharge and explicit

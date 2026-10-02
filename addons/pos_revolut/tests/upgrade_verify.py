@@ -16,7 +16,7 @@ def response(payload):
 
 history = json.loads(env["ir.config_parameter"].get_param("pos_revolut.upgrade_fixture"))
 assert len(history) == 6
-assert env["ir.module.module"].search([("name", "=", "pos_revolut")]).installed_version == "19.0.1.10.2"
+assert env["ir.module.module"].search([("name", "=", "pos_revolut")]).installed_version == "19.0.1.12.0"
 assert not env["pos.revolut.cart.authorization"].search_count([])
 with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request") as provider:
     for fixture in history:
@@ -40,10 +40,8 @@ with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
             if scenario.endswith("verified"):
                 polled = method.revolut_poll_payment(operation.id, operation.order_uuid, operation.payment_line_uuid)
                 assert polled["state"] == "verified", polled
-                document = env["pos.revolut.receipt"]._document("payment", operation.id)
-                assert document["amount"] == "12.34", document
-                assert document["base_amount"] is False and document["tip_amount"] is False, document
-                assert not document["terminal_tip_evidence"], document
+                assert operation.pos_payment_id.transaction_id == operation.revolut_payment_id
+                assert operation.pos_payment_id.amount == 12.34
             if scenario != "safe_failed":
                 try:
                     env["pos.order"].revolut_prepare_payment(order.id, order.uuid, 0, [])
@@ -160,8 +158,12 @@ with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
     returned.update(state="paid", amount_paid=-12.34)
     returned["payment_ids"][0][2].update(payment_status="done", transaction_id=refund_id)
     env["pos.order"].sync_from_ui([returned])
-    document = env["pos.revolut.receipt"]._document("refund", observed["operation_id"])
-    assert document["amount"] == "12.34" and not document["terminal_tip_evidence"], document
+    verified_refund = env["pos.revolut.refund.operation"].browse(observed["operation_id"])
+    assert verified_refund.state == "verified" and verified_refund.verified_at
+    assert verified_refund.amount_minor == 1234 and not verified_refund.allocation_explicit
+    assert verified_refund.pos_payment_id.transaction_id == refund_id
+    assert verified_refund.pos_payment_id.amount == -12.34
+    assert verified_refund.original_operation_id == operation
 
 env.cr.commit()
 print("UPGRADE_VERIFY_OK: preserved six historical states, no invented authority/tip proof; legacy refund verified", flush=True)
