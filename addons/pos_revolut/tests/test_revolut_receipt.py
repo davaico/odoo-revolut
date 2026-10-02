@@ -381,3 +381,29 @@ class TestRevolutReceipt(CommonPosTest):
         self.assertIn(refund.revolut_order_id,
                       self._pdf('refund', refund, actor, self.company.ids))
         self.request.assert_not_called()
+
+    def test_unassociated_refund_receipt_respects_matching_return_draft_access(self):
+        refund = self._refund()
+        saved_return = refund.pos_order_id
+        actor = self._actor()
+        self.pos_config_usd.sudo().write({'revolut_user_ids': [Command.link(actor.id)]})
+        # A verified provider result can precede native return association.
+        self.env.cr.execute(
+            'UPDATE pos_revolut_refund_operation SET pos_order_id = NULL, pos_payment_id = NULL WHERE id = %s',
+            [refund.id],
+        )
+        refund.invalidate_recordset()
+        rule = self.env['ir.rule'].sudo().create({
+            'name': 'Ticket35 unassociated receipt return denial',
+            'model_id': self.env['ir.model']._get_id('pos.order'),
+            'domain_force': f"[('id', '!=', {saved_return.id})] if user.id == {actor.id} else []",
+        })
+        with self.assertRaises(AccessError):
+            self.original.with_user(actor).revolut_receipt_options()
+        with self.assertRaises(AccessError):
+            self._pdf('refund', refund, actor, self.company.ids)
+        rule.unlink()
+        self.assertEqual(len(self.original.with_user(actor).revolut_receipt_options()), 2)
+        self.assertIn(refund.revolut_order_id,
+                      self._pdf('refund', refund, actor, self.company.ids))
+        self.request.assert_not_called()

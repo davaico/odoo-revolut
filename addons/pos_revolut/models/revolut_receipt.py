@@ -33,7 +33,10 @@ class RevolutReceipt(models.AbstractModel):
         source.with_env(self.env)._check_revolut_register_access()
         if kind == "refund":
             session = self.env["pos.session"].browse(identity.pos_session_id.id)
-            order = self.env["pos.order"].browse(identity.pos_order_id.id)
+            orders = identity.pos_order_id | self.env["pos.order"].sudo().search([
+                ("company_id", "=", identity.company_id.id), ("uuid", "=", identity.order_uuid),
+            ])
+            order = orders.with_env(self.env)
             session.config_id._check_revolut_register_access(session=session, order=order)
             if session.config_id.id != source.pos_config_id.id:
                 raise AccessError(_("The refund receipt belongs to another register."))

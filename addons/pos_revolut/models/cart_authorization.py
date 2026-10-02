@@ -231,20 +231,27 @@ class PosOrder(models.Model):
         for order in self:
             try:
                 order.config_id._check_revolut_register_access(session=order.session_id, order=order)
+                authority = order.revolut_authorization_id.sudo()
+                if authority:
+                    authority.config_id.with_env(order.env)._check_revolut_register_access(
+                        session=authority.session_id, order=order,
+                    )
+                    for operation in authority._operations():
+                        operation.with_env(order.env)._check_revolut_register_access()
+                exposed = authority._exposed() if authority else False
+                order.revolut_has_authority_exposure = bool(exposed)
+                order.revolut_payable_target = ((authority.payable_minor + sum(
+                    op.terminal_tip_minor for op in authority._operations() if op.state == 'verified'
+                )) / 10**order.currency_id.decimal_places) if exposed else 0
+                return_target = order._revolut_return_target_minor()
+                if return_target is not None:
+                    order.revolut_has_authority_exposure = True
+                    order.revolut_payable_target = return_target / 10**order.currency_id.decimal_places
             except AccessError:
+                # Native order reads continue, while derived financial state
+                # honors the original authority/session even after rollover.
                 order.revolut_has_authority_exposure = False
                 order.revolut_payable_target = 0
-                continue
-            authority = order.revolut_authorization_id.sudo()
-            exposed = authority._exposed() if authority else False
-            order.revolut_has_authority_exposure = bool(exposed)
-            order.revolut_payable_target = ((authority.payable_minor + sum(
-                op.terminal_tip_minor for op in authority._operations() if op.state == 'verified'
-            )) / 10**order.currency_id.decimal_places) if exposed else 0
-            return_target = order._revolut_return_target_minor()
-            if return_target is not None:
-                order.revolut_has_authority_exposure = True
-                order.revolut_payable_target = return_target / 10**order.currency_id.decimal_places
 
     @api.model
     def _load_pos_data_fields(self, config):
