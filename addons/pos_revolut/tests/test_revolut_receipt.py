@@ -345,3 +345,39 @@ class TestRevolutReceipt(CommonPosTest):
             self.assertEqual(self._financial_evidence(), before)
         self.assertEqual(self.session.state, "closed")
         self.request.assert_not_called()
+
+    def test_receipt_and_tender_rollover_preserve_original_session_access(self):
+        refund = self._refund()
+        actor = self._actor()
+        self.pos_config_usd.sudo().write({'revolut_user_ids': [Command.link(actor.id)]})
+        self.session.write({'state': 'closed'})
+        later = self.env['pos.session'].create({
+            'config_id': self.pos_config_usd.id, 'state': 'opened',
+        })
+        orders = self.original | refund.pos_order_id
+        # Already supported same-register historical checkout rollover.
+        self.env.cr.execute('UPDATE pos_order SET session_id = %s WHERE id IN %s',
+                            [later.id, tuple(orders.ids)])
+        orders.invalidate_recordset()
+        rule = self.env['ir.rule'].sudo().create({
+            'name': 'Ticket35 original receipt session denial',
+            'model_id': self.env['ir.model']._get_id('pos.session'),
+            'domain_force': f"[('id', '!=', {self.session.id})] if user.id == {actor.id} else []",
+        })
+        with self.assertRaises(AccessError):
+            self.original.with_user(actor).revolut_receipt_options()
+        for kind, operation in (('payment', self.source), ('refund', refund)):
+            with self.subTest(kind=kind):
+                with self.assertRaises(AccessError):
+                    self._pdf(kind, operation, actor, self.company.ids)
+                tender = operation.pos_payment_id.with_user(actor)
+                self.assertFalse(tender.search([('id', '=', tender.id)]))
+                with self.assertRaises(AccessError):
+                    tender.read(['payment_status', 'transaction_id'])
+        rule.unlink()
+        self.assertEqual(len(self.original.with_user(actor).revolut_receipt_options()), 2)
+        self.assertIn(self.source.revolut_payment_id,
+                      self._pdf('payment', self.source, actor, self.company.ids))
+        self.assertIn(refund.revolut_order_id,
+                      self._pdf('refund', refund, actor, self.company.ids))
+        self.request.assert_not_called()

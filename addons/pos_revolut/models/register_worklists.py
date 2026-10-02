@@ -12,6 +12,14 @@ from odoo.fields import Domain
 from odoo.tools import SQL
 
 
+_OPERATION_NATIVE_PATHS = (
+    ("operation_id.pos_config_id", "pos.config", False),
+    ("operation_id.pos_session_id", "pos.session", False),
+    ("operation_id.pos_order_id", "pos.order", True),
+    ("operation_id.authorization_id.pos_order_id", "pos.order", True),
+)
+
+
 class RevolutRegisterWorklistMixin(models.AbstractModel):
     _name = "pos.revolut.register.worklist.mixin"
     _description = "Native register visibility for Revolut financial worklists"
@@ -47,10 +55,11 @@ class RevolutRegisterWorklistMixin(models.AbstractModel):
                     # Legacy attempts may have no order/authority relation yet.
                     # A matching persisted draft still supplies a native order
                     # boundary; UUID knowledge must not bypass its read rule.
-                    domain &= (
+                    visible = (
                         Domain(prefix + "company_id", "!=", company.id)
                         | Domain(prefix + "order_uuid", "not in", hidden)
                     )
+                    domain &= visible
         return domain
 
     @api.model
@@ -121,12 +130,7 @@ class RevolutDispatchWorklist(models.Model):
     _name = "pos.revolut.payment.dispatch"
     _inherit = ["pos.revolut.payment.dispatch", "pos.revolut.register.worklist.mixin"]
 
-    _revolut_register_paths = (
-        ("operation_id.pos_config_id", "pos.config", False),
-        ("operation_id.pos_session_id", "pos.session", False),
-        ("operation_id.pos_order_id", "pos.order", True),
-        ("operation_id.authorization_id.pos_order_id", "pos.order", True),
-    )
+    _revolut_register_paths = _OPERATION_NATIVE_PATHS
     _revolut_order_identity_paths = ("operation_id.",)
 
 
@@ -134,12 +138,7 @@ class RevolutAuditWorklist(models.Model):
     _name = "pos.revolut.reconciliation.audit"
     _inherit = ["pos.revolut.reconciliation.audit", "pos.revolut.register.worklist.mixin"]
 
-    _revolut_register_paths = (
-        ("operation_id.pos_config_id", "pos.config", False),
-        ("operation_id.pos_session_id", "pos.session", False),
-        ("operation_id.pos_order_id", "pos.order", True),
-        ("operation_id.authorization_id.pos_order_id", "pos.order", True),
-    )
+    _revolut_register_paths = _OPERATION_NATIVE_PATHS
     _revolut_order_identity_paths = ("operation_id.",)
 
 
@@ -160,3 +159,40 @@ class RevolutOrderLockWorklist(models.Model):
             Domain("company_id", "=", company_id) & Domain("order_uuid", "in", list(uuids))
             for company_id, uuids in uuids_by_company.items()
         ])
+
+
+class RevolutNativeTenderWorklist(models.Model):
+    _name = "pos.payment"
+    _inherit = ["pos.payment", "pos.revolut.register.worklist.mixin"]
+
+    _revolut_register_paths = (
+        ("pos_order_id.config_id", "pos.config", False),
+        ("pos_order_id.session_id", "pos.session", False),
+        ("pos_order_id", "pos.order", False),
+    )
+
+    def _revolut_native_visibility_domain(self):
+        ordinary = (
+            Domain("revolut_operation_id", "=", False)
+            & Domain("revolut_refund_operation_id", "=", False)
+            & Domain("payment_method_id.use_payment_terminal", "!=", "revolut")
+        )
+        protected = super()._revolut_native_visibility_domain()
+        granted = self.env["pos.config"].sudo()._search(
+            Domain("revolut_user_ids", "in", [self.env.uid])
+        )
+        # Cashiers have no general financial-model ACL. Build caller-native
+        # identity constraints first, then use sudo only for the ID subqueries.
+        # Frozen sessions/grants stay authoritative after order rollover.
+        for relation, model, paths in (
+            ("revolut_operation_id", "pos.revolut.payment.operation", ("pos_config_id",)),
+            ("revolut_refund_operation_id", "pos.revolut.refund.operation",
+             ("original_operation_id.pos_config_id", "pos_session_id.config_id")),
+        ):
+            operations = self.env[model]
+            visible = operations._revolut_native_visibility_domain()
+            for path in paths:
+                visible &= Domain(path, "in", granted)
+            query = operations.sudo()._search(visible)
+            protected &= Domain(relation, "=", False) | Domain(relation, "in", query)
+        return ordinary | protected

@@ -449,6 +449,33 @@ class TestSharedPosSessionAccess(TransactionCase):
             call_kw(self._method('colleague').env['pos.payment'], 'read', [[payment.id], ['payment_status']], {})
         self.request.assert_not_called()
 
+    def test_native_payment_reads_respect_each_native_register_boundary(self):
+        order = self.env['pos.order'].create({
+            'session_id': self.session.id, 'uuid': str(uuid4()), 'state': 'draft',
+            'amount_total': 0, 'amount_tax': 0, 'amount_paid': 0, 'amount_return': 0,
+        })
+        payment = self.env['pos.payment'].create({
+            'pos_order_id': order.id, 'payment_method_id': self.method.id,
+            'amount': 0, 'uuid': str(uuid4()), 'payment_status': 'waiting',
+        })
+        model = self._method('colleague').env['pos.payment']
+        for native, record in (('pos.config', self.config), ('pos.session', self.session),
+                               ('pos.order', order)):
+            with self.subTest(model=native):
+                rule = self.env['ir.rule'].create({
+                    'name': f'Ticket35 native tender {native} denial',
+                    'model_id': self.env['ir.model']._get_id(native),
+                    'domain_force': f"[('id', '!=', {record.id})] if user.id == {self.users['colleague'].id} else []",
+                })
+                self.assertFalse(call_kw(model, 'search_read', [[('id', '=', payment.id)]],
+                    {'fields': ['payment_status', 'transaction_id']}))
+                with self.assertRaises(AccessError):
+                    call_kw(model, 'read', [[payment.id], ['payment_status']], {})
+                rule.unlink()
+        self.assertEqual(call_kw(model, 'read', [[payment.id], ['payment_status']], {})
+            [0]['payment_status'], 'waiting')
+        self.request.assert_not_called()
+
     def test_derived_native_exposure_does_not_leak_or_cache_across_backend_users(self):
         started = self._start()
         self.env.invalidate_all()

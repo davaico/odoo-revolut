@@ -24,6 +24,21 @@ class RevolutReceipt(models.AbstractModel):
             raise AccessError(_("The receipt company is not active or accessible."))
 
     @api.model
+    def _check_operation_access(self, kind, operation):
+        # Receipt access follows sale ACLs for cashiers, while authorization
+        # still uses the persisted financial session rather than a newer order
+        # session. Sudo only resolves identity; native checks use the caller.
+        identity = operation.sudo()
+        source = identity if kind == "payment" else identity.original_operation_id
+        source.with_env(self.env)._check_revolut_register_access()
+        if kind == "refund":
+            session = self.env["pos.session"].browse(identity.pos_session_id.id)
+            order = self.env["pos.order"].browse(identity.pos_order_id.id)
+            session.config_id._check_revolut_register_access(session=session, order=order)
+            if session.config_id.id != source.pos_config_id.id:
+                raise AccessError(_("The refund receipt belongs to another register."))
+
+    @api.model
     def _operation(self, kind, operation_id):
         if kind not in {"payment", "refund"} or type(operation_id) is not int:
             raise UserError(_("Select a valid Revolut payment or refund receipt."))
@@ -37,6 +52,7 @@ class RevolutReceipt(models.AbstractModel):
         ], limit=1)
         if not operation:
             raise AccessError(_("The Revolut receipt is not accessible."))
+        self._check_operation_access(kind, operation)
         order_ids = operation.pos_order_id.ids
         if kind == "refund":
             order_ids += operation.original_operation_id.pos_order_id.ids
@@ -187,6 +203,7 @@ class PosOrderReceipt(models.Model):
         options = []
         for kind, operations in (("payment", payments), ("refund", refunds)):
             for operation in operations:
+                receipts._check_operation_access(kind, operation)
                 # An inconsistent verified record remains visible to staff;
                 # the document endpoint supplies an actionable evidence error.
                 receipts._check_order_access(self.env["pos.order"].browse(operation.pos_order_id.ids + (
