@@ -245,8 +245,7 @@ Python syntax compilation and whitespace checks passed; no separate static
 typechecker is configured. The initial `/pos_revolut_restaurant` module selector
 ran zero tests because these checks are tagged inside `pos_revolut`; the final
 `--test-tags pos_revolut_restaurant` update ran the actual nine checks.
-Independent Standards/Spec review against pinned main follows the investigation
-commit; its result is recorded below.
+Independent Standards/Spec review against pinned main is recorded below.
 
 Native source extraction used:
 
@@ -260,3 +259,33 @@ The test seam is the exact public start/find/poll/timeout/cancel entrypoints
 already specified in the ticket, with public native checkout preparation and
 identifier discovery. Because runtime behavior must remain unchanged here,
 these are characterization assertions rather than a red/green permission fix.
+
+## Review identity
+
+Reviewed investigation commit: **`8f63c06ee8040705d7a26be0f32abcf41dbc418c`**.
+Fixed point: `9e1bdd7c64566ccec802b45f818bfbdf99ec4d0d` (fetched main).
+Two independent review agents used
+`git diff 9e1bdd7c64566ccec802b45f818bfbdf99ec4d0d...HEAD` and the commit list
+`8f63c06 test(pos): investigate shared register authorization`.
+The final follow-up commit records review results only; the tested Python file
+and assessed runtime remain unchanged. Disposable containers, database tmpfs
+and test-data volume were removed after verification.
+
+## Standards
+
+No findings. Tests, evidence and tracker changes follow the repository's
+documented boundaries and lifecycle rules. Mocked public calls, isolated
+registry test mode, explicit failure/skip reporting and the preserved
+`ready-for-agents/.gitkeep` meet the standards. The committed test SHA-256
+matches the recorded reproduction. No actionable baseline smells were found.
+
+## Spec
+
+No findings. The access matrix distinguishes identities, the selected policy
+and actual native controls. The public reproduction separates initiation,
+recovery, method membership and identifier discovery. Both original findings
+have qualified verdicts; known-ID, browser/PIN and deployment proof gaps are
+preserved. Closure concerns the investigation, with permission changes deferred
+to the separately triaged ticket 35.
+
+Review totals: **Standards 0; Spec 0; no worst issue on either axis**.

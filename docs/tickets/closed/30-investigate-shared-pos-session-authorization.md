@@ -88,5 +88,6 @@ This closes the investigation, **not the authorization defect**. No permission
 change was implemented. [Ticket 35](../needs-triage/35-enforce-shared-register-authorization.md)
 records the narrow server-owned grant/recovery proposal for scope/sequence
 triage. Ticket 12's physical-device and financial acceptance remains open.
-Independent Standards/Spec review is recorded in the evidence after the
-investigation commit.
+Independent Standards/Spec review of investigation commit `8f63c06` against
+pinned main reports zero findings on both axes; the evidence records the review
+identity. The final documentation commit does not change the tested reproduction.
