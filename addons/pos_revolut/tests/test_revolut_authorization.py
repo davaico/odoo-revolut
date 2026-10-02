@@ -55,6 +55,7 @@ class TestRevolutAuthorization(TransactionCase):
             "name": "Revolut authorization test",
             "payment_method_ids": [Command.link(cls.method.id)],
             "auto_validate_terminal_payment": True,
+            "revolut_user_ids": [Command.set((cls.manager | cls.multi_company_manager | cls.cashier).ids)],
         })
         cls.product = native_products(cls.env, cls.config)
         cls.session = cls.env["pos.session"].create({

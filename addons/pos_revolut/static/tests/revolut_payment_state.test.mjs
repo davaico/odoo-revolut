@@ -805,6 +805,8 @@ for (const refund of [false, true]) {
             assert.equal(line.uuid, "line-1");
             assert.equal(calls.filter(({ method }) => method === "revolut_start_refund").length, 1);
             assert.equal(calls.filter(({ method }) => method === "revolut_confirm_refund_absence").length, 1);
+            assert.deepEqual(calls.find(({ method }) => method === "revolut_confirm_refund_absence").args,
+                [[7], order.uuid, line.uuid, state.sessionId]);
             assert.equal(errors.at(-1), "no_refund_attempt");
         });
 

@@ -9,3 +9,6 @@ from . import revolut_receipt
 from . import cart_pricing
 from . import cart_authorization
 from . import terminal_tip
+
+from . import pos_config
+from . import register_worklists

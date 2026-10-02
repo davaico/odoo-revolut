@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="pos_config_revolut_access_form" model="ir.ui.view">
+        <field name="name">pos.config.revolut.access.form</field>
+        <field name="model">pos.config</field>
+        <field name="inherit_id" ref="point_of_sale.pos_config_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet" position="inside">
+                <group string="Revolut register access" groups="base.group_system">
+                    <field name="revolut_user_ids" widget="many2many_tags" options="{'no_create': True}"/>
+                    <div class="text-muted">Grant each backend till user and supervisor explicitly. Employee selection does not grant access. Removing a user blocks their next request while background reconciliation continues.</div>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -116,6 +116,9 @@ class TestRevolutRestaurantPosStarts(TestPointOfSaleHttpCommon):
             "revolut_fulfilment_type": "eat_in",
             "revolut_secret_reference": "ODOO_REVOLUT_SECRET_TEST_TERMINAL",
         })
+        self.main_pos_config.sudo().write({
+            "revolut_user_ids": [Command.set((self.env.user | self.pos_user).ids)],
+        })
         self.main_pos_config.write({
             "module_pos_restaurant": True,
             "payment_method_ids": [Command.link(method.id)],
@@ -212,6 +215,9 @@ class TestRevolutRestaurantPosStarts(TestPointOfSaleHttpCommon):
             "revolut_fulfilment_type": "eat_in",
             "revolut_secret_reference": "ODOO_REVOLUT_SECRET_TEST_TERMINAL",
         })
+        self.main_pos_config.sudo().write({
+            "revolut_user_ids": [Command.set((self.env.user | self.pos_user).ids)],
+        })
         self.main_pos_config.write({
             "module_pos_restaurant": True,
             "payment_method_ids": [Command.link(method.id)],
@@ -283,6 +289,9 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                 "revolut_secret_reference": "ODOO_REVOLUT_SECRET_TEST_TERMINAL",
             }
         )
+        self.main_pos_config.sudo().write({
+            "revolut_user_ids": [Command.set((self.env.user | self.pos_user | self.pos_admin).ids)],
+        })
         self.main_pos_config.write(
             {
                 "payment_method_ids": [

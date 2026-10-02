@@ -217,6 +217,8 @@ class PosOrder(models.Model):
             return_source = order._revolut_return_source()
             has_revolut_payment = any(payment.payment_method_id.use_payment_terminal == "revolut"
                                      for payment in order.payment_ids)
+            if exposed or has_revolut_payment or return_source:
+                order.config_id._check_revolut_register_access(session=order.session_id, order=order)
             if (exposed or has_revolut_payment or return_source) and (
                 order.company_id != order.session_id.company_id
                 or order.config_id != order.session_id.config_id
@@ -416,6 +418,13 @@ class PosOrder(models.Model):
         if not session:
             raise UserError(_("The Point of Sale session does not exist."))
         order_uuid = order.get("uuid") or (existing_order and existing_order.uuid)
+        exposure = self.env["pos.revolut.payment.operation"].sudo().search([
+            ("company_id", "=", session.company_id.id), ("order_uuid", "=", order_uuid),
+        ])
+        for operation in exposure:
+            operation.with_env(self.env)._check_revolut_register_access()
+        if exposure:
+            session.config_id._check_revolut_register_access(session=session, order=existing_order)
         operations = self._locked_revolut_operations_for_order(
             session.company_id.id, order_uuid
         )
