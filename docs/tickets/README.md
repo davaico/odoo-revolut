@@ -91,8 +91,8 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [28 — Bind Revolut credential authority to the owning company](closed/28-bind-merchant-credentials-to-company.md) | `ready-for-agent` at closure | Closed | None; integrated fix, migration evidence and independent verification accepted |
 | [29 — Determine the impact of concurrent payment status polling](closed/29-investigate-concurrent-status-polling.md) | `ready-for-agent` at closure | Closed | Investigation complete; duplicate-read HTTP contention confirmed, separate proposal in 38 |
 | [30 — Determine authorized access to shared POS sessions](closed/30-investigate-shared-pos-session-authorization.md) | `ready-for-agent` at closure | Closed | Investigation complete; confirmed policy gap and recovery bypass proposed as ticket 35 |
-| [31 — Determine deployment upload and lock-file exploitability](needs-info/31-investigate-privileged-deployment-files.md) | `needs-info` | Open | Target host facts and authorized review access; partial evidence preserved |
-| [32 — Verify deployment host identity on first SSH use](needs-info/32-investigate-deployment-host-authentication.md) | `needs-info` | Open | Route/VM verified; Emile confirmed as administrator/device owner; workstation/replacement procedure missing |
+| [31 — Determine deployment upload and lock-file exploitability](wontfix/31-investigate-privileged-deployment-files.md) | `wontfix` | Closed | Owner stopped investigation after Daybreak interruptions; six findings closed locally as wontfix; workbench unchanged |
+| [32 — Verify deployment host identity on first SSH use](wontfix/32-investigate-deployment-host-authentication.md) | `wontfix` | Closed | Owner scope decision (2026-10-02): client/hosting operator handles deployment access; evidence retained, first-deployment procedure unresolved |
 | [33 — Determine whether release evidence exposes restricted identifiers](needs-info/33-investigate-release-evidence-disclosure.md) | `needs-info` | Open | Owner policy resolved and sample references confirmed; permanent private retention, custodian and recovery remain unverified |
 | [34 — Provision and gate Odoo PDF generation](ready-for-human/34-provision-and-gate-odoo-pdf-generation.md) | `ready-for-human` | Open | Local implementation verified; remaining acceptance uses a native Odoo invoice; see 36 |
 | [35 — Enforce explicit backend-user access to shared registers](closed/35-enforce-shared-register-authorization.md) | `ready-for-agent` at closure | Closed | Explicit grants verified; 406 install/406 upgrade/9 Restaurant; rollout remains 12 |
@@ -237,7 +237,7 @@ this publication does not change or close parent ticket 12. Confirmed fixes
 require reviewed regression evidence, while investigation outcomes determine
 whether additional remediation is needed before final release acceptance.
 
-### Ticket 31 deferral — 2026-10-01
+### Ticket 31 deferral — 2026-10-01 (superseded by closure below)
 
 Ticket 31 is now **open / needs-info** after repeated cybersecurity content
 restrictions interrupted its investigation. Its [partial evidence and
@@ -246,6 +246,18 @@ infrastructure handoff](../testing/ticket-31-partial-investigation.md) preserves
 remain `needs_review`; target host configuration and actual upload behavior
 are unverified. This later status supersedes the original agent-ready
 placement above. Other tickets retain their own dependencies.
+
+### Ticket 31 closure — 2026-10-02
+
+At Gary's request, [ticket 31](wontfix/31-investigate-privileged-deployment-files.md)
+is **closed / wontfix** and set aside because repeated Daybreak interruptions
+prevent continuing. All six associated findings are closed as **wontfix in the
+local tracker**, with their original IDs and partial evidence preserved in the
+[archived investigation record](../testing/ticket-31-partial-investigation.md).
+No fix or safety verdict is claimed, and no further investigation is scheduled.
+The available security tools provide no finding-triage closure operation, so
+the Codex Security workbench statuses remain unchanged. This disposition
+supersedes the needs-info handoff; ticket 12's own release requirements remain.
 
 ## Shared implementation contract
 

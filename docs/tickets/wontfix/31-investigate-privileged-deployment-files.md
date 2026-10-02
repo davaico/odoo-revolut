@@ -6,13 +6,37 @@
 
 **Worktree:** `/home/gary/delivery/Tek2/stage/odoo-rev/worktree/ticket-31`
 
-Investigation is deferred pending external evidence and an authorized review workflow. Preserve the partial work in this assigned worktree; update from reviewed main before resuming.
+Investigation is closed and set aside at the owner's request. Preserve the partial work in this assigned worktree as historical evidence; no further work is scheduled under this ticket.
 
-**State:** open
+**State:** closed
 
-**Triage:** needs-info
+**Triage:** wontfix
 
 **Work type:** Investigation
+
+## Owner closure decision — 2026-10-02
+
+Gary requested permanent closure of this ticket and all six related findings
+because repeated Daybreak interruptions prevent continuing the investigation.
+The ticket is **closed / wontfix** and set aside; the previous needs-info
+handoff is superseded. No further evidence gathering or investigation is
+scheduled under this ticket.
+
+All six source findings listed below are **closed / wontfix in the local
+tracker** by owner decision. Their technical assessment remains unverified;
+this disposition does not claim that they were fixed or disproved. The partial
+investigation, individual proof gaps and unfinished acceptance criteria are
+preserved. The assigned worktree and its uncommitted harness are retained.
+
+The available Codex Security tools expose scan context but no finding-triage
+closure operation. Security workbench closure could not be applied in this
+session; its finding statuses remain unchanged. This limitation is separate
+from the local tracker closure of all six findings.
+
+Verification for this documentation-only closure checks the ticket/index
+metadata, all six source IDs, local Markdown links and whitespace. Historical
+fixture results are retained; no investigation harness or runtime suite is
+rerun for this disposition.
 
 ## What to build
 
@@ -56,7 +80,7 @@ No live symlink race, privileged-file overwrite, service stop, package update or
 
 ## Release and integration relationship
 
-Disposition must precede relying on the reviewed-artifact guarantee for a release deployment; an independently demonstrated defect requires remediation before that workflow is used.
+The owner disposition is now recorded as wontfix. The incomplete investigation supplies no deployment-integrity assurance. Ticket 12 retains its own release and acceptance requirements; this closure does not complete them.
 
 ## Working agreement
 
@@ -66,7 +90,7 @@ Start from current reviewed main and record the exact revision; do not implement
 
 The owner reports that deployment SSH access is held by their boss and that the Hetzner VM belongs to company infrastructure. This identifies the operating context, not the complete local-process privilege model. Establish service-account access and effective filesystem protections before confirming or dismissing the six claims.
 
-## Deferred investigation and evidence handoff — 2026-10-01
+## Deferred investigation and evidence handoff — 2026-10-01 (superseded)
 
 The owner requested that this ticket be set aside and its useful results
 preserved after repeated Daybreak / cybersecurity content restrictions in the

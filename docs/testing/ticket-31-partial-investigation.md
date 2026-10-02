@@ -2,7 +2,8 @@
 
 Recorded 2026-10-01 from the interrupted **T31** chat. This preserves existing
 evidence; it is not a fresh validation run, a completed security review, or a
-finding closure. All six source findings remain `needs_review`.
+finding closure. All six source findings were `needs_review` at that handoff.
+The 2026-10-02 owner closure below supersedes the local tracker status.
 
 ## Provenance and limits
 
@@ -89,7 +90,7 @@ Do not include credentials, private keys, payment identifiers or customer
 records. Unknown answers stay unknown; local workstation defaults are not a
 substitute. This handoff does not authorize live testing or host changes.
 
-## Resume and release conditions
+## Historical resume and release conditions (superseded)
 
 Automated investigation was interrupted repeatedly by the reported Daybreak /
 cybersecurity content restriction. The user requested deferral and extraction
@@ -104,3 +105,34 @@ hardening such as private administrator-owned staging and safe lock/archive
 handling, with deployment and recovery regression coverage. No such change is
 implemented here. Ticket 31 remains open and cannot supply a completed
 deployment-integrity assurance for ticket 12.
+
+## Owner closure and retained finding dispositions — 2026-10-02
+
+Gary requested that ticket 31 and all its findings be closed and set aside
+because repeated Daybreak interruptions prevent continuing. [Ticket
+31](../tickets/wontfix/31-investigate-privileged-deployment-files.md) is now
+**closed / wontfix**. The previous resume instructions and infrastructure
+requests are historical; no further investigation is scheduled under this
+ticket. Partial evidence and the existing worktree are preserved.
+
+Each related finding has the following local tracker disposition:
+
+| Scan input | Source finding ID | Local disposition |
+| --- | --- | --- |
+| 5 | `csf_dbbeda1c4299496bf775a644` | Closed / wontfix — owner stopped investigation |
+| 15 | `csf_06a7474b0b79b37bb8cef2a6` | Closed / wontfix — owner stopped investigation |
+| 17 | `csf_4925cf001b94023f9c915d73` | Closed / wontfix — owner stopped investigation |
+| 23 | `csf_08451af4690fad4915a4809c` | Closed / wontfix — owner stopped investigation |
+| 27 | `csf_460c7a2adbddf8cb4cd4e1f6` | Closed / wontfix — owner stopped investigation |
+| 32 | `csf_1b61b708da0cb8c139a79b05` | Closed / wontfix — owner stopped investigation |
+
+The technical proof gaps in the historical table remain unresolved. These
+closures record the owner's decision to stop, without claiming remediation or
+a safe deployment workflow. Ticket 12 retains its own acceptance requirements.
+
+Codex Security scan context was accessible, but the available tools offer no
+finding-triage closure operation. Its workbench statuses were not changed;
+this table records local tracker closure only. No runtime, host or deployment
+change was made, and the historical fixture suite was not rerun. Closure
+verification is limited to documentation metadata, source IDs, links and
+whitespace.
