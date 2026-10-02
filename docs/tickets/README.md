@@ -97,6 +97,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [34 — Provision and gate Odoo PDF generation](ready-for-human/34-provision-and-gate-odoo-pdf-generation.md) | `ready-for-human` | Open | Local implementation verified; remaining acceptance uses a native Odoo invoice; see 36 |
 | [35 — Enforce explicit backend-user access to shared registers](closed/35-enforce-shared-register-authorization.md) | `ready-for-agent` at closure | Closed | Explicit grants verified; 406 install/406 upgrade/9 Restaurant; rollout remains 12 |
 | [36 — Remove custom Revolut receipts and preserve native printing](ready-for-agents/36-remove-custom-revolut-receipts.md) | `ready-for-agent` | Open | Approved removal; coordinate 34 PDF checks and 35 access changes; before 12 |
+| [37 — Reconcile refunds created outside Odoo](ready-for-agents/37-reconcile-external-terminal-refunds.md) | `ready-for-agent` | Open | Automatic discovery approved; preserve existing 35 register authorization and 36 receipt-removal scope; deployment/live reconciliation separate |
 
 ## Architecture triage — 2026-09-25
 
