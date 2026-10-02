@@ -549,3 +549,20 @@ for this refund's final outcome and POS receipt, final test-money
 reconciliation, target-device
 tip/report observations, Restaurant checkout, remaining failure/recovery
 cases, and final release documentation/combined-artifact acceptance.
+
+## Native historical printing gate — ticket 36
+
+Before ticket 12 closes, verify the integrated release's native POS historical
+**Details** and **Print Receipt** using a saved paid sale at least one week old,
+without an accounting invoice, with its original session closed and a fresh
+browser load. Check Revolut references and that reprinting changes no payment
+or refund outcome and initiates no terminal transaction. Separately retrieve
+and print an existing native accounting invoice. Preserve Odoo's normal later
+invoice-creation flow without automatically invoicing every sale.
+
+On the physical terminal, confirm current and historical transaction-history
+receipt printing still works. The owner's earlier report of working terminal
+history and disposable browser/PDF tests do not establish physical-printer
+acceptance. Ticket 34 independently retains native invoice PDF verification
+after separately authorized staging repair/rollout; missing historical invoice
+fixtures are a blocker, not permission to create a financial transaction.

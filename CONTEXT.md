@@ -8,14 +8,6 @@ This context covers Odoo Point of Sale payments and refunds through Revolut term
 The customer-facing proof of a card payment issued by Revolut, including the receipt printed by its terminal or supplied digitally. This is the document meant by the client's request to retrieve and reprint an older terminal transaction.
 _Avoid_: Invoice, facture, POS sales receipt when referring to this document.
 
-**Odoo-generated Revolut payment receipt**:
-A customer-facing payment receipt produced by Odoo from verified Revolut payment data for a payment processed through this integration. It is distinct from Revolut's original terminal document and from Odoo's itemized POS sales receipt.
-_Avoid_: Original Revolut receipt, accounting invoice.
-
-**Odoo-generated Revolut refund receipt**:
-A customer-facing document produced by Odoo for a verified completed refund through this integration, linked to its original payment. It records that refund independently of the original payment receipt, which remains available.
-_Avoid_: Pending refund confirmation, accounting credit note, original Revolut receipt.
-
 **POS sales receipt**:
 The Odoo document describing a POS sale and its payment tenders. Including a Revolut payment reference does not make it the original Revolut payment receipt.
 _Avoid_: Revolut payment receipt, accounting invoice.

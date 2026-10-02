@@ -2,7 +2,7 @@
 
 # 36 — Remove custom Revolut receipts and preserve native printing
 
-**State:** open
+**State:** closed
 
 **Category:** enhancement
 
@@ -46,16 +46,16 @@ Official Odoo 19 documentation distinguishes [receipt printing and reprinting](h
 
 ## Acceptance criteria
 
-- [ ] POS checkout/history and administration no longer expose custom Revolut receipt buttons, selectors, tabs or download links. Details, Invoice and Print Receipt retain their native behavior and permissions.
-- [ ] The former custom RPC/report/download interfaces cannot produce the retired PDFs, including by direct URL or report action. There are no dangling menus, views, asset imports or references to removed fields/models after upgrade.
-- [ ] On the supported Odoo build, a saved paid sale without an accounting invoice can still reprint its native receipt. Exercise an order at least one week old, a closed original session and a fresh browser load. Demonstrate native invoice retrieval/printing separately for an already invoiced order; preserve native later invoice creation without adding automatic invoicing.
-- [ ] Fresh installation and upgrade from a receipt-enabled release succeed. Existing orders, accounting documents, payment/refund operations, references and financial evidence survive unchanged. No destructive purge of legacy stored data or customer documents is part of this change.
-- [ ] Successful payment/refund processing, split tenders, terminal tips, recovery and reconciliation remain correct. Preserve verified timestamps and shared immutability/deployment guards, even where formerly described using receipt terminology. Preserve useful Revolut references on the ordinary Odoo receipt without duplicating them.
-- [ ] Reprinting through retained Odoo flows sends no Merchant requests, dispatches no terminal transaction, reopens no financial operation and changes no payment/refund outcome. Existing register/company access rules remain effective.
-- [ ] Replace custom-document expectations in affected tip/refund, UI, install/upgrade and PDF checks with assertions of the retained financial/native behavior. Do not delete unrelated regression coverage merely because its fixture used the old receipt model. Automated provider access remains mocked or blocked.
-- [ ] Preserve general PDF provisioning and deployment checks. Exercise actual native invoice PDF rendering in disposable verification, and update ticket 34's remaining human acceptance accordingly. Never claim native invoice rendering from evidence of a retired custom report alone.
-- [ ] Installation/operator guidance and current domain descriptions clearly direct staff to native Odoo documents and terminal history. Mark ticket 25's requirement superseded without rewriting its historical test evidence. Remove active guidance promising standalone Revolut PDFs.
-- [ ] Record implementation/test revisions and remaining human checks. Ticket 12 must verify the integrated release's native historical receipt/invoice printing and that current/historical terminal printing still works; do not claim physical-printer acceptance from mocked tests.
+- [x] POS checkout/history and administration no longer expose custom Revolut receipt buttons, selectors, tabs or download links. Details, Invoice and Print Receipt retain their native behavior and permissions.
+- [x] The former custom RPC/report/download interfaces cannot produce the retired PDFs, including by direct URL or report action. There are no dangling menus, views, asset imports or references to removed fields/models after upgrade.
+- [x] On the supported Odoo build, a saved paid sale without an accounting invoice can still reprint its native receipt. Exercise an order at least one week old, a closed original session and a fresh browser load. Demonstrate native invoice retrieval/printing separately for an already invoiced order; preserve native later invoice creation without adding automatic invoicing.
+- [x] Fresh installation and upgrade from a receipt-enabled release succeed. Existing orders, accounting documents, payment/refund operations, references and financial evidence survive unchanged. No destructive purge of legacy stored data or customer documents is part of this change.
+- [x] Successful payment/refund processing, split tenders, terminal tips, recovery and reconciliation remain correct. Preserve verified timestamps and shared immutability/deployment guards, even where formerly described using receipt terminology. Preserve useful Revolut references on the ordinary Odoo receipt without duplicating them.
+- [x] Reprinting through retained Odoo flows sends no Merchant requests, dispatches no terminal transaction, reopens no financial operation and changes no payment/refund outcome. Existing register/company access rules remain effective.
+- [x] Replace custom-document expectations in affected tip/refund, UI, install/upgrade and PDF checks with assertions of the retained financial/native behavior. Do not delete unrelated regression coverage merely because its fixture used the old receipt model. Automated provider access remains mocked or blocked.
+- [x] Preserve general PDF provisioning and deployment checks. Exercise actual native invoice PDF rendering in disposable verification, and update ticket 34's remaining human acceptance accordingly. Never claim native invoice rendering from evidence of a retired custom report alone.
+- [x] Installation/operator guidance and current domain descriptions clearly direct staff to native Odoo documents and terminal history. Mark ticket 25's requirement superseded without rewriting its historical test evidence. Remove active guidance promising standalone Revolut PDFs.
+- [x] Record implementation/test revisions and remaining human checks. Ticket 12 must verify the integrated release's native historical receipt/invoice printing and that current/historical terminal printing still works; do not claim physical-printer acceptance from mocked tests.
 
 ## Dependencies and release relationship
 
@@ -66,3 +66,30 @@ Complete and verify the removal before ticket 12's final release acceptance. Tic
 ## Out of scope
 
 Automatic accounting invoices for every order; historical invoice backfill; customer creation; a replacement PDF system; remote commands to print Odoo invoices on the Revolut terminal; changes to terminal firmware/settings; provider receipt retrieval; automatic email/public sharing; deleting financial history; unrelated payment or permission redesign.
+
+## Implementation and verification — 2026-10-02
+
+Closed locally on addon `19.0.1.12.0`, implementation `1cc330c`, incorporating
+latest main `2587962` through merge `bb5bcdd`. Removed custom UI, receipt model,
+RPC/links, report registrations/templates and download routes. Pre-migration
+cleans obsolete views before field validation. Existing financial records,
+accounting documents, saved PDFs and legacy merchant metadata remain; verified
+timestamps, deployment guards and native tender references remain protected.
+
+The [complete evidence](../../testing/ticket-36-native-printing.md) records
+actual old-release upgrade preservation and native invoice PDF rendering plus
+repeated authenticated downloads. Final full pinned-Odoo verification passed
+398 fresh-install tests, 398 upgrade tests and 9 Restaurant tests. JavaScript
+payment lifecycle: 75 passed. Host deployment/PDF checks: 36 passed with three
+runtime-only cases skipped on host; all seven renderer cases pass in the pinned
+image. Independent Standards and Spec reviews each report zero actionable
+findings. Earlier migration/fixture failures are preserved separately from the
+successful final results. No live Merchant request, deployment or printer test
+was performed.
+
+All checked criteria above reflect local implementation and disposable
+verification. Ticket 12 retains final integrated-release native historical
+receipt/invoice and physical current/historical terminal printing checks.
+Ticket 34 remains open for native invoice PDF acceptance after separately
+authorized staging repair/rollout. The owner-reported terminal history behavior
+is retained as operator evidence, not newly repeated device acceptance.

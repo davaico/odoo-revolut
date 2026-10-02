@@ -594,3 +594,20 @@ return. At 12:31 UTC its Odoo state was `unresolved` and its provider state
 was `processing`. The operator still sees it processing/unresolved. No final
 refund, receipt, or full reconciliation is claimed. Ticket 12 stays open;
 credential-authority ticket 28 remains open under its own scope.
+
+## Native historical printing gate — ticket 36
+
+Before ticket 12 closes, verify the integrated release's native POS historical
+**Details** and **Print Receipt** using a saved paid sale at least one week old,
+without an accounting invoice, with its original session closed and a fresh
+browser load. Check Revolut references and that reprinting changes no payment
+or refund outcome and initiates no terminal transaction. Separately retrieve
+and print an existing native accounting invoice. Preserve Odoo's normal later
+invoice-creation flow without automatically invoicing every sale.
+
+On the physical terminal, confirm current and historical transaction-history
+receipt printing still works. The owner's earlier report of working terminal
+history and disposable browser/PDF tests do not establish physical-printer
+acceptance. Ticket 34 independently retains native invoice PDF verification
+after separately authorized staging repair/rollout; missing historical invoice
+fixtures are a blocker, not permission to create a financial transaction.

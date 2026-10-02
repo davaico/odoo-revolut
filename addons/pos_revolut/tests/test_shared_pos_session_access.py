@@ -415,7 +415,7 @@ class TestSharedPosSessionAccess(TransactionCase):
         self.session.invalidate_recordset()
         self._recovery_calls('colleague', started)
 
-    def test_ungranted_native_cash_order_read_still_succeeds_without_receipt_links(self):
+    def test_ungranted_native_cash_order_read_still_succeeds(self):
         order = self.env['pos.order'].create({
             'session_id': self.session.id, 'uuid': str(uuid4()), 'state': 'draft',
             'amount_total': 0, 'amount_tax': 0, 'amount_paid': 0, 'amount_return': 0,
@@ -423,7 +423,6 @@ class TestSharedPosSessionAccess(TransactionCase):
         result = call_kw(self._method('excluded').env['pos.order'],
             'read_pos_data_uuid', [order.uuid], {})
         self.assertTrue(result['pos.order'])
-        self.assertFalse(order.with_user(self.users['excluded']).revolut_receipt_links)
         self.request.assert_not_called()
 
     def test_native_payment_state_is_hidden_without_register_grant(self):

@@ -192,7 +192,7 @@ and the active company still apply.
 
 To revoke access, remove the backend user from the register's list and save.
 Their next interactive request is denied, including known transaction IDs,
-refund sources, checkout state, financial worklists and receipt downloads.
+refund sources, checkout state, financial worklists.
 Revocation does not cancel a terminal attempt, clear a reservation or remove
 evidence. Keep the root-owned reconciliation scheduled actions enabled; they
 continue to reconcile existing financial exposure and late success. Regranting
@@ -294,7 +294,7 @@ the proven tip; partial refunds select base and tip components separately.
 
 Upgrade from earlier versions does not invent authorizations or zero-tip
 evidence for old operations. Historical verified/uncertain attempts remain
-recoverable with their original references, receipts and refund limits. They
+recoverable with their original references and refund limits. They
 cannot receive another new allocation without audited manager reconciliation.
 Safe failed drafts can be prepared under the new rules. Deliver both addons,
 run the stopped-service module update, and reopen POS to load the new assets.
@@ -544,51 +544,36 @@ be safely associated through the worklist. Keep them blocked and escalate for
 provider-backed investigation. Do not enter credentials, card data or raw API
 responses as evidence; the audit stores only reference UUIDs.
 
-## Download payment and refund receipts
+## Print current and historical documents
 
-Upgrade `pos_revolut` to `19.0.1.8.0` using the offline procedure above, then
-reload POS to load the receipt controls. This adds reports and optional merchant
-identity snapshots to existing operation records. No credential rotation,
-customer record, accounting invoice, new Python dependency or terminal setting
-is required.
+From `19.0.1.12.0`, use Odoo's native documents. In POS, open **Orders**,
+select **Paid**, find the saved order and use **Details**, **Invoice** or
+**Print Receipt**. A paid sale can have a reprintable POS sales receipt without
+an accounting invoice or customer record. Historical receipt printing works
+with a closed original session; open a current authorized register session to
+load POS and find the earlier sale.
 
-At checkout, use **Revolut receipts** on the receipt screen. For an older sale,
-open **Orders** in POS, select **Paid**, find and select the sale, then use
-**Revolut receipts**. The original session may already be closed. Select the
-payment or refund document when more than one is available. Each Revolut tender
-has its own payment receipt; its amount does not represent other tenders or
-assert that the entire sale is paid. Refund receipts are separate documents,
-including each partial refund. The original payment remains available after a
-refund.
+**Print Receipt** prints the itemized POS sale and its tenders, retaining useful
+Revolut payment/refund references. It does not start another terminal payment
+or refund. Native Odoo may increment the order's print count. An accounting
+invoice is a separate document: **Invoice** retrieves an existing invoice or
+uses Odoo's normal customer selection and later invoice-creation flow. This
+addon does not automatically invoice every order or create customers. Existing
+Odoo permissions apply to those native actions; Revolut register grants still
+control the integration's financial entrypoints and worklists.
 
-In administration, open **Point of Sale > Orders > Orders**, select the sale
-and open the **Revolut receipts** tab. Follow the individual payment or refund
-download link. The original sale lists its refunds too; the return order also
-lists its own refund documents. Existing sale access and the companies active
-in the company selector apply to every download. Cashiers can view permitted
-documents without receiving permission to issue refunds or alter evidence.
+For the original Revolut card receipt, use the terminal's own transaction
+history/reprint controls. Odoo does not send remote invoice-print commands to
+the terminal. Physical terminal and printer acceptance remains ticket 12.
 
-Open the downloaded PDF in an ordinary PDF viewer to print it, or attach it to
-an email manually. The document is clearly labelled as an **Odoo-generated**
-receipt. It is distinct from Revolut's original terminal document and Odoo's
-itemized sales receipt. There is no automatic email, public sharing link,
-accounting document creation or remote terminal printer command.
-
-The timestamp labelled **Verified in Odoo at** records local verification,
-not the provider transaction time. A separate generation time identifies this
-download. When old records lack a merchant snapshot, the document labels the
-available identity as **Current merchant identity**; it does not reconstruct
-historical merchant details. Missing optional card or provider date fields
-are omitted. Receipt viewing does not fetch them from Revolut or modify the
-saved payment evidence.
-
-Only verified successful payments and completed refunds qualify. Pending,
-declined, failed, cancelled and uncertain attempts cannot produce completion
-documents. If required evidence is missing or inconsistent, contact a POS
-manager with the sale reference. If PDF generation fails, retry the download
-or ask the administrator to check Odoo's report service. Downloads work from
-stored evidence without terminal connectivity and never create another charge
-or refund. Cancelling a print or a printer failure has no effect on the payment.
+The former **Revolut receipts** checkout/history buttons, administration tab,
+standalone reports and download/RPC interfaces are retired. Upgrade through
+the reviewed offline deployment procedure and reload every POS browser to load
+the new assets. Existing financial records, verification timestamps,
+transaction references, accounting documents and previously saved PDF
+attachments remain intact. Old receipt-only merchant snapshots remain stored
+and immutable; new operations no longer capture them. No credential rotation,
+new dependency or terminal setting is needed for this removal.
 
 ## Disposable verification environment
 
@@ -778,7 +763,7 @@ remove its reservation or restart a financial request based on a validation erro
 
 ## Server PDF renderer prerequisite
 
-Payment and refund receipt downloads require a server-installed patched-Qt
+Native Odoo accounting invoice PDFs require a server-installed patched-Qt
 renderer. For the supported Ubuntu 24.04 hosting layout, provision
 `wkhtmltox 1:0.12.6.1-3.jammy` (`wkhtmltopdf 0.12.6.1 (with patched qt)`)
 through `odoo-hosting`; use its documented PDF repair workflow on an existing
@@ -788,7 +773,6 @@ packages at runtime. A controlled Odoo restart may be required to refresh its
 renderer detection, after financial and maintenance gates are met.
 
 See [PDF preflight and repair guidance](staging-deployment.md#pdf-prerequisite-and-deployment-refusal)
-for diagnostics and the existing historical receipt download/print check.
+for diagnostics and the existing historical invoice download/print check.
 Deployment rejects missing, incompatible or failing PDF capability before
-stopping Odoo or changing the addon release. A Revolut payment/refund receipt
-is distinct from an accounting invoice.
+stopping Odoo or changing the addon release. A POS sales receipt does not require an accounting invoice.

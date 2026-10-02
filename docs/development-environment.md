@@ -83,3 +83,17 @@ Devices page also failed. See the
 No Sandbox credential value belongs in this repository. Production
 physical-terminal configuration, discovery and financial acceptance are not
 development-environment prerequisites; they remain ticket 12 work.
+
+Verify retirement against actual receipt-enabled history, including preserved
+accounting documents and archived customer PDFs:
+
+```bash
+./scripts/test-receipt-retirement-upgrade
+```
+
+This runner installs fixed receipt-enabled revision `83a7b24` in an isolated
+database, seeds verified historical payment/partial-refund records with provider
+traffic blocked, upgrades to the candidate and compares stored values. Native
+historical printing and invoice rendering are covered by
+`TestRevolutNativePrinting` and `TestRevolutNativeDocuments` on the pinned build.
+Physical printing and staging PDF checks remain tickets 12 and 34.

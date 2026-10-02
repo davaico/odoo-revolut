@@ -248,11 +248,14 @@ actual Odoo report/asset rendering is separately exercised in disposable tests
 and must be checked by the operator on the authorized target.
 
 After separately authorized repair/rollout and satisfaction of tickets 12, 31
-and 32's applicable gates, open an **existing verified historical** Revolut
-payment and completed refund in Odoo, download each receipt twice, and inspect
-reference, amount/currency, original payment link and printable PDF output.
-Keep the original session closed. Record both deployed repository revisions,
-package build, timestamp and results without secrets; no new terminal charge
-or refund is needed. Installing software on the cashier workstation cannot
-fix this server prerequisite. These are Odoo-generated Revolut receipts;
-an accounting invoice is a separate document.
+and 32's applicable gates, open an **existing historical invoiced** POS order
+and download its native Odoo accounting invoice twice. Inspect its reference,
+amount/currency and printable PDF output with the original session closed.
+If no suitable invoiced order exists, record the missing fixture as a blocker;
+do not create an invoice or live financial transaction solely for this check.
+Record both deployed repository revisions, renderer build, timestamp and
+results without secrets. Installing software on the cashier workstation cannot
+fix this server prerequisite. Separately test native POS **Print Receipt** on a
+saved sale without an invoice; a receipt reprint does not require invoicing.
+Ticket 36 retires the former standalone Revolut reports. Historical custom PDF
+evidence proves only that earlier feature, not native invoice rendering.
