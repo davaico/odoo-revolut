@@ -177,8 +177,9 @@ Ticket 30 closes as a source/runtime investigation with the owner policy
 resolved and verification recorded. The confirmed policy gap and recovery bypass remain remediation work
 before the selected register model can be represented as enforced. This report
 does not close ticket 12's physical-device or financial acceptance gates.
-The concrete follow-up is [ticket 35](../tickets/needs-triage/35-enforce-shared-register-authorization.md),
-filed for scope/sequence triage, not silently approved for implementation.
+The concrete follow-up is [ticket 35](../tickets/ready-for-agents/35-enforce-shared-register-authorization.md),
+originally filed for scope/sequence triage. The owner subsequently approved
+its agent brief on 2026-10-02; that approval does not mark either finding fixed.
 
 ## Exact verification commands
 
