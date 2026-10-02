@@ -1,0 +1,7 @@
+{"active": 0, "blocked_callers": 3, "cron_cancel_overlap": false, "final_state": "pending", "intent_reads": 3, "outcome": "pending", "peak": 3, "retry_safe": false, "total_provider_calls": 3, "total_provider_reads": 3}
+{"active": 0, "blocked_callers": 3, "cron_cancel_overlap": true, "final_state": "cancelled", "intent_reads": 4, "outcome": "pending", "peak": 3, "retry_safe": true, "total_provider_calls": 5, "total_provider_reads": 4}
+{"active": 0, "blocked_callers": 3, "cron_cancel_overlap": false, "final_state": "unresolved", "intent_reads": 3, "outcome": "http_error", "peak": 3, "retry_safe": false, "total_provider_calls": 3, "total_provider_reads": 3}
+{"active": 0, "blocked_callers": 3, "cron_cancel_overlap": false, "final_state": "unresolved", "intent_reads": 3, "outcome": "malformed", "peak": 3, "retry_safe": false, "total_provider_calls": 3, "total_provider_reads": 3}
+{"active": 0, "blocked_callers": 3, "cron_cancel_overlap": false, "final_state": "unresolved", "intent_reads": 3, "outcome": "timeout", "peak": 3, "retry_safe": false, "total_provider_calls": 3, "total_provider_reads": 3}
+{"active": 0, "blocked_callers": 3, "cron_cancel_overlap": false, "final_state": "unresolved", "intent_reads": 3, "outcome": "timeout", "peak": 3, "retry_safe": false, "total_provider_calls": 3, "total_provider_reads": 3}
+{"additional_reads_from_three_verified_browsers": 0, "final_state": "verified", "outcome": "late_success_after_local_timeout", "retry_safe": false, "total_provider_calls": 5, "total_provider_reads": 4}

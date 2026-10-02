@@ -89,7 +89,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [26 — Decide server-authorized cart and tip behavior](closed/26-decide-order-and-tip-authorization.md) | `ready-for-agent` at closure | Closed | None |
 | [27 — Enforce the authorized order balance before terminal dispatch](closed/27-enforce-authorized-terminal-allocation.md) | `ready-for-agent` at closure | Closed | 26 (closed); fix merged to main, staging/device acceptance remains ticket 12 |
 | [28 — Bind Revolut credential authority to the owning company](closed/28-bind-merchant-credentials-to-company.md) | `ready-for-agent` at closure | Closed | None; integrated fix, migration evidence and independent verification accepted |
-| [29 — Determine the impact of concurrent payment status polling](ready-for-agents/29-investigate-concurrent-status-polling.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
+| [29 — Determine the impact of concurrent payment status polling](needs-info/29-investigate-concurrent-status-polling.md) | `needs-info` | Open | Effective Odoo/proxy capacity and Merchant quota; bounded local evidence preserved |
 | [30 — Determine authorized access to shared POS sessions](ready-for-agents/30-investigate-shared-pos-session-authorization.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
 | [31 — Determine deployment upload and lock-file exploitability](needs-info/31-investigate-privileged-deployment-files.md) | `needs-info` | Open | Target host facts and authorized review access; partial evidence preserved |
 | [32 — Verify deployment host identity on first SSH use](needs-info/32-investigate-deployment-host-authentication.md) | `needs-info` | Open | Route/VM verified; Emile confirmed as administrator/device owner; workstation/replacement procedure missing |
@@ -254,3 +254,16 @@ placement above. Other tickets retain their own dependencies.
 - Dependencies are gates, not a task ordering preference: closed ticket 02 supplies the documented/observed contract, while ticket 12 owns physical-terminal configuration and financial acceptance. Shared code changes from independently ready tickets still require coordination and integration review.
 
 Read the project instructions, API validation report and development-environment document before implementing. Current documentation and official source take precedence over stale assumptions; record provider ambiguities rather than silently choosing financial behavior.
+
+### Ticket 29 investigation — 2026-10-02
+
+Ticket 29 is now **open / needs-info**. Its
+[concurrent-status evidence](../testing/ticket-29-concurrent-status-polling.md)
+records three simultaneous mocked provider reads for the same operation and
+successful financial/late-success controls. Source claim
+`csf_95a9d6200acbce5037818172` remains `needs_review`; no deployed worker or
+Merchant quota exhaustion was demonstrated. Effective deployment admission
+limits and Merchant endpoint/account quotas are required for a final verdict.
+The owner's requested recommendation and a separate scoped lease proposal are
+recorded; runtime polling was unchanged. This supersedes ticket 29's original
+agent-ready placement without changing ticket 12's release gates.
