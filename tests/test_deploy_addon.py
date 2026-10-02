@@ -648,6 +648,23 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             for call in runner.calls
         ))
 
+    def test_unresolved_external_refund_evidence_blocks_deployment(self):
+        remote = load_script("deploy-addon-remote")
+        runner = FakeRunner(["pos_revolut_external_refund_evidence\n", "1\n"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "artifact.tar.gz"
+            archive.write_bytes(b"reviewed archive")
+            deployment = remote.RemoteDeployment(
+                runner=runner, root=root, archive=archive,
+                expected_sha256=remote.sha256(archive), revision="a" * 40,
+                database="revolut_staging", customer="revolut",
+                environment="staging", mode="upgrade",
+            )
+            self.assertEqual(deployment._financial_blockers(), [
+                "pos_revolut_external_refund_evidence=1",
+            ])
+
     def test_successful_upgrade_installs_release_then_restarts_and_checks_health(self):
         remote = load_script("deploy-addon-remote")
         revision = "3" * 40

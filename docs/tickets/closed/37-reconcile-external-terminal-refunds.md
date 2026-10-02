@@ -2,9 +2,9 @@
 
 # 37 — Reconcile refunds created outside Odoo
 
-**Work branch:** `codex/37-reconcile-external-terminal-refunds` (not created)
+**Work branch:** `codex/37-reconcile-external-terminal-refunds`
 
-**State:** open
+**State:** closed
 
 **Category:** bug
 
@@ -44,27 +44,27 @@ server-only credentials and existing operation immutability.
 
 ## Acceptance criteria
 
-- [ ] Automatically discover external refunds with bounded/paginated server-side
+- [x] Automatically discover external refunds with bounded/paginated server-side
   reads, scoped to the original company and merchant credential.
-- [ ] Match full provider identity, original-order relationship, amount and
+- [x] Match full provider identity, original-order relationship, amount and
   currency; surface unmatched/ambiguous transactions for manager reconciliation.
-- [ ] Import/reconcile idempotently across repeated reads, restarts and concurrent
+- [x] Import/reconcile idempotently across repeated reads, restarts and concurrent
   workers; never POST a replacement refund to import an existing one.
-- [ ] Account for external pending, unresolved and completed amounts in local
+- [x] Account for external pending, unresolved and completed amounts in local
   remaining capacity and manager displays without double counting Odoo attempts.
-- [ ] Preserve final-state verification and clear provenance (Odoo vs external).
+- [x] Preserve final-state verification and clear provenance (Odoo vs external).
   Do not mark a processing refund completed from original `refunded_amount`.
-- [ ] Record external financial refunds without fabricating native returns,
+- [x] Record external financial refunds without fabricating native returns,
   product quantities or accounting entries. Give a manager clear original-sale
   links and a separate reconciliation status for any outstanding native return
   or accounting work, including mixed tender and absent return snapshots.
-- [ ] Test original GET→POST races against mocked provider enforcement; retain
+- [x] Test original GET→POST races against mocked provider enforcement; retain
   local locks and never promise Odoo can lock external terminal actions.
-- [ ] Harden or explicitly justify the legacy missing-`refunded_amount` fallback;
+- [x] Harden or explicitly justify the legacy missing-`refunded_amount` fallback;
   cover omission and invalid types alongside external discrepancy regression tests.
-- [ ] Exercise external full/partial/pending/failed refunds, duplicate events,
+- [x] Exercise external full/partial/pending/failed refunds, duplicate events,
   interrupted import, company isolation, multiple allocations and legacy sources.
-- [ ] Update installation guidance and ticket 12 acceptance/reconciliation evidence.
+- [x] Update installation guidance and ticket 12 acceptance/reconciliation evidence.
 
 ## Blocked by
 
@@ -179,49 +179,49 @@ settlement rules; discovery must recognize them instead of duplicating them.
 
 **Acceptance criteria:**
 
-- [ ] A mocked external processing refund linked to a verified original Odoo
+- [x] A mocked external processing refund linked to a verified original Odoo
   payment is discovered automatically without an open POS session, browser
   return, manager click or Merchant mutation. It appears against the right sale
   and reduces that source's remaining balance by the correct minor-unit amount.
-- [ ] Full/partial refunds, multiple original tenders and mixed cash/card sales
+- [x] Full/partial refunds, multiple original tenders and mixed cash/card sales
   are handled per original card payment. External card refunds never consume
   cash balances or invent returned product quantities.
-- [ ] Odoo-created refunds found during discovery match their existing attempt;
+- [x] Odoo-created refunds found during discovery match their existing attempt;
   repeated pages, overlapping scans, concurrent workers and restarts produce
   one financial record and one reservation per provider refund.
-- [ ] Processing and uncertain outcomes reserve capacity. Completion requires
+- [x] Processing and uncertain outcomes reserve capacity. Completion requires
   an authoritative matching refund read; failed/cancelled outcomes release
   capacity only after verification. Original `refunded_amount` alone never
   changes a processing refund into a completed one.
-- [ ] Missing or malformed original refunded amounts and unexplained provider
+- [x] Missing or malformed original refunded amounts and unexplained provider
   discrepancies cannot bypass the pre-dispatch guard, including legacy sources.
   Provider-reported totals and individual imported reservations are not summed
   twice. Existing local duplicate/concurrent/uncertain refund protections pass.
-- [ ] Discovery validates company/merchant scope, complete references, original
+- [x] Discovery validates company/merchant scope, complete references, original
   relationship, amount and currency. Unmatched/ambiguous/conflicting refunds
   create actionable manager evidence, without invented source links or silent
   permission to refund again.
-- [ ] Discovery is bounded, paginated and resumable with an overlap or equivalent
+- [x] Discovery is bounded, paginated and resumable with an overlap or equivalent
   recovery strategy that avoids missing delayed visibility. One malformed
   response, HTTP error or failed source cannot starve other sources. Previously
   completed original payments remain eligible for discovery of later refunds.
-- [ ] Provider I/O uses the existing server-side credential authority. Import
+- [x] Provider I/O uses the existing server-side credential authority. Import
   and status checks send no financial POST, replay or replacement refund.
-- [ ] A manager can identify external provenance, provider state, original
+- [x] A manager can identify external provenance, provider state, original
   payment/sale and outstanding native reconciliation work. Import creates no
   automatic product return, native cash refund or accounting credit. Unverified
   refunds cannot finalize a POS return. Preserve ticket 36's removal of custom
   Revolut receipts; this ticket adds no replacement document feature.
-- [ ] Active/uncertain imported financial operations participate in the existing
+- [x] Active/uncertain imported financial operations participate in the existing
   deployment/recovery safety contract. No imported evidence can force-done an
   existing Odoo return or erase an uncertain reservation.
-- [ ] Permanent mocked regression tests cover the original missing-record
+- [x] Permanent mocked regression tests cover the original missing-record
   symptom, closed-session historical sources, late completion, partial/mixed
   tenders, failures, duplicates/concurrency, interrupted pagination, malformed
   evidence, company isolation and the legacy refunded-amount guard. Tests never
   contact a real Merchant API or terminal. Run the affected Odoo refund,
   concurrency, recovery and upgrade checks.
-- [ ] Installation/operator documentation explains discovery cadence and limits,
+- [x] Installation/operator documentation explains discovery cadence and limits,
   external versus Odoo refund provenance and the separate manager reconciliation
   workflow. Preserve dated live evidence and prepare ticket 12's rollout check.
 
@@ -235,3 +235,37 @@ settlement rules; discovery must recognize them instead of duplicating them.
   race guarantees, or adding a new integration framework.
 - Live deployment, production repairs, database backfills on the staging host,
   new charges/refunds or changing either currently reported provider refund.
+
+
+## Implementation and verification — 2026-10-02
+
+Implemented on `codex/37-reconcile-external-terminal-refunds`, based on fetched
+reviewed main `62bf951250335840d2cd6c6af8487ed4344fdcbe`. A later fetch confirmed
+main was still current. Addon version is `19.0.1.13.0`.
+
+Automatic GET-only discovery now imports matched external financial refunds
+with immutable provenance and exact original references. Active/uncertain
+amounts reserve capacity once; authoritative completion and failure remain
+separate from native return/accounting work. Deferred scan intervals preserve
+incomplete evidence while normal history and recent visibility continue.
+Unmatched/conflicting evidence blocks affected capacity; fully verified refunds
+whose parents are absent from all integration payments remain visible as
+unrelated evidence without disabling these sales. Missing/malformed original
+`refunded_amount` can no longer bypass dispatch checks. Register authorization
+and native printing remain intact.
+
+[Implementation and verification evidence](../../testing/ticket-37-external-refunds.md)
+records the red/green regressions, 33 external-refund cases, 430 full install
+checks plus the supplemental terminal-tip install check, 431 full upgrade
+checks and nine Restaurant bridge checks, all passing. The affected historical
+credential/register/cart-authority upgrades, real database deployment guard,
+40 host tests (three environment-dependent skips), JavaScript state runner and
+static checks also passed. Standards and Spec review found no blocking findings.
+No configured static typechecker exists; compilation is not financial proof.
+
+Local implementation is complete. Ticket 12 remains open for separately
+authorized rollout and live reconciliation. No live Merchant request,
+deployment, charge/refund or staging repair occurred here. Preserve the sole
+existing source 36 refund `6abf7eec`, the separate cash tender, and source 16
+operation 6 / refund `6abe5180` / return 1012; recheck their current financial
+states before guarded rollout.

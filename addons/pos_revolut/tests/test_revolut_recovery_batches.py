@@ -107,14 +107,16 @@ class TestRevolutRecoveryBatches(TransactionCase):
         # Fixtures use real commits, so cleanup must also use a real cursor.
         with self.registry.cursor() as cursor:
             env = api.Environment(cursor, SUPERUSER_ID, self.context)
-            env["pos.revolut.payment.operation"].browse(self.payment_ids).write({"next_reconcile_at": False})
+            payments = env["pos.revolut.payment.operation"].browse(self.payment_ids)
+            payments.write({"next_reconcile_at": False})
+            payments.credential_id.write({"next_refund_discovery_at": "2100-01-01"})
             env["pos.revolut.refund.operation"].browse(self.refund_ids).write({"next_reconcile_at": False})
             cursor.commit()
 
     def _http(self, method, url, **kwargs):
         self.assertEqual(method, "GET", "Reconciliation must never replay a mutation")
         path = url[url.index("/api/"):]
-        payload = self.payloads[path]
+        payload = self.payloads.get(path, {"orders": []}) if path == "/api/orders" else self.payloads[path]
         if isinstance(payload, Exception):
             raise payload
         response = Mock()

@@ -16,6 +16,7 @@
                 <field name="state"/>
                 <field name="local_outcome"/>
                 <field name="sanitized_error"/>
+                <field name="external_refund_review_required" optional="show"/>
                 <field name="revolut_order_id"/>
                 <field name="revolut_payment_intent_id"/>
                 <field name="revolut_payment_id"/>
@@ -59,6 +60,7 @@
                             <field name="sanitized_error"/>
                             <field name="retry_safe"/>
                             <field name="support_explanation"/>
+                            <field name="external_refund_review_note"/>
                         </group>
                     </group>
                     <notebook>

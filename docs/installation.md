@@ -776,3 +776,105 @@ See [PDF preflight and repair guidance](staging-deployment.md#pdf-prerequisite-a
 for diagnostics and the existing historical invoice download/print check.
 Deployment rejects missing, incompatible or failing PDF capability before
 stopping Odoo or changing the addon release. A POS sales receipt does not require an accounting invoice.
+
+## Refunds created outside Odoo
+
+The existing **Reconcile Revolut POS refunds** scheduled action runs every
+minute and also discovers refunds issued from a Revolut terminal or another
+Merchant tool. Discovery includes verified historical card payments in closed
+POS sessions. It uses each original payment's frozen company, environment and
+administrator-authorized Merchant credential; changing the current payment
+method does not redirect historical reads to another account. Keep the original
+server credential available until its financial operations are reconciled.
+
+Open **Point of Sale → Revolut Refunds** to inspect automatically recorded
+external refunds. Their provenance distinguishes them from Odoo refund attempts.
+Processing and uncertain financial outcomes reserve the original card payment's
+capacity. Completion requires an individual authoritative refund read with the
+same full provider ID, original-order relationship, amount and currency.
+The original order's `refunded_amount` is a capacity check, not proof that a
+processing refund finished. A further Odoo dispatch requires this field to be
+an integer between zero and the original paid amount, equal to locally
+verified refunds. Missing values, booleans, strings and unexplained totals
+block dispatch, including for legacy payments; there is no inferred-zero
+fallback. Provider totals are checked rather than added to local reservations. A completed card refund does not reimburse the
+cash part of a mixed-tender sale.
+
+An external financial refund creates no Odoo product return, returned quantity,
+inventory movement, native negative tender or accounting credit. The manager
+reviews its original sale and separate native reconciliation status, then
+handles any required return, cash adjustment or accounting correction through
+the appropriate Odoo workflow. Review the imported financial refund before
+issuing any additional card refund. Marking native reconciliation complete is
+a record of this separate manager work; it does not change provider status.
+
+Open **Point of Sale → Revolut Refund Discovery Evidence** for unmatched,
+ambiguous or conflicting provider evidence and incomplete discovery windows.
+This list preserves reported references and a short investigation reason without
+inventing an original-sale link. Records with an established original payment
+follow that payment's register access. Unmatched records are visible only to
+managers who can read every original operation under that Merchant credential,
+within their allowed companies. An administrator may therefore need to
+investigate evidence that crosses a manager's register boundary. Unresolved
+financial evidence and active or uncertain imported refunds participate in deployment
+preflight; do not bypass their reservation or create a replacement refund.
+Evidence is resolved automatically after authoritative reconciliation. If a
+refund has no merchant reference and could be the lost response of an existing
+Odoo attempt, discovery retains the original reservation and records ambiguous
+evidence instead of guessing external provenance or reserving the same money
+twice. An authoritative detail read can recover a reference omitted by the
+list response.
+
+An authoritative refund whose complete parent reference is absent from every
+integration payment record remains visible with reason `unrelated_source`, but
+does not block these POS sales or deployment. Discovery checks unverified,
+legacy and other credential/company payment records before making that
+classification. Missing or invalid detail and known originals that cannot be
+safely matched retain blocking evidence; managers cannot override it.
+
+Discovery is bounded and resumable. Each minute the existing refund cron
+processes at most one Merchant credential and one order page with `limit=100`
+(up to 100 individual refund GETs), using persisted `from`/`to` creation-time
+windows. A full page
+causes its window to be split into overlapping smaller windows; the scan does
+not assume a response order or skip equal timestamps. Repeated pages are
+deduplicated by full provider identity. Historical scan cycles revisit the
+original payment history to recover delayed visibility. A fresh overlapping
+interval is added at least every five minutes of progress within a Merchant
+credential, even if a historical interval remains saturated. Busy credential
+locks are skipped so another due Merchant scope can progress. Provider errors and
+malformed responses retain actionable evidence while other scopes continue.
+Failed and saturated intervals move into a separate retry queue; every tenth
+scan retries one deferred interval. Normal history can finish and restart while
+those intervals remain incomplete. A saturated interval keeps investigation
+evidence until it can be enumerated safely; discovery never silently claims
+that all its refunds were found.
+Visibility is therefore eventual and depends on provider availability, history
+size and scheduled-action progress; the pre-dispatch provider check still
+protects additional Odoo refund attempts between scans.
+
+The reviewed [Merchant API 2026-08-17 order-list contract](https://developer.revolut.com/docs/api/merchant#retrieve-order-list)
+returns an object containing an `orders` array. Its documented filters include
+creation `from`/`to`, merchant reference, state and location; it supplies no
+original-order filter or order-list continuation token. The
+[official schema](https://developer.revolut.com/docs/api/merchant.yaml) permits
+limits from 1 to 500 (default 100). Discovery uses the conservative page size
+of 100 and individual [order reads](https://developer.revolut.com/docs/api/merchant#retrieve-order)
+for financial verification. All discovery, import and status reconciliation
+use server-side GET requests; they never POST, replay or replace a refund.
+Revolut's [refund guide](https://developer.revolut.com/docs/guides/merchant/operations/refunds)
+describes asynchronous processing and the original paid-amount ceiling.
+Odoo's local locks serialize local refund attempts; only the provider can
+enforce that ceiling against a simultaneous terminal action.
+
+For an original payment containing a terminal tip, an external refund establishes
+only the refunded total, not its base/tip split. Further Odoo card allocations
+remain blocked when that split is unknown. A manager's native reconciliation
+acknowledgement does not establish a provider component allocation.
+
+Before rollout, follow ticket 12's financial preflight and retain the dated
+[2026-10-02 investigation](testing/refund-investigation-2026-10-02.md).
+That snapshot reports existing refund `6abf7eec` for source 36 and pending
+Odoo refund `6abe5180` for source 16. Recheck current provider outcomes with
+their existing references; deployment and any live remediation remain
+operator work. No new charge or refund is required to import either record.

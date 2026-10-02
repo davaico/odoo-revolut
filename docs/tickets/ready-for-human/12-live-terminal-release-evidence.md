@@ -566,3 +566,20 @@ history and disposable browser/PDF tests do not establish physical-printer
 acceptance. Ticket 34 independently retains native invoice PDF verification
 after separately authorized staging repair/rollout; missing historical invoice
 fixtures are a blocker, not permission to create a financial transaction.
+
+
+## External refund acceptance gate — ticket 37
+
+Before closing ticket 12, accept the automatically discovered external refund
+workflow described in [the release evidence](../../testing/ticket-12-release-evidence.md#external-financial-refunds--ticket-37-candidate)
+and [ticket 37's local verification](../../testing/ticket-37-external-refunds.md).
+Recheck the dated source 36 refund `6abf7eec` and existing source 16 operation 6
+`6abe5180` with their full original references. Keep one card financial record
+and reservation per provider refund; discovery must send no financial POST.
+Verify original-sale links, provenance, per-card remaining capacity, pending
+state safety and manager native reconciliation separately from product, cash
+and accounting work. Preserve return 1012 and its existing Odoo identity.
+
+The reported pending financial operations still require current reconciliation
+before guarded rollout. Mocked ticket 37 tests do not settle those live refunds
+or authorize deployment or additional money movement.
