@@ -88,6 +88,9 @@ provider deferral is preserved. Deferred observations cannot hide a successful
 payment: once eligible, authenticated late capture still verifies the original
 references without redispatch. No numeric Merchant quota or account-wide
 limiter is inferred.
+The outcome's queued ORM schedule is flushed before SQL extends it to the
+provider's not-before time. A coherent scheduler/observation clock regression
+checks this durable deadline, so an ORM flush at commit cannot shorten it.
 
 ## Two-worker measurement
 
@@ -122,7 +125,12 @@ comparisons preserve all financial fields and require non-fresh metadata.
 Final commands and results are recorded below after execution. The initial
 full run exposed legacy fixture assumptions about instantaneous fresh polls
 and one fast browser-reload regression. Those failures were corrected and
-verified narrowly before repeating full acceptance. There is no
+verified narrowly before repeating full acceptance. Upgrade testing also
+exposed a Retry-After advice assertion discrepancy. Scoped cron fixtures and
+coherent scheduler/observation clocks then reproduced the queued ORM schedule
+overwriting the provider deadline; that defect was fixed and all 15 observation
+tests passed. The exact advice assertion retains clock/snapshot diagnostics.
+There is no
 configured static type checker in this Odoo repository; Python compilation,
 JavaScript syntax/unit checks, shell checks and the actual Odoo runtime tests
 provide the applicable validation.
