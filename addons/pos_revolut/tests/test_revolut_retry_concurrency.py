@@ -2,6 +2,7 @@
 
 import json
 import os
+from datetime import datetime, timedelta
 from threading import Barrier, Event, RLock, Thread, current_thread
 from unittest.mock import Mock, patch
 from uuid import uuid4
@@ -21,6 +22,14 @@ from .authorization_fixtures import financial_posts, install_zero_reports, nativ
 class TestRevolutRetryConcurrency(TransactionCase):
     def setUp(self):
         super().setUp()
+        self._retry_observation_time = datetime(2026, 10, 2, 12)
+        self.enterContext(patch(
+            "odoo.addons.pos_revolut.models.payment_observation.observation_now",
+            side_effect=lambda: self._retry_observation_time,
+        ))
+        self._set_up_payment_fixture()
+
+    def _set_up_payment_fixture(self):
         self.registry = self.env.registry
         self.context = {"allowed_company_ids": [self.env.company.id]}
         self.order_uuid, self.line_uuid = str(uuid4()), str(uuid4())
@@ -60,7 +69,16 @@ class TestRevolutRetryConcurrency(TransactionCase):
             "odoo.addons.pos_revolut.models.pos_payment_method.requests.request"
         ))
 
+    def _advance_observation(self, seconds):
+        self._retry_observation_time += timedelta(seconds=seconds)
+
     def _rpc(self, name, *args, user_id=SUPERUSER_ID):
+        # New cadence-specific tests reuse this fixture without opting into
+        # the legacy class's one-second separation of sequential observations.
+        if hasattr(self, "_retry_observation_time") and name in {
+            "revolut_poll_payment", "revolut_cancel_payment",
+        }:
+            self._retry_observation_time += timedelta(seconds=1)
         install_zero_reports(self.env, self.request)
         with self.registry.cursor() as cursor:
             env = api.Environment(cursor, user_id, self.context)
@@ -69,6 +87,8 @@ class TestRevolutRetryConcurrency(TransactionCase):
             return result
 
     def _manager_rpc(self, operation_id, name, *args):
+        if hasattr(self, "_retry_observation_time"):
+            self._retry_observation_time += timedelta(seconds=1)
         install_zero_reports(self.env, self.request)
         with self.registry.cursor() as cursor:
             env = api.Environment(cursor, SUPERUSER_ID, self.context)
@@ -184,58 +204,30 @@ class TestRevolutRetryConcurrency(TransactionCase):
             })
             cursor.commit()
 
-        names = ["foreground", "cancel-precheck" if overlap else "check-status",
-                 "cron" if overlap else "shared-browser"]
-        lock, arrivals = RLock(), Barrier(4)
-        release = {name: Event() for name in names}
-        finished = {name: Event() for name in names}
-        cancelled = Event()
-        counts = {"active": 0, "peak": 0, "intent_reads": 0, "blocked_callers": 0}
+        held, release, count_lock = Event(), Event(), RLock()
+        finished = [Event(), Event()]
+        counts = {"active": 0, "intent_reads": 0, "peak": 0, "blocked_callers": 0}
 
         def http(method, url, **kwargs):
-            if method == "POST" and url.endswith("/cancel"):
-                cancelled.set()
-                return self._response({})
             self.assertEqual(method, "GET")
             self.assertTrue(url.endswith(f"/api/payment-intents/{self.provider_intent}"))
-            with lock:
+            with count_lock:
                 counts["intent_reads"] += 1
                 counts["active"] += 1
                 counts["peak"] = max(counts["peak"], counts["active"])
-                first_wave = counts["intent_reads"] <= 3
+            held.set()
             try:
-                if first_wave:
-                    arrivals.wait(timeout=10)
-                    self.assertTrue(release[current_thread().name].wait(10),
-                                    "Provider fixture was not released")
+                self.assertTrue(release.wait(10), "Provider fixture was not released")
                 if outcome == "timeout":
                     raise requests.Timeout()
                 if outcome == "http_error":
                     raise requests.HTTPError(response=Mock(status_code=503))
                 if outcome == "malformed":
                     return self._response({"id": self.provider_intent, "state": "unexpected"})
-                return self._intent("cancelled" if not first_wave and cancelled.is_set() else "pending")
+                return self._intent("pending")
             finally:
-                with lock:
+                with count_lock:
                     counts["active"] -= 1
-
-        def observe_blocked_callers():
-            try:
-                arrivals.wait(timeout=10)
-                with lock:
-                    self.assertEqual(counts["active"], 3)
-                    counts["blocked_callers"] = counts["active"]
-                # All three request threads are held inside their mocked HTTP
-                # call, after the pre-I/O observation transaction committed.
-                # Release whole calls sequentially to isolate read fan-out
-                # from observation-conflict retries. Existing tests below
-                # independently exercise stale-success application races.
-                for name in reversed(names):
-                    release[name].set()
-                    self.assertTrue(finished[name].wait(10), "Caller did not finish")
-            finally:
-                for event in release.values():
-                    event.set()
 
         def cron():
             with self.registry.cursor() as cursor:
@@ -243,49 +235,58 @@ class TestRevolutRetryConcurrency(TransactionCase):
                 env["pos.revolut.payment.operation"]._cron_reconcile_payments(1)
                 cursor.commit()
 
+        def duplicate(index):
+            self.assertTrue(held.wait(10), "Winner did not enter the provider")
+            try:
+                if overlap and index == 1:
+                    cron()
+                    return
+                result = self._rpc(
+                    "revolut_cancel_payment" if overlap else "revolut_poll_payment",
+                    *args, user_id=cashier_id,
+                )
+                self.assertTrue(result["observation_in_progress"])
+                self.assertFalse(result["observation_fresh"])
+                self.assertFalse(result["retry_safe"])
+                self.assertGreater(result["next_check_seconds"], 0)
+                self.assertLessEqual(result["next_check_seconds"], 60)
+                return result
+            finally:
+                finished[index].set()
+
+        def observer():
+            try:
+                self.assertTrue(held.wait(10))
+                # Neither a second browser, cancellation precheck nor cron
+                # waits for the provider or sends another external request.
+                for event in finished:
+                    self.assertTrue(event.wait(2), "Duplicate caller did not return promptly")
+                with count_lock:
+                    self.assertEqual(counts["intent_reads"], 1)
+                    self.assertEqual(counts["active"], 1)
+                    counts["blocked_callers"] = counts["active"]
+                self.assertFalse(financial_posts(self.request))
+            finally:
+                release.set()
+
         self.request.reset_mock()
         self.request.side_effect = http
-        # Install the report router before starting threads; every subsequent
-        # public RPC sees the same already-installed mocked transport.
         install_zero_reports(self.env, self.request)
-        tasks = [
-            ("foreground", lambda: self._rpc("revolut_poll_payment", *args, user_id=cashier_id)),
-            ("check-status", lambda: self._rpc("revolut_poll_payment", *args, user_id=cashier_id)),
-            ("cron" if overlap else "shared-browser", cron if overlap else
-             lambda: self._rpc("revolut_poll_payment", *args, user_id=cashier_id)),
-        ]
-        if overlap:
-            tasks[1] = ("cancel-precheck", lambda: self._rpc(
-                "revolut_cancel_payment", *args, user_id=cashier_id,
-            ))
-        def completed(task, name):
-            def run():
-                try:
-                    return task()
-                finally:
-                    finished[name].set()
-            return run
-
         self._run_workers([
-            *((name, completed(task, name)) for name, task in tasks),
-            ("observer", observe_blocked_callers),
+            ("foreground", lambda: self._rpc("revolut_poll_payment", *args, user_id=cashier_id)),
+            ("cancel-precheck" if overlap else "check-status", lambda: duplicate(0)),
+            ("cron" if overlap else "shared-browser", lambda: duplicate(1)),
+            ("observer", observer),
         ])
         final = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid,
                           user_id=cashier_id)
-        self.assertEqual(counts["peak"], 3)
-        self.assertEqual(counts["blocked_callers"], 3)
+        self.assertEqual(counts["intent_reads"], 1)
+        self.assertEqual(counts["peak"], 1)
         self.assertEqual(counts["active"], 0)
-        self.assertFalse(final["state"] == "verified")
-        self.assertEqual(counts["intent_reads"], 4 if overlap else 3)
-        self.assertEqual(len(financial_posts(self.request)), 1 if overlap else 0)
-        self.assertEqual(final["state"], "cancelled" if overlap else
-                         "pending" if outcome == "pending" else "unresolved")
-        self.assertEqual(final["retry_safe"], overlap)
-        calls_before_final = self.request.call_count
-        if overlap:
-            self._rpc("revolut_poll_payment", *args, user_id=cashier_id)
-            self.assertEqual(self.request.call_count, calls_before_final)
-        print("TICKET29_POLL_EVIDENCE " + json.dumps({
+        self.assertFalse(financial_posts(self.request))
+        self.assertEqual(final["state"], "pending" if outcome == "pending" else "unresolved")
+        self.assertFalse(final["retry_safe"])
+        print("TICKET38_POLL_EVIDENCE " + json.dumps({
             "outcome": outcome, "cron_cancel_overlap": overlap, **counts,
             "total_provider_reads": sum(call.args[0] == "GET" for call in self.request.call_args_list),
             "total_provider_calls": self.request.call_count,
@@ -461,10 +462,12 @@ class TestRevolutRetryConcurrency(TransactionCase):
             "previous_operation_id": first["operation_id"],
         })
         self.assertEqual(self._start(first["operation_id"]), rejected)
-        self.assertEqual(self._start(), cancelled)
+        self.assertTrue(cancelled["observation_fresh"])
+        cached_cancelled = {**cancelled, "observation_fresh": False}
+        self.assertEqual(self._start(), cached_cancelled)
         self.assertEqual(self._rpc(
             "revolut_find_payment", self.order_uuid, self.line_uuid
-        ), cancelled)
+        ), cached_cancelled)
         self.request.assert_not_called()
 
         self.request.side_effect = lambda *args, **kwargs: self._intent("cancelled")
@@ -581,6 +584,8 @@ class TestRevolutRetryConcurrency(TransactionCase):
                 self.order_uuid, self.line_uuid,
             )
 
+        # The crashed holder retains its fixed claim until expiry.
+        self._advance_observation(61)
         recovered = self._rpc(
             "revolut_poll_payment", started["operation_id"],
             self.order_uuid, self.line_uuid,
@@ -626,6 +631,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
                 self.order_uuid, self.line_uuid,
             )
 
+        self._advance_observation(61)
         recovered = self._rpc(
             "revolut_cancel_payment", started["operation_id"],
             self.order_uuid, self.line_uuid,
@@ -670,6 +676,9 @@ class TestRevolutRetryConcurrency(TransactionCase):
 
         def foreground():
             self.assertTrue(background_read.wait(10))
+            # An expired physical read may overlap its successor; only the
+            # successor owns the right to apply evidence.
+            self._advance_observation(61)
             try:
                 result = self._rpc(
                     "revolut_poll_payment", started["operation_id"],
@@ -781,6 +790,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
 
         def poll():
             self.assertTrue(stale_read_started.wait(10), "Cancellation did not reach reconciliation")
+            self._advance_observation(61)
             try:
                 result = self._rpc("revolut_poll_payment", *args)
                 self.assertEqual(result["state"], "verified")
@@ -845,6 +855,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
 
         def poll():
             self.assertTrue(cancel_reconciliation_started.wait(10))
+            self._advance_observation(61)
             result = self._rpc("revolut_poll_payment", *args)
             self.assertEqual(result["state"], "verified")
             return result
@@ -1224,7 +1235,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
     def test_timeout_before_intent_claim_keeps_first_dispatch_claimable(self):
         self._assert_timeout_before_creation_claim("create_intent")
 
-    def test_stale_missing_reference_poll_keeps_manager_reconciliation_due(self):
+    def test_stale_missing_reference_poll_reads_newly_associated_evidence(self):
         def interrupted_order(method, url, **kwargs):
             if method == "POST" and url.endswith("/api/orders"):
                 raise requests.Timeout()
@@ -1234,6 +1245,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
         started = self._start()
         read_finished, associated = Event(), Event()
         scheduled = []
+        polled = []
 
         def evidence(method, url, **kwargs):
             if url.endswith(f"/api/orders/{self.provider_order}"):
@@ -1242,6 +1254,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
                 return self._manager_intent()
             raise AssertionError(f"Unexpected HTTP request: {method} {url}")
 
+        self.request.reset_mock()
         self.request.side_effect = evidence
         method_type = type(self.env["pos.payment.method"])
         original_read = method_type._read_revolut_operation_owned
@@ -1269,20 +1282,42 @@ class TestRevolutRetryConcurrency(TransactionCase):
             finally:
                 associated.set()
 
-        with patch.object(method_type, "_read_revolut_operation_owned",
-                          autospec=True, side_effect=paused_read):
+        def poll():
+            polled.append(self._rpc(
+                "revolut_poll_payment", started["operation_id"],
+                self.order_uuid, self.line_uuid,
+            ))
+
+        # Association schedules immediate recovery. This caller's stale
+        # preliminary access read predates its observation claim: the winner
+        # reads the now-associated references and receives fresh evidence.
+        due_time = datetime(2026, 10, 2, 12)
+        with patch("odoo.fields.Datetime.now", return_value=due_time), patch.object(
+            method_type, "_read_revolut_operation_owned",
+            autospec=True, side_effect=paused_read,
+        ):
             self._run_workers([
-                ("poll", lambda: self._rpc(
-                    "revolut_poll_payment", started["operation_id"],
-                    self.order_uuid, self.line_uuid,
-                )),
+                ("poll", poll),
                 ("associate", associate),
             ])
+        self.assertEqual(scheduled, [due_time])
+        self.assertEqual(len(polled), 1)
+        self.assertEqual(polled[0]["state"], "pending")
+        self.assertTrue(polled[0]["observation_fresh"])
+        self.assertFalse(polled[0]["retry_safe"])
+        calls = self.request.call_args_list
+        self.assertEqual(len(calls), 3)
+        self.assertTrue(all(call.args[0] == "GET" for call in calls))
+        self.assertEqual(sum(call.args[1].endswith(f"/api/orders/{self.provider_order}")
+                             for call in calls), 1)
+        self.assertEqual(sum(call.args[1].endswith(f"/api/payment-intents/{self.provider_intent}")
+                             for call in calls), 2)
+        self.assertFalse(financial_posts(self.request))
         with self.registry.cursor() as cursor:
             env = api.Environment(cursor, SUPERUSER_ID, self.context)
             operation = env["pos.revolut.payment.operation"].browse(
                 started["operation_id"]
             )
-            self.assertEqual(operation.next_reconcile_at, scheduled[0])
+            self.assertEqual(operation.next_reconcile_at, due_time + timedelta(seconds=30))
             self.assertEqual(operation.revolut_order_id, self.provider_order)
             self.assertEqual(operation.revolut_payment_intent_id, self.provider_intent)

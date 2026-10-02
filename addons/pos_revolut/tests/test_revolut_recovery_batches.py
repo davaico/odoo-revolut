@@ -23,6 +23,10 @@ class TestRevolutRecoveryBatches(TransactionCase):
         # Keep other tests' committed attempts out of these cron runs.
         self.now = datetime(1990, 1, 1, 12)
         self.clock = self.enterContext(patch.object(fields.Datetime, "now", return_value=self.now))
+        self.enterContext(patch(
+            "odoo.addons.pos_revolut.models.payment_observation.observation_now",
+            side_effect=lambda: self.now,
+        ))
         self.enterContext(patch.dict(os.environ, {
             "ODOO_REVOLUT_SECRET_BATCH_TEST": "test-only",
         }))
@@ -147,6 +151,9 @@ class TestRevolutRecoveryBatches(TransactionCase):
             return result
 
     def _poll(self, payment):
+        # Each call asks for fresh evidence rather than a cached cadence reply.
+        self.now += timedelta(seconds=1)
+        self.clock.return_value = self.now
         with self.registry.cursor() as cursor:
             env = api.Environment(cursor, SUPERUSER_ID, self.context)
             result = env["pos.payment.method"].browse(payment["method_id"]).revolut_poll_payment(
@@ -173,13 +180,15 @@ class TestRevolutRecoveryBatches(TransactionCase):
                 self.assertEqual(result["payment_intent_id"], payment["intent_id"])
                 self.assertEqual(result["payment_id"], payment["payment_id"])
                 self.assertFalse(result["retry_safe"])
-                self.assertEqual(self._status(payment), result)
+                self.assertEqual(self._status(payment), {**result, "observation_fresh": False,
+                    "observation_deferred": result["state"] != "verified" and not result["retry_safe"]})
         payload["state"] = "captured"
         result = self._poll(payment)
         self.assertEqual(result["state"], "verified")
         self.assertEqual(result["operation_id"], payment["id"])
         self.assertEqual(result["payment_id"], payment["payment_id"])
-        self.assertEqual(self._status(payment), result)
+        self.assertEqual(self._status(payment), {**result, "observation_fresh": False,
+                    "observation_deferred": result["state"] != "verified" and not result["retry_safe"]})
 
     def test_invalid_intent_cannot_resume_a_known_processing_payment(self):
         invalid_fields = (
@@ -265,7 +274,8 @@ class TestRevolutRecoveryBatches(TransactionCase):
                 self.assertTrue(result["retry_safe"])
                 self.assertEqual(result["operation_id"], payment["id"])
                 self.assertEqual(result["payment_id"], payment["payment_id"])
-                self.assertEqual(self._status(payment), result)
+                self.assertEqual(self._status(payment), {**result, "observation_fresh": False,
+                    "observation_deferred": result["state"] != "verified" and not result["retry_safe"]})
 
     def test_processing_timeout_keeps_claims_and_later_reconciles_capture(self):
         payment = self.payments[0]
@@ -777,4 +787,5 @@ class TestRevolutRecoveryBatches(TransactionCase):
                 self.assertEqual(result["payment_id"], payment["payment_id"])
                 self.assertFalse(result["retry_safe"])
                 self.assertFalse(result["local_outcome"])
-                self.assertEqual(self._status(payment), result)
+                self.assertEqual(self._status(payment), {**result, "observation_fresh": False,
+                    "observation_deferred": result["state"] != "verified" and not result["retry_safe"]})

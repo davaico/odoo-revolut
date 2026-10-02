@@ -1,6 +1,7 @@
 """Authorized base allocation across independent, committed RPC transactions."""
 import csv
 from copy import deepcopy
+from datetime import timedelta
 import io
 import json
 import os
@@ -21,6 +22,11 @@ from odoo.tools import mute_logger
 class TestRevolutCartAuthorityConcurrency(TransactionCase):
     def setUp(self):
         super().setUp()
+        self.observation_time = fields.Datetime.now()
+        self.enterContext(patch(
+            "odoo.addons.pos_revolut.models.payment_observation.observation_now",
+            side_effect=lambda: self.observation_time,
+        ))
         self.registry = self.env.registry
         self.context = {"allowed_company_ids": [self.env.company.id]}
         self.order_uuid = str(uuid4())
@@ -96,6 +102,7 @@ class TestRevolutCartAuthorityConcurrency(TransactionCase):
             authority["authorization_id"], authority["cart_version"], authority["tender_revision"])
 
     def poll(self, operation_id, line_uuid):
+        self.observation_time += timedelta(seconds=1)
         return self.rpc("pos.payment.method", "revolut_poll_payment", operation_id, self.order_uuid, line_uuid)
 
     def operations(self):
