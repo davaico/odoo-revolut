@@ -4,22 +4,24 @@
 
 The exact claim, **shared release evidence exposes production payment
 identifiers and transaction lineage**, remains **needs-review**. The repository
-contains reference-shaped values and detailed relationship mappings described
-as production observations. Unauthorized disclosure is not established: the
-repository is private, its owner authorizes Davai members, and neither an
-authoritative alias ledger nor a restricted-store access record is available.
-Confidence is high in the presence of the documented lineage and the owner
-decision, but limited in identifier provenance and historical readership.
+contains original Odoo-stored references and transaction links in the entries
+verified with the administrator during the follow-up below. Unauthorized
+disclosure is not established: the repository is private and the owner authorizes
+Davai members. Confidence is high for the checked entries and owner sharing
+policy; unchecked references, historical readership and permanent private
+preservation remain unverified.
 
 The owner requires **consistent aliases in shared release documentation**;
 original references and authoritative mappings must stay restricted. The owner
 confirms that no separate private evidence archive is established and requests
-a plan backed by existing Odoo transaction/audit records. Public publication
+a plan backed by existing Odoo transaction/audit records. The follow-up identifies
+this private repository as the current evidence location; the future publication
+route and preservation arrangements remain undecided. Public publication
 must wait for preservation, aliasing and verification of the material intended
 for publication. This is a publication gate, not evidence of a public incident.
 
-Ticket 33 moves to **needs-info**, remaining open for the specific preservation
-and provenance facts below. This investigation changes the prospective evidence
+Ticket 33 remains in **needs-info** for permanent private preservation and
+unchecked provenance facts below. This investigation changes the prospective evidence
 policy and prepares a plan; it does not redact existing financial evidence.
 
 ## Scope and provenance
@@ -45,7 +47,8 @@ policy and prepares a plan; it does not redact existing financial evidence.
   Davai; use consistent aliases and restrict originals/mappings; plan an
   Odoo-backed private archive because none is established yet. The earlier
   owner clarification says the owner does not know whether values are original
-  or anonymized. No later answer establishes that provenance.
+  or anonymized. The later administrator-assisted comparison establishes original
+  Odoo-stored references for the checked entries, as recorded below.
 
 ## Inventory without live values
 
@@ -86,9 +89,49 @@ allowed “sanitized” UUIDs or aliases without defining a mandatory transforma
 No alias ledger or explicit transformation statement was found in the reviewed
 records. Format, repetition and a matching narrative cannot establish whether
 an author substituted aliases. Treat the cited values as **potential originals**
-until a Davai custodian checks them against existing authoritative Odoo/provider
-records inside the private archive. That check must not return originals here
-or initiate a live API operation.
+for unchecked entries. The follow-up establishes original Odoo-stored values
+for the sampled payment, device, refund and return references. Remaining private
+comparisons must retain only match/classification results in shared evidence
+and must not initiate a live Merchant API operation.
+
+### Administrator-assisted provenance checks — 2026-10-02
+
+The user identifies as an administrator with access to the current Odoo records.
+They opened the documented original test sale and provided payment details,
+complete configured device identifiers, and screenshots of the payment method
+and its linked refund. Local comparisons with the operator chronology returned:
+
+| Checked fields | Recorded source | Result |
+| --- | --- | --- |
+| Payment reference and transaction ID | L01 full-retail payment table: Merchant order and underlying payment | Both match exactly |
+| Configured location and terminal IDs, with Production shown | Discovery table: location and terminal | Both match exactly |
+| Refund order and original Merchant-order link | L08 full-refund table | Both match exactly |
+| Return order and payment-line UUIDs | L08 full-refund table | Both match exactly |
+
+This confirms original stored references and cross-system lineage in the checked
+entries. It is a targeted comparison, not classification of every UUID-bearing
+entry, independent provider authentication or a secret/history scan. The agent
+made no live Merchant or production database request. User-provided values and
+screenshots are not reproduced in this report; only match results are retained.
+The user notes that ticket 36 will remove custom generated Revolut receipts;
+these checks use the underlying payment, configuration and refund records.
+
+### Current owner position on preservation and publication — 2026-10-02
+
+Davai is the development team; all Davai members should be able to read the
+private evidence. The existing private repository is the current location and
+may become the permanent archive. The user is undecided between keeping it
+private and creating a sanitized public repository, or sanitizing this
+repository and its history before making it public. A fresh public history was
+discussed provisionally and is not an approved publication/history operation.
+
+The user's boss will have access to everything. Their suggested responsibility
+for the archive is tentative; access does not establish accepted custodianship.
+No maintained independent backup or tested restore procedure is confirmed; the
+user is unsure and believes one may not exist. Preserve that as unverified,
+not proof of absence. No further publication-route choice is required during
+this follow-up. Before publication, confirm that originals and mappings will
+remain privately recoverable under the chosen route.
 
 ## Audience and boundary
 
@@ -100,11 +143,13 @@ reaching readers outside Davai's authorized evidence audience.
 Current repository visibility and the owner's Davai-only readership statement
 defeat an assumption of current public disclosure. The owner statement supplies
 current audience authorization; the metadata supplies visibility/role evidence.
-Neither establishes the historical reader set or cached copies/forks. No existing separate restricted archive
-or audience was verified. Proposed archive readers are designated Davai
-reconciliation custodians and system administrators, subject to owner approval
-and recorded access verification; future public repository readers receive only
-the approved alias representation. GitHub repository roles do not grant Odoo
+Neither establishes the historical reader set or cached copies/forks. The owner
+clarifies that the whole Davai team may read private evidence. This repository
+currently contains that evidence privately; its permanent retention, archive
+custodian and backup/restore arrangements remain unverified. A separate archive
+is not mandatory if this repository remains private and preserves the originals
+and mappings. Future public repository readers receive the approved alias
+representation. GitHub repository roles do not grant Odoo
 or Merchant permissions.
 
 ## Concrete misuse paths and counterevidence
@@ -127,8 +172,10 @@ established. No new dynamic security claim is made.
 
 ## Preservation and aliasing plan — execution remains separate
 
-1. **Preserve first.** A designated Davai custodian creates an access-controlled,
-   backed-up private archive outside the future public repository. Preserve
+1. **Preserve first.** Confirm a Davai custodian and privately recoverable archive.
+   This repository can serve that role if it stays private; if it becomes public,
+   preserve a private copy of originals and mappings before changing access or
+   removing original history. Confirm backup and restore arrangements. Preserve
    the original dated records and their source revisions/checksums, linked to
    existing Odoo payment/refund operations and reconciliation audits. Odoo
    remains the transaction authority; it may not contain every historical
@@ -170,12 +217,15 @@ established. No new dynamic security claim is made.
 The owner policy is resolved; no blanket safe/unsafe decision is needed. To
 complete the remaining factual assessment, a Davai evidence custodian supplies:
 
-- A classification attestation that the cited device, provider, POS and local
-  references are originals or aliases, with a private mapping/provenance check.
-  If unknown, preserve and alias them as potential originals before publication.
-- The private archive handle, accountable custodian, approved reader roles and
-  read/restore verification. The store is currently a plan, not an existing
-  verified restriction. Do not put raw values or a sensitive location here.
+- For entries beyond the administrator-verified sample, retain private
+  classification/mapping evidence or treat them as potential originals when
+  preparing publication. Do not ask the user to repeat the completed checks.
+- Confirm private retention of originals/mappings under whichever publication
+  route is ultimately chosen, an accountable custodian and read/restore
+  verification. The current evidence location and whole-Davai reader audience
+  are established; permanent archive ownership and recovery remain unverified.
+  This does not require building a new Odoo feature or a separate archive system.
+  Do not put raw values or a sensitive location here.
 - If retrospective unauthorized disclosure is being asserted, the relevant
   historical readership/sharing facts. The owner has already authorized the
   current Davai audience; no repeated current-audience answer is required.
