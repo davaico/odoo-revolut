@@ -515,3 +515,29 @@ class TestSharedPosSessionAccess(TransactionCase):
         with self.assertRaises(AccessError):
             call_kw(self._method('manager'), 'revolut_confirm_refund_absence', args, {})
         self.request.assert_not_called()
+
+    def test_derived_exposure_after_rollover_respects_original_session(self):
+        self._start()
+        self.env.invalidate_all()
+        order = self.env['pos.order'].sudo().search([('uuid', '=', self.order_uuid)])
+        self.env.cr.execute("UPDATE pos_session SET state = 'closed' WHERE id = %s", [self.session.id])
+        self.session.invalidate_recordset()
+        later = self.env['pos.session'].create({'config_id': self.config.id, 'state': 'opened'})
+        self.env.cr.execute('UPDATE pos_order SET session_id = %s WHERE id = %s', [later.id, order.id])
+        order.invalidate_recordset()
+        self.assertTrue(order.with_user(self.users['colleague']).revolut_has_authority_exposure)
+        rule = self.env['ir.rule'].create({
+            'name': 'Ticket35 original derived exposure session denial',
+            'model_id': self.env['ir.model']._get_id('pos.session'),
+            'domain_force': f"[('id', '!=', {self.session.id})] if user.id == {self.users['colleague'].id} else []",
+        })
+        self.env.invalidate_all()
+        self.request.reset_mock()
+        result = call_kw(self._method('colleague').env['pos.order'], 'read',
+            [[order.id], ['revolut_has_authority_exposure', 'revolut_payable_target']], {})[0]
+        self.assertFalse(result['revolut_has_authority_exposure'])
+        self.assertEqual(result['revolut_payable_target'], 0)
+        rule.unlink()
+        self.env.invalidate_all()
+        self.assertTrue(order.with_user(self.users['colleague']).revolut_has_authority_exposure)
+        self.request.assert_not_called()
