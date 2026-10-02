@@ -107,10 +107,37 @@ by this record. Ticket 12 reconciliation evidence is preserved.
   Odoo-dependent PDF cases explicitly skipped on the host.
 - `node --test addons/pos_revolut/static/tests/revolut_payment_state.test.mjs`:
   passed (one test-file entry).
-- Full mocked addon suite: running in isolated Compose project
-  `odoo-revolut-ticket33-validation`, with internal networking and the Merchant
-  HTTP guard. Results will be recorded before final handoff.
+- `ODOO_REVOLUT_TEST_PROJECT=odoo-revolut-ticket33-validation scripts/test-addon`:
+  passed, exit 0; pinned Odoo package `19.0.20260908`, **375 tests, zero failures,
+  zero errors**. Internal networking and the Merchant HTTP guard were enabled;
+  the guard verification ran before the suite. The disposable project was
+  cleaned up by the script. Local run log: `/tmp/ticket33-addon-tests.log`.
+  This is fresh-install mocked addon acceptance, not a live disclosure check,
+  upgrade/Restaurant matrix or completion of the host PDF skips.
 - No new runtime/type interface or test seam: TDD/typechecking do not apply to
   this documentation investigation. Checks do not prove identifier provenance,
   historical readership or archive access.
-- Independent Standards/Spec review: pending.
+
+## Independent code review — 2026-10-02
+
+Pinned baseline: `d1124f4c0c0736e4a0af73bb10418346d722328d`.
+Reviewed implementation commit: `7e29c59`, using
+`git diff d1124f4c0c0736e4a0af73bb10418346d722328d...HEAD`.
+Separate read-only subagents reviewed the two axes under the code-review skill.
+
+### Standards
+
+Zero findings. Scope, preservation of reconciliation evidence, ticket placement,
+index update and documentation style follow repository guidance; no applicable
+baseline code smell was found. Pending verification entries must be finalized.
+
+### Spec
+
+Zero findings. The inventory, owner decision, misuse-path assessment, exact-claim
+verdict, preservation plan and sanitized provenance satisfy the investigation
+requirements. The remaining factual criterion is deliberately unchecked under
+the required targeted needs-info handoff; no prohibited cleanup or live
+financial operation was introduced.
+
+Review summary: Standards 0, Spec 0; no issue on either axis. Provenance and
+archive verification remain factual prerequisites, not a software-test result.
