@@ -1,0 +1,37 @@
+{
+  "all_four_status_results": "pending",
+  "cashiers": 2,
+  "confirmed_both_workers_held_seconds": 2.000106,
+  "http_workers": 2,
+  "main_scenario_financial_posts": 0,
+  "main_scenario_provider_reads": 4,
+  "main_scenario_reads_per_cashier": [
+    2,
+    2
+  ],
+  "master_pid": 1,
+  "max_cron_threads": 1,
+  "maximum_simultaneous_held_provider_reads": 2,
+  "merchant_http_guard": "verified-before-init",
+  "mock_provider_reads": 5,
+  "odoo_version": "19.0.20260908",
+  "poll_rpc_seconds": [
+    2.087001,
+    2.147403,
+    2.155685,
+    2.132338
+  ],
+  "provider": "mocked-pending-only",
+  "runtime_network": "internal",
+  "scenario": "two-http-workers-four-authorized-tabs",
+  "scheduled_jobs": "quiesced",
+  "tabs_per_cashier": 2,
+  "unrelated_rpc_seconds_after": 0.007817,
+  "unrelated_rpc_seconds_before": 0.017291,
+  "unrelated_rpc_seconds_one_held_poll": 0.109142,
+  "unrelated_rpc_seconds_two_held_polls": 2.090344,
+  "worker_pids": [
+    9,
+    10
+  ]
+}

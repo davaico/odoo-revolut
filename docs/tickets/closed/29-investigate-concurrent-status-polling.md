@@ -8,9 +8,9 @@
 
 Work in this worktree on the assigned branch; respect the blockers below and update from reviewed main before starting.
 
-**State:** open
+**State:** closed
 
-**Triage:** needs-info
+**Triage:** ready-for-agent at closure
 
 **Work type:** Investigation
 
@@ -56,7 +56,7 @@ Resolve applicability before relying on an availability claim for final release;
 
 Start from current reviewed main and record the exact revision; do not implement against the stale scanned checkout. Preserve existing work and use an isolated worktree if another agent is editing overlapping code. All automated Revolut calls are mocked and blocked from reaching real Merchant endpoints. Physical terminal actions, deployment and production mutations require a separate authorized workflow.
 
-## Investigation handoff — 2026-10-02
+## Initial investigation handoff — 2026-10-02 (superseded below)
 
 Verdict for `csf_95a9d6200acbce5037818172`: **needs_review**. Three authorized
 same-operation provider reads run simultaneously; the bounded foreground,
@@ -89,3 +89,41 @@ availability/quota claim, so this ticket remains open under needs-info instead
 of closing it as safe. The artifact specifies a narrow lease/cadence proposal,
 crash/expiry fencing, cancellation freshness, fairness limits and required
 regressions for separate approved remediation.
+
+## Completed investigation — 2026-10-02
+
+The assigned branch was fast-forwarded to fetched reviewed main
+`3dfe7bd691a3b89b806e5e03ef1bfd9d600394b7` before follow-up work. The owner
+supplied the effective host limits, Revolut's reply and the unfiltered
+Cloudflare dashboard. No required human fact remains missing for the scoped
+contention verdict: two HTTP workers/one cron worker are effective, no zone
+rate-limit or custom rule is configured, and Revolut imposes no explicit
+endpoint/account quotas but may return 429 with server-generated `Retry-After`.
+The evidence distinguishes read-only verified settings from owner-forwarded
+support/dashboard observations and from unknown automatic DDoS thresholds.
+
+Verdict for `csf_95a9d6200acbce5037818172`: **confirmed duplicate-read HTTP
+worker contention under controlled slow provider responses**. In the actual
+two-worker disposable Odoo server, cashier one's two tabs hold both workers on
+the same pending operation. Cashier two's two polls and an unrelated
+authenticated RPC cannot progress until release. The unrelated read takes
+2.090344 seconds during the two-second hold, compared with 0.017291 seconds
+before and 0.109142 seconds with only one provider read held. All four polls
+return pending, making four mocked intent GETs and no financial POST. Separate
+sessions and the one-held/before/after controls isolate worker admission from
+session locks. Scheduled jobs are quiesced only in this fixture; existing
+transaction tests preserve cron/cancellation overlap and late-success controls.
+
+[The complete evidence](../../testing/ticket-29-concurrent-status-polling.md)
+and [machine-readable HTTP-worker observation](../../testing/ticket-29-http-worker-observation.json)
+retain the runnable fixture, baseline, counts, limits and verification history.
+No live stress test, Merchant request, sustained exhaustion or production outage
+is claimed. Fixed Merchant quota exhaustion is not demonstrated; unpublished
+gateway throttling remains possible. No checkout SLA or general four-tab
+capacity guarantee follows from this bounded test.
+
+This closes the investigation **without changing runtime behavior**.
+[Ticket 38](../needs-triage/38-coalesce-concurrent-payment-status-polls.md)
+records the separate coalescing/cadence/crash-fencing and 429 recovery proposal,
+under needs-triage pending owner approval. Investigation closure is not a
+contention fix or release acceptance; ticket 12's rollout/device work stays open.
