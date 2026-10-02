@@ -505,9 +505,38 @@ test then passed alone in a fresh project (one check, zero failures/errors).
 An earlier attempt at that isolated run was interrupted by the user before a
 result, and was restarted; it contributes no passing evidence.
 
+The subsequent complete acceptance rerun finished with **431 install, 431
+upgrade and nine Restaurant checks, zero failures/errors, exit 0**. No
+headless/debugger startup failure was reported in that final run. Both phases'
+seven characterization records exactly matched the retained JSONL (14 records
+total), preserving financial/late-success and cron/cancel controls on current
+main. The first failed run and the isolated pass above remain part of the
+history; only this completed repeat is the final green acceptance run.
+
+```bash
+ODOO_REVOLUT_TEST_PROJECT=odoo-revolut-ticket29-final \
+  ./scripts/test-addon --verify-install-upgrade
+node addons/pos_revolut/static/tests/revolut_payment_state.test.mjs
+python3 -m unittest discover -s tests -p 'test*.py'
+```
+
+During validation, fetched main advanced to
+`3e4328b3af6110993ba5077c7329c66a20923486` with only ticket 31/32 documentation
+changes. Addon, scripts, Docker and Compose runtime inputs are identical to the
+assessed `3dfe7bd` baseline; preserving those concurrent tracker updates does
+not require repeating the unchanged runtime tests.
+
+Independent completion review used immutable
+`3dfe7bd691a3b89b806e5e03ef1bfd9d600394b7...4ccbe1e03d35bd9beb5131ef38e40f9553642917`:
+**Standards: 0 findings; Spec: 0 findings**. The reviews inspected the actual
+HTTP-worker reproduction, mock/network isolation, source-claim calibration,
+ticket closure and separate unapproved remediation proposal. The final result
+recording changes only documentation, not the reviewed/tested fixture or addon.
+
 Supporting session logs: `/tmp/ticket29-worker-probe-run2.log`,
 `/tmp/ticket29-final-acceptance.log`, `/tmp/ticket29-ui-isolation-resumed.log`,
-`/tmp/ticket29-lifecycle-direct.log` and `/tmp/ticket29-host-tests.log`. The
+`/tmp/ticket29-final-acceptance-repeat.log`, `/tmp/ticket29-lifecycle-direct.log`
+and `/tmp/ticket29-host-tests.log`. The
 durable worker counts/timings and reproduction are retained above and in JSON;
 temporary log paths are not claimed as permanently available artifacts.
 

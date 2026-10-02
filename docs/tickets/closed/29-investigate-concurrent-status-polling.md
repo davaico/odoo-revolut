@@ -122,6 +122,14 @@ is claimed. Fixed Merchant quota exhaustion is not demonstrated; unpublished
 gateway throttling remains possible. No checkout SLA or general four-tab
 capacity guarantee follows from this bounded test.
 
+Final verification passed the actual two-worker probe, 431 install/431 upgrade
+checks, nine Restaurant checks, 75 lifecycle tests and 40 host unit checks
+(three environment-dependent skips). Both full-suite phases reproduced all
+seven original characterization records. The initial full install's receipt UI
+timeout is preserved in the evidence; that test passed in isolation and the
+final complete rerun passed without browser-start failures. Independent
+Standards and Spec review of the completion patch reported zero findings.
+
 This closes the investigation **without changing runtime behavior**.
 [Ticket 38](../needs-triage/38-coalesce-concurrent-payment-status-polls.md)
 records the separate coalescing/cadence/crash-fencing and 429 recovery proposal,
