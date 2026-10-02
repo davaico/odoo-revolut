@@ -427,7 +427,9 @@ export class RevolutPaymentState {
                     await this.adapter.setVerified(line, result);
                     return true;
                 }
-                if (FINAL_FAILURE_STATES.has(result.state)) {
+                const deferredObservation = !refund && result.state === "unresolved" &&
+                    result.observation_deferred === true;
+                if (FINAL_FAILURE_STATES.has(result.state) && !deferredObservation) {
                     this.showError(line, result.local_outcome || result.state);
                     return false;
                 }

@@ -1,6 +1,7 @@
 """Ticket 35 regressions at the public boundaries characterized by ticket 30."""
 
 import os
+from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
@@ -52,6 +53,11 @@ class TestSharedPosSessionAccess(TransactionCase):
 
     def setUp(self):
         super().setUp()
+        self.observation_time = datetime(2026, 10, 2, 12)
+        self.enterContext(patch(
+            'odoo.addons.pos_revolut.models.payment_observation.observation_now',
+            side_effect=lambda: self.observation_time,
+        ))
         mode = self.enter_registry_test_mode()
         mode.__enter__()
         self.addCleanup(mode.__exit__, None, None, None)
@@ -94,6 +100,10 @@ class TestSharedPosSessionAccess(TransactionCase):
         )
 
     def _rpc(self, role, name, *args, companies=None):
+        # These sequential access/recovery checks request a fresh observation
+        # after the server's one-second start cadence has elapsed.
+        if name in ('revolut_poll_payment', 'revolut_cancel_payment'):
+            self.observation_time += timedelta(seconds=1)
         method = self._method(role, companies)
         self.assertFalse(method.env.su)
         return call_kw(method.env['pos.payment.method'], name, [[method.id], *args],
@@ -389,7 +399,15 @@ class TestSharedPosSessionAccess(TransactionCase):
         self.assertFalse(self.cancelled)
         self.config.write({'revolut_user_ids': [Command.link(self.users['colleague'].id)]})
         self.request.reset_mock()
-        self.assertEqual(self._start('colleague', authority), started)
+        restored = self._start('colleague', authority)
+        self.assertEqual(restored['operation_id'], started['operation_id'])
+        self.assertEqual(restored['state'], 'pending')
+        # Cron legitimately refreshed observation time during revocation;
+        # regrant recovers the same reservation and all its financial fields.
+        temporal = {'observation_finished_at', 'next_check_seconds', 'observation_deferred'}
+        self.assertEqual({key: value for key, value in restored.items() if key not in temporal},
+                         {key: value for key, value in started.items() if key not in temporal})
+        self.assertTrue(restored['observation_finished_at'])
         self.request.assert_not_called()
         self._recovery_calls('colleague', started)
 

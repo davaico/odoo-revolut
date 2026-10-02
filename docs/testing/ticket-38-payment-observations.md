@@ -25,11 +25,15 @@ observation fields cannot be supplied through ORM create/write.
 Losing callers read the latest persisted snapshot. They perform no provider
 request, do not wait for the winner, and change neither lease expiry nor cron
 due time. Snapshots include `observation_in_progress`, `observation_fresh`,
-`observation_finished_at`, and `next_check_seconds` (1–60 for non-final results,
+`observation_finished_at`, `observation_deferred`, and `next_check_seconds` (1–60 for non-final results,
 0 for verified/retry-safe finals). Freshness is specific to the RPC that finished
 the observation; subsequent caches have `observation_fresh: false`. Final
 financial evidence stays authoritative regardless of cache freshness. Pending,
 intent completion and partial tip evidence never authorize settlement or retry.
+The POS continues its bounded foreground observation when an unresolved result
+is deferred by a lease/cadence/provider window. A newly observed error still
+stops with the existing error message. Browser reload acceptance and a
+controlled client-clock test cover recovery before the cadence boundary.
 
 Every provider evidence application and lease release compares the original
 token and its unexpired lease under the existing financial lock order. A late
@@ -110,7 +114,10 @@ and mocked transport. Existing payment, tip and financial-race fixtures advance
 the controlled clock when explicitly asking for a new observation; cache
 comparisons preserve all financial fields and require non-fresh metadata.
 
-Final commands and results are recorded below after execution. There is no
+Final commands and results are recorded below after execution. The initial
+full run exposed legacy fixture assumptions about instantaneous fresh polls
+and one fast browser-reload regression. Those failures were corrected and
+verified narrowly before repeating full acceptance. There is no
 configured static type checker in this Odoo repository; Python compilation,
 JavaScript syntax/unit checks, shell checks and the actual Odoo runtime tests
 provide the applicable validation.

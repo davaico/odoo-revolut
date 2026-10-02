@@ -180,13 +180,15 @@ class TestRevolutRecoveryBatches(TransactionCase):
                 self.assertEqual(result["payment_intent_id"], payment["intent_id"])
                 self.assertEqual(result["payment_id"], payment["payment_id"])
                 self.assertFalse(result["retry_safe"])
-                self.assertEqual(self._status(payment), {**result, "observation_fresh": False})
+                self.assertEqual(self._status(payment), {**result, "observation_fresh": False,
+                    "observation_deferred": result["state"] != "verified" and not result["retry_safe"]})
         payload["state"] = "captured"
         result = self._poll(payment)
         self.assertEqual(result["state"], "verified")
         self.assertEqual(result["operation_id"], payment["id"])
         self.assertEqual(result["payment_id"], payment["payment_id"])
-        self.assertEqual(self._status(payment), {**result, "observation_fresh": False})
+        self.assertEqual(self._status(payment), {**result, "observation_fresh": False,
+                    "observation_deferred": result["state"] != "verified" and not result["retry_safe"]})
 
     def test_invalid_intent_cannot_resume_a_known_processing_payment(self):
         invalid_fields = (
@@ -272,7 +274,8 @@ class TestRevolutRecoveryBatches(TransactionCase):
                 self.assertTrue(result["retry_safe"])
                 self.assertEqual(result["operation_id"], payment["id"])
                 self.assertEqual(result["payment_id"], payment["payment_id"])
-                self.assertEqual(self._status(payment), {**result, "observation_fresh": False})
+                self.assertEqual(self._status(payment), {**result, "observation_fresh": False,
+                    "observation_deferred": result["state"] != "verified" and not result["retry_safe"]})
 
     def test_processing_timeout_keeps_claims_and_later_reconciles_capture(self):
         payment = self.payments[0]
@@ -784,4 +787,5 @@ class TestRevolutRecoveryBatches(TransactionCase):
                 self.assertEqual(result["payment_id"], payment["payment_id"])
                 self.assertFalse(result["retry_safe"])
                 self.assertFalse(result["local_outcome"])
-                self.assertEqual(self._status(payment), {**result, "observation_fresh": False})
+                self.assertEqual(self._status(payment), {**result, "observation_fresh": False,
+                    "observation_deferred": result["state"] != "verified" and not result["retry_safe"]})

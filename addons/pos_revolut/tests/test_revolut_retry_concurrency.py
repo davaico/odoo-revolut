@@ -22,6 +22,14 @@ from .authorization_fixtures import financial_posts, install_zero_reports, nativ
 class TestRevolutRetryConcurrency(TransactionCase):
     def setUp(self):
         super().setUp()
+        self._retry_observation_time = datetime(2026, 10, 2, 12)
+        self.enterContext(patch(
+            "odoo.addons.pos_revolut.models.payment_observation.observation_now",
+            side_effect=lambda: self._retry_observation_time,
+        ))
+        self._set_up_payment_fixture()
+
+    def _set_up_payment_fixture(self):
         self.registry = self.env.registry
         self.context = {"allowed_company_ids": [self.env.company.id]}
         self.order_uuid, self.line_uuid = str(uuid4()), str(uuid4())
@@ -55,11 +63,6 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.enterContext(patch.dict(os.environ, {
             "ODOO_REVOLUT_SECRET_RETRY_RACE_TEST": "test-only",
         }))
-        self._retry_observation_time = datetime(2026, 10, 2, 12)
-        self.enterContext(patch(
-            "odoo.addons.pos_revolut.models.payment_observation.observation_now",
-            side_effect=lambda: self._retry_observation_time,
-        ))
         self.authorities = {}
         self._prepare(self.order_uuid, self.line_uuid)
         self.request = self.enterContext(patch(
