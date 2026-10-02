@@ -266,6 +266,7 @@ class PosPaymentMethod(models.Model):
             or self not in session.config_id.payment_method_ids
         ):
             raise AccessError(_("This Revolut terminal is not available in the POS session."))
+        session.config_id._check_revolut_register_access(session=session)
         if session.state != "opened":
             raise UserError(_("The Point of Sale session is not open."))
         if not session.config_id.auto_validate_terminal_payment:
@@ -373,6 +374,8 @@ class PosPaymentMethod(models.Model):
                 owned_env = api.Environment(cursor, self.env.uid, dict(self.env.context))
                 operations = owned_env["pos.revolut.payment.operation"].sudo()
                 try:
+                    session = owned_env["pos.session"].browse(values["pos_session_id"])
+                    session.config_id._check_revolut_register_access(session=session)
                     # Session closure and the first reservation must conflict
                     # even when no operation existed in the closing snapshot.
                     cursor.execute("UPDATE pos_session SET write_date = write_date WHERE id = %s", [values['pos_session_id']])
@@ -387,6 +390,8 @@ class PosPaymentMethod(models.Model):
                         previous = operations.search(
                             logical_domain + [("id", "=", previous_operation_id)], limit=1
                         )
+                        if previous:
+                            previous.with_env(owned_env)._check_revolut_register_access()
                         if not previous or previous.payment_method_id.id != self.id:
                             raise AccessError(_("The prior Revolut attempt is not accessible."))
                         cursor.execute(
@@ -400,6 +405,7 @@ class PosPaymentMethod(models.Model):
                     else:
                         operation = operations.search(logical_domain, limit=1)
                     if operation:
+                        operation.with_env(owned_env)._check_revolut_register_access()
                         if (
                             operation.amount_minor != values["amount_minor"]
                             or operation.currency_id.id != values["currency_id"]
@@ -510,6 +516,7 @@ class PosPaymentMethod(models.Model):
                 or (payment_line_uuid and operation.payment_line_uuid != payment_line_uuid)
             ):
                 raise AccessError(_("The Revolut payment operation is not accessible."))
+            operation.with_env(owned_env)._check_revolut_register_access()
             data = {
                 "id": operation.id,
                 "state": operation.state,
@@ -749,6 +756,7 @@ class PosPaymentMethod(models.Model):
         authority = self.env["pos.revolut.cart.authorization"].sudo().browse(authorization_id).exists()
         if not authority or authority.company_id != self.company_id or authority.order_uuid != order_uuid:
             raise UserError(_("This cart authorization does not belong to the original sale."))
+        authority.pos_order_id.with_env(self.env)._revolut_check_prepare_identity(order_uuid)
         try:
             operation_values = self._revolut_operation_values(
                 session,
@@ -880,7 +888,15 @@ class PosPaymentMethod(models.Model):
             limit=1,
         )
         if not operation:
+            # A saved checkout still supplies the register for absent attempts.
+            orders = self.env["pos.order"].sudo().search([
+                ("company_id", "=", self.company_id.id), ("uuid", "=", order_uuid),
+            ])
+            for order in orders:
+                order.with_env(self.env).config_id._check_revolut_register_access(
+                    session=order.session_id, order=order)
             return False
+        operation.with_env(self.env)._check_revolut_register_access()
         return self.env[
             "pos.revolut.payment.operation"
         ].operation_snapshot(operation)

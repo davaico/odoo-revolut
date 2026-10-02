@@ -186,6 +186,20 @@ class PosRevolutPaymentOperation(models.Model):
         "financial_snapshot",
     }
 
+    def _check_revolut_register_access(self):
+        self.ensure_one()
+        # Internal records have no cashier ACL. Use sudo only to resolve frozen
+        # identity, then enforce native rules and entitlement as the RPC caller.
+        identity = self.sudo()
+        config = self.env["pos.config"].browse(identity.pos_config_id.id)
+        session = self.env["pos.session"].browse(identity.pos_session_id.id)
+        orders = identity.pos_order_id | self.env["pos.order"].sudo().search([
+            ("company_id", "=", identity.company_id.id), ("uuid", "=", identity.order_uuid),
+        ])
+        config._check_revolut_register_access(session=session)
+        for order in orders:
+            config._check_revolut_register_access(order=order)
+
     @api.model
     def _lock_order(self, company_id, order_uuid):
         # The row is updated by both payment start and POS checkout. Under

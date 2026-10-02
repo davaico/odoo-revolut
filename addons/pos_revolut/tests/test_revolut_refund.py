@@ -26,6 +26,7 @@ class TestRevolutRefund(CommonPosTest):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
+        cls.pos_config_usd.sudo().write({"revolut_user_ids": [Command.link(cls.env.uid)]})
         cls.revolut_method = cls.bank_payment_method.copy({
             "name": "Revolut refund test", "payment_method_type": "terminal",
             "use_payment_terminal": "revolut", "revolut_environment": "sandbox",
@@ -90,11 +91,13 @@ class TestRevolutRefund(CommonPosTest):
         ]))
 
     def _mutation_actor(self, manager=True):
-        return new_test_user(
+        actor = new_test_user(
             self.env, login=f"refund_mutation_{uuid4()}",
             groups="base.group_user,point_of_sale.group_pos_manager" if manager else "base.group_user,point_of_sale.group_pos_user",
             company_id=self.company.id, company_ids=[Command.set([self.company.id])],
         )
+        self.pos_config_usd.sudo().write({"revolut_user_ids": [Command.link(actor.id)]})
+        return actor
 
     def _rpc_refund(self, user, model, method, args):
         return call_kw(self.env[model].with_user(user), method, args, {
@@ -394,13 +397,14 @@ class TestRevolutRefund(CommonPosTest):
         prior_session = self.session
         prior_session.write({"state": "closed"})
         other_config = self.pos_config_usd.copy({"name": "Other split-refund register"})
+        other_config.sudo().write({"revolut_user_ids": [Command.link(self.env.uid)]})
         other_config.open_ui()
         other_session = other_config.current_session_id
         other_session.write({"state": "opened"})
         self.payload["session_id"] = other_session.id
         self.env.flush_all()
         self.request.reset_mock()
-        with TestCase.assertRaisesRegex(self, UserError, "return changed after"):
+        with TestCase.assertRaisesRegex(self, AccessError, "(?:original|another) Point of Sale register"):
             self.revolut_method.revolut_start_refund(
                 other_session.id, self.payload["uuid"], second_line["uuid"], -6.17,
                 other_session.currency_id.id, self.payload, second_source.id,
@@ -473,6 +477,9 @@ class TestRevolutRefund(CommonPosTest):
         refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
         self.session.write({"state": "closed"})
         other_config = self.pos_config_usd.copy({"name": "Other refund register"})
+        other_config.sudo().write({
+            "revolut_user_ids": [Command.set((self.env.user | manager).ids)],
+        })
         other_config.open_ui()
         other_session = other_config.current_session_id
         other_session.write({"state": "opened"})
@@ -482,7 +489,7 @@ class TestRevolutRefund(CommonPosTest):
         )
         self.request.reset_mock()
 
-        with TestCase.assertRaisesRegex(self, UserError, "return changed after"):
+        with TestCase.assertRaisesRegex(self, AccessError, "(?:original|another) Point of Sale register"):
             self._rpc_refund(manager, "pos.order", "sync_from_ui", [[self.payload]])
         self.assertFalse(refund.pos_order_id)
         self.assertFalse(refund.pos_payment_id)
@@ -1002,6 +1009,7 @@ class TestRevolutRefund(CommonPosTest):
 
     def test_cashier_cannot_issue_or_reconcile_refund(self):
         cashier = new_test_user(self.env, login="refund_cashier", groups="point_of_sale.group_pos_user")
+        self.pos_config_usd.sudo().write({"revolut_user_ids": [Command.link(cashier.id)]})
         with self.assertRaises(AccessError):
             self.revolut_method.with_user(cashier).revolut_start_refund(
                 self.session.id, self.payload["uuid"], self.payload["payment_ids"][0][2]["uuid"],

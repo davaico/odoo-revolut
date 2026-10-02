@@ -4,7 +4,7 @@
 
 **Work branch:** `codex/35-enforce-shared-register-authorization`
 
-**State:** open
+**State:** claimed
 
 **Category:** bug
 

@@ -95,7 +95,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [32 — Verify deployment host identity on first SSH use](needs-info/32-investigate-deployment-host-authentication.md) | `needs-info` | Open | Route/VM verified; Emile confirmed as administrator/device owner; workstation/replacement procedure missing |
 | [33 — Determine whether release evidence exposes restricted identifiers](ready-for-agents/33-investigate-release-evidence-disclosure.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
 | [34 — Provision and gate Odoo PDF generation](ready-for-human/34-provision-and-gate-odoo-pdf-generation.md) | `ready-for-human` | Open | Local implementation verified; authorized staging inspection/repair and historical PDF acceptance remain |
-| [35 — Enforce explicit backend-user access to shared registers](ready-for-agents/35-enforce-shared-register-authorization.md) | `ready-for-agent` | Open | 30 closed; start from reviewed main with 27–28 and investigation evidence |
+| [35 — Enforce explicit backend-user access to shared registers](ready-for-agents/35-enforce-shared-register-authorization.md) | `ready-for-agent` | Claimed | 30 closed; start from reviewed main with 27–28 and investigation evidence |
 
 ## Architecture triage — 2026-09-25
 

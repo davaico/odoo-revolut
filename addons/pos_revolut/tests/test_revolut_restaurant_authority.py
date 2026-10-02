@@ -34,6 +34,7 @@ class TestRevolutRestaurantAuthority(CommonPosTest):
             "taxes_id": [Command.clear()],
         })
         preset = self.env.ref("pos_restaurant.pos_takein_preset")
+        self.pos_config_usd.sudo().write({"revolut_user_ids": [Command.link(self.env.uid)]})
         self.pos_config_usd.write({
             "module_pos_restaurant": True, "payment_method_ids": [Command.link(self.method.id)],
             "auto_validate_terminal_payment": True, "tip_product_id": tip.id,

@@ -44,6 +44,10 @@ class ReturnAllocation:
         if len(originals) != len(ids) or len(set(ids)) != len(ids) or len(orders) != 1:
             raise UserError(_("Return lines must belong to one original sale."))
         original = orders
+        original.config_id._check_revolut_register_access(session=original.session_id, order=original)
+        session.config_id._check_revolut_register_access(session=session)
+        if original.config_id != session.config_id:
+            raise AccessError(_("Refunds must use the original Point of Sale register."))
         if original.company_id != session.company_id or original.currency_id != session.currency_id:
             raise AccessError(_("The original sale belongs to another company or currency."))
         if original.state not in {"paid", "done", "invoiced"}:
@@ -114,6 +118,9 @@ class ReturnAllocation:
             source = payment.revolut_operation_id
             if not source:
                 continue
+            source.with_env(self.env)._check_revolut_register_access()
+            if source.pos_config_id != session.config_id:
+                raise AccessError(_("The original Revolut payment belongs to another register."))
             if (source.state != "verified" or source.pos_order_id != original
                     or source.pos_payment_id != payment or source.company_id != session.company_id
                     or source.currency_id != session.currency_id
@@ -282,6 +289,17 @@ class ReturnAllocation:
                 minor, currency, financial_snapshot, original_operation_id,
                 base_amount_minor=None, tip_amount_minor=None):
         """Authoritative claim in the caller's dedicated reservation transaction."""
+        return_order = self.env["pos.order"].sudo().search([
+            ("company_id", "=", session.company_id.id), ("uuid", "=", order_uuid),
+        ], limit=1).with_env(self.env)
+        session.config_id._check_revolut_register_access(session=session, order=return_order)
+        prior_refunds = self.env["pos.revolut.refund.operation"].sudo().search([
+            ("company_id", "=", session.company_id.id), ("order_uuid", "=", order_uuid),
+        ])
+        for refund in prior_refunds.with_env(self.env):
+            refund._check_revolut_register_access()
+            if refund.pos_session_id.config_id != session.config_id:
+                raise AccessError(_("The refund belongs to another Point of Sale register."))
         snapshot = self._normalize_return(financial_snapshot)
         raw_total = financial_snapshot.get("amount_total") if isinstance(financial_snapshot, dict) else None
         if raw_total is None:
@@ -317,6 +335,7 @@ class ReturnAllocation:
             ("payment_line_uuid", "=", payment_line_uuid),
         ], limit=1)
         if existing:
+            existing.with_env(self.env)._check_revolut_register_access()
             if (existing.payment_method_id.id != method.id
                     or existing.amount_minor != minor or existing.currency_id.id != currency.id
                     or existing.pos_session_id.id != session.id or existing.financial_snapshot != snapshot
@@ -450,7 +469,6 @@ class ReturnAllocation:
             raise UserError(_("The Point of Sale session does not exist."))
         order_uuid = order.get("uuid") or (existing_order and existing_order.uuid)
         charges = self.env["pos.revolut.payment.operation"].sudo()
-        charges._lock_order(session.company_id.id, order_uuid)
         refunds = self.env["pos.revolut.refund.operation"].sudo().search([
             ("company_id", "=", session.company_id.id), ("order_uuid", "=", order_uuid),
         ])
@@ -480,6 +498,10 @@ class ReturnAllocation:
         )
         if not refunds and not source_revolut and not negative_revolut:
             return None
+        session.config_id._check_revolut_register_access(session=session, order=existing_order)
+        for refund in refunds.with_env(self.env):
+            refund._check_revolut_register_access()
+        charges._lock_order(session.company_id.id, order_uuid)
         check_line_count(order.get("lines", []))
         if order.get("state") in {"draft", "cancel"} and not refunds and not any(
             payment.get("payment_status") == "done"

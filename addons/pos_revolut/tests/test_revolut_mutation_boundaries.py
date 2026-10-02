@@ -58,6 +58,9 @@ class TestRevolutMutationBoundaries(CommonPosTest):
             company_id=cls.company.id,
             company_ids=[Command.set([cls.company.id, cls.other_company.id])],
         )
+        cls.pos_config_usd.sudo().write({
+            "revolut_user_ids": [Command.set((cls.env.user | cls.cashier | cls.manager | cls.multi_manager).ids)],
+        })
         cls.unauthorized = new_test_user(
             cls.env, login="revolut_mutation_unauthorized", groups="base.group_user",
             company_id=cls.company.id, company_ids=[Command.set([cls.company.id])],

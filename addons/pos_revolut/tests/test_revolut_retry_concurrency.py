@@ -176,6 +176,9 @@ class TestRevolutRetryConcurrency(TransactionCase):
                 groups="point_of_sale.group_pos_user", company_id=env.company.id,
             )
             cashier_id = cashier.id
+            env["pos.session"].browse(self.session_id).config_id.write({
+                "revolut_user_ids": [Command.link(cashier.id)],
+            })
             env["pos.revolut.payment.operation"].browse(args[0]).write({
                 "next_reconcile_at": "2000-01-01 00:00:00",
             })
@@ -702,7 +705,14 @@ class TestRevolutRetryConcurrency(TransactionCase):
                 groups="base.group_user,point_of_sale.group_pos_user",
                 company_id=setup_env.company.id,
             ).id for index in range(2)]
+            setup_env["pos.session"].browse(self.session_id).config_id.write({
+                "revolut_user_ids": [Command.set(cashier_ids)],
+            })
             cursor.commit()
+        # Administrator provisioning changes the configuration pricing stamp.
+        # The cancelled attempt has no exposure; refresh normal cart authority
+        # before the two granted colleagues race to retry it.
+        self._prepare(self.order_uuid, self.line_uuid)
 
         def http(method, url, **kwargs):
             if method == "POST" and url.endswith("/api/orders"):

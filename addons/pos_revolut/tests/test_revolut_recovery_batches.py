@@ -636,6 +636,9 @@ class TestRevolutRecoveryBatches(TransactionCase):
                 company_id=env.company.id, company_ids=[Command.set(env.companies.ids)],
             )
             cashier_id, manager_id = cashier.id, manager.id
+            env["pos.session"].browse(first["session_id"]).config_id.write({
+                "revolut_user_ids": [Command.set((cashier | manager).ids)],
+            })
             cursor.commit()
         with self.registry.cursor() as cursor:
             env = api.Environment(cursor, cashier_id, self.context)
@@ -690,6 +693,9 @@ class TestRevolutRecoveryBatches(TransactionCase):
                 company_id=env.company.id, company_ids=[Command.set(env.companies.ids)],
             )
             manager_id = manager.id
+            env["pos.revolut.refund.operation"].browse(first["id"]).pos_session_id.config_id.write({
+                "revolut_user_ids": [Command.link(manager.id)],
+            })
             cursor.commit()
         with self.assertLogs("odoo.addons.pos_revolut.models", level="WARNING") as logs:
             with self.registry.cursor() as cursor:

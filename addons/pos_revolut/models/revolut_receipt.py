@@ -17,6 +17,8 @@ class RevolutReceipt(models.AbstractModel):
         if not orders or not orders.exists():
             raise AccessError(_("The receipt sale is not accessible."))
         orders.check_access("read")
+        for order in orders:
+            order.config_id._check_revolut_register_access(session=order.session_id, order=order)
         allowed = set(self.env.companies.ids) & set(self.env.user.company_ids.ids)
         if any(order.company_id.id not in allowed for order in orders):
             raise AccessError(_("The receipt company is not active or accessible."))
@@ -198,9 +200,17 @@ class PosOrderReceipt(models.Model):
                     "url": receipts._download_url(kind, operation.id)})
         return options
 
+    @api.depends_context("uid", "allowed_company_ids")
+    @api.depends("config_id.revolut_user_ids")
     def _compute_revolut_receipt_links(self):
         for order in self:
-            options = order.revolut_receipt_options() if order.id else []
+            try:
+                options = order.revolut_receipt_options() if order.id else []
+            except AccessError:
+                # Native cash-only order reads must continue. The explicit
+                # receipt RPC and document endpoint still deny financial access.
+                order.revolut_receipt_links = False
+                continue
             order.revolut_receipt_links = Markup("<ul>{}</ul>").format(Markup("").join(
                 Markup('<li><a href="{}" target="_blank">{}</a></li>').format(option["url"], option["label"])
                 for option in options
