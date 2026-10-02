@@ -94,6 +94,7 @@ class ReturnAllocation:
                 used[line.refunded_orderline_id.id] -= Decimal(str(line.qty))
         reservations = self.env["pos.revolut.refund.operation"].sudo().search([
             ("original_operation_id.pos_order_id", "=", original.id),
+            ("origin", "=", "odoo"),
             ("state", "!=", "failed"),
         ])
         pending_by_return = {}
@@ -269,12 +270,20 @@ class ReturnAllocation:
             remaining_base = max(0, base - sum(item[0] for item in allocations))
             remaining_tip = max(0, tip - sum(item[1] for item in allocations))
             remaining = max(0, source._revolut_paid_minor() - reserved)
+            needs_review = source.external_refund_review_required
+            unknown_components = tip and any(item.origin == "external" for item in claimed)
+            if needs_review:
+                remaining = 0
+            if needs_review or unknown_components:
+                remaining_base = remaining_tip = 0
             result.append({
                 "operation_id": source.id, "payment_method_id": source.payment_method_id.id,
                 "payment_method_name": source.payment_method_id.name,
                 "original_order_id": source.revolut_order_id,
                 "original_payment_id": source.revolut_payment_id,
                 "amount_minor": source._revolut_paid_minor(), "remaining_minor": remaining,
+                "external_refund_review_required": needs_review,
+                "external_refund_review_note": source.external_refund_review_note,
                 "base_amount_minor": base, "tip_amount_minor": tip,
                 "remaining_base_minor": remaining_base, "remaining_tip_minor": remaining_tip,
                 "terminal_tip_evidence": explicit,
@@ -356,6 +365,8 @@ class ReturnAllocation:
         source_refunds = refunds.search([
             ("original_operation_id", "=", source.id), ("state", "!=", "failed"),
         ])
+        if source.external_refund_review_required:
+            raise UserError(_("External refund evidence needs manager investigation before another refund."))
         reserved = sum(source_refunds.mapped("amount_minor"))
         verified_before_claim = sum(source_refunds.filtered(
             lambda item: item.state == "verified"
@@ -364,6 +375,8 @@ class ReturnAllocation:
             source, minor, base_amount_minor, tip_amount_minor, reserved,
         )
         source_base, source_tip, _evidence = self._source_components(source)
+        if source_tip and any(item.origin == "external" for item in source_refunds):
+            raise UserError(_("An external refund has no verified base and terminal tip allocation. Reconcile its components separately before another refund."))
         claimed = [self._refund_components(item) for item in source_refunds]
         if (sum(item[0] for item in claimed) + base_minor > source_base
                 or sum(item[1] for item in claimed) + tip_minor > source_tip):

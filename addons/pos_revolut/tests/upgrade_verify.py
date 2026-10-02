@@ -16,7 +16,7 @@ def response(payload):
 
 history = json.loads(env["ir.config_parameter"].get_param("pos_revolut.upgrade_fixture"))
 assert len(history) == 6
-assert env["ir.module.module"].search([("name", "=", "pos_revolut")]).installed_version == "19.0.1.12.0"
+assert env["ir.module.module"].search([("name", "=", "pos_revolut")]).installed_version == "19.0.1.13.0"
 assert not env["pos.revolut.cart.authorization"].search_count([])
 with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request") as provider:
     for fixture in history:

@@ -27,3 +27,5 @@ from . import test_revolut_credential_authority
 
 from . import test_revolut_register_refund
 from . import test_register_worklists
+
+from . import test_external_refunds

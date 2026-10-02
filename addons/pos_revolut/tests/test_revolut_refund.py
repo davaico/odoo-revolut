@@ -382,7 +382,7 @@ class TestRevolutRefund(CommonPosTest):
         self.payload["payment_ids"].append(Command.create(second_line))
         self.request.side_effect = [
             self._response(id=first_source.revolut_order_id, state="completed", amount=617,
-                           currency=self.session.currency_id.name),
+                           currency=self.session.currency_id.name, refunded_amount=0),
             self._refund_response(amount=617, source=first_source),
         ]
         first = self.revolut_method.revolut_start_refund(
@@ -419,7 +419,7 @@ class TestRevolutRefund(CommonPosTest):
         self.request.reset_mock()
         self.request.side_effect = [
             self._response(id=second_source.revolut_order_id, state="completed", amount=617,
-                           currency=reopened_session.currency_id.name),
+                           currency=reopened_session.currency_id.name, refunded_amount=0),
             self._refund_response(amount=617, source=second_source),
         ]
         prior_refund = self.env["pos.revolut.refund.operation"].browse(first["operation_id"])
@@ -775,7 +775,7 @@ class TestRevolutRefund(CommonPosTest):
         self.assertEqual(sources[0]["remaining_minor"], 617)
         self.request.side_effect = [
             self._response(id=self.source.revolut_order_id, state="completed",
-                           amount=617, currency=self.session.currency_id.name),
+                           amount=617, currency=self.session.currency_id.name, refunded_amount=0),
             self._refund_response(amount=617),
         ]
         started = self._start()
@@ -813,7 +813,7 @@ class TestRevolutRefund(CommonPosTest):
         self.payload["payment_ids"][0][2]["amount"] = -6.17
         self.request.side_effect = [
             self._response(id=self.source.revolut_order_id, state="completed", amount=617,
-                           currency=self.session.currency_id.name),
+                           currency=self.session.currency_id.name, refunded_amount=0),
             self._refund_response(amount=617),
         ]
         started = self._start()
@@ -860,7 +860,7 @@ class TestRevolutRefund(CommonPosTest):
         self.payload["payment_ids"][0][2]["amount"] = -1.0
         self.request.side_effect = [
             self._response(id=source.revolut_order_id, state="completed", amount=1234,
-                           currency=self.session.currency_id.name),
+                           currency=self.session.currency_id.name, refunded_amount=0),
             self._refund_response(amount=100),
         ]
         started = self._start()
@@ -891,7 +891,7 @@ class TestRevolutRefund(CommonPosTest):
         self.request.assert_not_called()
         self.request.side_effect = [
             self._response(id=first_source.revolut_order_id, state="completed", amount=617,
-                           currency=self.session.currency_id.name),
+                           currency=self.session.currency_id.name, refunded_amount=0),
             self._refund_response(amount=617),
         ]
         first = self.revolut_method.revolut_start_refund(
@@ -904,7 +904,7 @@ class TestRevolutRefund(CommonPosTest):
         self.refund_id = str(uuid4())
         self.request.side_effect = [
             self._response(id=second_source.revolut_order_id, state="completed", amount=617,
-                           currency=self.session.currency_id.name),
+                           currency=self.session.currency_id.name, refunded_amount=0),
             self._refund_response(amount=617, source=second_source),
         ]
         second = self.revolut_method.revolut_start_refund(
@@ -923,7 +923,7 @@ class TestRevolutRefund(CommonPosTest):
         self.refund_id = str(uuid4())
         self.request.side_effect = [
             self._response(id=second_source.revolut_order_id, state="completed", amount=617,
-                           currency=self.session.currency_id.name),
+                           currency=self.session.currency_id.name, refunded_amount=0),
             self._refund_response(amount=617, source=second_source),
         ]
         retried = self.revolut_method.revolut_start_refund(
@@ -1123,7 +1123,7 @@ class TestRevolutRefund(CommonPosTest):
     def test_missing_refund_search_stays_uncertain_and_reserves_amount(self):
         self.request.side_effect = [
             self._response(id=self.source.revolut_order_id, state="completed", amount=1234,
-                           currency=self.session.currency_id.name), requests.Timeout(),
+                           currency=self.session.currency_id.name, refunded_amount=0), requests.Timeout(),
         ]
         started = self._start()
         self.request.side_effect = [self._response(orders=[])]
@@ -1137,7 +1137,7 @@ class TestRevolutRefund(CommonPosTest):
         started = self._pending()
         self.env["pos.revolut.refund.operation"].sudo().browse(started["operation_id"]).write({"next_reconcile_at": "2000-01-01"})
         self.env.flush_all()
-        self.request.side_effect = [self._refund_response("completed")]
+        self.request.side_effect = [self._refund_response("completed"), self._response(orders=[])]
         self.env["pos.revolut.refund.operation"]._cron_reconcile_refunds(1)
         result = self.revolut_method.revolut_find_refund(self.payload["uuid"], self.payload["payment_ids"][0][2]["uuid"])
         self.assertEqual(result["state"], "verified")
@@ -1161,7 +1161,7 @@ class TestRevolutRefund(CommonPosTest):
     def test_malformed_recovery_reference_stays_unresolved(self):
         self.request.side_effect = [
             self._response(id=self.source.revolut_order_id, state="completed", amount=1234,
-                           currency=self.session.currency_id.name), requests.Timeout(),
+                           currency=self.session.currency_id.name, refunded_amount=0), requests.Timeout(),
         ]
         started = self._start()
         candidate = self._refund_response().json()

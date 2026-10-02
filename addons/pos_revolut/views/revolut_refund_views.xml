@@ -7,6 +7,7 @@
             <list create="0" edit="0" delete="0" decoration-danger="state == 'failed'" decoration-warning="state in ('dispatching', 'pending', 'unresolved')">
                 <field name="create_date"/><field name="original_order_id"/><field name="pos_order_id"/>
                 <field name="amount"/><field name="currency_id"/><field name="state"/>
+                <field name="origin"/><field name="native_reconciliation_status"/>
                 <field name="revolut_order_id"/><field name="related_order_id"/>
                 <field name="company_id" groups="base.group_multi_company"/>
             </list>
@@ -17,17 +18,23 @@
         <field name="model">pos.revolut.refund.operation</field>
         <field name="arch" type="xml">
             <form create="0" edit="0" delete="0">
-                <header><button name="action_check_status" type="object" string="Check status" class="btn-primary" invisible="state in ('verified', 'failed')"/></header>
+                <header>
+                    <button name="action_check_status" type="object" string="Check status" class="btn-primary" invisible="state in ('verified', 'failed')"/>
+                    <button name="action_acknowledge_native_reconciliation" type="object" string="Mark native work handled separately" groups="point_of_sale.group_pos_manager" invisible="origin != 'external' or state != 'verified' or native_reconciliation_status != 'outstanding'" confirm="Confirm that you have separately handled any required product return, accounting correction and cash adjustment. This action only records your acknowledgement."/>
+                </header>
                 <sheet>
                     <group>
                         <field name="state"/><field name="provider_state"/><field name="local_outcome"/>
+                        <field name="origin"/><field name="native_reconciliation_status"/>
+                        <field name="native_reconciled_by" invisible="not native_reconciled_at"/><field name="native_reconciled_at" invisible="not native_reconciled_at"/>
                         <field name="original_operation_id"/><field name="original_order_id"/>
-                        <field name="pos_order_id"/><field name="pos_session_id"/><field name="payment_method_id"/>
-                        <field name="amount"/><field name="currency_id"/><field name="order_uuid"/><field name="payment_line_uuid"/>
-                        <field name="revolut_order_id"/><field name="related_order_id"/><field name="idempotency_key"/>
+                        <field name="pos_order_id" invisible="origin == 'external'"/><field name="pos_session_id"/><field name="payment_method_id"/>
+                        <field name="amount"/><field name="currency_id"/><field name="order_uuid" invisible="origin == 'external'"/><field name="payment_line_uuid" invisible="origin == 'external'"/>
+                        <field name="revolut_order_id"/><field name="related_order_id"/><field name="idempotency_key" invisible="origin == 'external'"/>
                         <field name="dispatched_at"/><field name="verified_at"/><field name="next_reconcile_at"/>
                     </group>
-                    <p>Pending or uncertain refunds reserve the original payment. Check status; do not issue another refund or substitute cash. If no refund reference can be recovered, contact Revolut support with the original order and idempotency key.</p>
+                    <p invisible="origin == 'external'">Pending or uncertain refunds reserve the original payment. Check status; do not issue another refund or substitute cash. If no refund reference can be recovered, contact Revolut support with the original order and idempotency key.</p>
+                    <p invisible="origin != 'external'">This refund was created outside Odoo. Its financial status reserves the original card payment while pending or uncertain, and records card money returned when completed. Product returns, accounting corrections and any cash reimbursement require separate manager work. Acknowledging that work creates no return or accounting entry.</p>
                 </sheet>
             </form>
         </field>
