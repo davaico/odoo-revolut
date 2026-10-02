@@ -90,11 +90,12 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [27 — Enforce the authorized order balance before terminal dispatch](closed/27-enforce-authorized-terminal-allocation.md) | `ready-for-agent` at closure | Closed | 26 (closed); fix merged to main, staging/device acceptance remains ticket 12 |
 | [28 — Bind Revolut credential authority to the owning company](closed/28-bind-merchant-credentials-to-company.md) | `ready-for-agent` at closure | Closed | None; integrated fix, migration evidence and independent verification accepted |
 | [29 — Determine the impact of concurrent payment status polling](needs-info/29-investigate-concurrent-status-polling.md) | `needs-info` | Open | Effective Odoo/proxy capacity and Merchant quota; bounded local evidence preserved |
-| [30 — Determine authorized access to shared POS sessions](ready-for-agents/30-investigate-shared-pos-session-authorization.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
+| [30 — Determine authorized access to shared POS sessions](closed/30-investigate-shared-pos-session-authorization.md) | `ready-for-agent` at closure | Closed | Investigation complete; confirmed policy gap and recovery bypass proposed as ticket 35 |
 | [31 — Determine deployment upload and lock-file exploitability](needs-info/31-investigate-privileged-deployment-files.md) | `needs-info` | Open | Target host facts and authorized review access; partial evidence preserved |
 | [32 — Verify deployment host identity on first SSH use](needs-info/32-investigate-deployment-host-authentication.md) | `needs-info` | Open | Route/VM verified; Emile confirmed as administrator/device owner; workstation/replacement procedure missing |
 | [33 — Determine whether release evidence exposes restricted identifiers](ready-for-agents/33-investigate-release-evidence-disclosure.md) | `ready-for-agent` | Open | None for local work; external evidence may be required |
 | [34 — Provision and gate Odoo PDF generation](ready-for-human/34-provision-and-gate-odoo-pdf-generation.md) | `ready-for-human` | Open | Local implementation verified; authorized staging inspection/repair and historical PDF acceptance remain |
+| [35 — Enforce explicit backend-user access to shared registers](needs-triage/35-enforce-shared-register-authorization.md) | `needs-triage` | Open | Integrate ticket 30 evidence; maintainer scope/sequence triage |
 
 ## Architecture triage — 2026-09-25
 
@@ -267,3 +268,17 @@ limits and Merchant endpoint/account quotas are required for a final verdict.
 The owner's requested recommendation and a separate scoped lease proposal are
 recorded; runtime polling was unchanged. This supersedes ticket 29's original
 agent-ready placement without changing ticket 12's release gates.
+
+### Shared-register investigation — 2026-10-02
+
+[Ticket 30](closed/30-investigate-shared-pos-session-authorization.md) is closed
+as an investigation after the owner selected explicit backend-user register
+grants with shared employee login. Both source findings are confirmed against
+that policy. The unchanged addon permits native same-company initiation and
+bypasses an actual register-denying record rule during known-ID recovery.
+[Evidence](../testing/ticket-30-shared-pos-session-access.md) preserves the
+access matrix, separate verdicts, public identifier-discovery path, twelve
+mocked reproduction tests and verification limits. This is not a permission
+fix or deployed exploitation claim. [Ticket 35](needs-triage/35-enforce-shared-register-authorization.md)
+is a separate remediation proposal awaiting scope/sequence triage; investigation
+closure does not mark either source finding fixed or close ticket 12.
