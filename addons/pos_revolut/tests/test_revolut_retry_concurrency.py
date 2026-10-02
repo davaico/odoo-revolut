@@ -1,5 +1,6 @@
 """Exercise public RPCs with real, independently committed transactions."""
 
+import json
 import os
 from threading import Barrier, Event, RLock, Thread, current_thread
 from unittest.mock import Mock, patch
@@ -162,6 +163,190 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.assertFalse(any(worker.is_alive() for worker in workers), "RPC worker deadlocked")
         self.assertFalse(errors, repr(errors))
         return results
+
+    def _bounded_status_reads(self, outcome, *, overlap=False):
+        """Characterize three callers, never an exhaustion or live HTTP test."""
+        self.request.side_effect = self._start_http
+        started = self._start()
+        args = (started["operation_id"], self.order_uuid, self.line_uuid)
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            cashier = new_test_user(
+                env, login=f"poll_cashier_{uuid4().hex}",
+                groups="point_of_sale.group_pos_user", company_id=env.company.id,
+            )
+            cashier_id = cashier.id
+            env["pos.revolut.payment.operation"].browse(args[0]).write({
+                "next_reconcile_at": "2000-01-01 00:00:00",
+            })
+            cursor.commit()
+
+        names = ["foreground", "cancel-precheck" if overlap else "check-status",
+                 "cron" if overlap else "shared-browser"]
+        lock, arrivals = RLock(), Barrier(4)
+        release = {name: Event() for name in names}
+        finished = {name: Event() for name in names}
+        cancelled = Event()
+        counts = {"active": 0, "peak": 0, "intent_reads": 0, "blocked_callers": 0}
+
+        def http(method, url, **kwargs):
+            if method == "POST" and url.endswith("/cancel"):
+                cancelled.set()
+                return self._response({})
+            self.assertEqual(method, "GET")
+            self.assertTrue(url.endswith(f"/api/payment-intents/{self.provider_intent}"))
+            with lock:
+                counts["intent_reads"] += 1
+                counts["active"] += 1
+                counts["peak"] = max(counts["peak"], counts["active"])
+                first_wave = counts["intent_reads"] <= 3
+            try:
+                if first_wave:
+                    arrivals.wait(timeout=10)
+                    self.assertTrue(release[current_thread().name].wait(10),
+                                    "Provider fixture was not released")
+                if outcome == "timeout":
+                    raise requests.Timeout()
+                if outcome == "http_error":
+                    raise requests.HTTPError(response=Mock(status_code=503))
+                if outcome == "malformed":
+                    return self._response({"id": self.provider_intent, "state": "unexpected"})
+                return self._intent("cancelled" if not first_wave and cancelled.is_set() else "pending")
+            finally:
+                with lock:
+                    counts["active"] -= 1
+
+        def observe_blocked_callers():
+            try:
+                arrivals.wait(timeout=10)
+                with lock:
+                    self.assertEqual(counts["active"], 3)
+                    counts["blocked_callers"] = counts["active"]
+                # All three request threads are held inside their mocked HTTP
+                # call, after the pre-I/O observation transaction committed.
+                # Release whole calls sequentially to isolate read fan-out
+                # from observation-conflict retries. Existing tests below
+                # independently exercise stale-success application races.
+                for name in reversed(names):
+                    release[name].set()
+                    self.assertTrue(finished[name].wait(10), "Caller did not finish")
+            finally:
+                for event in release.values():
+                    event.set()
+
+        def cron():
+            with self.registry.cursor() as cursor:
+                env = api.Environment(cursor, SUPERUSER_ID, self.context)
+                env["pos.revolut.payment.operation"]._cron_reconcile_payments(1)
+                cursor.commit()
+
+        self.request.reset_mock()
+        self.request.side_effect = http
+        # Install the report router before starting threads; every subsequent
+        # public RPC sees the same already-installed mocked transport.
+        install_zero_reports(self.env, self.request)
+        tasks = [
+            ("foreground", lambda: self._rpc("revolut_poll_payment", *args, user_id=cashier_id)),
+            ("check-status", lambda: self._rpc("revolut_poll_payment", *args, user_id=cashier_id)),
+            ("cron" if overlap else "shared-browser", cron if overlap else
+             lambda: self._rpc("revolut_poll_payment", *args, user_id=cashier_id)),
+        ]
+        if overlap:
+            tasks[1] = ("cancel-precheck", lambda: self._rpc(
+                "revolut_cancel_payment", *args, user_id=cashier_id,
+            ))
+        def completed(task, name):
+            def run():
+                try:
+                    return task()
+                finally:
+                    finished[name].set()
+            return run
+
+        self._run_workers([
+            *((name, completed(task, name)) for name, task in tasks),
+            ("observer", observe_blocked_callers),
+        ])
+        final = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid,
+                          user_id=cashier_id)
+        self.assertEqual(counts["peak"], 3)
+        self.assertEqual(counts["blocked_callers"], 3)
+        self.assertEqual(counts["active"], 0)
+        self.assertFalse(final["state"] == "verified")
+        self.assertEqual(counts["intent_reads"], 4 if overlap else 3)
+        self.assertEqual(len(financial_posts(self.request)), 1 if overlap else 0)
+        self.assertEqual(final["state"], "cancelled" if overlap else
+                         "pending" if outcome == "pending" else "unresolved")
+        self.assertEqual(final["retry_safe"], overlap)
+        calls_before_final = self.request.call_count
+        if overlap:
+            self._rpc("revolut_poll_payment", *args, user_id=cashier_id)
+            self.assertEqual(self.request.call_count, calls_before_final)
+        print("TICKET29_POLL_EVIDENCE " + json.dumps({
+            "outcome": outcome, "cron_cancel_overlap": overlap, **counts,
+            "total_provider_reads": sum(call.args[0] == "GET" for call in self.request.call_args_list),
+            "total_provider_calls": self.request.call_count,
+            "final_state": final["state"], "retry_safe": final["retry_safe"],
+        }, sort_keys=True))
+        return args, cashier_id
+
+    def test_bounded_status_reads_from_three_shared_cashier_browsers(self):
+        self._bounded_status_reads("pending")
+
+    def test_bounded_status_reads_overlap_cron_and_cancellation_precheck(self):
+        self._bounded_status_reads("pending", overlap=True)
+
+    def test_bounded_status_reads_preserve_malformed_uncertainty(self):
+        self._bounded_status_reads("malformed")
+
+    def test_bounded_status_reads_preserve_timeout_uncertainty(self):
+        self._bounded_status_reads("timeout")
+
+    def test_bounded_status_reads_preserve_http_error_uncertainty(self):
+        self._bounded_status_reads("http_error")
+
+    def test_bounded_status_reads_recover_late_success_after_local_timeout(self):
+        args, cashier_id = self._bounded_status_reads("timeout")
+        timed_out = self._rpc("revolut_mark_timeout", *args, user_id=cashier_id)
+        self.assertEqual(timed_out["local_outcome"], "timed_out")
+        self.assertFalse(timed_out["retry_safe"])
+
+        def success(method, url, **kwargs):
+            self.assertEqual(method, "GET")
+            if url.endswith(f"/api/payment-intents/{self.provider_intent}"):
+                return self._intent("completed", payment_id=self.provider_payment)
+            if url.endswith(f"/api/payments/{self.provider_payment}"):
+                return self._response({
+                    "id": self.provider_payment, "order_id": self.provider_order,
+                    "amount": 1234, "currency": self.currency_code, "state": "captured",
+                })
+            raise AssertionError(f"Unexpected HTTP request: {method} {url}")
+
+        self.request.reset_mock()
+        self.request.side_effect = success
+        verified = self._rpc("revolut_poll_payment", *args, user_id=cashier_id)
+        self.assertEqual(verified["state"], "verified")
+        self.assertEqual(verified["payment_id"], self.provider_payment)
+        self.assertFalse(verified["retry_safe"])
+        # Native authorized payments need authenticated report evidence, even
+        # for zero tips. Intent completion alone cannot verify this control.
+        self.assertFalse(verified["awaiting_tip_details"])
+        self.assertFalse(financial_posts(self.request))
+        calls_to_verify = self.request.call_count
+        results = self._run_workers([
+            (f"verified-browser-{index}", lambda: self._rpc(
+                "revolut_poll_payment", *args, user_id=cashier_id,
+            )) for index in range(3)
+        ])
+        self.assertEqual([result["state"] for result in results], ["verified"] * 3)
+        self.assertEqual(self.request.call_count, calls_to_verify)
+        print("TICKET29_POLL_EVIDENCE " + json.dumps({
+            "outcome": "late_success_after_local_timeout",
+            "total_provider_reads": sum(call.args[0] == "GET" for call in self.request.call_args_list),
+            "total_provider_calls": calls_to_verify,
+            "additional_reads_from_three_verified_browsers": 0,
+            "final_state": verified["state"], "retry_safe": verified["retry_safe"],
+        }, sort_keys=True))
 
     def test_busy_starts_recover_only_after_cancellation_and_explicit_start(self):
         self.request.side_effect = self._start_http
