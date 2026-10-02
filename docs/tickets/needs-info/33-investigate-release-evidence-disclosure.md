@@ -38,7 +38,9 @@ Source scan `95c73550-ed81-4cfe-9e81-b6f2be355a38` was canceled with partial cov
 
 ## Blocked by
 
-No code dependency. Completion requires the identifier-provenance and archive/access attestations listed in the investigation handoff.
+No code dependency. Administrator-assisted sample provenance checks are complete;
+private retention, custodian and recovery arrangements remain unverified. See
+the follow-up and investigation handoff.
 
 ## External prerequisites
 
@@ -141,3 +143,47 @@ financial operation was introduced.
 
 Review summary: Standards 0, Spec 0; no issue on either axis. Provenance and
 archive verification remain factual prerequisites, not a software-test result.
+
+
+## Comments
+
+### Guided owner follow-up — 2026-10-02
+
+The user confirms administrator access to current Odoo records and clarifies
+that all Davai team members may read the private evidence. Davai is developing
+the addon, rather than operating Odoo as its own POS. Their boss will have access
+to everything; proposed archive responsibility remains tentative.
+
+The administrator opened the recorded full-retail test sale, its payment,
+production payment-method configuration and linked refund. Local comparisons
+with the operator chronology establish exact matches for payment/order
+references, location/terminal identifiers, refund/original-order references and
+return/payment-line UUIDs. Only these comparison outcomes are recorded; no live
+values or supplied screenshots are copied into this ticket. No agent Merchant
+API or production database query was made. These are sample provenance checks,
+not classification of all recorded identifiers or a secret/history scan.
+
+The existing private repository is the current evidence location. It may remain
+private with a separate sanitized public repository, or it may itself become
+public after separately reviewed sanitization/history handling. The user has
+not decided; a fresh public history is provisional, and no history rewrite,
+access change or public creation is authorized by this discussion. Original
+transaction/device references already exist in the checked records, so future
+publication review covers those as well as credentials under the existing
+mandatory-alias policy. The private mapping must remain recoverable whichever
+route is chosen.
+
+No maintained backup with a tested restore procedure is confirmed. The user
+is unsure and thinks one may not exist; do not record that as verified absence.
+Keep needs-info for permanent private preservation, accountable custodianship
+and recovery evidence. The completed comparisons and whole-Davai readership
+answer do not need to be asked again. Publication planning may wait until release;
+this investigation does not require a new archive application or Odoo feature.
+
+Follow-up base: fetched main `0ddde9a9b431f5e7d1c9ac83f98c5033a6274dfd`.
+Documentation verification: `git diff --check` passed, all 51 local Markdown
+link targets in the three changed files resolve, no UUIDs were added, the
+original operator chronology is unchanged, and the ready folder placeholder is
+preserved. These narrow checks cover this documentation-only change. Earlier
+mocked software results remain historical evidence; no runtime code changed,
+so runtime/type tests were not repeated for this follow-up.
