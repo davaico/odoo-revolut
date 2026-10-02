@@ -69,6 +69,7 @@ class PosRevolutPaymentOperation(models.Model):
         final = snapshot["state"] == "verified" or snapshot["retry_safe"]
         snapshot.update({
             "observation_in_progress": busy and not final,
+            "observation_deferred": not final and eligible_at > now,
             "observation_fresh": False,
             "observation_finished_at": fields.Datetime.to_string(operation.observation_finished_at),
             "next_check_seconds": 0 if final else min(60, max(1, math.ceil((eligible_at - now).total_seconds()))),
@@ -138,6 +139,10 @@ class PosPaymentMethod(models.Model):
                     cursor.commit()
                 result = self._read_revolut_operation_owned(operation_id)["snapshot"]
                 result["observation_fresh"] = finished and not scope["failed"]
+                if finished:
+                    # The caller observed a provider outcome. Only cached
+                    # callers should keep waiting through unresolved evidence.
+                    result["observation_deferred"] = False
                 return result
             except (SerializationFailure, DeadlockDetected):
                 if attempt == 2:

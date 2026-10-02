@@ -1,7 +1,6 @@
 """Exercise persisted provider observations through authorized public RPCs."""
 
 from datetime import datetime, timedelta
-import os
 from threading import Event, current_thread
 from unittest.mock import Mock, patch
 from uuid import uuid4
@@ -9,9 +8,7 @@ from uuid import uuid4
 import requests
 
 from odoo import SUPERUSER_ID, Command, api
-from odoo.orm.registry import Registry
 from odoo.tests.common import TransactionCase, new_test_user, tagged
-from odoo.tools import mute_logger
 
 from .authorization_fixtures import financial_posts, install_zero_reports, native_products, zero_report_response
 from .test_revolut_retry_concurrency import TestRevolutRetryConcurrency
@@ -31,44 +28,7 @@ class TestRevolutPaymentObservation(TransactionCase):
 
     def setUp(self):
         super().setUp()
-        self.registry = self.env.registry
-        self.context = {"allowed_company_ids": [self.env.company.id]}
-        self.order_uuid, self.line_uuid = str(uuid4()), str(uuid4())
-        self.location_id, self.terminal_id = str(uuid4()), str(uuid4())
-        self.provider_order, self.provider_intent = str(uuid4()), str(uuid4())
-        self.provider_payment = str(uuid4())
-        with self.registry.cursor() as cursor:
-            env = api.Environment(cursor, SUPERUSER_ID, self.context)
-            method = env["pos.payment.method"].create({
-                "name": "Revolut retry concurrency test",
-                "payment_method_type": "terminal",
-                "use_payment_terminal": "revolut",
-                "revolut_environment": "sandbox",
-                "revolut_location_id": self.location_id,
-                "revolut_terminal_id": self.terminal_id,
-                "revolut_fulfilment_type": "eat_in",
-                "revolut_secret_reference": "ODOO_REVOLUT_SECRET_RETRY_RACE_TEST",
-            })
-            config = env["pos.config"].create({
-                "name": "Revolut retry concurrency test",
-                "payment_method_ids": [Command.link(method.id)],
-                "auto_validate_terminal_payment": True,
-            })
-            self.product_id = native_products(env, config).id
-            session = env["pos.session"].create({
-                "config_id": config.id, "state": "opened",
-            })
-            self.method_id, self.session_id = method.id, session.id
-            self.currency_id, self.currency_code = config.currency_id.id, config.currency_id.name
-            cursor.commit()
-        self.enterContext(patch.dict(os.environ, {
-            "ODOO_REVOLUT_SECRET_RETRY_RACE_TEST": "test-only",
-        }))
-        self.authorities = {}
-        self._prepare(self.order_uuid, self.line_uuid)
-        self.request = self.enterContext(patch(
-            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request"
-        ))
+        TestRevolutRetryConcurrency._set_up_payment_fixture(self)
 
     def _controlled_clock(self):
         self.observation_time = datetime(2026, 10, 2, 12, 0, 0)
@@ -664,3 +624,56 @@ class TestRevolutPaymentObservation(TransactionCase):
         recovered = self._rpc("revolut_cancel_payment", *args)
         self.assertEqual(recovered["state"], "verified")
         self.assertEqual(len(financial_posts(self.request)), 1)
+
+    def test_expired_holder_cannot_release_active_successor_lease(self):
+        started = self._pending()
+        self._controlled_clock()
+        old_entered, new_entered = Event(), Event()
+        release_old, release_new, old_finished = Event(), Event(), Event()
+        results = []
+
+        def http(method, url, **kwargs):
+            self.assertEqual(method, "GET")
+            self.assertTrue(url.endswith(f"/api/payment-intents/{self.provider_intent}"))
+            if current_thread().name == "old-holder":
+                old_entered.set()
+                self.assertTrue(release_old.wait(10))
+            else:
+                new_entered.set()
+                self.assertTrue(release_new.wait(10))
+            return self._intent("pending")
+
+        def old_holder():
+            try:
+                results.append(self._poll(started))
+            finally:
+                old_finished.set()
+
+        def new_holder():
+            self.assertTrue(old_entered.wait(10))
+            self._advance(60)
+            return self._poll(started)
+
+        def verify_fence():
+            try:
+                self.assertTrue(new_entered.wait(10))
+                before = self._operation_values(started["operation_id"], [
+                    "observation_token", "observation_expires_at", "observation_finished_at",
+                ])
+                release_old.set()
+                self.assertTrue(old_finished.wait(10))
+                after = self._operation_values(started["operation_id"], list(before.keys() - {"id"}))
+                self.assertEqual(after, before, "An expired release must preserve its successor")
+                self.assertTrue(results[0]["observation_in_progress"])
+                self.assertFalse(results[0]["observation_fresh"])
+            finally:
+                release_old.set()
+                release_new.set()
+
+        self.request.side_effect = http
+        install_zero_reports(self.env, self.request)
+        self._run_workers([
+            ("old-holder", old_holder), ("new-holder", new_holder), ("fence-check", verify_fence),
+        ])
+        self.assertEqual(len(self._provider_reads("/api/payment-intents/")), 2)
+        self.assertEqual(financial_posts(self.request), [])

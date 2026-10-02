@@ -1261,3 +1261,40 @@ test("verified checkout waits for the canonical gross and tip projection", async
     assert.equal(await request,true);
     assert.equal(line.transaction_id,"captured");
 });
+
+test("a deferred unresolved status stays guarded until a fresh late capture", async () => {
+    let polls = 0;
+    const { state, clock, order, line, calls, errors } = fixture({
+        call(method) {
+            if (method === "revolut_find_payment") {
+                return { operation_id: 74, state: "unresolved", retry_safe: false };
+            }
+            if (method === "revolut_poll_payment") {
+                polls++;
+                return polls === 1
+                    ? { operation_id: 74, state: "unresolved", observation_deferred: true, retry_safe: false }
+                    : { operation_id: 74, state: "verified", payment_id: "pay-74", order_id: "rev-74" };
+            }
+            return false;
+        },
+    });
+    line.uiState.revolutStarted = true;
+    let finished = false;
+    const request = state.request(order, line, { checkOnly: true }).then((result) => {
+        finished = true;
+        return result;
+    });
+    await tick();
+    clock.advance(999);
+    await tick();
+    assert.equal(finished, false);
+    assert.equal(paymentActions(line).retrySafe, false);
+    assert.equal(orderActions(order).blocksCheckout, true);
+    assert.equal(line.transaction_id, false);
+    assert.deepEqual(errors, []);
+    clock.advance(1);
+    assert.equal(await request, true);
+    assert.equal(line.transaction_id, "pay-74");
+    assert.equal(polls, 2);
+    assert.equal(calls.some(({ method }) => method === "revolut_start_payment"), false);
+});
