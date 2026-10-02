@@ -4,7 +4,7 @@
 
 **Work branch:** `codex/35-enforce-shared-register-authorization`
 
-**State:** claimed
+**State:** closed
 
 **Category:** bug
 
@@ -83,16 +83,16 @@ revoked user's interactive access or permitting replacement charges.
 
 **Acceptance criteria:**
 
-- [ ] Provide explicit backend-user grants per register that only administrators can provision or revoke. Cashiers and POS managers cannot self-grant through ordinary config create/write/copy/import, relation commands or direct RPC/ORM access. New/copied registers must not silently inherit authority through an unprivileged operation.
-- [ ] Enforce POS role, active company, native config/session/order access and register entitlement consistently before preparation/admission/start, checkout-state disclosure and all payment recovery/control entrypoints. Rejected callers cause no provider request or financial state mutation; sharing a payment method does not confer access to its other registers.
-- [ ] Support two separately granted backend colleagues starting, reloading/coalescing and recovering each other's operations. Preserve native shared employee switching. A backend user's lack of a linked employee does not itself deny access when that backend user is explicitly granted; employee selection/PIN data cannot confer a backend grant.
-- [ ] Reject ungranted same-company users, revoked users, actual native-rule denials and foreign/inactive-company callers, including previously known operation/UUID identifiers. Cover both new operation initiation and existing operation disclosure/control.
-- [ ] Require an explicit register grant for POS managers as well as cashiers. Manager-only refunds, refund-source discovery, manual reconciliation/association and related financial worklist visibility retain their role checks and applicable register checks. A manager role, browser field or context flag cannot bypass entitlement; no emergency override is introduced.
-- [ ] Bind historical access to the operation's persisted original register/session rather than a caller-selected register or the method's current assignments. Preserve already-supported same-register session rollover and closed-session refund/recovery behavior for authorized users; do not expand cross-register refunds in this ticket.
-- [ ] Revocation takes effect on subsequent interactive requests without cancelling an existing financial attempt, clearing reservations, deleting evidence or allowing replay. Privileged cron can still reconcile uncertain and late-success outcomes, while revoked users remain denied. Regranting access restores normal recovery of the original operation rather than creating a replacement.
-- [ ] Migrate existing registers without granting all company users, all managers or session openers by default. Until explicitly provisioned, interactive Revolut operations fail closed with an actionable administrator remedy; preserve historical operations and background reconciliation. Document supervisor provisioning for all registers they oversee and the administrator workflow for adding/removing access.
-- [ ] Preserve ticket 30's baseline evidence and convert the relevant characterization expectations to regression assertions with the fix. Exercise public initiation/recovery/discovery, grant mutation, manager permissions, shared methods, native denials, no-employee granted/ungranted controls, authorized colleague handoff, revocation/regrant, refunds, migration and historical recovery. All provider I/O is mocked and unauthorized paths assert zero calls.
-- [ ] Verify affected install/upgrade, POS employee/Restaurant and payment/refund/reconciliation paths on the combined revision; perform independent Standards/Spec review and explicitly verify both linked source claims before recording them fixed. Retain exact commands/revision and unresolved human/device checks. Previously documented mixed-profile test failures are not passing acceptance; distinguish baseline failures from new regressions.
+- [x] Provide explicit backend-user grants per register that only administrators can provision or revoke. Cashiers and POS managers cannot self-grant through ordinary config create/write/copy/import, relation commands or direct RPC/ORM access. New/copied registers must not silently inherit authority through an unprivileged operation.
+- [x] Enforce POS role, active company, native config/session/order access and register entitlement consistently before preparation/admission/start, checkout-state disclosure and all payment recovery/control entrypoints. Rejected callers cause no provider request or financial state mutation; sharing a payment method does not confer access to its other registers.
+- [x] Support two separately granted backend colleagues starting, reloading/coalescing and recovering each other's operations. Preserve native shared employee switching. A backend user's lack of a linked employee does not itself deny access when that backend user is explicitly granted; employee selection/PIN data cannot confer a backend grant.
+- [x] Reject ungranted same-company users, revoked users, actual native-rule denials and foreign/inactive-company callers, including previously known operation/UUID identifiers. Cover both new operation initiation and existing operation disclosure/control.
+- [x] Require an explicit register grant for POS managers as well as cashiers. Manager-only refunds, refund-source discovery, manual reconciliation/association and related financial worklist visibility retain their role checks and applicable register checks. A manager role, browser field or context flag cannot bypass entitlement; no emergency override is introduced.
+- [x] Bind historical access to the operation's persisted original register/session rather than a caller-selected register or the method's current assignments. Preserve already-supported same-register session rollover and closed-session refund/recovery behavior for authorized users; do not expand cross-register refunds in this ticket.
+- [x] Revocation takes effect on subsequent interactive requests without cancelling an existing financial attempt, clearing reservations, deleting evidence or allowing replay. Privileged cron can still reconcile uncertain and late-success outcomes, while revoked users remain denied. Regranting access restores normal recovery of the original operation rather than creating a replacement.
+- [x] Migrate existing registers without granting all company users, all managers or session openers by default. Until explicitly provisioned, interactive Revolut operations fail closed with an actionable administrator remedy; preserve historical operations and background reconciliation. Document supervisor provisioning for all registers they oversee and the administrator workflow for adding/removing access.
+- [x] Preserve ticket 30's baseline evidence and convert the relevant characterization expectations to regression assertions with the fix. Exercise public initiation/recovery/discovery, grant mutation, manager permissions, shared methods, native denials, no-employee granted/ungranted controls, authorized colleague handoff, revocation/regrant, refunds, migration and historical recovery. All provider I/O is mocked and unauthorized paths assert zero calls.
+- [x] Verify affected install/upgrade, POS employee/Restaurant and payment/refund/reconciliation paths on the combined revision; perform independent Standards/Spec review and explicitly verify both linked source claims before recording them fixed. Retain exact commands/revision and unresolved human/device checks. Previously documented mixed-profile test failures are not passing acceptance; distinguish baseline failures from new regressions.
 
 **Out of scope:**
 
@@ -143,3 +143,44 @@ Verification is inherited from ticket 30's recorded pinned-Odoo reproduction
 scope update. The ticket 30 evidence records both successful controls and its
 mixed-profile failures. Implementation must recheck the behavior on its current
 baseline and supply regression evidence; this brief does not claim a fix.
+
+## Resolution — 2026-10-02
+
+Implemented on `codex/35-enforce-shared-register-authorization`, isolated from
+concurrent work. Final combined source `e3333ea20abdddfd1609f3ec20d8f14f6c632609`
+includes fetched current main `0ddde9a9b431f5e7d1c9ac83f98c5033a6274dfd`.
+Administrators explicitly grant backend users per register; POS managers need
+grants, and native/role/company checks apply before interactive effects and
+financial disclosure. Persisted historical authority, shared colleague access,
+revocation/regrant and trusted background reconciliation are preserved.
+
+Independent review identified native tender and historical receipt/derived
+state gaps during implementation. Failing regressions reproduced them; final
+Standards review has zero hard/heuristic findings and Spec review has zero
+remaining source findings. Standalone independent verification returns fixed
+separately for `csf_07cbc859664310f0ebdc4d36` and
+`csf_157cf1168e2a1b99dde24367` on the final combined source; no security-workbench
+record was modified.
+
+## Verification
+
+[Exact revision, commands, results and separate review reports](../../testing/ticket-35-register-authorization.md):
+
+- Clean pinned Odoo retail installation: 406 tests, zero failures/errors.
+- Full retail upgrade: 406 tests, zero failures/errors.
+- Sequential Restaurant/bridge browser profile: 9 tests, zero failures/errors.
+- Independent actual POS employee access/refund/worklist profile: 41 tests,
+  zero failures/errors; legitimate non-opener and zero-I/O denied controls.
+- Combined focused retail access/refund/worklist/actual receipt PDFs: 58 tests,
+  zero failures/errors.
+- Archived old-to-new upgrade: no implicit grants, retained uncertain evidence,
+  root late-success reconciliation and original recovery after explicit grant.
+- JavaScript lifecycle: 75 passed. Host tooling: 39 tests, OK with three PDF
+  dependency skips; pinned-runtime PDF probe: all 7 passed without skips.
+- Python compilation, XML parsing, shell syntax and whitespace checks passed.
+
+All provider I/O was mocked. Initial failures and interrupted runs are retained
+as development evidence, not passing acceptance. Ticket 30's original baseline
+and mixed-profile failures remain intact. Administrator provisioning,
+deployment, employee/device acceptance and real financial reconciliation remain
+ticket 12 rollout work. Ticket 36's separate future receipt removal is preserved.
