@@ -33,9 +33,10 @@ not assumed to prevent legitimate duplicated status requests.
 
 The requested external facts are now supplied and the missing actual-worker
 experiment is complete. This closes **the investigation, not the contention
-defect**. [Ticket 38](../tickets/needs-triage/38-coalesce-concurrent-payment-status-polls.md)
-retains the narrow server-owned coalescing proposal for separate approval and
-implementation. No runtime addon, hosting setting, financial dispatch behavior,
+defect**. [Ticket 38](../tickets/closed/38-coalesce-concurrent-payment-status-polls.md)
+tracked the separate server-owned coalescing proposal and its subsequent
+owner-approved implementation. During this investigation, no runtime addon,
+hosting setting, financial dispatch behavior,
 deployment or release acceptance gate changed; ticket 12's physical/device and
 rollout work remains open.
 

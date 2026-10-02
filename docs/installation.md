@@ -878,3 +878,23 @@ That snapshot reports existing refund `6abf7eec` for source 36 and pending
 Odoo refund `6abe5180` for source 16. Recheck current provider outcomes with
 their existing references; deployment and any live remediation remain
 operator work. No new charge or refund is required to import either record.
+
+## Coalesced payment status observations
+
+Addon version `19.0.1.14.0` introduces server-owned payment observation claims.
+Upgrade `pos_revolut` through the usual reviewed deployment procedure; new fields
+on existing operations are initially empty and require no backfill or credential
+rotation. Preserve the original operation and provider references during upgrade.
+The separate payment/refund financial-dispatch claims remain authoritative.
+
+Duplicate status, manager/cron and cancellation-precheck requests share the
+same operation observation. Cached pending results stay unpaid and cannot
+authorize cancellation; check again using the returned bounded advice. Starts
+have a one-second cadence and a crashed holder has a fixed 60-second lease.
+429 integer `Retry-After` defers further provider observation without sleeping
+in a worker. Different operations still compete for HTTP-worker capacity.
+
+See [ticket 38 evidence](testing/ticket-38-payment-observations.md) for elapsed
+phase budgets, remaining physical HTTP overlap after expiry, recovery delays
+and the mocked two-worker acceptance probe. Ticket 12 retains rollout and
+physical-terminal acceptance.

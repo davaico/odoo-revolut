@@ -131,7 +131,9 @@ final complete rerun passed without browser-start failures. Independent
 Standards and Spec review of the completion patch reported zero findings.
 
 This closes the investigation **without changing runtime behavior**.
-[Ticket 38](../needs-triage/38-coalesce-concurrent-payment-status-polls.md)
-records the separate coalescing/cadence/crash-fencing and 429 recovery proposal,
-under needs-triage pending owner approval. Investigation closure is not a
+[Ticket 38](38-coalesce-concurrent-payment-status-polls.md)
+records the separate coalescing/cadence/crash-fencing and 429 recovery work.
+At investigation closure it was under needs-triage pending owner approval;
+its subsequent approved implementation and verification are recorded there.
+Investigation closure is not a
 contention fix or release acceptance; ticket 12's rollout/device work stays open.

@@ -29,3 +29,5 @@ from . import test_revolut_register_refund
 from . import test_register_worklists
 
 from . import test_external_refunds
+
+from . import test_payment_observation

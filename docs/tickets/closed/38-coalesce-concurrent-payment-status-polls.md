@@ -2,11 +2,11 @@
 
 **Work branch:** `codex/38-coalesce-payment-status-polls`
 
-**State:** open
+**State:** closed
 
-**Triage:** needs-triage
+**Triage:** ready-for-agent
 
-**Work type:** Implementation proposal; approval required before implementation.
+**Work type:** Approved implementation (owner request, 2026-10-02).
 
 ## Problem and intended behavior
 
@@ -36,38 +36,38 @@ for simultaneous observations of different operations.
 
 ## Acceptance criteria
 
-- [ ] Preserve the existing register/company/credential authority checks before
+- [x] Preserve the existing register/company/credential authority checks before
   claim acquisition or cached result access. Do not expose new credential data.
-- [ ] Atomically claim an operation-specific token with a fixed expiry in a
+- [x] Atomically claim an operation-specific token with a fixed expiry in a
   short owned transaction, committing before HTTP. Foreground, Check status,
   cron, manager reconciliation and cancellation pre-checks share the claim.
   Cover intent/payment reads and subsequent authenticated tip/report/order
   reconciliation; retain separate financial-dispatch/report-creation claims.
-- [ ] Losing callers return the latest persisted snapshot promptly, with
+- [x] Losing callers return the latest persisted snapshot promptly, with
   server-owned freshness/in-progress and bounded next-check advice. They make
   no duplicate provider read, wait in no worker, renew no lease and postpone no
   cron due time. Persisted verified evidence remains authoritative; incomplete
   evidence never permits settlement, safe retry or payment-line removal.
-- [ ] Apply approximately one-second cadence between observation starts using
+- [x] Apply approximately one-second cadence between observation starts using
   a controlled clock. Set explicit bounded provider phases and justify the
   lease margin. Requests' per-read timeout is not an absolute RPC deadline.
   Document any remaining physical HTTP overlap after expiry rather than
   promising single-flight without actual deadline/cancellation enforcement.
-- [ ] Fence every apply/release with the original token. Expired or crashed
+- [x] Fence every apply/release with the original token. Expired or crashed
   holders cannot overwrite newer observations or release a successor's claim.
   Foreground and cron can resume without caller affinity or sliding expiry.
-- [ ] Cancellation dispatch requires fresh eligible provider evidence and its
+- [x] Cancellation dispatch requires fresh eligible provider evidence and its
   existing unique dispatch claim. A busy/stale check sends no cancel POST;
   post-cancellation recovery stays eligible without replaying financial calls.
-- [ ] Keep malformed, timeout, 503 and 429 outcomes unresolved. Respect valid
+- [x] Keep malformed, timeout, 503 and 429 outcomes unresolved. Respect valid
   `Retry-After` seconds without blocking a worker or silently caching successful
   financial evidence. Test invalid header handling, deferred observation and
   late capture. Do not infer a numeric Merchant quota or account-wide limiter.
-- [ ] Cover two cashiers/four tabs, same-operation overlap with cron and cancel,
+- [x] Cover two cashiers/four tabs, same-operation overlap with cron and cancel,
   exact HTTP counts, final caches, cadence boundaries, crash before/after HTTP,
   expiry/fencing, no renewal by losers, distinct-operation independence,
   authenticated tip/report evidence and existing financial race controls.
-- [ ] Reuse the local two-HTTP-worker probe: a duplicate call must leave a worker
+- [x] Reuse the local two-HTTP-worker probe: a duplicate call must leave a worker
   available for the unrelated authorized RPC while the first provider read is
   held. Report observation/recovery delay and retain the two distinct-operation
   capacity limitation. Run focused and full mocked install/upgrade/Restaurant
@@ -85,3 +85,26 @@ grant that approval, change a release gate, or authorize deployment.
 Global rate-limiting infrastructure, Cloudflare rule changes, HTTP-worker
 provisioning, live stress tests, payment dispatch redesign and production
 deployment. Ticket 12 retains separately authorized rollout and device testing.
+
+
+## Verification and disposition
+
+Completed on 2026-10-02 from fetched `origin/main` at `12ad4bf`, on the work
+branch above. Implementation is pinned at `a8d90a7`. The owner approved this
+implementation and confirmed the existing status/cancel RPCs, manager/cron
+entry points and local two-worker probe as test seams.
+
+[Verification evidence](../../testing/ticket-38-payment-observations.md) records
+claim authority, fixed lease and cadence, cooperative phase budgets, physical
+HTTP overlap after expiry, token-fenced recovery, provider deferral and the
+remaining distinct-operation capacity limitation.
+
+Final mocked acceptance passed **446 install, 446 upgrade and 9 Restaurant
+tests**, with zero failures/errors. All 76 JavaScript tests passed; the final
+two-worker/four-tab probe made one shared-operation GET and left a worker
+available for the unrelated authorized RPC. Local script tests, compilation
+and syntax checks passed (three opt-in Docker cases skipped in the local suite).
+Independent Standards and Spec reviews reported zero remaining findings.
+
+This closes the scoped implementation. Ticket 12 retains deployment and
+physical-terminal acceptance; no live Merchant or terminal operation was run.

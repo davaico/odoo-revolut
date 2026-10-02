@@ -13,3 +13,4 @@ from . import pos_config
 from . import register_worklists
 from . import external_refund_evidence
 from . import external_refund_discovery
+from . import payment_observation
