@@ -611,3 +611,41 @@ history and disposable browser/PDF tests do not establish physical-printer
 acceptance. Ticket 34 independently retains native invoice PDF verification
 after separately authorized staging repair/rollout; missing historical invoice
 fixtures are a blocker, not permission to create a financial transaction.
+
+
+## External financial refunds — ticket 37 candidate
+
+Ticket 37 adds automatic server-side discovery to the existing refund cron in
+addon `19.0.1.13.0`. Its [mocked implementation evidence](ticket-37-external-refunds.md)
+is separate from this ticket's operator acceptance. Matched external refunds
+have external provenance, the original sale and financial state, and their own
+native reconciliation status. Discovery creates no product return, cash refund
+or accounting credit.
+
+Before approving rollout, recheck active provider and Odoo financial operations.
+Retain the [2026-10-02 checkpoint](refund-investigation-2026-10-02.md): refund
+`6abf7eec-9d7d-ac78-89ab-0e6c57b0d535` belongs to source 36 / sale
+`261-2-000018` and is the sole existing card refund for that source. Its
+separate £0.01 Cash tender still requires manager disposition. Import must
+record that refund through GETs, with no new refund POST. Do not treat the dated
+processing state as current settlement evidence.
+
+Preserve Odoo operation 6 / refund `6abe5180-d2fa-a57f-876c-6e12bfeb14cf`,
+source 16 / sale `261-2-000011`, and return 1012. Discovery must recognize its
+existing provider identity and Odoo provenance, retaining its reservation and
+return references. Await an authoritative final refund read before resuming
+that native return. Both reported refunds and any additional uncertain imported
+operations remain part of financial deployment/recovery preflight.
+
+After separately authorized guarded rollout, verify the existing references
+appear exactly once in **Revolut Refunds**, with the correct original sale,
+amount/currency, provenance and separate native status. Confirm pending or
+uncertain amounts reduce the appropriate card source's capacity, without
+consuming cash or inferring returned quantities. Record delayed discovery and
+final GET outcomes, any **Refund Discovery Evidence**, manager product/accounting
+work and the final cash disposition. Use these existing money movements for
+acceptance; importing them needs no replacement refund or new charge.
+
+No staging deployment, live Merchant read, charge/refund, configuration change
+or financial repair was performed during ticket 37's local implementation.
+Ticket 12 stays open for operator reconciliation and combined release acceptance.

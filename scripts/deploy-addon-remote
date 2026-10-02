@@ -175,7 +175,8 @@ class RemoteDeployment:
 SELECT table_name
 FROM information_schema.columns
 WHERE table_schema = 'public'
-  AND table_name LIKE 'pos_revolut_%_operation'
+  AND (table_name LIKE 'pos_revolut_%_operation'
+       OR table_name = 'pos_revolut_external_refund_evidence')
   AND column_name = 'deployment_blocking'
 ORDER BY table_name
 """.strip(),
@@ -184,7 +185,8 @@ ORDER BY table_name
         tables = [table.strip() for table in tables if table.strip()]
         blockers = []
         for table in tables:
-            if not re.fullmatch(r"pos_revolut_[a-z0-9_]+_operation", table):
+            if (not re.fullmatch(r"pos_revolut_[a-z0-9_]+_operation", table)
+                    and table != "pos_revolut_external_refund_evidence"):
                 raise DeploymentError(
                     "Financial preflight returned an unsafe table name."
                 )

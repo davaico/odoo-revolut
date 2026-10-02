@@ -97,6 +97,30 @@ env.cr.commit()
 print('DEPLOYMENT_GUARD_REFUND_SETTLED', flush=True)
 """
 
+SEED_EXTERNAL = """
+source = env['pos.revolut.payment.operation'].search([
+    ('order_uuid', '=', '22222222-2222-4222-8222-222222222222'),
+], limit=1)
+external = env['pos.revolut.refund.operation'].create({
+    'origin': 'external', 'original_operation_id': source.id,
+    'pos_session_id': source.pos_session_id.id,
+    'amount': 0.01, 'amount_minor': 1, 'currency_id': source.currency_id.id,
+    'revolut_order_id': '44444444-4444-4444-8444-444444444444', 'state': 'pending',
+})
+env['pos.revolut.external.refund.evidence'].create({
+    'credential_id': source.credential_id.id, 'original_operation_id': source.id,
+    'provider_order_id': 'scan-window', 'reason': 'interrupted',
+})
+assert external.deployment_blocking
+env.cr.commit()
+"""
+
+SETTLE_EXTERNAL = """
+env['pos.revolut.refund.operation'].search([('origin', '=', 'external')]).write({'state': 'verified'})
+env['pos.revolut.external.refund.evidence'].search([]).write({'resolved': True})
+env.cr.commit()
+"""
+
 
 def run(*args, input_text=None):
     return subprocess.run(
@@ -162,7 +186,13 @@ def main():
         assert guard._financial_blockers() == ["pos_revolut_refund_operation=1"]
         shell(SETTLE_REFUND)
         assert guard._financial_blockers() == []
-        print("Deployment guard passed against payment and refund records")
+        shell(SEED_EXTERNAL)
+        assert guard._financial_blockers() == [
+            "pos_revolut_external_refund_evidence=1", "pos_revolut_refund_operation=1",
+        ]
+        shell(SETTLE_EXTERNAL)
+        assert guard._financial_blockers() == []
+        print("Deployment guard passed against payments, Odoo/external refunds and discovery evidence")
     finally:
         run("down", "--volumes", "--remove-orphans")
 

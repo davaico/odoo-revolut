@@ -16,6 +16,7 @@
                         <span class="ms-2">Original: <t t-esc="source.original_order_id"/></span>
                         <span class="ms-2">Payment: <t t-esc="source.original_payment_id"/></span>
                         <span class="ms-2">Remaining: <t t-esc="source.remaining_amount"/> <t t-esc="props.currencySymbol"/></span>
+                        <div t-if="source.external_refund_review_required" class="text-danger small" role="alert" t-esc="source.external_refund_review_note"/>
                         <small t-if="source.payment_method_id !== props.paymentMethodId" class="d-block ms-4">
                             Add a separate refund line using this original payment method.
                         </small>

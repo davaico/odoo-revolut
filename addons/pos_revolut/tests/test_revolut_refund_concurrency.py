@@ -20,6 +20,7 @@ class TestRevolutRefundConcurrency(TransactionCase):
         self.context = {"allowed_company_ids": [self.env.company.id]}
         self.order_uuid, self.line_uuid = str(uuid4()), str(uuid4())
         self.provider_order, self.provider_refund = str(uuid4()), str(uuid4())
+        self.secret_reference = "ODOO_REVOLUT_SECRET_REFUND_RACE_" + uuid4().hex.upper()
         with self.registry.cursor() as cursor:
             env = api.Environment(cursor, SUPERUSER_ID, self.context)
             method = env["pos.payment.method"].create({
@@ -30,7 +31,7 @@ class TestRevolutRefundConcurrency(TransactionCase):
                 "revolut_location_id": str(uuid4()),
                 "revolut_terminal_id": str(uuid4()),
                 "revolut_fulfilment_type": "eat_in",
-                "revolut_secret_reference": "ODOO_REVOLUT_SECRET_REFUND_RACE_TEST",
+                "revolut_secret_reference": self.secret_reference,
             })
             config = env["pos.config"].create({
                 "name": "Revolut refund concurrency test",
@@ -76,6 +77,8 @@ class TestRevolutRefundConcurrency(TransactionCase):
             order = env["pos.order"].create(order_values)
             self.assertEqual(operation.pos_order_id, order)
             self.method_id, self.session_id = method.id, session.id
+            self.source_id, self.credential_id = operation.id, operation.credential_id.id
+            operation.credential_id.write({"next_refund_discovery_at": "2100-01-01"})
             self.currency_id, self.currency_code = config.currency_id.id, config.currency_id.name
             self.snapshot = {
                 "amount_total": -12.34,
@@ -85,13 +88,27 @@ class TestRevolutRefundConcurrency(TransactionCase):
                            "tax_ids": [], "refunded_orderline_id": order.lines.id}],
             }
             cursor.commit()
+        self.addCleanup(self._unschedule)
         self.enterContext(patch.dict(os.environ, {
-            "ODOO_REVOLUT_SECRET_REFUND_RACE_TEST": "test-only",
+            self.secret_reference: "test-only",
         }))
         self.request = self.enterContext(patch(
             "odoo.addons.pos_revolut.models.pos_payment_method.requests.request"
         ))
         self.request.side_effect = self._http
+
+    def _unschedule(self):
+        # Independently committed fixtures must not be reconciled by another
+        # test's Merchant mocks, including the subsequent upgrade pass.
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            env["pos.revolut.merchant.credential"].browse(self.credential_id).write({
+                "next_refund_discovery_at": "2100-01-01",
+            })
+            env["pos.revolut.refund.operation"].search([
+                ("original_operation_id", "=", self.source_id),
+            ]).write({"next_reconcile_at": False})
+            cursor.commit()
 
     def _rpc(self, name, *args):
         with self.registry.cursor() as cursor:
@@ -123,7 +140,7 @@ class TestRevolutRefundConcurrency(TransactionCase):
         if method == "GET" and url.endswith(f"/api/orders/{self.provider_order}"):
             return self._response({
                 "id": self.provider_order, "type": "payment", "state": "completed",
-                "amount": 1234, "currency": self.currency_code,
+                "amount": 1234, "currency": self.currency_code, "refunded_amount": 0,
             })
         if method == "POST" and url.endswith(f"/api/orders/{self.provider_order}/refund"):
             self.assertTrue(kwargs["headers"].get("Idempotency-Key"))
