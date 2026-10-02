@@ -258,10 +258,16 @@ class PosPaymentMethod(models.Model):
                  "phase_deadline": started + OBSERVATION_PAYMENT_SECONDS, "report_phase": False}
         context_token = _OBSERVATION.set(scope)
         try:
-            if cancel:
-                super().revolut_cancel_payment(operation_id, order_uuid, payment_line_uuid)
-            else:
-                super().revolut_poll_payment(operation_id, order_uuid, payment_line_uuid)
+            try:
+                if cancel:
+                    super().revolut_cancel_payment(operation_id, order_uuid, payment_line_uuid)
+                else:
+                    super().revolut_poll_payment(operation_id, order_uuid, payment_line_uuid)
+            except (SerializationFailure, DeadlockDetected):
+                # Recovery belongs to the original holder too. An expired
+                # holder must not postpone its successor's schedule after
+                # exhausting the evidence transaction's local retries.
+                self._apply_revolut_observation_owned(operation_id, "interrupted")
             return self._finish_revolut_observation_owned(operation_id, scope)
         finally:
             # A killed worker/failed RPC leaves its fixed lease recoverable.

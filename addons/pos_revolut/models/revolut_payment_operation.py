@@ -237,13 +237,10 @@ class PosRevolutPaymentOperation(models.Model):
                     operation.id, operation.order_uuid, operation.payment_line_uuid
                 )
             except (SerializationFailure, DeadlockDetected):
-                # The failed owned cursor has closed and rolled back. A fresh
-                # locked observation preserves any earlier committed evidence.
-                _logger.warning("Revolut payment operation %s deferred after a transaction conflict", operation.id)
-                try:
-                    payment_method._apply_revolut_observation_owned(operation.id, "interrupted")
-                except (SerializationFailure, DeadlockDetected):
-                    _logger.warning("Revolut payment operation %s could not be rescheduled; retains its previous schedule", operation.id)
+                # The observer already attempted recovery under its original
+                # token. Never apply an unfenced fallback after that scope
+                # closes, or change the schedule when no claim was acquired.
+                _logger.warning("Revolut payment operation %s could not be rescheduled after a transaction conflict; retains its previous schedule", operation.id)
 
     def _revolut_deployment_terminal_states(self):
         return {"verified", "declined", "failed", "cancelled"}

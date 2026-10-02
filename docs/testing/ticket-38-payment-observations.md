@@ -40,6 +40,11 @@ token and its unexpired lease under the existing financial lock order. A late
 or expired holder cannot overwrite a successor or release its token. A crash
 leaves a durable fixed lease; foreground or cron can acquire it at expiry.
 No browser, worker or cashier affinity and no sliding renewal is required.
+Exhausted evidence-transaction conflicts attempt interruption recovery inside
+that same token scope. If recovery or claim acquisition also conflicts, cron
+retains the existing schedule and continues its batch without an unfenced
+fallback. A regression reproduces expiry and successor pending evidence
+between exhausted retries and recovery, checking evidence and due time.
 
 Cancellation holds the shared lease across its fresh precheck, unique cancel
 claim, POST and immediate recovery. The dispatch transaction rechecks the token,
