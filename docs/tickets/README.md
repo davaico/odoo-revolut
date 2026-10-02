@@ -96,7 +96,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [33 — Determine whether release evidence exposes restricted identifiers](needs-info/33-investigate-release-evidence-disclosure.md) | `needs-info` | Open | Owner policy resolved and sample references confirmed; permanent private retention, custodian and recovery remain unverified |
 | [34 — Provision and gate Odoo PDF generation](ready-for-human/34-provision-and-gate-odoo-pdf-generation.md) | `ready-for-human` | Open | Local implementation verified; remaining acceptance uses a native Odoo invoice; see 36 |
 | [35 — Enforce explicit backend-user access to shared registers](closed/35-enforce-shared-register-authorization.md) | `ready-for-agent` at closure | Closed | Explicit grants verified; 406 install/406 upgrade/9 Restaurant; rollout remains 12 |
-| [36 — Remove custom Revolut receipts and preserve native printing](ready-for-agents/36-remove-custom-revolut-receipts.md) | `ready-for-agent` | Claimed | Approved removal; coordinate 34 PDF checks and 35 access changes; before 12 |
+| [36 — Remove custom Revolut receipts and preserve native printing](closed/36-remove-custom-revolut-receipts.md) | `ready-for-agent` at closure | Closed | 398 install/398 upgrade/9 Restaurant; actual native PDF and old-release preservation verified; physical/staging gates remain 12/34 |
 | [37 — Reconcile refunds created outside Odoo](ready-for-agents/37-reconcile-external-terminal-refunds.md) | `ready-for-agent` | Open | Automatic discovery approved; preserve existing 35 register authorization and 36 receipt-removal scope; deployment/live reconciliation separate |
 
 ## Architecture triage — 2026-09-25
@@ -307,8 +307,9 @@ receipts while retaining native Odoo documents and current terminal reprinting.
 Ticket 25 stays closed as historical work; its custom-document requirement is
 superseded. Ticket 34 retains PDF infrastructure and uses native Odoo invoice
 rendering for remaining acceptance. Automatic invoicing of every sale is not
-part of this removal. Implementation and final physical printing acceptance
-remain outstanding; the ticket publication itself changes no runtime behavior.
+part of this removal. Ticket 36 now closes local removal and native printing
+verification; final physical printing and staging acceptance remain tickets
+12/34. The original publication itself changed no runtime behavior.
 
 ### Ticket 35 remediation — 2026-10-02
 

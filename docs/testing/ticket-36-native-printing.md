@@ -3,8 +3,50 @@
 Date: 2026-10-02. Branch: `codex/36-remove-custom-revolut-receipts`.
 Baseline: fetched main `83a7b2484ee16adcacc16e336d1c6e53e8d5508d`, including
 PDF deployment guards (34) and explicit register authorization (35).
-Candidate addon: `19.0.1.12.0`. Final implementation revision and combined
-suite results are recorded below after completion.
+Candidate addon: `19.0.1.12.0`. Implementation: `1cc330c`.
+Latest documentation-only main `2587962` was integrated by `bb5bcdd` while
+verification ran. The ticket-index conflict retained claimed ticket 36 and new
+ticket 37; no runtime files changed. Tested addon subtree:
+`2816de20d3eae1cfe8bcd49d268fa73bc0e46a1c`; tested scripts subtree:
+`b541fa849ef3e88a247202b19f920198e40c217e`. Both match the implementation
+and merged candidate. Final combined verification passed; results follow.
+
+## Final results
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Full fresh install | 398 passed, zero failures/errors | `/tmp/ticket36-full.log` |
+| Full upgrade | 398 passed, zero failures/errors | `/tmp/ticket36-full.log` |
+| Restaurant bridge | 9 passed, zero failures/errors | `/tmp/ticket36-full.log` |
+| Actual old-release upgrade + native PDF | Passed, all stored fixture fields preserved, retired interfaces absent, readable QWeb/native download PDFs | `/tmp/ticket36-upgrade-native.log` |
+| Focused native/backend/access checks | All paths pass in final full suite; focused 49/51 then 4/5 and repaired last single test passed before full run | `/tmp/ticket36-focused2.log`, `/tmp/ticket36-native-ui.log`, `/tmp/ticket36-native-later.log` |
+| Payment state JavaScript | 75 passed | `/tmp/ticket36-node-final.log` |
+| Host deployment/PDF suite | 39 run, 36 passed, 3 renderer cases skipped on host | `/tmp/ticket36-python-final.log` |
+| Pinned-image PDF preflight suite | All 7 passed, no skips | `/tmp/ticket36-pdf-runtime7.log` |
+| Compilation/syntax/whitespace | Python compileall, JS check, bash syntax and Git diff checks pass | Local commands below |
+| Independent Standards / Spec | 0 / 0 actionable findings | Review sections below |
+
+Full verification command:
+
+```bash
+ODOO_REVOLUT_TEST_PROJECT=ticket36-full ./scripts/test-addon --verify-install-upgrade
+./scripts/test-receipt-retirement-upgrade
+python3 -m unittest discover -s tests
+node addons/pos_revolut/static/tests/revolut_payment_state.test.mjs
+python3 -m compileall -q addons scripts tests
+node --check addons/pos_revolut/static/tests/tours/pos_revolut_native_printing.js
+bash -n scripts/test-receipt-retirement-upgrade
+git diff --check
+```
+
+The actual PDF-preflight checks ran with `docker run --rm --network none`, the
+repository mounted read-only, the pinned test image, and
+`python3 -m unittest discover -s tests -p test_pdf_probe.py`. Chrome transport and
+the outbound Merchant guard were checked by the full runner. No browser startup
+skips occurred. Expected invalid/missing-report and fault-injection warnings
+are negative-path evidence; all three final Odoo results have zero failures or
+errors. Final closure changes only documentation and ticket links; runtime and
+scripts subtree hashes remain the tested values above.
 
 ## Implementation
 
@@ -95,7 +137,8 @@ merchant JSON, financial history and saved documents remain; timestamp and
 deployment guards remain. No automatic invoicing or terminal behavior changes.
 Native printing and invoice paths retain existing permissions; separate actual
 PDF verification avoids claiming HTML-only evidence as PDF success. Follow-up
-permission/browser test correction review also reports zero findings.
+permission/browser test correction review also reports zero findings. Final
+commit-range review against main `2587962` confirms zero findings in either axis.
 
 Total findings: Standards 0; Spec 0. No worst issue in either axis.
 
@@ -108,3 +151,20 @@ Ticket 34 independently retains authorized staging native invoice PDF acceptance
 No physical printer, terminal/device, deployment or staging mutation was tested
 or authorized by this local implementation. Prior ticket 25/34 evidence remains
 historical; the superseded custom reports do not establish native acceptance.
+
+## Self-evaluation
+
+Overall: 4.6/5; no corrective implementation work remains.
+
+| Axis | Score | Evidence / improvement |
+| --- | --- | --- |
+| Accuracy | 5 | Actual native PDF extraction/downloads, exact stored-field upgrade comparison, 398/398/9 clean Odoo results and independent reviews support the local claims. |
+| Completeness | 5 | All local ticket criteria covered; native accounting denial, direct retired interfaces and shared financial guards tested, with human gates retained explicitly. |
+| Clarity | 4 | The final results table makes success visible, but the failure chronology still needs reading to understand shared-cursor HTML versus normal-server PDF evidence. Keep later updates in the result table. |
+| Actionability | 5 | Committed implementation, reproducible runners, exact tested subtree hashes, operator guidance and separate human acceptance instructions are available. |
+| Conciseness | 4 | The audit retains several initial failures and log paths; keep the user handoff short and future operator evidence in tickets 12/34. |
+
+Critical issues: none. Top improvement: preserve the concise result table for
+future updates instead of expanding the chronology. Self-check: the user can
+verify the local outcome and see exactly which physical/staging work remains.
+Verdict: deliver the local implementation as-is.
