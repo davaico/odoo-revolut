@@ -157,9 +157,10 @@ class TestRevolutRegisterRefund(CommonPosTest):
         self.request.assert_not_called()
         refund.write({"next_reconcile_at": "2000-01-01"})
         self.env.flush_all()
-        self.request.side_effect = [self._refund_response("completed")]
+        self.request.side_effect = [self._refund_response("completed"), self._response(orders=[])]
         self.env["pos.revolut.refund.operation"].sudo()._cron_reconcile_refunds(1)
-        self.assertEqual(self.request.call_count, 1)
+        self.assertEqual(self.request.call_count, 2)
+        self.assertTrue(all(call.args[0] == "GET" for call in self.request.call_args_list))
         self.pos_config_usd.sudo().write({"revolut_user_ids": [Command.link(manager.id)]})
         self.env.flush_all()
         found = self._recover(manager, "revolut_find_refund")
