@@ -6,8 +6,10 @@ from unittest.mock import Mock, patch
 from uuid import uuid4
 
 import requests
+from psycopg2.errors import SerializationFailure
 
 from odoo import SUPERUSER_ID, Command, api
+from odoo.tools import mute_logger
 from odoo.tests.common import TransactionCase, new_test_user, tagged
 
 from .authorization_fixtures import financial_posts, install_zero_reports, native_products, zero_report_response
@@ -675,5 +677,55 @@ class TestRevolutPaymentObservation(TransactionCase):
         self._run_workers([
             ("old-holder", old_holder), ("new-holder", new_holder), ("fence-check", verify_fence),
         ])
+        self.assertEqual(len(self._provider_reads("/api/payment-intents/")), 2)
+        self.assertEqual(financial_posts(self.request), [])
+
+    def test_exhausted_cron_conflicts_cannot_reschedule_successor(self):
+        started = self._pending()
+        self._controlled_clock()
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            env["pos.revolut.payment.operation"].browse(started["operation_id"]).write({
+                "next_reconcile_at": "2000-01-01 00:00:00",
+            })
+            cursor.commit()
+        operation_type = type(self.env["pos.revolut.payment.operation"])
+        method_type = type(self.env["pos.payment.method"])
+        apply = operation_type._apply_payment_observation
+        apply_owned = method_type._apply_revolut_observation_owned
+        failed_cursors, successor_values = [], []
+        names = ["state", "provider_state", "reconcile_failures", "next_reconcile_at",
+                 "observation_token", "observation_expires_at", "observation_finished_at"]
+
+        def conflicting(operation, kind, evidence=None):
+            if kind == "intent" and current_thread().name != "conflict-successor":
+                failed_cursors.append(operation.env.cr)
+                operation.env.cr.execute(
+                    "DO $$ BEGIN RAISE EXCEPTION USING ERRCODE = '40001', "
+                    "MESSAGE = 'test observation conflict'; END $$"
+                )
+            return apply(operation, kind, evidence)
+
+        def successor_after_exhaustion(method, operation_id, kind, evidence=None):
+            try:
+                return apply_owned(method, operation_id, kind, evidence)
+            except SerializationFailure:
+                # All failed cursors have rolled back before a new worker
+                # takes the expired lease and commits newer pending evidence.
+                self._advance(60)
+                self._run_workers([("conflict-successor", lambda: self._poll(started))])
+                successor_values.append(self._operation_values(operation_id, names))
+                raise
+
+        self.request.side_effect = lambda method, url, **kwargs: self._intent("processing")
+        with patch.object(operation_type, "_apply_payment_observation", conflicting), \
+                patch.object(method_type, "_apply_revolut_observation_owned", successor_after_exhaustion), \
+                mute_logger("odoo.sql_db"):
+            self._cron()
+        self.assertEqual(len(failed_cursors), 3)
+        self.assertTrue(all(cursor.closed for cursor in failed_cursors))
+        self.assertEqual(successor_values[0]["state"], "pending")
+        self.assertEqual(successor_values[0]["provider_state"], "processing")
+        self.assertEqual(self._operation_values(started["operation_id"], names), successor_values[0])
         self.assertEqual(len(self._provider_reads("/api/payment-intents/")), 2)
         self.assertEqual(financial_posts(self.request), [])
