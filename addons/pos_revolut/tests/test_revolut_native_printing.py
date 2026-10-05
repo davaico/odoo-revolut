@@ -120,6 +120,56 @@ class TestRevolutNativePrinting(TestPointOfSaleHttpCommon):
         self.assertEqual(self.env["account.move"].search_count([]), moves)
         self.assertEqual(self.original.nb_print, 2)
 
+    def test_conserved_remaining_refund_renders_native_rounding_receipt_after_fresh_load(self):
+        source = self._historical_sale()
+        current_session = self.main_pos_config.current_session_id
+        refunds = self.env["pos.revolut.refund.operation"].sudo()
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+            side_effect=AssertionError("Native rounding receipt fixtures must not contact Merchant API"),
+        ) as merchant:
+            for quantity, minor, label in ((0.25, 309, "Historical quarter return"),
+                                            (0.75, 925, "Historical conserved remaining return")):
+                payload = self._pos_fixture(
+                    TestRevolutOrderSettlement._order_payload, str(uuid4()), str(uuid4()),
+                )
+                payload.update(session_id=current_session.id, state="paid",
+                               amount_total=-minor / 100, amount_paid=-minor / 100, pos_reference=label)
+                line = payload["lines"][0][2]
+                line.update(qty=-quantity, price_subtotal=-12.34 * quantity,
+                            price_subtotal_incl=-12.34 * quantity,
+                            refunded_orderline_id=self.original.lines.id)
+                reference = str(uuid4())
+                payment = payload["payment_ids"][0][2]
+                payment.update(amount=-minor / 100, transaction_id=reference, payment_ref_no=reference,
+                               ticket=f"Revolut refund: {reference}")
+                refund = self.env["pos.revolut.refund.operation"].sudo().create({
+                    "original_operation_id": source.id, "pos_session_id": current_session.id,
+                    "order_uuid": payload["uuid"], "payment_line_uuid": payment["uuid"],
+                    "amount": minor / 100, "amount_minor": minor, "return_total_minor": minor,
+                    "currency_id": current_session.currency_id.id, "state": "verified",
+                    "provider_state": "completed", "verified_at": fields.Datetime.now(),
+                    "revolut_order_id": reference,
+                    "financial_snapshot": self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload),
+                })
+                self.env["pos.order"].sync_from_ui([payload])
+                refund.invalidate_recordset()
+                self.assertTrue(refund.pos_order_id.revolut_return_allocation)
+                self.assertEqual(refund.pos_order_id.amount_total, -minor / 100)
+                refunds |= refund
+            merchant.assert_not_called()
+        returned = refunds[-1].pos_order_id
+        before = returned.read(["amount_total", "amount_tax", "revolut_return_allocation"])
+        line_before = returned.lines.read(["qty", "price_unit", "discount", "tax_ids", "write_date"])
+        refund_before = refunds.read(["amount_minor", "return_total_minor", "revolut_order_id", "financial_snapshot", "write_date"])
+        self._native_tour("pos_revolut_native_conserved_refund_receipt", source)
+        self.assertEqual(returned.read(["amount_total", "amount_tax", "revolut_return_allocation"]), before)
+        self.assertEqual(returned.lines.read(["qty", "price_unit", "discount", "tax_ids", "write_date"]), line_before)
+        self.assertEqual(refunds.read(["amount_minor", "return_total_minor", "revolut_order_id", "financial_snapshot", "write_date"]), refund_before)
+        self.assertEqual(returned.lines.qty, -0.75)
+        self.assertEqual(returned.lines.price_unit, 12.34)
+        self.assertEqual(returned.nb_print, 1)
+
     def test_native_invoice_retrieval_preserves_existing_accounting_document(self):
         # Native download content uses Odoo's HTML fallback in shared-cursor
         # test mode; actual PDF rendering runs in a normal disposable server.
