@@ -56,7 +56,7 @@ class TestExternalNativeConcurrency(TransactionCase):
                 "lines": [Command.create({
                     "product_id": product.id, "qty": 1, "price_unit": 12.34,
                     "price_subtotal": 12.34, "price_subtotal_incl": 12.34,
-                    "tax_ids": [Command.clear()], "uuid": str(uuid4()),
+                    "tax_ids": [Command.set([])], "uuid": str(uuid4()),
                 })],
                 "payment_ids": [Command.create({
                     "payment_method_id": method.id, "amount": 12.34,

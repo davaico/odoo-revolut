@@ -1,5 +1,5 @@
 """Product confirmation and separate accounting from the shared refund list."""
-from odoo import Command, _, fields, models
+from odoo import Command, _, api, fields, models
 from odoo.exceptions import UserError
 
 
@@ -17,6 +17,7 @@ class ExternalRefundWizard(models.TransientModel):
         ("financial", "No products returned"),
     ], default="products", required=True)
     line_ids = fields.One2many("pos.revolut.external.refund.line", "wizard_id")
+    association_line_ids = fields.One2many("pos.revolut.external.refund.association.line", "wizard_id")
     return_order_id = fields.Many2one("pos.order", string="Existing native return")
     payment_id = fields.Many2one("pos.payment", string="Existing card reimbursement")
     base_amount = fields.Monetary(string="Product/base reimbursement")
@@ -42,8 +43,20 @@ class ExternalRefundWizard(models.TransientModel):
         if self.disposition == "existing":
             if not self.return_order_id:
                 raise UserError(_("Select the existing native return and its card reimbursement."))
-            return refund.action_prepare_native_return(return_order_id=self.return_order_id.id,
-                payment_id=self.payment_id.id or None, **components)
+            lines = self.association_line_ids
+            if not lines or refund not in lines.refund_id:
+                raise UserError(_("Include this refund and every external reimbursement belonging to the existing return."))
+            if any(not line.refund_id or not line.payment_id for line in lines):
+                raise UserError(_("Select each external refund and its exact existing card reimbursement."))
+            if len(lines.refund_id) != len(lines) or len(lines.payment_id) != len(lines):
+                raise UserError(_("Select each refund and reimbursement payment only once."))
+            return lines.refund_id.action_associate_native_return(self.return_order_id.id, [
+                {"refund_id": line.refund_id.id, "payment_id": line.payment_id.id, **({
+                    "base_amount_minor": normalize(line.currency_id, line.base_amount)[1],
+                    "tip_amount_minor": normalize(line.currency_id, line.tip_amount)[1],
+                } if line.requires_components else {})}
+                for line in lines
+            ])
         return refund.action_prepare_native_return([
             {"original_line_id": line.original_line_id.id, "quantity": line.quantity,
              "lot_names": [name.strip() for name in (line.lot_names or "").splitlines() if name.strip()]}
@@ -66,6 +79,26 @@ class ExternalRefundLine(models.TransientModel):
     lot_names = fields.Text(string="Original lot / serial names (one per line)")
 
 
+class ExternalRefundAssociationLine(models.TransientModel):
+    _name = "pos.revolut.external.refund.association.line"
+    _description = "Associate an external refund with its existing card reimbursement"
+
+    wizard_id = fields.Many2one("pos.revolut.external.refund.wizard", required=True, ondelete="cascade")
+    refund_id = fields.Many2one("pos.revolut.refund.operation", required=True, string="External refund")
+    payment_id = fields.Many2one("pos.payment", string="Existing card reimbursement")
+    payment_method_id = fields.Many2one(related="refund_id.payment_method_id")
+    currency_id = fields.Many2one(related="refund_id.currency_id")
+    amount = fields.Monetary(related="refund_id.amount")
+    requires_components = fields.Boolean(compute="_compute_requires_components")
+    base_amount = fields.Monetary(string="Product/base reimbursement")
+    tip_amount = fields.Monetary(string="Terminal tip reimbursement")
+
+    @api.depends("refund_id.original_operation_id.terminal_tip_minor")
+    def _compute_requires_components(self):
+        for line in self:
+            line.requires_components = bool(line.refund_id.original_operation_id.terminal_tip_minor)
+
+
 class ExternalRefundActions(models.Model):
     _inherit = "pos.revolut.refund.operation"
 
@@ -82,6 +115,7 @@ class ExternalRefundActions(models.Model):
             "requires_components": bool(self.original_operation_id.terminal_tip_minor),
             "correction_move_id": self.financial_correction_move_id.id or False,
             "disposition": "financial" if self.financial_correction_move_id else "products",
+            "association_line_ids": [Command.create({"refund_id": self.id})],
             "line_ids": [Command.create({"original_line_id": line.id})
                          for line in self.original_order_id.lines if line.qty > 0],
         })

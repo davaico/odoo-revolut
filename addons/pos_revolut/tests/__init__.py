@@ -39,3 +39,4 @@ from . import test_external_native_returns
 from . import test_external_refund_disposition
 from . import test_external_native_stock
 from . import test_external_native_concurrency
+from . import test_external_native_association

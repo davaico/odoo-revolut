@@ -726,7 +726,7 @@ class ReturnAllocation:
                     or (refund.pos_session_id != session and (
                         (refund.state != "verified" and not (refund.origin == "external" and order.get("state") == "draft"))
                         or (refund.pos_session_id.state != "closed" and refund.origin != "external")
-                        or session.state != "opened"
+                        or (session.state != "opened" and not (refund.origin == "external" and existing_order and existing_order.state in {"paid", "done", "invoiced"}))
                         or refund.pos_session_id.config_id != session.config_id
                     ))
                     or refund.currency_id != session.currency_id
