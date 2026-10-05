@@ -101,23 +101,40 @@ class TestRevolutTipRefund(CommonPosTest):
         response.iter_content.return_value = [content]
         return response
 
-    def _terminal_sale(self, tip_minor=200, base_minor=1234, charge_base_minor=None, partner=None):
+    def _terminal_sale(self, tip_minor=200, base_minor=1234, charge_base_minor=None, partner=None, taxes=None, split_lines=False):
         """Capture and report fixture through public preparation/start/poll."""
         from odoo.addons.pos_revolut.models.terminal_tip import REPORT_COLUMNS
+        precision = self.session.currency_id.decimal_places
+        factor = 10 ** precision
         charge_base_minor = base_minor if charge_base_minor is None else charge_base_minor
-        self.product.write({"list_price": base_minor / 100})
+        self.product.write({"list_price": base_minor / factor,
+                            "taxes_id": [Command.set(taxes.ids)] if taxes else [Command.clear()]})
         self.tip_product = self.env["product.product"].create({
             "name": "Verified customer terminal tip", "list_price": 0,
             "taxes_id": [Command.clear()],
         })
         self.pos_config_usd.write({"tip_product_id": self.tip_product.id})
         sale = self._order_payload(str(uuid4()), str(uuid4()), payment_status="waiting")
-        sale.update(state="draft", amount_paid=0, amount_total=base_minor / 100)
+        sale.update(state="draft", amount_paid=0, amount_total=base_minor / factor)
         if partner:
             sale["partner_id"] = partner.id
-        sale["lines"][0][2].update(price_unit=base_minor / 100,
-                                  price_subtotal=base_minor / 100, price_subtotal_incl=base_minor / 100)
-        sale["payment_ids"][0][2].update(transaction_id=False, amount=charge_base_minor / 100)
+        sale["lines"][0][2].update(price_unit=base_minor / factor,
+                                  price_subtotal=base_minor / factor, price_subtotal_incl=base_minor / factor)
+        if taxes:
+            amounts = taxes.compute_all(base_minor / factor, currency=self.session.currency_id,
+                                        quantity=1, product=self.product)
+            sale["lines"][0][2].update(tax_ids=[Command.set(taxes.ids)],
+                                      price_subtotal=amounts["total_excluded"],
+                                      price_subtotal_incl=amounts["total_included"])
+            sale["amount_tax"] = amounts["total_included"] - amounts["total_excluded"]
+        sale["payment_ids"][0][2].update(transaction_id=False, amount=charge_base_minor / factor)
+        if split_lines:
+            self.product.write({"list_price": base_minor / factor / 2})
+            template = deepcopy(sale["lines"][0][2])
+            sale["lines"] = [Command.create(dict(template, uuid=str(uuid4()), qty=1,
+                                                 price_unit=base_minor / factor / 2,
+                                                 price_subtotal=base_minor / factor / 2,
+                                                 price_subtotal_incl=base_minor / factor / 2)) for _ in range(2)]
         saved = self.env["pos.order"].sync_from_ui([sale])
         original = self.env["pos.order"].browse(next(
             item["id"] for item in saved["pos.order"] if item["uuid"] == sale["uuid"]
@@ -125,7 +142,7 @@ class TestRevolutTipRefund(CommonPosTest):
         line_uuid = sale["payment_ids"][0][2]["uuid"]
         prepared = self.env["pos.order"].revolut_prepare_payment(
             original.id, original.uuid, 0,
-            [{"uuid": line_uuid, "payment_method_id": self.revolut_method.id, "amount": charge_base_minor / 100}],
+            [{"uuid": line_uuid, "payment_method_id": self.revolut_method.id, "amount": charge_base_minor / factor}],
         )
         order_id, intent_id, payment_id, report_id = [str(uuid4()) for _ in range(4)]
         self.request.side_effect = [
@@ -134,16 +151,17 @@ class TestRevolutTipRefund(CommonPosTest):
             self._response(id=order_id), self._response(id=intent_id, state="pending"),
         ]
         started = self.revolut_method.revolut_start_payment(
-            self.session.id, original.uuid, line_uuid, charge_base_minor / 100, self.session.currency_id.id,
+            self.session.id, original.uuid, line_uuid, charge_base_minor / factor, self.session.currency_id.id,
             False, False, prepared["authorization_id"], prepared["cart_version"], prepared["tender_revision"],
         )
+        self.assertIn("operation_id", started, started)
         created = "2026-10-01T07:00:00Z"
         gross_minor = charge_base_minor + tip_minor
         row = {
             "payment_id": payment_id, "type": "PAYMENT", "order_id": order_id,
-            "state": "COMPLETED", "amount": f"{gross_minor / 100:.2f}",
+            "state": "COMPLETED", "amount": f"{gross_minor / factor:.{precision}f}",
             "currency": self.session.currency_id.name, "surcharge_amount": "0",
-            "tip_amount": f"{tip_minor / 100:.2f}", "refunded_amount": "0",
+            "tip_amount": f"{tip_minor / factor:.{precision}f}", "refunded_amount": "0",
             "created_date": created, "captured_date": created, "location_id": self.LOCATION_ID,
         }
         csv = (",".join(REPORT_COLUMNS) + "\n" + ",".join(row[name] for name in REPORT_COLUMNS) + "\n").encode()
@@ -166,7 +184,8 @@ class TestRevolutTipRefund(CommonPosTest):
         original.invalidate_recordset()
         # Native checkout uses the server-projected lines and gross tender.
         final = self._order_payload(original.uuid, line_uuid)
-        final.update(id=original.id, state="paid", amount_paid=gross_minor / 100, amount_total=gross_minor / 100)
+        final.update(id=original.id, state="paid", amount_paid=gross_minor / factor,
+                     amount_total=gross_minor / factor, amount_tax=original.amount_tax)
         final["lines"] = [Command.update(line.id, {
             "uuid": line.uuid, "product_id": line.product_id.id, "qty": line.qty,
             "price_unit": line.price_unit, "discount": line.discount,
@@ -175,7 +194,7 @@ class TestRevolutTipRefund(CommonPosTest):
         }) for line in original.lines]
         native_payment = original.payment_ids.filtered(lambda item: item.uuid == line_uuid)
         values = final["payment_ids"][0][2]
-        values.update(amount=gross_minor / 100, transaction_id=payment_id)
+        values.update(amount=gross_minor / factor, transaction_id=payment_id)
         final["payment_ids"] = [Command.update(native_payment.id, values)]
         self.env["pos.order"].sync_from_ui([final])
         self.source = self.env["pos.revolut.payment.operation"].browse(started["operation_id"])
@@ -183,7 +202,7 @@ class TestRevolutTipRefund(CommonPosTest):
         self.original = self.source.pos_order_id
         self.assertEqual(self.original.state, "paid")
         self.assertEqual(self.source.amount_minor, charge_base_minor)
-        self.assertEqual(self.source.pos_payment_id.amount, gross_minor / 100)
+        self.assertEqual(self.source.pos_payment_id.amount, gross_minor / factor)
         self.request.reset_mock(side_effect=True)
         self.env.flush_all()
 
@@ -203,9 +222,14 @@ class TestRevolutTipRefund(CommonPosTest):
                           refunded_orderline_id=original.id,
                           price_subtotal=-quantity * original.price_subtotal,
                           price_subtotal_incl=-quantity * original.price_subtotal_incl)
+            if original.tax_ids:
+                amounts = original.tax_ids.compute_all(original.price_unit, self.session.currency_id,
+                                                       -quantity, product=original.product_id)
+                values.update(price_subtotal=amounts["total_excluded"],
+                              price_subtotal_incl=amounts["total_included"])
             self.payload["lines"].append(Command.create(values))
         total = -(goods_qty * base_line.price_subtotal_incl + tip_qty * tip_line.price_subtotal_incl)
-        paid = -payment_minor / 100 if payment_minor is not None else total
+        paid = -payment_minor / 10 ** self.session.currency_id.decimal_places if payment_minor is not None else total
         self.payload.update(amount_total=total, amount_paid=paid)
         self.payload["payment_ids"][0][2].update(amount=paid, transaction_id=False)
         self.refund_id = str(uuid4())
@@ -409,3 +433,183 @@ class TestRevolutTipRefund(CommonPosTest):
         remaining = self._rpc_refund_sources(self._mutation_actor())[0]
         self.assertEqual((remaining["remaining_base_minor"], remaining["remaining_tip_minor"]), (1234, 200))
         self.request.assert_not_called()
+
+    def test_quarter_then_remaining_return_conserves_native_refund_total(self):
+        self._terminal_sale(tip_minor=0)
+        manager = self._mutation_actor()
+        refunded = 0
+        native_totals = []
+        for quantity, expected in ((0.25, 309), (0.75, 925)):
+            self._tip_return(goods_qty=quantity, tip_qty=0, payment_minor=expected)
+            # Browser native totals round each fraction independently.
+            self.payload["amount_total"] = -3.09 if quantity == 0.25 else -9.26
+            sources = self._rpc_refund_sources(manager)
+            self.assertEqual(sources[0]["return_total_minor"], expected)
+            self.request.side_effect = [
+                self._response(id=self.source.revolut_order_id, state="completed", amount=1234,
+                               currency=self.session.currency_id.name, refunded_amount=refunded),
+                self._refund_response(amount=expected),
+                self._refund_response("completed", amount=expected),
+            ]
+            started = self._start_allocated(expected, 0)
+            payment = self.payload["payment_ids"][0][2]
+            completed = self._rpc_refund(manager, "pos.payment.method", "revolut_poll_refund", [
+                [self.revolut_method.id], started["operation_id"], self.payload["uuid"], payment["uuid"],
+            ])
+            self.assertEqual(completed["state"], "verified")
+            payment.update(payment_status="done", transaction_id=self.refund_id)
+            self._rpc_refund(manager, "pos.order", "sync_from_ui", [[deepcopy(self.payload)]])
+            self.env.invalidate_all()
+            refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
+            self.assertEqual(refund.pos_order_id.state, "paid")
+            native_totals.append(refund.pos_order_id.amount_total)
+            self.assertEqual(refund.pos_payment_id.amount, -expected / 100)
+            refunded += expected
+        posts = [call.kwargs["json"]["amount"] for call in self.request.call_args_list if call.args[0] == "POST"]
+        self.assertEqual(posts, [309, 925])
+        self.assertEqual(native_totals, [-3.09, -9.25])
+        self.assertEqual(refunded, 1234)
+
+    def _complete_rounding_partition(self, manager, expected, refunded, *, invoice=False):
+        factor = 10 ** self.session.currency_id.decimal_places
+        self.payload["amount_total"] = self.session.currency_id.round(self.payload["amount_total"])
+        source = self._rpc_refund_sources(manager)[0]
+        self.assertEqual(source["return_total_minor"], expected)
+        self.request.side_effect = [
+            self._response(id=self.source.revolut_order_id, state="completed", amount=self.source._revolut_paid_minor(),
+                           currency=self.session.currency_id.name, refunded_amount=refunded),
+            self._refund_response(amount=expected), self._refund_response("completed", amount=expected),
+        ]
+        started = self._start_allocated(expected, 0)
+        payment = self.payload["payment_ids"][0][2]
+        args = [[self.revolut_method.id], self.session.id, self.payload["uuid"], payment["uuid"],
+                payment["amount"], self.session.currency_id.id, self.payload, self.source.id, expected, 0]
+        self.assertEqual(self._rpc_refund(manager, "pos.payment.method", "revolut_start_refund", args)["operation_id"],
+                         started["operation_id"])
+        completed = self._rpc_refund(manager, "pos.payment.method", "revolut_poll_refund", [
+            [self.revolut_method.id], started["operation_id"], self.payload["uuid"], payment["uuid"],
+        ])
+        self.assertEqual(completed["state"], "verified")
+        self.payload["amount_total"] = -expected / factor
+        payment.update(payment_status="done", transaction_id=self.refund_id)
+        self._rpc_refund(manager, "pos.order", "sync_from_ui", [[deepcopy(self.payload)]])
+        self.env.invalidate_all()
+        refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
+        order = refund.pos_order_id
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(order.amount_total, -expected / factor)
+        self.assertEqual(order.payment_ids.amount, -expected / factor)
+        data = self._rpc_refund(manager, "pos.order", "read_pos_data_uuid", [order.uuid])
+        returned = next(row for row in data["pos.order"] if row["uuid"] == order.uuid)
+        self.assertEqual(returned["amount_total"], -expected / factor)
+        self.assertEqual(returned["revolut_payable_target"], -expected / factor)
+        self.assertEqual(order.lines.qty, self.payload["lines"][0][2]["qty"])
+        self.assertEqual(order.lines.price_unit, self.original.lines.price_unit)
+        self.assertEqual(order.lines.discount, self.original.lines.discount)
+        self.assertEqual(order.lines.tax_ids, self.original.lines.tax_ids)
+        if invoice:
+            result = order.with_context(generate_pdf=False).action_pos_order_invoice()
+            move = self.env["account.move"].browse(result["res_id"])
+            self.assertEqual(move.state, "posted")
+            self.assertEqual(move.move_type, "out_refund")
+            self.assertEqual(move.amount_total, expected / factor)
+            self.assertEqual(move.amount_tax, 0)
+            self.assertAlmostEqual(sum(move.line_ids.mapped("balance")), 0, places=6)
+        return refund
+
+    def test_rounding_partitions_reverse_order_and_downward_remainder(self):
+        for original_minor, quantities, expected in (
+            (1234, [0.75, 0.25], [926, 308]),
+            (1234, [0.25, 0.25, 0.25, 0.25], [309, 308, 309, 308]),
+            (1233, [0.25, 0.75], [308, 925]),
+        ):
+            with self.subTest(original_minor=original_minor, quantities=quantities):
+                self._terminal_sale(tip_minor=0, base_minor=original_minor, partner=self.partner_mobt)
+                manager = self._mutation_actor()
+                refunded = 0
+                before = len(self.request.call_args_list)
+                for quantity, amount in zip(quantities, expected):
+                    self._tip_return(goods_qty=quantity, tip_qty=0, payment_minor=amount)
+                    self.payload["partner_id"] = self.partner_mobt.id
+                    self._complete_rounding_partition(manager, amount, refunded, invoice=True)
+                    refunded += amount
+                self.assertEqual(refunded, original_minor)
+                posts = [call.kwargs["json"]["amount"] for call in self.request.call_args_list[before:]
+                         if call.args[0] == "POST"]
+                self.assertEqual(posts, expected)
+
+    def test_rounding_partitions_zero_and_three_decimal_currencies(self):
+        for quantum in (1, 0.001):
+            with self.subTest(quantum=quantum):
+                self.env["decimal.precision"].search([("name", "=", "Product Price")]).write({"digits": 3})
+                self.session.currency_id.write({"rounding": quantum})
+                self._terminal_sale(tip_minor=0)
+                manager = self._mutation_actor()
+                refunded = 0
+                for quantity, amount in ((0.25, 309), (0.75, 925)):
+                    self._tip_return(goods_qty=quantity, tip_qty=0, payment_minor=amount)
+                    self._complete_rounding_partition(manager, amount, refunded)
+                    refunded += amount
+                self.assertEqual(refunded, 1234)
+
+    def test_stale_remaining_rounding_selection_is_rejected_before_dispatch(self):
+        from odoo.exceptions import UserError
+        self._terminal_sale(tip_minor=0)
+        manager = self._mutation_actor()
+        self._tip_return(goods_qty=0.75, tip_qty=0, payment_minor=926)
+        stale = deepcopy(self.payload)
+        stale["amount_total"] = -9.26
+        self.assertEqual(self._rpc_refund_sources(manager, stale)[0]["return_total_minor"], 926)
+        self._tip_return(goods_qty=0.25, tip_qty=0, payment_minor=309)
+        self.payload["amount_total"] = -3.09
+        self.request.side_effect = [
+            self._response(id=self.source.revolut_order_id, state="completed", amount=1234,
+                           currency=self.session.currency_id.name, refunded_amount=0),
+            self._refund_response(amount=309),
+        ]
+        self._start_allocated(309, 0)
+        before = self.request.call_count
+        self.payload = stale
+        with self.assertRaises(UserError):
+            self._start_allocated(926, 0)
+        self.assertEqual(self.request.call_count, before)
+
+    def test_native_session_closes_with_conserved_partial_return_bases(self):
+        self._terminal_sale(tip_minor=0)
+        manager = self._mutation_actor()
+        for quantity, amount, prior in ((0.25, 309, 0), (0.75, 925, 309)):
+            self._tip_return(goods_qty=quantity, tip_qty=0, payment_minor=amount)
+            self._complete_rounding_partition(manager, amount, prior)
+        result = self.session.close_session_from_ui()
+        self.assertEqual(self.session.state, "closed", result)
+        if self.session.move_id:
+            self.assertEqual(self.session.move_id.state, "posted")
+            self.assertAlmostEqual(sum(self.session.move_id.line_ids.mapped("balance")), 0, places=6)
+
+    def test_taxed_partial_returns_preserve_native_tax_and_credit_note_totals(self):
+        tax = self.env["account.tax"].create({
+            "name": "Conserved return included twenty", "amount": 20,
+            "amount_type": "percent", "company_id": self.company.id,
+            "price_include_override": "tax_included",
+        })
+        for mode in ("round_per_line", "round_globally"):
+            with self.subTest(mode=mode):
+                self.company.write({"tax_calculation_rounding_method": mode})
+                self._terminal_sale(tip_minor=0, partner=self.partner_mobt, taxes=tax)
+                manager = self._mutation_actor()
+                expected_taxes = (0.52, 1.54) if mode == "round_per_line" else (0.51, 1.54)
+                for quantity, amount, prior, expected_tax in (
+                    (0.25, 309, 0, expected_taxes[0]), (0.75, 925, 309, expected_taxes[1]),
+                ):
+                    self._tip_return(goods_qty=quantity, tip_qty=0, payment_minor=amount)
+                    self.payload["partner_id"] = self.partner_mobt.id
+                    refund = self._complete_rounding_partition(manager, amount, prior)
+                    order = refund.pos_order_id
+                    self.assertEqual(order.amount_tax, -expected_tax)
+                    result = order.with_context(generate_pdf=False).action_pos_order_invoice()
+                    move = self.env["account.move"].browse(result["res_id"])
+                    self.assertEqual(move.state, "posted")
+                    self.assertEqual(move.amount_total, amount / 100)
+                    self.assertEqual(move.amount_tax, expected_tax)
+                    self.assertAlmostEqual(move.amount_untaxed + move.amount_tax, move.amount_total, places=6)
+                    self.assertAlmostEqual(sum(move.line_ids.mapped("balance")), 0, places=6)

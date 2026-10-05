@@ -2,9 +2,9 @@
 
 # 40 — Conserve rounding across partial refunds
 
-**Work branch:** `codex/40-conserve-partial-refund-rounding` (not created)
+**Work branch:** `codex/40-conserve-partial-refund-rounding`
 
-**State:** open
+**State:** claimed
 
 **Category:** bug
 

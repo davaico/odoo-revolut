@@ -939,3 +939,12 @@ See [ticket 38 evidence](testing/ticket-38-payment-observations.md) for elapsed
 phase budgets, remaining physical HTTP overlap after expiry, recovery delays
 and the mocked two-worker acceptance probe. Ticket 12 retains rollout and
 physical-terminal acceptance.
+
+
+## Conserved fractional returns (`19.0.1.16.0`)
+
+Upgrade the addon with the normal stopped-service procedure. This version adds immutable per-line refund allocation evidence and native return/accounting authority fields; it does not backfill older financial records. No new credential or terminal setting is required.
+
+Fractional returns allocate remaining cents across remaining original quantity. A 12.34 sale returned as one quarter and then the remainder refunds 3.09 and 9.25. Saved totals, original tender limits and native credit notes use the accepted target; the receipt displays any rounding difference while original quantities, prices, discounts and taxes stay fixed. Pending or uncertain refunds retain their capacity until reconciled. A definitively failed earlier refund releases capacity without repricing another dispatched return.
+
+Older single-line records can establish remaining entitlement from recorded completed totals. Ambiguous multi-line history or a missing historical rounding basis requires manager reconciliation before another refund. Preserve the existing operations and references; do not create replacement refunds to repair history. Existing uncertain attempts remain recoverable by their original identity. Conserved returns must be invoiced separately from ordinary orders; manual credit-note reversals are not verified by this change. See the [allocation, native accounting and verification record](testing/ticket-40-return-rounding.md).
