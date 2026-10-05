@@ -42,7 +42,12 @@ with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
             # write timestamps, reproduced on unchanged main.
             # Financial values, references, identities and dates stay exact.
             expected.pop("write_date", None)
-        actual = json.loads(json.dumps(record.read(list(expected))[0], default=str))
+        # Many2one display names are derived UI labels and may improve during
+        # an upgrade. Preserve the stored relation identity, not its label.
+        for name, value in expected.items():
+            if record._fields[name].type == "many2one" and value:
+                expected[name] = value[0]
+        actual = json.loads(json.dumps(record.read(list(expected), load=None)[0], default=str))
         assert actual == expected, (row["model"], actual, expected)
         if row["model"] == "ir.attachment":
             assert record.checksum == fixture["attachment_checksum"]
