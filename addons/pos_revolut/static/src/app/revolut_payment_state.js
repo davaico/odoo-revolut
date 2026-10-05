@@ -368,6 +368,15 @@ export class RevolutPaymentState {
                         this.showError(line, "authority_required");
                         return false;
                     }
+                    // Saving and authorizing a draft is still preparation.
+                    // Settle before dispatch so cancellation can await this
+                    // request without the request awaiting cancellation.
+                    if (owner.cancelDiscovery) {
+                        if (!previousSnapshot) {
+                            line.uiState.revolutLocalOutcome = "discovery_cancelled";
+                        }
+                        return false;
+                    }
                 }
                 line.uiState.revolutPreviousOperationId = previousOperationId;
                 line.uiState.revolutSnapshot = false;
@@ -512,10 +521,17 @@ export class RevolutPaymentState {
         }
         let cancellation;
         if (owner.request && line.uiState.revolutDiscovering) {
-            // Stop this read-only discovery before it can dispatch. Share its
+            // Stop discovery/preparation before it can dispatch. Share its
             // result so cancellation cannot race a second lookup against it.
             owner.cancelDiscovery = true;
-            cancellation = owner.request.then(() => this.cancelDiscovered(owner));
+            cancellation = owner.request.then(() => {
+                // Cancelling preparation of a retry leaves the already-final
+                // prior attempt intact; no new attempt needs cancellation.
+                if (!isRevolutRefund(line) && line.uiState.revolutSnapshot?.retry_safe === true) {
+                    return true;
+                }
+                return this.cancelDiscovered(owner);
+            });
         } else {
             cancellation = this.cancelDiscovered(owner);
         }
