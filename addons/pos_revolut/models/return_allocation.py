@@ -360,6 +360,36 @@ class ReturnAllocation:
                 raise UserError(_("The existing refund has different return details."))
             return ReservationClaim(existing.id, existing_status=existing._snapshot())
 
+        # Native order, line and payment mutations take this same UUID lock.
+        # Read saved evidence only after locking; existing attempts above remain
+        # recoverable even when their pre-upgrade browser draft was lost.
+        return_order = self.env["pos.order"].sudo().search([
+            ("company_id", "=", session.company_id.id), ("uuid", "=", order_uuid),
+        ], limit=1).with_env(self.env)
+        if not return_order:
+            raise UserError(_("Save the return in the POS before starting its Revolut refund."))
+
+        return_order.check_access("read")
+        session.config_id._check_revolut_register_access(session=session, order=return_order)
+        if (return_order.state != "draft" or return_order.session_id != session
+                or return_order.config_id != session.config_id
+                or return_order.company_id != session.company_id or return_order.currency_id != currency
+                or self._normalize_return(return_order._revolut_order_values(), native_order=True) != snapshot):
+            raise UserError(_("The saved return changed. Reopen it in the POS and save it before refunding."))
+        normalize = charges.normalize_amount
+        saved_total = normalize(currency, return_order.amount_total)[1]
+        if saved_total >= 0:
+            raise UserError(_("The saved return must have a negative total. Correct and save it before refunding."))
+        self._check_total(snapshot, original, currency, -saved_total)
+        payment = return_order.payment_ids.filtered(lambda item: item.uuid == payment_line_uuid)
+        if (len(payment) != 1 or payment.payment_method_id != method
+                or payment.company_id != session.company_id or payment.session_id != session
+                or normalize(currency, payment.amount)[1] != -minor
+                or payment.payment_status in {"done", "reversed"}
+                or payment.transaction_id or payment.revolut_operation_id or payment.revolut_refund_operation_id
+                or payment.revolut_order_id or payment.revolut_payment_intent_id or payment.payment_ref_no):
+            raise UserError(_("The saved return payment does not match this refund. Save the selected payment line before refunding."))
+
         source = self._validate_original(snapshot, method, session, minor, original_operation_id)
         self._lock_original_return(snapshot, original, order_uuid)
         # Lock the selected source after the original sale, in the same order
