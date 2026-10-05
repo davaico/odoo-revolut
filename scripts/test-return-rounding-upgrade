@@ -4,7 +4,7 @@ set -euo pipefail
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 project_name="${ODOO_REVOLUT_TEST_PROJECT:-odoo-revolut-return-rounding-upgrade}"
 database_name="odoo_revolut_return_rounding_upgrade"
-old_revision="3dd7affc7c078c9dbaa88c562a59e43e9807c80e"
+old_revision="7df76793d7bd772af69b1e3e5054c96d9c69b84b"
 old_tree="$(mktemp -d)"
 compose=(docker compose --project-name "$project_name" --file "$repository_root/compose.yaml")
 
