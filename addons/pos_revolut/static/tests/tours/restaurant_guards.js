@@ -1,7 +1,5 @@
 import * as Dialog from "@point_of_sale/../tests/generic_helpers/dialog_util";
 import { registry } from "@web/core/registry";
-import { TipScreen } from "@pos_restaurant/app/screens/tip_screen/tip_screen";
-import { SplitBillScreen } from "@pos_restaurant/app/screens/split_bill_screen/split_bill_screen";
 
 registry.category("web_tour.tours").add("pos_revolut_restaurant_guards", {
     steps: () => [
@@ -80,6 +78,7 @@ registry.category("web_tour.tours").add("pos_revolut_restaurant_guards", {
             trigger: ".floor-screen .floor-map",
             async run() {
                 const { source } = window.revolutRestaurantGuardOrders;
+                const SplitBillScreen = registry.category("pos_pages").get("SplitBillScreen").component;
                 const result = await SplitBillScreen.prototype.paySplittedOrder.call({
                     currentOrder: source,
                     pos: window.posmodel,
@@ -96,6 +95,7 @@ registry.category("web_tour.tours").add("pos_revolut_restaurant_guards", {
             trigger: ".floor-screen .floor-map",
             async run() {
                 const { source } = window.revolutRestaurantGuardOrders;
+                const SplitBillScreen = registry.category("pos_pages").get("SplitBillScreen").component;
                 const result = await SplitBillScreen.prototype.transferSplittedOrder.call({
                     currentOrder: source,
                     pos: window.posmodel,
@@ -112,6 +112,7 @@ registry.category("web_tour.tours").add("pos_revolut_restaurant_guards", {
             trigger: ".floor-screen .floor-map",
             async run() {
                 const { source } = window.revolutRestaurantGuardOrders;
+                const TipScreen = registry.category("pos_pages").get("TipScreen").component;
                 const result = await TipScreen.prototype.validateTip.call({
                     pos: { getOrder: () => source },
                     dialog: window.posmodel.dialog,

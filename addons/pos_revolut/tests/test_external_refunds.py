@@ -27,6 +27,7 @@ class TestExternalRefunds(CommonPosTest):
     _response = TestRevolutRefund._response
     _refund_response = TestRevolutRefund._refund_response
     _split_original = TestRevolutRefund._split_original
+    _save_return_draft = TestRevolutRefund._save_return_draft
     _start = TestRevolutRefund._start
     _mutation_actor = TestRevolutRefund._mutation_actor
     _rpc_refund = TestRevolutRefund._rpc_refund

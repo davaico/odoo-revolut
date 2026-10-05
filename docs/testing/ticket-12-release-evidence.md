@@ -751,3 +751,27 @@ or physical terminal retest was performed. Screenshot evidence is
 `/tmp/refund-final-migration.log` and `/tmp/refund-repair-deployment.log`.
 Ticket 12 remains open until the restored receipt and its other outstanding
 physical/release gates are accepted.
+
+## Saved-return server protection — 2026-10-05
+
+Candidate `19.0.1.15.1` requires a saved, matching native draft and selected
+negative payment line before starting any new refund. Existing operation
+replay and manager recovery preserve their original references without new
+dispatch. The POS already saves the draft automatically; this adds no operator
+step or register permission. Direct authenticated API regressions prove
+missing or mismatched drafts reject before any mocked provider request.
+
+The [candidate verification record](refund-saved-return.md#final-candidate--2026-10-05)
+records 478 install and 478 upgrade tests, 80 exact-archive acceptance checks,
+79 POS lifecycle tests and zero remaining Standards or Spec findings. These
+checks include the consolidated addon from merged PR #44.
+
+Deployment stopped at the initial financial preflight: 15 unresolved external
+discovery evidence records blocked rollout. Read-only inspection found nine
+unmatched-source records and six original-authority conflicts; the latter
+refer to verified legacy originals without a bound credential authority.
+This is not proof of 15 pending refunds. No financial record, permission or
+credential attribution was changed. Staging remains `19.0.1.14.1`, so the new
+server protection is not yet active there. The [deployment checkpoint](refund-saved-return.md#guarded-deployment-stopped--2026-10-05)
+preserves the blocker and exact candidate revision. Reconciliation and a
+successful guarded deployment remain required; ticket 12 stays open.
