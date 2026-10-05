@@ -1239,5 +1239,19 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.assertEqual(refunds.pos_payment_id.transaction_id, self.REFUND_ID)
         self.assertEqual(refunds.pos_payment_id.payment_ref_no, self.REFUND_ID)
 
+    def test_completed_refund_recovers_from_saved_return_without_browser_state(self):
+        self._run_full_refund("pos_revolut_refund_server_recovery")
+        self.env.invalidate_all()
+        refunds = self.env["pos.revolut.refund.operation"].search([
+            ("revolut_order_id", "=", self.REFUND_ID),
+        ])
+        self.assertEqual(len(refunds), 1)
+        self.assertEqual(refunds.state, "verified")
+        self.assertEqual(refunds.pos_order_id.state, "paid")
+        self.assertEqual(refunds.pos_order_id.uuid, refunds.order_uuid)
+        self.assertEqual(refunds.pos_payment_id.uuid, refunds.payment_line_uuid)
+        self.assertEqual(refunds.pos_payment_id.transaction_id, self.REFUND_ID)
+        self.assertEqual(refunds.pos_payment_id.payment_ref_no, self.REFUND_ID)
+
     def test_failed_refund_stays_unpaid_and_cannot_be_substituted(self):
         self._run_full_refund("pos_revolut_refund_failed", "failed")

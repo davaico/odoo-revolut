@@ -1,3 +1,4 @@
+import json
 import os
 from copy import deepcopy
 from unittest.mock import Mock, patch
@@ -348,7 +349,11 @@ class TestRevolutRefund(CommonPosTest):
         self.assertEqual(self._poll(started)["state"], "verified")
         refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
         original_session = self.session
-        original_session.write({"state": "closed"})
+        # Historical versions allowed a completed refund to outlive its session.
+        self.env.flush_all()
+        self.env.cr.execute("UPDATE pos_session SET state = 'closed' WHERE id = %s", [original_session.id])
+        original_session.invalidate_recordset()
+        original_session.modified(["state"])
         self.pos_config_usd.open_ui()
         reopened_session = self.pos_config_usd.current_session_id
         reopened_session.write({"state": "opened"})
@@ -374,6 +379,144 @@ class TestRevolutRefund(CommonPosTest):
         self.assertEqual(refund.pos_payment_id, order.payment_ids)
         self.request.assert_not_called()
 
+    def test_manager_recovers_lost_return_without_another_refund(self):
+        manager = self._mutation_actor()
+        started = self._pending()
+        self.request.side_effect = [self._refund_response("completed")]
+        self.assertEqual(self._poll(started)["state"], "verified")
+        refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
+        snapshot = deepcopy(refund.financial_snapshot)
+        key = refund.idempotency_key
+        self.request.reset_mock()
+
+        action = self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refund.id]])
+        recovered = self.env["pos.order"].search([("uuid", "=", self.payload["uuid"])])
+        self.assertEqual(len(recovered), 1)
+        self.assertEqual(recovered.state, "draft")
+        self.assertEqual(recovered.amount_total, -12.34)
+        self.assertEqual(recovered.payment_ids.amount, -12.34)
+        self.assertEqual(recovered.payment_ids.payment_status, "done")
+        self.assertEqual(recovered.payment_ids.uuid, refund.payment_line_uuid)
+        self.assertEqual(recovered.lines.uuid, self.payload["lines"][0][2]["uuid"])
+        self.assertEqual(recovered.lines.refunded_orderline_id, self.original.lines)
+        self.assertEqual(refund.pos_order_id, recovered)
+        self.assertEqual(refund.pos_payment_id, recovered.payment_ids)
+        self.assertEqual(refund.financial_snapshot, snapshot)
+        self.assertEqual(refund.idempotency_key, key)
+        self.assertEqual(action["url"], f"/pos/ui/{self.pos_config_usd.id}/payment/{recovered.uuid}")
+        self.assertFalse(recovered.picking_ids)
+        self.assertFalse(recovered.account_move)
+        self.request.assert_not_called()
+
+        payment_ids = recovered.payment_ids.ids
+        repeated = self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refund.id]])
+        self.assertEqual(repeated, action)
+        self.assertEqual(recovered.payment_ids.ids, payment_ids)
+        self.assertEqual(self.env["pos.order"].search_count([("uuid", "=", recovered.uuid)]), 1)
+        self.request.assert_not_called()
+
+    def _lost_split_refunds(self, second_revolut=True):
+        first_source, second_source = self._split_original(second_revolut=second_revolut)
+        snapshot = self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(self.payload)
+        return self.env["pos.revolut.refund.operation"].sudo().create([{
+            "original_operation_id": source.id, "pos_session_id": self.session.id,
+            "order_uuid": self.payload["uuid"], "payment_line_uuid": str(uuid4()),
+            "amount": 6.17, "amount_minor": 617, "return_total_minor": 1234,
+            "currency_id": self.session.currency_id.id, "financial_snapshot": snapshot,
+            "state": "verified", "provider_state": "completed", "revolut_order_id": str(uuid4()),
+        } for source in (first_source, second_source) if source])
+
+    def test_recovery_restores_both_completed_allocations_after_session_rollover(self):
+        refunds = self._lost_split_refunds()
+        old_session = self.session
+        # Historical versions allowed a completed refund to outlive its session.
+        self.env.flush_all()
+        self.env.cr.execute("UPDATE pos_session SET state = 'closed' WHERE id = %s", [old_session.id])
+        old_session.invalidate_recordset()
+        old_session.modified(["state"])
+        self.pos_config_usd.open_ui()
+        reopened = self.pos_config_usd.current_session_id
+        reopened.write({"state": "opened"})
+        manager = self._mutation_actor()
+        before = [(refund.payment_line_uuid, refund.revolut_order_id, refund.idempotency_key) for refund in refunds]
+        action = self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refunds[1].id]])
+        order = self.env["pos.order"].search([("uuid", "=", self.payload["uuid"])])
+        self.assertEqual(order.session_id, reopened)
+        self.assertEqual(order.state, "draft")
+        self.assertEqual(order.amount_total, -12.34)
+        self.assertEqual(order.amount_paid, -12.34)
+        self.assertEqual(len(order.payment_ids), 2)
+        self.assertEqual(set(order.payment_ids.mapped("revolut_refund_operation_id").ids), set(refunds.ids))
+        self.assertEqual(refunds.mapped("pos_session_id"), old_session)
+        self.assertEqual([(refund.payment_line_uuid, refund.revolut_order_id, refund.idempotency_key) for refund in refunds], before)
+        self.assertEqual(self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refunds[0].id]]), action)
+
+        self._rpc_refund(manager, "pos.order", "action_pos_order_paid", [[order.id]])
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(self.env["pos.order"].search_count([("uuid", "=", order.uuid)]), 1)
+        self.assertEqual(self.env["pos.revolut.refund.operation"].search_count([("order_uuid", "=", order.uuid)]), 2)
+        self.request.assert_not_called()
+
+    def test_recovery_does_not_invent_the_cash_share_of_a_mixed_return(self):
+        refund = self._lost_split_refunds(second_revolut=False)
+        manager = self._mutation_actor()
+        self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refund.id]])
+        order = refund.pos_order_id
+        self.assertEqual(order.state, "draft")
+        self.assertEqual(order.amount_total, -12.34)
+        self.assertEqual(order.amount_paid, -6.17)
+        self.assertEqual(order.payment_ids.payment_method_id, self.revolut_method)
+        with self.assertRaises(UserError):
+            self._rpc_refund(manager, "pos.order", "action_pos_order_paid", [[order.id]])
+        self.assertEqual(order.state, "draft")
+        self.request.assert_not_called()
+
+    def test_recovery_cannot_hide_an_uncertain_sibling_or_change_the_return(self):
+        refunds = self._lost_split_refunds()
+        manager = self._mutation_actor()
+        second_snapshot = deepcopy(refunds[1].financial_snapshot)
+        second_snapshot["lines"][0]["qty"] = "-0.5"
+        # Model invariants forbid editing these facts. Seed legacy inconsistent
+        # database evidence to prove recovery fails closed without native work.
+        for values in ({"state": "pending"}, {"financial_snapshot": second_snapshot}):
+            with self.subTest(values=list(values)):
+                if "financial_snapshot" in values:
+                    self.env.cr.execute("UPDATE pos_revolut_refund_operation SET state = 'verified', financial_snapshot = %s WHERE id = %s",
+                                        [json.dumps(second_snapshot), refunds[1].id])
+                else:
+                    refunds[1].write(values)
+                refunds.invalidate_recordset()
+                with self.assertRaises(UserError):
+                    self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refunds[0].id]])
+                self.assertFalse(self.env["pos.order"].search_count([("uuid", "=", self.payload["uuid"])]))
+                self.request.assert_not_called()
+
+    def test_cashier_cannot_recover_a_lost_return(self):
+        refunds = self._lost_split_refunds()
+        cashier = self._mutation_actor(manager=False)
+        with self.assertRaises(AccessError):
+            self._rpc_refund(cashier, "pos.revolut.refund.operation", "action_recover_return", [[refunds[0].id]])
+        self.assertFalse(self.env["pos.order"].search_count([("uuid", "=", self.payload["uuid"])]))
+        self.request.assert_not_called()
+
+    def test_recovery_requires_the_original_register_grant(self):
+        refunds = self._lost_split_refunds()
+        manager = self._mutation_actor()
+        self.pos_config_usd.sudo().write({"revolut_user_ids": [Command.unlink(manager.id)]})
+        with self.assertRaises(AccessError):
+            self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refunds[0].id]])
+        self.assertFalse(self.env["pos.order"].search_count([("uuid", "=", self.payload["uuid"])]))
+        self.request.assert_not_called()
+
+    def test_recovery_requires_original_lot_details_for_tracked_products(self):
+        refunds = self._lost_split_refunds()
+        self.product.write({"tracking": "serial"})
+        manager = self._mutation_actor()
+        with self.assertRaisesRegex(UserError, "original lot details"):
+            self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refunds[0].id]])
+        self.assertFalse(self.env["pos.order"].search_count([("uuid", "=", self.payload["uuid"])]))
+        self.request.assert_not_called()
+
     def test_second_allocation_uses_verified_refund_from_closed_same_register_session(self):
         first_source, second_source = self._split_original(second_revolut=True)
         first_line = self.payload["payment_ids"][0][2]
@@ -395,7 +538,11 @@ class TestRevolutRefund(CommonPosTest):
         )["state"], "verified")
         first_line.update(payment_status="done", transaction_id=self.refund_id)
         prior_session = self.session
-        prior_session.write({"state": "closed"})
+        # Historical versions allowed a completed refund to outlive its session.
+        self.env.flush_all()
+        self.env.cr.execute("UPDATE pos_session SET state = 'closed' WHERE id = %s", [prior_session.id])
+        prior_session.invalidate_recordset()
+        prior_session.modified(["state"])
         other_config = self.pos_config_usd.copy({"name": "Other split-refund register"})
         other_config.sudo().write({"revolut_user_ids": [Command.link(self.env.uid)]})
         other_config.open_ui()
@@ -475,7 +622,10 @@ class TestRevolutRefund(CommonPosTest):
         self.request.side_effect = [self._refund_response("completed")]
         self.assertEqual(self._poll(started)["state"], "verified")
         refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
-        self.session.write({"state": "closed"})
+        self.env.flush_all()
+        self.env.cr.execute("UPDATE pos_session SET state = 'closed' WHERE id = %s", [self.session.id])
+        self.session.invalidate_recordset()
+        self.session.modified(["state"])
         other_config = self.pos_config_usd.copy({"name": "Other refund register"})
         other_config.sudo().write({
             "revolut_user_ids": [Command.set((self.env.user | manager).ids)],

@@ -302,6 +302,12 @@ class ReturnAllocation:
             ("company_id", "=", session.company_id.id), ("uuid", "=", order_uuid),
         ], limit=1).with_env(self.env)
         session.config_id._check_revolut_register_access(session=session, order=return_order)
+        # Closure takes the session lock before examining its order claims.
+        # Recheck here: the outer RPC's session check may already be stale.
+        self.env.cr.execute("UPDATE pos_session SET write_date = write_date WHERE id = %s", [session.id])
+        session.invalidate_recordset()
+        if session.state != "opened":
+            raise UserError(_("The Point of Sale session is not open."))
         prior_refunds = self.env["pos.revolut.refund.operation"].sudo().search([
             ("company_id", "=", session.company_id.id), ("order_uuid", "=", order_uuid),
         ])
