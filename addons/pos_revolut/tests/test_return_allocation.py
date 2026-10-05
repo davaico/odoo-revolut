@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from odoo import Command
 from odoo.addons.point_of_sale.tests.common import CommonPosTest
-from odoo.exceptions import UserError
+from odoo.exceptions import AccessError, UserError
 from odoo.tests.common import tagged
 
 from .test_revolut_tip_refund import TestRevolutTipRefund
@@ -72,6 +72,30 @@ class TestReturnAllocation(CommonPosTest):
             self._refund_response(amount=amount),
         ]
         return self._start_allocated(amount, 0)
+
+    def test_native_readonly_allocation_echo_cannot_create_or_clear_authority(self):
+        self._terminal_sale(tip_minor=0)
+        manager = self._mutation_actor()
+        self._tip_return(goods_qty=0.25, tip_qty=0, payment_minor=309)
+        self.payload["revolut_return_allocation"] = False
+        self._save_return_draft(actor=manager)
+        draft = self.env["pos.order"].browse(self.payload["id"])
+        draft.invalidate_recordset()
+        self.assertEqual(sum(row["base_minor"] for row in draft.revolut_return_allocation), 309)
+        self.assertEqual(draft.amount_total, -3.09)
+        authority = deepcopy(draft.revolut_return_allocation)
+        with self.assertRaisesRegex(AccessError, "server-owned"):
+            self._rpc_refund(manager, "pos.order", "write", [[draft.id], {
+                "revolut_return_allocation": False,
+            }])
+        forged = deepcopy(self.payload)
+        forged.update(state="draft", amount_paid=0, lines=[], payment_ids=[],
+                      revolut_return_allocation=[dict(authority[0], base_minor=310)])
+        with self.assertRaisesRegex(AccessError, "server-owned"):
+            self._rpc_refund(manager, "pos.order", "sync_from_ui", [[forged]])
+        self.payload["revolut_return_allocation"] = authority
+        returned = self._complete_rounding_partition(manager, 309, 0)
+        self.assertEqual(returned.pos_order_id.revolut_return_allocation, authority)
 
     def test_failed_earlier_claim_releases_without_repricing_survivor(self):
         self._terminal_sale(tip_minor=0)

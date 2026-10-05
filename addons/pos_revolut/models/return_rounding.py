@@ -42,6 +42,16 @@ class PosOrder(models.Model):
             raise AccessError(_("Return allocation is server-owned."))
         return super().write(values)
 
+    def _process_order(self, order, existing_order):
+        # Native POS serializes loaded readonly fields, including an empty
+        # allocation on ordinary sales. Accept an unchanged echo at this
+        # transport boundary; create/write still require private authority.
+        order = dict(order)
+        allocation = order.pop("revolut_return_allocation", None)
+        if allocation and (not existing_order or allocation != existing_order.revolut_return_allocation):
+            raise AccessError(_("Return allocation is server-owned."))
+        return super()._process_order(order, existing_order)
+
     def _revolut_freeze_return_allocation(self, allocation):
         self.ensure_one()
         if self.revolut_return_allocation and self.revolut_return_allocation != allocation:
@@ -53,7 +63,13 @@ class PosOrder(models.Model):
             if self.state in {"paid", "done"} or active:
                 raise UserError(_("The accepted return allocation cannot change."))
         with _return_projection(self.env):
-            self.write({"revolut_return_allocation": allocation})
+            # Pinned Monetary._filter_not_equal treats a raw browser subtotal
+            # as unchanged when its rounded value matches. Clear that cached
+            # fraction so an explicit write persists the accepted cents.
+            target = -sum(row["base_minor"] + row["tip_minor"] for row in allocation)
+            self.invalidate_recordset(["amount_total"])
+            self.write({"revolut_return_allocation": allocation,
+                        "amount_total": target / (10 ** self.currency_id.decimal_places)})
         self.invalidate_recordset(["revolut_payable_target", "revolut_has_authority_exposure"])
         self._compute_prices()
 
