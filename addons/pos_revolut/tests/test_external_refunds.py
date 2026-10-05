@@ -906,6 +906,27 @@ class TestExternalRefunds(CommonPosTest):
                 ])
                 self.assertTrue(evidence.deployment_blocking)
                 self.assertNotEqual(evidence.reason, "outside_integration_location")
+        for identity in ("provider_id", "merchant_key"):
+            for parent_pattern in ("both", "list_only", "detail_only"):
+                with self.subTest(identity=identity, parent_pattern=parent_pattern):
+                    reference = refund.revolut_order_id if identity == "provider_id" else str(uuid4())
+                    merchant = {"reference": refund.idempotency_key} if identity == "merchant_key" else {}
+                    candidate = self._external("completed", amount=100, id=reference,
+                                               related_order_id=str(uuid4()),
+                                               location_id=str(uuid4()), merchant_order_data=merchant)
+                    detail = dict(candidate)
+                    if parent_pattern == "list_only":
+                        detail.pop("related_order_id")
+                    elif parent_pattern == "detail_only":
+                        candidate.pop("related_order_id")
+                    self._discover([candidate], {reference: detail})
+                    evidence = self.env["pos.revolut.external.refund.evidence"].sudo().search([
+                        ("provider_order_id", "=", reference),
+                    ])
+                    self.assertTrue(evidence.deployment_blocking)
+                    self.assertNotEqual(evidence.reason, "unrelated_source")
+                    self.assertNotEqual(evidence.reason, "outside_integration_location")
+                    self.assertEqual(refund.state, "verified")
         self.assertEqual(self.env["pos.revolut.refund.operation"].sudo().search_count([
             ("original_operation_id", "=", self.source.id),
         ]), 1)
