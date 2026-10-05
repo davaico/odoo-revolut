@@ -10,29 +10,31 @@ Before starting, confirm this ticket’s blockers are closed and merge the lates
 
 ## Current handoff — 2026-10-05
 
-Resume from the [completed recovered receipt and next step](../../testing/ticket-12-release-evidence.md#recovered-receipt-accepted--2026-10-05-1247-utc).
-Staging now runs **19.0.1.15.3**, with saved matching return/payment enforcement
-and corrected shared-Merchant discovery. PRs #46 and #47 are merged. Final
-install and upgrade each passed 490 tests; live API rejection checks made zero
-provider HTTP calls. Financial blockers remain zero after the restored cron ran.
-All discovery evidence is retained; unfamiliar foreign transactions are not
-assumed to be cash returns or attributed to this register.
+Resume from the [simplified refund screens and remaining work](../../testing/ticket-12-release-evidence.md#simplified-refund-screens--2026-10-05).
+Staging runs **19.0.1.15.4** from reviewed source `bcb0204` / merged PR #51,
+with saved matching return/payment enforcement and corrected shared-Merchant
+discovery. Final runtime verification passed 493 full upgrade tests, 45 focused
+fresh-install tests and 88 Node tests; the initial screen candidate also passed
+493 full installation tests. Live screen checks passed and financial blockers
+remain zero. All discovery evidence is retained; unfamiliar foreign transactions
+are not attributed to this register.
 
-The operator has now validated restored native return 24, displayed
-**2 (Refund)**: receipt **260-2-000002** is `paid`, total **-£0.02**,
-with both original one-penny refunds verified and linked to its completed
-payments. That receipt step is complete; do not repeat recovery or refunds.
-The verified external penny refund 10 / source 36, original sale **000018** /
-receipt **261-2-000018**, separately needs manager review of its outstanding
-native bookkeeping. Administrator's GBP register grant is
+Restored return 24 / receipt **260-2-000002** is paid at **-£0.02**, with both
+original penny refunds verified and linked to its completed payments. Do not
+repeat recovery or refunds. External penny refund 10 / source 36 is completed
+and linked to original sale **000018**. The operator reported no products need
+returning. The confusing acknowledgement button and native review flag are
+removed from operator screens; no invented product return or acknowledgement
+is required to continue acceptance. Administrator's GBP register grant is
 preserved. Standard Restaurant is installed, but GBP register 2 remains retail.
 
-Remaining human work is external native reconciliation, unseen
-tip/report and Restaurant scenarios, unexecuted failure/race/interruption cases,
-final test-money reconciliation and combined-runtime/device acceptance. Retain
-the completed full/split/two-card, busy-terminal and older-return evidence.
-The checkpoint below describes earlier states and is superseded by this handoff.
-The ticket remains open and ready-for-human.
+Remaining human work is unseen tip/report and Restaurant scenarios, unexecuted
+failure/race/interruption cases, final test-money reconciliation (including any
+applicable separate accounting evidence) and combined-runtime/device acceptance.
+Retain completed full/split/two-card, busy-terminal and older-return evidence.
+Manager-confirmed native completion for external refunds is separately specified
+in ticket 41; this change only simplifies screens. Earlier checkpoints are
+superseded by this handoff. The ticket remains open and ready-for-human.
 
 ## Resume checkpoint — 2026-10-01, 13:40 UTC
 
