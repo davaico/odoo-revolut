@@ -2,7 +2,7 @@
 
 **Live acceptance remains open.** Dated entries distinguish observed passes,
 partial results and unexecuted cases. Mocked success does not establish terminal
-certification. Resume from the [latest receipt acceptance and next step](#recovered-receipt-accepted--2026-10-05-1247-utc);
+certification. Resume from the [simplified refund screens and remaining work](#simplified-refund-screens--2026-10-05);
 earlier checkpoints, matrices and balances retain their original dates.
 
 ## Current refund repair checkpoint — 2026-10-05
@@ -826,6 +826,9 @@ financial POST or repeated physical terminal test was performed in this rollout.
 
 ## Recovered receipt accepted — 2026-10-05, 12:47 UTC
 
+The refund-screen handoff below is superseded by the later simplified-screen
+checkpoint; the observed paid receipt remains valid.
+
 The operator validated the existing **2 (Refund)** return and supplied a
 receipt-screen screenshot. Read-only staging SQL confirms native order 24 /
 receipt **260-2-000002** is now `paid`, total and paid amount **-£0.02**,
@@ -862,3 +865,30 @@ and final test-money and combined-runtime/device acceptance. The recovered
 two-card receipt step is complete and must not be repeated. This observation
 does not establish physical printing, cardholder receipt of funds or complete
 receipt-presentation acceptance.
+
+
+## Simplified refund screens — 2026-10-05
+
+Staging runs **19.0.1.15.4** from reviewed source `bcb0204`, merged in PR #51.
+The refund worklist now distinguishes **Original Sale** from **Odoo Return**,
+shows the verified financial status, and labels origin **Odoo POS** or
+**Detected in Revolut**. The acknowledgement button and native-reconciliation
+labels are removed from operator views. The external penny remains completed
+and linked to sale 000018; its unknown initiator is not attributed to a device
+or person. No product return is inferred from a money-only provider report.
+The operator reported no products need returning; there is no acknowledgement
+step required to continue acceptance. Any applicable separate accounting work
+still needs evidence during final money reconciliation.
+
+Return 24 / receipt **260-2-000002** remains paid at **-£0.02**. All seven
+refund records are unchanged, with zero deployment blockers. No replacement
+refund, acknowledgement or stock/accounting adjustment was performed.
+See [verification and rollout](refund-screen-clarity.md) for exact mocked
+install/upgrade counts, independent review, live UI evidence and backup path.
+
+Remaining work: unseen tip/report and Restaurant scenarios, unexecuted
+failure/race/interruption cases, final test-money reconciliation and
+combined-runtime/device acceptance. Preserve completed full/split/two-card,
+busy-terminal and older-return evidence. Ticket 12 remains open / ready-for-human.
+Manager-confirmed native completion of external refunds is separately specified
+in ticket 41; this screen change does not claim to implement that workflow.

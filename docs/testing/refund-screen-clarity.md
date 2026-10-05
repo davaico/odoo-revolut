@@ -48,4 +48,36 @@ Local logs: `/tmp/refund-screen-clarity-full.log`,
 `/tmp/refund-screen-clarity-fresh.log`, `/tmp/refund-screen-clarity-node.log`.
 Provider HTTP is mocked in automated tests.
 
-Guarded staging deployment and live list/form inspection remain to be recorded.
+## Staging rollout — 2026-10-05
+
+PR #51 merged the reviewed change. The standard guarded upgrade deployed exact
+runtime source `bcb02045931633436bbd419cce0f79722937bc7f` as **19.0.1.15.4**.
+Configuration backup: `/var/backups/odoo-revolut-deploy/20261005T134700Z-bcb020459316`.
+The active addon resolves to that immutable release; Odoo is active and
+`/web/login` returns HTTP 200.
+
+Read-only before/after SQL confirms seven refund records with identical ledger
+fingerprint `961d377b434210d34d6685542a2c8f3f`, zero deployment blockers,
+native return 24 still `paid` at **-£0.02**, and GBP register 2 still retail.
+The module version is the only changed baseline value. Logs:
+`/tmp/refund-screen-clarity-before.log`, `/tmp/refund-screen-clarity-after.log`,
+`/tmp/refund-screen-clarity-deploy.log`.
+
+Authenticated live UI inspection confirms the default list has six business
+columns and seven completed rows, without Outstanding, native reconciliation
+or acknowledgement controls. External refund 10 shows its readable title,
+original sale 000018 link, £0.01, Completed, Detected in Revolut, a blank
+Odoo Return and the explicit explanation that product quantities are unknown.
+Its references remain readable under Details. Odoo refund 5 shows its original
+sale and restored paid return 24 as separate links, without recovery/status
+buttons for this completed record. Screenshot:
+`/tmp/refund-screen-clarity-live.png`.
+
+No acknowledgement, product return, financial POST or accounting adjustment
+was performed. The unknown actor behind the external penny is not inferred.
+The operator reported no products need returning. Removing a review label does
+not manufacture native stock/accounting evidence. Future manager-confirmed
+external native completion is separately specified in ticket 41.
+
+Ticket 12 remains open for the remaining physical acceptance scenarios and
+final test-money reconciliation; the restored receipt is already complete.
