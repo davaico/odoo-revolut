@@ -2011,8 +2011,8 @@ class TestRevolutRestaurantContext(TransactionCase):
         bridge = cls.env["ir.module.module"].search(
             [("name", "=", "pos_revolut_restaurant")], limit=1
         )
-        if bridge.state != "installed":
-            raise AssertionError("The optional Revolut Restaurant bridge was not installed")
+        if bridge:
+            raise AssertionError("The retired Revolut Restaurant addon is still listed")
         cls.method = cls.env["pos.payment.method"].create({
             "name": "Restaurant Revolut test",
             "payment_method_type": "terminal",

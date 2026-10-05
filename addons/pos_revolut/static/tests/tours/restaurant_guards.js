@@ -1,5 +1,6 @@
 import * as Dialog from "@point_of_sale/../tests/generic_helpers/dialog_util";
 import { registry } from "@web/core/registry";
+import { TipScreen } from "@pos_restaurant/app/screens/tip_screen/tip_screen";
 import { SplitBillScreen } from "@pos_restaurant/app/screens/split_bill_screen/split_bill_screen";
 
 registry.category("web_tour.tours").add("pos_revolut_restaurant_guards", {
@@ -105,6 +106,22 @@ registry.category("web_tour.tours").add("pos_revolut_restaurant_guards", {
             },
         },
         { trigger: ".modal:contains('Revolut payment attached to this order')" },
+        Dialog.confirm(),
+        {
+            content: "Post-payment tip changes remain guarded in the unified addon",
+            trigger: ".floor-screen .floor-map",
+            async run() {
+                const { source } = window.revolutRestaurantGuardOrders;
+                const result = await TipScreen.prototype.validateTip.call({
+                    pos: { getOrder: () => source },
+                    dialog: window.posmodel.dialog,
+                });
+                if (result !== false || !source.payment_ids.length) {
+                    throw new Error("Restaurant tip adjustment bypassed the Revolut guard");
+                }
+            },
+        },
+        { trigger: ".modal:contains('Revolut terminal tip')" },
         Dialog.confirm(),
         {
             content: "An empty-table move keeps the original order and payment",

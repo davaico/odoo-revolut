@@ -1,10 +1,10 @@
 {
     "name": "POS Revolut",
-    "version": "19.0.1.14.1",
+    "version": "19.0.1.15.0",
     "category": "Sales/Point of Sale",
     "summary": "Configure a Revolut payment terminal for Point of Sale",
     "author": "Davai",
-    "depends": ["point_of_sale"],
+    "depends": ["point_of_sale", "pos_restaurant"],
     "data": [
         "security/ir.model.access.csv",
         "security/revolut_reconciliation_rules.xml",
@@ -26,4 +26,5 @@
     },
     "license": "LGPL-3",
     "installable": True,
+    "post_init_hook": "post_init_hook",
 }
