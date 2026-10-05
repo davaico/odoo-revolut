@@ -228,6 +228,11 @@ implementation verification before ticket closure.
 Review baseline: `2bdede6a58e609bd451bb29aad5f57cec5919450` (owner confirmed).
 Ticket 40's completed branch supplies its existing rounding policy; no second
 correction was implemented. Ticket 41 runtime candidate: `a2b3c98b7e74e91a8f32663b74f665ecc010289b`.
+For publication, main `4f795b3517f070446ff3281f8eca8cc12dcf765e` was merged into
+candidate `541c7f67a221dbd2f8e7898e851a1f84b0ccd049`. Its evidence-page retirement
+and release checklist remain intact; the manifest retains completion views and
+version `19.0.1.17.0` while removing the retired evidence view. Both review axes
+checked the combined implementation against current main and found no new issues.
 
 ## Standards
 
@@ -244,6 +249,11 @@ manager wizard/server entry points, with no replayed native effects or HTTP.
 Review totals: Standards 0 findings; Spec 0 outstanding findings.
 
 ## Broader verification
+
+The merged candidate passed **90 targeted tests, 0 failures/errors** covering
+external discovery, native manager returns and finalized associations, and
+shared-register access. This includes main's retired-evidence access denial
+checks. Log: `/tmp/ticket41-merge-focused.log`.
 
 The first broader run caught a cashier regression when native POS loaded the
 manager-only completion relation. The relation is now excluded from POS payloads;
@@ -280,7 +290,10 @@ and observation timestamp, retaining authority, reservation and recovery checks.
 Independent review found no issues in this test-only correction. The focused
 shared-access rerun passed **26 installation and 26 upgrade tests**, with zero
 failures/errors (`9f2a24c`, log `/tmp/ticket41-shared-access-verified.log`). The full
-install/upgrade rerun is in progress on unchanged runtime code. Physical terminal
+merged candidate `541c7f6` passed **546 clean-install tests, 0 failures/errors**.
+The full upgrade phase was stopped at the owner's request; it is not reported as
+a pass. The focused 26-test upgrade and both actual historical upgrade probes
+passed. Physical terminal
 acceptance and deployment remain the existing release process; this implementation
 performs no live financial operation.
 
@@ -313,3 +326,18 @@ This migration probe uses uninvoiced services; actual inventory and invoice
 effects are exercised by the separate native stock/accounting suite. Independent
 review of the script and probes found no standards or safety issues. Log:
 `/tmp/ticket41-history-upgrade.log`.
+
+After integrating current main, the same probe passed again on candidate
+`541c7f6` with exit 0 (`/tmp/ticket41-merged-history-upgrade.log`). The independent
+evidence-retirement probe also passed with exit 0:
+
+```sh
+ODOO_REVOLUT_TEST_PROJECT=odoo-revolut-ticket41-merged-evidence ./scripts/test-evidence-retirement-upgrade
+```
+
+That probe upgrades `319407e` to the combined `19.0.1.17.0` addon. The old page,
+action, views and manager access rules are absent; normal manager RPC reads,
+searches, counts and exports are denied. Exact internal financial evidence and
+deployment blocking remain intact, and trusted server reconciliation still
+resolves evidence. No Merchant HTTP occurs. Log:
+`/tmp/ticket41-merged-evidence-upgrade.log`.
