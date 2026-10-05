@@ -2,7 +2,7 @@
 
 **Live acceptance remains open.** Dated entries distinguish observed passes,
 partial results and unexecuted cases. Mocked success does not establish terminal
-certification. Resume from the [latest rollout and next steps](#shared-merchant-discovery-rollout--2026-10-05);
+certification. Resume from the [latest receipt acceptance and next step](#recovered-receipt-accepted--2026-10-05-1247-utc);
 earlier checkpoints, matrices and balances retain their original dates.
 
 ## Current refund repair checkpoint — 2026-10-05
@@ -822,3 +822,43 @@ installed; the dedicated GBP register remains in retail mode.
 Ticket 12 remains **open / ready-for-human**. Automated and read-only checks do
 not establish the remaining physical acceptance. No native Validate, new
 financial POST or repeated physical terminal test was performed in this rollout.
+
+
+## Recovered receipt accepted — 2026-10-05, 12:47 UTC
+
+The operator validated the existing **2 (Refund)** return and supplied a
+receipt-screen screenshot. Read-only staging SQL confirms native order 24 /
+receipt **260-2-000002** is now `paid`, total and paid amount **-£0.02**,
+in session 9. Its two negative one-penny payments 26 and 27 remain `done`
+and linked to original refunds 5 and 6. Both refunds retain their original
+provider IDs and `verified` states. The Odoo-origin refund count is still six;
+the combined payment/refund/discovery blocker count is zero. Validation of the
+restored return did not create a replacement refund. Screenshot evidence:
+`/tmp/codex-clipboard-9b167cb7-2ebe-4d00-b41b-6037a2e83b5e.png`;
+SQL evidence: `/tmp/refund-receipt-finalization.log`.
+
+The preceding register loading issue was reproduced after the upgrade while
+an older same-register POS tab remained open. Server requests stopped after
+`load_data_params`, at Odoo's IndexedDB schema-upgrade boundary. Reloading the
+older tab released its browser cache connection and restored the native order
+controls and the existing return. No browser storage was deleted and no
+application change or deployment was needed for this unblock. It is a reload
+workaround, not a permanent fix for Odoo's missing blocked-upgrade message.
+Evidence: `/tmp/register-startup-diagnosis.md`,
+`/tmp/register-refund-review-after-cache-upgrade.png`.
+
+The next native reconciliation review concerns **external refund 10**, one penny
+from source 36 / original sale **Davai GBP Terminal Test - 000018**, receipt
+**261-2-000018**. It is financially `verified`, while its native reconciliation
+is `outstanding`. Read-only checks found no negative native lines referencing
+that sale's product lines; this does not establish whether separate cash or
+accounting work is required or already exists. A manager must review the sale
+and any separate native work before using **Mark native work handled separately**.
+Do not issue another card refund. Evidence: `/tmp/external-penny-native-review.log`.
+
+Ticket 12 remains open / ready-for-human for that manager review, the unseen
+tip/report and Restaurant scenarios, remaining failure/race/interruption cases,
+and final test-money and combined-runtime/device acceptance. The recovered
+two-card receipt step is complete and must not be repeated. This observation
+does not establish physical printing, cardholder receipt of funds or complete
+receipt-presentation acceptance.
