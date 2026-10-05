@@ -1,6 +1,7 @@
 """Refund RPC safety across real, independently committed transactions."""
 
 import os
+from copy import deepcopy
 from threading import Barrier, Event, RLock, Thread, current_thread
 from unittest.mock import Mock, patch
 from uuid import uuid4
@@ -87,6 +88,7 @@ class TestRevolutRefundConcurrency(TransactionCase):
                            "qty": -1, "price_unit": 12.34, "discount": 0,
                            "tax_ids": [], "refunded_orderline_id": order.lines.id}],
             }
+            env["pos.order"].sync_from_ui([self._draft_values(self.order_uuid, self.line_uuid, self.snapshot)])
             cursor.commit()
         self.addCleanup(self._unschedule)
         self.enterContext(patch.dict(os.environ, {
@@ -117,10 +119,50 @@ class TestRevolutRefundConcurrency(TransactionCase):
             cursor.commit()
             return result
 
+    def _draft_values(self, order_uuid, line_uuid, snapshot, amount=-12.34):
+        values = deepcopy(snapshot)
+        values.update(
+            name=f"Refund concurrency return {order_uuid}", uuid=order_uuid,
+            session_id=self.session_id, state="draft", amount_paid=0,
+            amount_tax=0, amount_return=0,
+            payment_ids=[Command.create({
+                "uuid": line_uuid, "payment_method_id": self.method_id,
+                "amount": amount, "payment_status": "waiting", "transaction_id": False,
+            })],
+        )
+        values["lines"] = [Command.create(dict(line,
+            price_subtotal=float(line["qty"]) * float(line["price_unit"]),
+            price_subtotal_incl=float(line["qty"]) * float(line["price_unit"]),
+            tax_ids=[Command.set(line["tax_ids"])],
+        )) for line in snapshot["lines"]]
+        return values
+
+    def _save_native_return(self, order_uuid, line_uuid, snapshot, amount=-12.34):
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            existing = env["pos.order"].search([("uuid", "=", order_uuid)])
+            if not existing:
+                env["pos.order"].sync_from_ui([self._draft_values(order_uuid, line_uuid, snapshot, amount)])
+                existing = env["pos.order"].search([("uuid", "=", order_uuid)])
+            saved = {
+                **env["pos.revolut.payment.operation"]._normalize_financial_snapshot(
+                    existing._revolut_order_values(), native_order=True,
+                ),
+                "amount_total": existing.amount_total,
+            }
+            cursor.commit()
+            return saved
+
     def _start(self, order_uuid=None, line_uuid=None):
+        order_uuid, line_uuid = order_uuid or self.order_uuid, line_uuid or self.line_uuid
+        snapshot = self.snapshot
+        if order_uuid != self.order_uuid:
+            snapshot = deepcopy(self.snapshot)
+            snapshot["lines"][0]["uuid"] = str(uuid4())
+            snapshot = self._save_native_return(order_uuid, line_uuid, snapshot)
         return self._rpc(
-            "revolut_start_refund", self.session_id, order_uuid or self.order_uuid,
-            line_uuid or self.line_uuid, -12.34, self.currency_id, self.snapshot,
+            "revolut_start_refund", self.session_id, order_uuid,
+            line_uuid, -12.34, self.currency_id, snapshot,
         )
 
     @staticmethod
@@ -201,17 +243,26 @@ class TestRevolutRefundConcurrency(TransactionCase):
                 self.assertTrue(competitor_finished.wait(10), "Competing return was not rejected")
             return self._http(method, url, **kwargs)
 
-        def start():
+        identities = [(str(uuid4()), str(uuid4())) for _ in range(2)]
+        for order_uuid, line_uuid in identities:
+            snapshot = deepcopy(self.snapshot)
+            snapshot["lines"][0]["uuid"] = str(uuid4())
+            self._save_native_return(order_uuid, line_uuid, snapshot)
+
+        def start(order_uuid, line_uuid):
             barrier.wait(timeout=10)
             try:
-                return self._start(str(uuid4()), str(uuid4()))
+                return self._start(order_uuid, line_uuid)
             except UserError:
                 return "rejected"
             finally:
                 competitor_finished.set()
 
         self.request.side_effect = http
-        results = self._run_workers([("first-return", start), ("second-return", start)])
+        results = self._run_workers([
+            ("first-return", lambda: start(*identities[0])),
+            ("second-return", lambda: start(*identities[1])),
+        ])
         self.assertEqual(results.count("rejected"), 1)
         self.assertEqual(len(self._posts()), 1)
 
@@ -227,15 +278,21 @@ class TestRevolutRefundConcurrency(TransactionCase):
                 })
             return self._http(method, url, **kwargs)
 
-        def start(qty, amount):
+        prepared = []
+        for qty, amount in ((-0.5, -6.17), (-0.501, -6.18)):
             snapshot = {
                 **self.snapshot, "amount_total": amount,
                 "lines": [{**self.snapshot["lines"][0], "qty": qty, "uuid": str(uuid4())}],
             }
+            order_uuid, line_uuid = str(uuid4()), str(uuid4())
+            self._save_native_return(order_uuid, line_uuid, snapshot, amount)
+            prepared.append((order_uuid, line_uuid, snapshot, amount))
+
+        def start(order_uuid, line_uuid, snapshot, amount):
             barrier.wait(timeout=10)
             try:
                 return self._rpc(
-                    "revolut_start_refund", self.session_id, str(uuid4()), str(uuid4()),
+                    "revolut_start_refund", self.session_id, order_uuid, line_uuid,
                     amount, self.currency_id, snapshot,
                 )
             except UserError:
@@ -243,8 +300,8 @@ class TestRevolutRefundConcurrency(TransactionCase):
 
         self.request.side_effect = http
         results = self._run_workers([
-            ("partial-a", lambda: start(-0.5, -6.17)),
-            ("partial-b", lambda: start(-0.501, -6.18)),
+            ("partial-a", lambda: start(*prepared[0])),
+            ("partial-b", lambda: start(*prepared[1])),
         ])
         self.assertEqual(results.count("rejected"), 1)
         self.assertEqual(len(self._posts()), 1)

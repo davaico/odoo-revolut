@@ -1,5 +1,6 @@
 """Public refund/native tender behavior for verified terminal-tip decomposition."""
 import os
+from copy import deepcopy
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -19,6 +20,7 @@ class TestRevolutTipRefund(CommonPosTest):
     _order_payload = TestRevolutRefund._order_payload
     _mutation_actor = TestRevolutRefund._mutation_actor
     _rpc_refund = TestRevolutRefund._rpc_refund
+    _save_return_draft = TestRevolutRefund._save_return_draft
     _rpc_start_refund = TestRevolutRefund._rpc_start_refund
     _rpc_refund_sources = TestRevolutRefund._rpc_refund_sources
     _response = TestRevolutRefund._response
@@ -211,6 +213,7 @@ class TestRevolutTipRefund(CommonPosTest):
     def _start_allocated(self, base_minor=None, tip_minor=None):
         manager = self._mutation_actor()
         payment = self.payload["payment_ids"][0][2]
+        self._save_return_draft(actor=manager)
         return self._rpc_refund(manager, "pos.payment.method", "revolut_start_refund", [
             [self.revolut_method.id], self.session.id, self.payload["uuid"], payment["uuid"],
             payment["amount"], self.session.currency_id.id, self.payload, self.source.id,
@@ -239,7 +242,7 @@ class TestRevolutTipRefund(CommonPosTest):
         payment = self.payload["payment_ids"][0][2]
         self.revolut_method.revolut_poll_refund(started["operation_id"], self.payload["uuid"], payment["uuid"])
         payment.update(payment_status="done", transaction_id=self.refund_id)
-        self.env["pos.order"].sync_from_ui([self.payload])
+        self.env["pos.order"].sync_from_ui([deepcopy(self.payload)])
         refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
         refund.invalidate_recordset()
         self.assertEqual(refund.state, "verified")
@@ -277,7 +280,7 @@ class TestRevolutTipRefund(CommonPosTest):
         payment = self.payload["payment_ids"][0][2]
         self.revolut_method.revolut_poll_refund(started["operation_id"], self.payload["uuid"], payment["uuid"])
         payment.update(payment_status="done", transaction_id=self.refund_id)
-        self.env["pos.order"].sync_from_ui([self.payload])
+        self.env["pos.order"].sync_from_ui([deepcopy(self.payload)])
         self._tip_return(goods_qty=0.5, tip_qty=0.5)
         self.request.side_effect = [
             self._response(id=self.source.revolut_order_id, state="completed", amount=1434,
@@ -288,7 +291,7 @@ class TestRevolutTipRefund(CommonPosTest):
         payment = self.payload["payment_ids"][0][2]
         self.revolut_method.revolut_poll_refund(second["operation_id"], self.payload["uuid"], payment["uuid"])
         payment.update(payment_status="done", transaction_id=self.refund_id)
-        self.env["pos.order"].sync_from_ui([self.payload])
+        self.env["pos.order"].sync_from_ui([deepcopy(self.payload)])
         remaining = self._rpc_refund_sources(self._mutation_actor())[0]
         self.assertEqual((remaining["remaining_base_minor"], remaining["remaining_tip_minor"]), (0, 0))
 
@@ -360,7 +363,7 @@ class TestRevolutTipRefund(CommonPosTest):
         return_uuid = self.payload["uuid"]
         self.payload["payment_ids"] = [list(command) for command in self.payload["payment_ids"]]
         self.payload["lines"] = []
-        saved = self.env["pos.order"].sync_from_ui([self.payload])
+        saved = self.env["pos.order"].sync_from_ui([deepcopy(self.payload)])
         returned = self.env["pos.order"].browse(next(
             item["id"] for item in saved["pos.order"] if item["uuid"] == return_uuid
         ))

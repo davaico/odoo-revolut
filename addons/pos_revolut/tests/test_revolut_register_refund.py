@@ -24,6 +24,7 @@ class TestRevolutRegisterRefund(CommonPosTest):
     _refund_response = TestRevolutRefund._refund_response
     _mutation_actor = TestRevolutRefund._mutation_actor
     _rpc_refund = TestRevolutRefund._rpc_refund
+    _save_return_draft = TestRevolutRefund._save_return_draft
     _rpc_start_refund = TestRevolutRefund._rpc_start_refund
     _rpc_refund_sources = TestRevolutRefund._rpc_refund_sources
 
