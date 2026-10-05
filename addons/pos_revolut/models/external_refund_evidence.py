@@ -37,7 +37,7 @@ class PosRevolutExternalRefundEvidence(models.Model):
     resolved = fields.Boolean(readonly=True, default=False, index=True)
     blocks_financial_capacity = fields.Boolean(
         compute="_compute_deployment_blocking", store=True,
-        help="Only an authoritative refund linked to no integration payment is excluded from financial blocking.",
+        help="Verified unrelated sources and final observations outside integration locations do not block integration capacity.",
     )
     deployment_blocking = fields.Boolean(
         compute="_compute_deployment_blocking", store=True, index=True,
@@ -52,7 +52,7 @@ class PosRevolutExternalRefundEvidence(models.Model):
     @api.depends("resolved", "reason")
     def _compute_deployment_blocking(self):
         for evidence in self:
-            evidence.blocks_financial_capacity = evidence.reason != "unrelated_source"
+            evidence.blocks_financial_capacity = evidence.reason not in {"unrelated_source", "outside_integration_location"}
             evidence.deployment_blocking = not evidence.resolved and evidence.blocks_financial_capacity
 
     @api.constrains("credential_id", "original_operation_id")
