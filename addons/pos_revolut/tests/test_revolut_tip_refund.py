@@ -613,3 +613,74 @@ class TestRevolutTipRefund(CommonPosTest):
                     self.assertEqual(move.amount_tax, expected_tax)
                     self.assertAlmostEqual(move.amount_untaxed + move.amount_tax, move.amount_total, places=6)
                     self.assertAlmostEqual(sum(move.line_ids.mapped("balance")), 0, places=6)
+
+    def test_fractional_returns_conserve_odd_base_and_terminal_tip_components(self):
+        self._terminal_sale(tip_minor=2)
+        manager = self._mutation_actor()
+        refunded = 0
+        returned = []
+        for quantity, base, tip in ((0.25, 309, 1), (0.75, 925, 1)):
+            amount = base + tip
+            self._tip_return(goods_qty=quantity, tip_qty=quantity, payment_minor=amount)
+            # The picker returns the explicit checked base/tip total.
+            self.payload["amount_total"] = -amount / 100
+            source = self._rpc_refund_sources(manager)[0]
+            self.assertEqual((source["return_base_minor"], source["return_tip_minor"]), (base, tip))
+            self.request.side_effect = [
+                self._response(id=self.source.revolut_order_id, state="completed", amount=1236,
+                               currency=self.session.currency_id.name, refunded_amount=refunded),
+                self._refund_response(amount=amount), self._refund_response("completed", amount=amount),
+            ]
+            started = self._start_allocated(base, tip)
+            payment = self.payload["payment_ids"][0][2]
+            self._rpc_refund(manager, "pos.payment.method", "revolut_poll_refund", [
+                [self.revolut_method.id], started["operation_id"], self.payload["uuid"], payment["uuid"],
+            ])
+            payment.update(payment_status="done", transaction_id=self.refund_id)
+            self._rpc_refund(manager, "pos.order", "sync_from_ui", [[deepcopy(self.payload)]])
+            self.env.invalidate_all()
+            refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
+            self.assertEqual((refund.base_amount_minor, refund.tip_amount_minor), (base, tip))
+            self.assertEqual(refund.pos_order_id.amount_total, -amount / 100)
+            returned.append(refund)
+            refunded += amount
+        self.assertEqual(sum(row.base_amount_minor for row in returned), 1234)
+        self.assertEqual(sum(row.tip_amount_minor for row in returned), 2)
+        self.assertEqual([call.kwargs["json"]["amount"] for call in self.request.call_args_list
+                          if call.args[0] == "POST"], [310, 926])
+
+    def test_late_credit_notes_do_not_cash_round_conserved_returns_again(self):
+        rounding = self.env["account.cash.rounding"].create({
+            "name": "Conserved return late invoice five-cent rounding", "rounding": 0.05,
+            "rounding_method": "HALF-UP", "strategy": "add_invoice_line",
+            "profit_account_id": self.company_data["default_account_revenue"].id,
+            "loss_account_id": self.company_data["default_account_expense"].id,
+        })
+        self.pos_config_usd.write({"cash_rounding": True, "only_round_cash_method": False,
+                                   "rounding_method": rounding.id})
+        self._terminal_sale(tip_minor=0, charge_base_minor=1235, partner=self.partner_mobt)
+        manager = self._mutation_actor()
+        returned = []
+        for quantity, amount, prior in ((0.25, 309, 0), (0.75, 926, 309)):
+            self._tip_return(goods_qty=quantity, tip_qty=0, payment_minor=amount)
+            self.payload["partner_id"] = self.partner_mobt.id
+            returned.append(self._complete_rounding_partition(manager, amount, prior).pos_order_id)
+        result = self.session.close_session_from_ui()
+        self.assertEqual(self.session.state, "closed", result)
+        for order, amount in zip(returned, (3.09, 9.26)):
+            result = order.with_context(generate_pdf=False).action_pos_order_invoice()
+            move = self.env["account.move"].browse(result["res_id"])
+            self.assertEqual(move.state, "posted")
+            self.assertEqual(move.amount_total, amount)
+            self.assertEqual(order.amount_total, -amount)
+            reversals = self.env["account.move"].search([("reversed_pos_order_id", "=", order.id)])
+            self.assertTrue(reversals)
+            for reversal in reversals:
+                self.assertEqual(reversal.state, "posted")
+                self.assertAlmostEqual(sum(reversal.line_ids.mapped("balance")), 0, places=6)
+
+        original_result = self.original.with_context(generate_pdf=False).action_pos_order_invoice()
+        original_move = self.env["account.move"].browse(original_result["res_id"])
+        self.assertEqual(original_move.state, "posted")
+        self.assertEqual(original_move.amount_total, 12.35)
+        self.assertEqual(original_move.invoice_cash_rounding_id, rounding)

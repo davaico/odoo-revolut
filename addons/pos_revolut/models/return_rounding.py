@@ -10,6 +10,7 @@ from .return_allocation import ReturnAllocation
 
 
 _projection_cursor = ContextVar("revolut_return_projection_cursor", default=None)
+_conserved_aml_rounding = ContextVar("revolut_conserved_aml_rounding", default=None)
 
 
 @contextmanager
@@ -132,6 +133,22 @@ class PosOrder(models.Model):
             values["invoice_cash_rounding_id"] = False
         return values
 
+    def _prepare_aml_values_list_per_nature(self):
+        self.ensure_one()
+        rounding = self.config_id.rounding_method
+        if not (self.revolut_return_allocation and self.config_id.cash_rounding and rounding):
+            return super()._prepare_aml_values_list_per_nature()
+        # Late invoicing reverses the already posted session sale through this
+        # native helper. Its tax bases already contain the accepted cents;
+        # rounding them again would unbalance the reversal against payments.
+        # Scope this exception to this cursor, currency and rounding record,
+        # without changing shared POS configuration or ordinary invoices.
+        token = _conserved_aml_rounding.set((self.env.cr, rounding.id, self.currency_id.id))
+        try:
+            return super()._prepare_aml_values_list_per_nature()
+        finally:
+            _conserved_aml_rounding.reset(token)
+
 
 class AccountMoveLine(models.Model):
     _inherit = "account.move.line"
@@ -172,3 +189,14 @@ class AccountMove(models.Model):
             base["manual_total_excluded_currency"] = authority["manual_total_excluded_currency"]
             base["manual_tax_amounts"] = authority["manual_tax_amounts"]
         return base
+
+
+class AccountCashRounding(models.Model):
+    _inherit = "account.cash.rounding"
+
+    def compute_difference(self, currency, amount):
+        scope = _conserved_aml_rounding.get()
+        if (scope is not None and scope[0] is self.env.cr
+                and scope[1] == self.id and scope[2] == currency.id):
+            return 0.0
+        return super().compute_difference(currency, amount)

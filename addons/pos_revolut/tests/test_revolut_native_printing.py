@@ -133,7 +133,7 @@ class TestRevolutNativePrinting(TestPointOfSaleHttpCommon):
                 payload = self._pos_fixture(
                     TestRevolutOrderSettlement._order_payload, str(uuid4()), str(uuid4()),
                 )
-                payload.update(session_id=current_session.id, state="paid", is_refund=True,
+                payload.update(session_id=current_session.id, state="paid",
                                amount_total=-minor / 100, amount_paid=-minor / 100, pos_reference=label)
                 line = payload["lines"][0][2]
                 line.update(qty=-quantity, price_subtotal=-12.34 * quantity,
