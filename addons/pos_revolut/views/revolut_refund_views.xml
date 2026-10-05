@@ -37,11 +37,11 @@
                         </group>
                         <group>
                             <field name="original_order_id"/>
-                            <field name="pos_order_id" string="Odoo Return" invisible="origin == 'external'"/>
+                            <field name="pos_order_id" string="Odoo Return"/>
                             <field name="payment_method_id"/>
                         </group>
                     </group>
-                    <p invisible="origin != 'external'">Revolut confirms the refund amount, but does not identify which products or quantities were returned.</p>
+                    <p invisible="origin != 'external'">No Odoo return is linked. Revolut confirms the refund amount, but does not identify which products or quantities were returned.</p>
                     <p invisible="origin != 'odoo' or state != 'verified' or pos_order_id">The refund is completed, but its saved Odoo return is missing. Restore it, then review and validate it in the register. Restoring sends no new refund.</p>
                     <p invisible="state not in ('dispatching', 'pending', 'unresolved')">This refund is awaiting confirmation. Check its status before issuing another refund or changing payment method.</p>
                     <notebook>
