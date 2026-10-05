@@ -15,7 +15,6 @@
         "views/revolut_reconciliation_views.xml",
         "views/revolut_refund_views.xml",
         "views/external_refund_completion_views.xml",
-        "views/external_refund_evidence_views.xml",
         "views/revolut_cart_views.xml",
     ],
     "assets": {

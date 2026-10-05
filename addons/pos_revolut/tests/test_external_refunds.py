@@ -10,7 +10,8 @@ from uuid import uuid4
 from odoo import Command, api, fields, SUPERUSER_ID
 from odoo.addons.point_of_sale.tests.common import CommonPosTest
 from odoo.exceptions import AccessError, UserError
-from odoo.tests.common import tagged, TransactionCase
+from odoo.service.model import call_kw
+from odoo.tests.common import tagged, TransactionCase, new_test_user
 
 from .test_revolut_refund import TestRevolutRefund
 from .test_revolut_refund_concurrency import TestRevolutRefundConcurrency
@@ -513,7 +514,7 @@ class TestExternalRefunds(CommonPosTest):
         self.assertEqual(refund.native_reconciliation_status, "outstanding")
         self.request.assert_not_called()
 
-    def test_manager_evidence_visibility_follows_register_grant(self):
+    def test_discovery_evidence_is_internal_even_with_full_register_access(self):
         manager = self._mutation_actor()
         self._discover([self._external(currency="XXX")])
         evidence = self.env["pos.revolut.external.refund.evidence"].sudo().search([
@@ -524,14 +525,43 @@ class TestExternalRefunds(CommonPosTest):
         self.assertEqual(evidence.original_operation_id, self.source)
         self.assertEqual(evidence.original_order_id, self.original)
         self.assertTrue(evidence.deployment_blocking)
-        visible = evidence.with_user(manager)
-        self.assertEqual(visible.read(["provider_order_id"])[0]["provider_order_id"], self.refund_id)
-        self.pos_config_usd.sudo().write({"revolut_user_ids": [Command.unlink(manager.id)]})
-        self.assertFalse(self.env["pos.revolut.external.refund.evidence"].with_user(manager).search([
-            ("id", "=", evidence.id),
-        ]))
-        with self.assertRaises(AccessError):
-            visible.read(["provider_order_id"])
+        unrelated = self.env[evidence._name].sudo().create({
+            "credential_id": self.source.credential_id.id,
+            "provider_order_id": str(uuid4()), "related_order_id": str(uuid4()),
+            "amount_minor": 100, "currency_code": self.source.currency_code,
+            "reason": "unrelated_source",
+        })
+        cashier = new_test_user(self.env, login="evidence_cashier", groups="point_of_sale.group_pos_user")
+        administrator = new_test_user(self.env, login="evidence_admin", groups="base.group_system")
+        for user in (manager, cashier, administrator):
+            user.sudo().write({"group_ids": [Command.link(self.env.ref("base.group_allow_export").id)]})
+            model = self.env[evidence._name].with_user(user)
+            for record in (evidence, unrelated):
+                for method, args in (
+                    ("search_read", [[("id", "=", record.id)], ["provider_order_id"]]),
+                    ("read", [[record.id], ["provider_order_id", "related_order_id"]]),
+                    ("search_count", [[("id", "=", record.id)]]),
+                    ("export_data", [[record.id], ["provider_order_id"]]),
+                ):
+                    with self.subTest(user=user.login, method=method, reason=record.reason):
+                        with self.assertRaises(AccessError):
+                            call_kw(model, method, args, {})
+        # Restricting reads must not clear the financial reservation or evidence.
+        self.assertTrue(self.source.external_refund_review_required)
+        self.assertEqual(self._remaining()[self.source.id], 0)
+        self.assertFalse(evidence.resolved)
+        self.assertTrue(evidence.exists())
+        self.assertTrue(unrelated.exists())
+
+    def test_discovery_page_and_permissions_are_retired(self):
+        for xmlid in (
+            "menu_external_refund_evidence", "action_external_refund_evidence",
+            "view_external_refund_evidence_list", "view_external_refund_evidence_form",
+            "view_external_refund_evidence_search", "access_pos_revolut_external_refund_evidence_manager",
+            "rule_revolut_external_refund_evidence_company_manager",
+        ):
+            self.assertFalse(self.env.ref(f"pos_revolut.{xmlid}", raise_if_not_found=False), xmlid)
+        self.assertTrue(self.env.ref("pos_revolut.action_revolut_refunds"))
 
     def test_cancelled_external_refund_releases_reservation_without_native_work(self):
         refund = self._discover([self._external("cancelled", amount=617)])
@@ -543,7 +573,7 @@ class TestExternalRefunds(CommonPosTest):
         self.assertEqual(self._remaining()[self.source.id], 1234)
 
     def test_malformed_page_entry_does_not_starve_valid_external_refund(self):
-        # Invalid list entries remain manager evidence without preventing the
+        # Invalid list entries remain internal evidence without preventing the
         # same bounded read from importing its other complete relationships.
         refund = self._discover([self._external("completed", amount=617), None])
         self.assertEqual(len(refund), 1)

@@ -6,7 +6,6 @@ access_pos_revolut_audit_manager,pos.revolut.reconciliation.audit manager,model_
 access_pos_revolut_association_manager,pos.revolut.association.wizard manager,model_pos_revolut_association_wizard,point_of_sale.group_pos_manager,1,1,1,0
 access_pos_revolut_order_lock_manager,pos.revolut.order.lock manager,model_pos_revolut_order_lock,point_of_sale.group_pos_manager,1,0,0,0
 access_pos_revolut_refund_manager,pos.revolut.refund.operation manager,model_pos_revolut_refund_operation,point_of_sale.group_pos_manager,1,0,0,0
-access_pos_revolut_external_refund_evidence_manager,pos.revolut.external.refund.evidence manager,model_pos_revolut_external_refund_evidence,point_of_sale.group_pos_manager,1,0,0,0
 access_pos_revolut_cart_manager,pos.revolut.cart.authorization manager,model_pos_revolut_cart_authorization,point_of_sale.group_pos_manager,1,0,0,0
 access_external_refund_wizard_manager,pos.revolut.external.refund.wizard manager,model_pos_revolut_external_refund_wizard,point_of_sale.group_pos_manager,1,1,1,1
 access_external_refund_line_manager,pos.revolut.external.refund.line manager,model_pos_revolut_external_refund_line,point_of_sale.group_pos_manager,1,1,1,1
