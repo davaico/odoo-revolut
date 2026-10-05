@@ -249,12 +249,22 @@ class RefundDiscovery(models.Model):
         except (ValueError, TypeError, AttributeError):
             self._discovery_evidence(credential, "malformed-page", "invalid_identity")
             return False
+        detail = None
+        if candidate.get("related_order_id") is None:
+            # List responses can omit the parent. Establish it from a full
+            # read before deciding whether this refund concerns our payments.
+            try:
+                detail = self._validated_discovery_detail(method, authority, candidate)
+            except (requests.RequestException, UserError, ValueError):
+                self._discovery_evidence(credential, reference, "unmatched_source", candidate=candidate)
+                return
+            candidate = detail
         matches = sources.filtered(lambda item: item.revolut_order_id == candidate.get("related_order_id"))
         if len(matches) != 1:
             if matches:
                 self._discovery_evidence(credential, reference, "ambiguous_source", candidate=candidate)
                 return
-            self._discover_unmatched_refund(credential, method, authority, candidate)
+            self._discover_unmatched_refund(credential, method, authority, candidate, detail=detail)
             return
         source = matches
         amount = candidate.get("amount")
@@ -262,12 +272,8 @@ class RefundDiscovery(models.Model):
                 or candidate.get("currency") != source.currency_id.name):
             self._discovery_evidence(credential, reference, "amount_or_currency_mismatch", source, candidate)
             return
-        observation = {**authority, "original_order_id": source.revolut_order_id,
-                       "amount_minor": amount, "currency_code": source.currency_id.name,
-                       "order_id": reference}
         try:
-            detail = method._revolut_api_request(authority, "GET", f"/api/orders/{reference}")
-            method._validate_refund_response(observation, detail)
+            detail = self._validated_discovery_detail(method, authority, candidate, detail=detail)
         except (requests.RequestException, UserError, ValueError):
             detail = None
         # This is the same source-row serialization boundary used by reserve().
@@ -328,12 +334,51 @@ class RefundDiscovery(models.Model):
         self._resolve_discovery_evidence(credential, reference)
 
     @api.model
-    def _discover_unmatched_refund(self, credential, method, authority, candidate):
+    def _validated_discovery_detail(self, method, authority, candidate, detail=None):
+        reference = candidate["id"]
+        if detail is None:
+            detail = method._revolut_api_request(authority, "GET", f"/api/orders/{reference}")
+        if "related_order_id" in detail and detail["related_order_id"] is None:
+            raise ValueError("invalid refund parent")
+        parent = candidate.get("related_order_id")
+        if parent is None:
+            parent = detail.get("related_order_id")
+        if parent is not None and (not isinstance(parent, str) or str(UUID(parent)) != parent):
+            raise ValueError("invalid refund parent")
+        # Both observations come from authenticated provider GETs. Complement
+        # an omitted field; a present null or conflicting parent must fail.
+        if "related_order_id" not in detail and parent is not None:
+            detail = {**detail, "related_order_id": parent}
+        listed_merchant, detailed_merchant = candidate.get("merchant_order_data"), detail.get("merchant_order_data")
+        listed_key = listed_merchant.get("reference") if isinstance(listed_merchant, dict) else None
+        if isinstance(listed_key, str) and listed_key:
+            if "merchant_order_data" not in detail:
+                detail = {**detail, "merchant_order_data": {"reference": listed_key}}
+            elif isinstance(detailed_merchant, dict) and "reference" not in detailed_merchant:
+                detail = {**detail, "merchant_order_data": {**detailed_merchant, "reference": listed_key}}
+            elif not isinstance(detailed_merchant, dict) or detailed_merchant.get("reference") != listed_key:
+                raise ValueError("conflicting refund reference")
+        amount, currency = candidate.get("amount"), candidate.get("currency")
+        if (type(amount) is not int or not 0 < amount <= 2147483647
+                or not isinstance(currency, str) or len(currency) != 3
+                or not currency.isascii() or not currency.isalpha() or not currency.isupper()):
+            raise ValueError("invalid refund amount or currency")
+        method._validate_refund_response({
+            **authority, "order_id": reference, "original_order_id": parent,
+            "amount_minor": amount, "currency_code": currency,
+        }, detail)
+        return detail
+
+    @api.model
+    def _discover_unmatched_refund(self, credential, method, authority, candidate, detail=None):
         # An unrelated Merchant refund must not disable every POS sale. Exclude
         # it only after a full read and checking all integration payments,
         # including unverified/legacy originals and other credential scopes.
         reference, parent = candidate["id"], candidate.get("related_order_id")
         amount, currency = candidate.get("amount"), candidate.get("currency")
+        if parent is None and detail is not None and self._outside_integration_location(credential, detail):
+            self._discovery_evidence(credential, reference, "outside_integration_location", candidate=candidate)
+            return
         try:
             if not isinstance(parent, str) or str(UUID(parent)) != parent:
                 raise ValueError()
@@ -359,12 +404,44 @@ class RefundDiscovery(models.Model):
                 or not currency.isascii() or not currency.isalpha() or not currency.isupper()):
             self._discovery_evidence(credential, reference, "unmatched_source", candidate=candidate)
             return
-        observation = {**authority, "original_order_id": parent, "amount_minor": amount,
-                       "currency_code": currency, "order_id": reference}
         try:
-            detail = method._revolut_api_request(authority, "GET", f"/api/orders/{reference}")
-            method._validate_refund_response(observation, detail)
+            self._validated_discovery_detail(method, authority, candidate, detail=detail)
         except (requests.RequestException, UserError, ValueError):
             self._discovery_evidence(credential, reference, "unmatched_source", candidate=candidate)
             return
         self._discovery_evidence(credential, reference, "unrelated_source", candidate=candidate)
+
+    @api.model
+    def _outside_integration_location(self, credential, detail):
+        # A shared Merchant account can contain other POS locations. Retain
+        # their final observations without an account-wide integration block.
+        # This never proves a card balance: dispatch still validates the exact
+        # original's refunded_amount against its verified local refund ledger.
+        location = detail.get("location_id")
+        if detail["state"] not in {"completed", "failed", "cancelled"}:
+            return False
+        try:
+            if not isinstance(location, str) or str(UUID(location)) != location:
+                return False
+        except (ValueError, TypeError, AttributeError):
+            return False
+        merchant = detail.get("merchant_order_data")
+        key = merchant.get("reference") if isinstance(merchant, dict) else None
+        refund_domain = [("revolut_order_id", "=", detail["id"])]
+        if isinstance(key, str) and key:
+            refund_domain = ["|", *refund_domain, ("idempotency_key", "=", key)]
+        if self.sudo().search_count(refund_domain, limit=1):
+            return False
+        payments = self.env["pos.revolut.payment.operation"].sudo().with_context(active_test=False)
+        if payments.search_count([("revolut_order_id", "=", detail["id"])], limit=1):
+            return False
+        if payments.search_count([
+            ("secret_reference", "=", credential.secret_reference),
+            ("environment", "=", credential.environment), ("location_id", "=", location),
+        ], limit=1):
+            return False
+        return not self.env["pos.payment.method"].sudo().with_context(active_test=False).search_count([
+            ("revolut_secret_reference", "=", credential.secret_reference),
+            ("revolut_environment", "=", credential.environment),
+            ("revolut_location_id", "=", location),
+        ], limit=1)
