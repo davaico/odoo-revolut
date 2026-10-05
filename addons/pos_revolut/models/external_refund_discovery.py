@@ -358,8 +358,10 @@ class RefundDiscovery(models.Model):
                 detail = {**detail, "merchant_order_data": {**detailed_merchant, "reference": listed_key}}
             elif not isinstance(detailed_merchant, dict) or detailed_merchant.get("reference") != listed_key:
                 raise ValueError("conflicting refund reference")
+        # Read-only foreign metadata can exceed the integer ledger field.
+        # Matching originals still enforce their paid ceiling before import.
         amount, currency = candidate.get("amount"), candidate.get("currency")
-        if (type(amount) is not int or not 0 < amount <= 2147483647
+        if (type(amount) is not int or amount <= 0
                 or not isinstance(currency, str) or len(currency) != 3
                 or not currency.isascii() or not currency.isalpha() or not currency.isupper()):
             raise ValueError("invalid refund amount or currency")

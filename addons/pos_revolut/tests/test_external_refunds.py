@@ -797,6 +797,98 @@ class TestExternalRefunds(CommonPosTest):
         for model, count in before.items():
             self.assertEqual(self.env[model].search_count([]), count, model)
 
+    def test_discovery_scope_huge_amount_preserves_metadata_without_import(self):
+        # Shared Merchant history may contain amounts beyond this integration's
+        # integer ledger. Scope proof must not turn them into financial records.
+        amount = 4711111114111141111
+        evidence_model = self.env["pos.revolut.external.refund.evidence"].sudo()
+        models = ("pos.order", "pos.order.line", "pos.payment", "account.move",
+                  "pos.revolut.refund.operation")
+        before = {model: self.env[model].sudo().search_count([]) for model in models}
+        candidate = self._external("completed", amount=amount, currency="EUR",
+                                   id=str(uuid4()), location_id=str(uuid4()))
+        candidate.pop("related_order_id")
+        self.assertFalse(self._discover([candidate]))
+        evidence = evidence_model.search([("provider_order_id", "=", candidate["id"])])
+        self.assertEqual(evidence.reason, "outside_integration_location")
+        self.assertEqual(evidence.amount_minor, 0)
+        self.assertFalse(evidence.resolved)
+        self.assertFalse(evidence.blocks_financial_capacity)
+        self.assertFalse(evidence.deployment_blocking)
+        self.assertFalse(evidence.original_operation_id)
+        self.assertFalse(self.source.external_refund_review_required)
+        for model, count in before.items():
+            self.assertEqual(self.env[model].sudo().search_count([]), count, model)
+
+        for location in (None, self.LOCATION_ID, "invalid-location"):
+            with self.subTest(location=location):
+                candidate = self._external("completed", amount=amount, currency="EUR", id=str(uuid4()))
+                candidate.pop("related_order_id")
+                if location is not None:
+                    candidate["location_id"] = location
+                self.assertFalse(self._discover([candidate]))
+                evidence = evidence_model.search([("provider_order_id", "=", candidate["id"])])
+                self.assertEqual(evidence.amount_minor, 0)
+                self.assertTrue(evidence.deployment_blocking)
+                self.assertNotEqual(evidence.reason, "outside_integration_location")
+                for model, count in before.items():
+                    self.assertEqual(self.env[model].sudo().search_count([]), count, model)
+
+        candidate = self._external("completed", amount=amount, id=str(uuid4()), location_id=str(uuid4()))
+        self.assertFalse(self._discover([candidate]))
+        evidence = evidence_model.search([("provider_order_id", "=", candidate["id"])])
+        self.assertEqual(evidence.reason, "amount_or_currency_mismatch")
+        self.assertEqual(evidence.amount_minor, 0)
+        self.assertTrue(evidence.deployment_blocking)
+        for model, count in before.items():
+            self.assertEqual(self.env[model].sudo().search_count([]), count, model)
+
+        for state, parent in (("processing", None), ("completed", str(uuid4()))):
+            with self.subTest(state=state, parent=parent):
+                candidate = self._external(state, amount=amount, currency="EUR", id=str(uuid4()),
+                                           location_id=str(uuid4()))
+                if parent is None:
+                    candidate.pop("related_order_id")
+                else:
+                    candidate["related_order_id"] = parent
+                self.assertFalse(self._discover([candidate]))
+                evidence = evidence_model.search([("provider_order_id", "=", candidate["id"])])
+                self.assertEqual(evidence.amount_minor, 0)
+                self.assertTrue(evidence.deployment_blocking)
+                self.assertNotEqual(evidence.reason, "outside_integration_location")
+                self.assertNotEqual(evidence.reason, "unrelated_source")
+                for model, count in before.items():
+                    self.assertEqual(self.env[model].sudo().search_count([]), count, model)
+
+        refund = self.env["pos.revolut.refund.operation"].sudo().create({
+            "original_operation_id": self.source.id, "pos_session_id": self.session.id,
+            "order_uuid": self.payload["uuid"],
+            "payment_line_uuid": self.payload["payment_ids"][0][2]["uuid"],
+            "financial_snapshot": self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(self.payload),
+            "amount": 1, "amount_minor": 100, "currency_id": self.session.currency_id.id,
+            "state": "verified", "revolut_order_id": self.refund_id,
+        })
+        before["pos.revolut.refund.operation"] += 1
+        for reference, merchant in (
+            (refund.revolut_order_id, {}),
+            (str(uuid4()), {"reference": refund.idempotency_key}),
+        ):
+            with self.subTest(reference=reference):
+                candidate = self._external("completed", amount=amount, currency="EUR", id=reference,
+                                           location_id=str(uuid4()), merchant_order_data=merchant)
+                candidate.pop("related_order_id")
+                self._discover([candidate])
+                evidence = evidence_model.search([("provider_order_id", "=", reference)])
+                self.assertEqual(evidence.amount_minor, 0)
+                self.assertTrue(evidence.deployment_blocking)
+                self.assertNotEqual(evidence.reason, "outside_integration_location")
+                self.assertEqual(refund.state, "verified")
+                self.assertEqual(refund.amount_minor, 100)
+                for model, count in before.items():
+                    self.assertEqual(self.env[model].sudo().search_count([]), count, model)
+        self.assertTrue(self.request.call_args_list)
+        self.assertTrue(all(call.args[0] == "GET" for call in self.request.call_args_list))
+
     def test_known_unverified_original_remains_blocking_investigation_evidence(self):
         pending = self._operation(str(uuid4()), str(uuid4()), state="unresolved")
         self.env.flush_all()
