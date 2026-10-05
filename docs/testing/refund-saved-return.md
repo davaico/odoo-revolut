@@ -35,4 +35,47 @@ rounding, failed retry, concurrency, native settlement and recovery cases are
 adapted to save drafts before new starts. Historical orphan fixtures explicitly
 seed old operations rather than using a now-prohibited new unsaved start.
 
-Final suite, review and deployment evidence will be recorded after completion.
+### Final candidate — 2026-10-05
+
+Candidate `19.0.1.15.1`, revision
+`944e07ebc6beeb21eed0cd37c3f4cc68442dc6c6`, passed:
+
+| Check | Result | Local evidence |
+| --- | --- | --- |
+| Full pinned Odoo install / upgrade | 478 / 478 tests; zero failures or errors | `/tmp/refund-saved-final.log` |
+| Exact archive retail acceptance | 16 tests; zero failures or errors | `/tmp/refund-saved-artifact-retail.log` |
+| Exact archive migration from deployed `30492a6` | Four groups of 16 tests, including repeated retail and installed Restaurant bridge migrations; zero failures or errors | `/tmp/refund-saved-artifact-migration.log` |
+| POS payment lifecycle | 79 passed | `/tmp/refund-saved-node-final.log` |
+| Repository Python checks | 43 run, 40 passed, 3 optional Docker checks skipped; actual Odoo/Docker acceptance ran separately above | `/tmp/refund-saved-scripts-final.log` |
+
+The exact candidate archive SHA-256 is
+`1df05106bcc3ac2c0b216685084382f6e01bf6f96a4f2096e15d787627997253`.
+Python compilation, JavaScript syntax and `git diff --check` passed.
+Independent Standards and Spec reviews found zero remaining findings against
+merged main `2c7aa7c`. The Restaurant guard tour resolves native POS screens
+inside its POS steps, preserving backend test asset loading after the addon
+consolidation. This is a test-only compatibility correction.
+
+### Guarded deployment stopped — 2026-10-05
+
+The deployment attempt stopped at its initial financial preflight, before
+backup, checkout quiescence or module upgrade. At 10:12–10:13 UTC, staging
+contained **15 blocking external discovery records**: nine `unmatched_source`
+and six `conflicting_original_authority`. The guard output's `=15` is a count,
+not an evidence record ID. These records concern incomplete discovery or
+original credential attribution; they do not establish 15 pending refunds.
+
+Read-only inspection found the six referenced integration originals verified
+but without a bound credential authority: sources 36, 17, 14, 11, 10 and 4.
+Their company, environment and secret-reference comparisons agree with the
+scanning credential, but that alone does not constitute administrator
+attestation. Several unmatched list entries lack an original provider order.
+No evidence was marked resolved and no authority was changed to bypass the
+guard. Provider financial status remains a separate reconciliation question.
+
+Staging remains on `19.0.1.14.1`; the additional server requirement is **not
+deployed**. Resolve the discovery evidence through authoritative reconciliation
+and the established credential-attestation workflow, then rerun the guarded
+deployment against the reviewed merged revision. This attempt performed no
+live Merchant request, new refund, receipt validation or terminal retest.
+Evidence: `/tmp/refund-saved-deployment.log`. Ticket 12 remains open.

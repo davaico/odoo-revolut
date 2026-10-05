@@ -608,3 +608,21 @@ shown as **2 (Refund)**, with the original return UUID and both existing
 verified penny refunds. The ledger still contains six Odoo-origin refunds.
 The current next step is operator review and **Validate** on that draft; no
 replacement refund is needed. The final receipt is still an open live gate.
+
+## Saved-return server protection — 2026-10-05
+
+The requested server-side matching draft/payment requirement is implemented
+in candidate `19.0.1.15.1`, with direct authenticated API rejection tests,
+preserved legacy replay and automatic POS persistence. Full install/upgrade
+passed 478 tests each; exact-archive acceptance passed 80 checks. Standards
+and Spec reviews found no remaining findings. See the
+[verification and deployment record](../../testing/refund-saved-return.md).
+
+The guarded deployment stopped before changing staging because 15 unresolved
+external discovery evidence records block financial preflight. Nine lack a
+verified source association and six report missing original credential
+attribution. The count does not establish pending money movement. Staging
+remains `19.0.1.14.1`; no evidence was cleared or credential grant inferred to
+force rollout. Authoritative reconciliation and the established administrator
+attestation process must precede another guarded deployment. The recovered
+native receipt and other physical acceptance gates remain open.
