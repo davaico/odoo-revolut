@@ -8,6 +8,30 @@ Before starting, confirm this ticket’s blockers are closed and merge the lates
 
 **Triage:** ready-for-human
 
+## Current handoff — 2026-10-05
+
+Resume from the [deployed discovery correction and next-step matrix](../../testing/ticket-12-release-evidence.md#shared-merchant-discovery-rollout--2026-10-05).
+Staging now runs **19.0.1.15.3**, with saved matching return/payment enforcement
+and corrected shared-Merchant discovery. PRs #46 and #47 are merged. Final
+install and upgrade each passed 490 tests; live API rejection checks made zero
+provider HTTP calls. Financial blockers remain zero after the restored cron ran.
+All discovery evidence is retained; unfamiliar foreign transactions are not
+assumed to be cash returns or attributed to this register.
+
+The approved recovery already restored native draft 24, displayed **2 (Refund)**,
+total **-£0.02**, with both original refunds verified. Review and Validate that
+existing receipt; do not recover it again or send replacement refunds. The
+verified external penny refund 10 / source 36 separately needs manager review
+of its outstanding native bookkeeping. Administrator's GBP register grant is
+preserved. Standard Restaurant is installed, but GBP register 2 remains retail.
+
+Remaining human work is the receipt, external native reconciliation, unseen
+tip/report and Restaurant scenarios, unexecuted failure/race/interruption cases,
+final test-money reconciliation and combined-runtime/device acceptance. Retain
+the completed full/split/two-card, busy-terminal and older-return evidence.
+The checkpoint below describes earlier states and is superseded by this handoff.
+The ticket remains open and ready-for-human.
+
 ## Resume checkpoint — 2026-10-01, 13:40 UTC
 
 Resume from the [current checkpoint and remaining-work matrix](../../testing/ticket-12-release-evidence.md#current-refund-repair-checkpoint--2026-10-05).

@@ -79,3 +79,21 @@ and the established credential-attestation workflow, then rerun the guarded
 deployment against the reviewed merged revision. This attempt performed no
 live Merchant request, new refund, receipt validation or terminal retest.
 Evidence: `/tmp/refund-saved-deployment.log`. Ticket 12 remains open.
+
+### Protection deployed — 2026-10-05
+
+The earlier preflight stop is superseded by the completed
+[discovery reconciliation and guarded rollout](refund-discovery-scope.md#guarded-rollout-completed--2026-10-05).
+Staging runs **19.0.1.15.3**, exact source
+`0bc84ecf2d8fb22a94b80465eaae8943c299f9e7`, including the saved matching
+return/payment requirement. Final combined install and upgrade suites passed
+490 tests each; the exact archive retail and migration checks also passed.
+
+Live public `call_kw` checks as Administrator user 2 with superuser mode disabled
+rejected an unsaved return and a missing selected payment line before any
+provider HTTP call or refund creation. Each recorded zero HTTP calls; their
+test transaction rolled back. Evidence: `/tmp/discovery-final-api-smoke.log`.
+The recovered two-penny draft remains open for operator review and Validate;
+no replacement refund or native receipt finalization was performed. The POS
+continues to persist the draft automatically before a new refund, with no
+additional cashier step.
