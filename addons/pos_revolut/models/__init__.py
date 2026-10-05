@@ -15,3 +15,6 @@ from . import external_refund_evidence
 from . import external_refund_discovery
 from . import payment_observation
 from . import return_rounding
+from . import external_refund_completion
+from . import external_refund_disposition
+from . import external_refund_wizard

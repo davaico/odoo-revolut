@@ -48,7 +48,10 @@ class PosRevolutRefundOperation(models.Model):
     idempotency_key = fields.Char(readonly=True)
     native_reconciliation_status = fields.Selection([
         ("not_required", "Not required"), ("outstanding", "Outstanding"),
-        ("reconciled", "Handled separately"),
+        ("reconciled", "Historical acknowledgement (unproven)"),
+        ("native_draft", "Native return awaiting validation"),
+        ("native_completed", "Native return completed"),
+        ("financial_only", "No products returned — accounting completed"),
     ], required=True, readonly=True, default="not_required", index=True)
     native_reconciled_by = fields.Many2one("res.users", readonly=True, ondelete="restrict")
     native_reconciled_at = fields.Datetime(readonly=True)
@@ -73,12 +76,14 @@ class PosRevolutRefundOperation(models.Model):
     _origin_identity = models.Constraint(
         "CHECK((origin = 'odoo' AND order_uuid IS NOT NULL AND payment_line_uuid IS NOT NULL "
         "AND financial_snapshot IS NOT NULL AND idempotency_key IS NOT NULL) OR "
-        "(origin = 'external' AND order_uuid IS NULL AND payment_line_uuid IS NULL "
-        "AND financial_snapshot IS NULL AND idempotency_key IS NULL "
-        "AND pos_order_id IS NULL AND pos_payment_id IS NULL AND revolut_order_id IS NOT NULL "
-        "AND NOT COALESCE(allocation_explicit, FALSE) "
-        "AND COALESCE(return_total_minor, 0) = 0 AND return_allocation IS NULL))",
-        "Odoo refunds require their original return identity; external refunds cannot invent an Odoo return.",
+        "(origin = 'external' AND idempotency_key IS NULL AND revolut_order_id IS NOT NULL AND ("
+        "(order_uuid IS NULL AND payment_line_uuid IS NULL AND financial_snapshot IS NULL "
+        "AND pos_order_id IS NULL AND pos_payment_id IS NULL "
+        "AND COALESCE(return_total_minor, 0) = 0 AND return_allocation IS NULL) OR "
+        "(order_uuid IS NOT NULL AND payment_line_uuid IS NOT NULL AND financial_snapshot IS NOT NULL "
+        "AND pos_order_id IS NOT NULL AND pos_payment_id IS NOT NULL "
+        "AND return_total_minor > 0 AND return_allocation IS NOT NULL))))",
+        "External refunds require a complete manager-confirmed native association or no product return.",
     )
 
     _component_amounts = models.Constraint(
@@ -170,9 +175,9 @@ class PosRevolutRefundOperation(models.Model):
             "original_order_id": self.related_order_id,
             "original_operation_id": self.original_operation_id.id,
             "amount_minor": self.amount_minor,
-            "return_total_minor": self.return_total_minor if self.origin == "odoo" else False,
-            "base_amount_minor": (self.base_amount_minor if self.allocation_explicit else self.amount_minor) if self.origin == "odoo" else False,
-            "tip_amount_minor": self.tip_amount_minor if self.origin == "odoo" else False,
+            "return_total_minor": self.return_total_minor if self.order_uuid else False,
+            "base_amount_minor": (self.base_amount_minor if self.allocation_explicit else self.amount_minor) if self.order_uuid else False,
+            "tip_amount_minor": self.tip_amount_minor if self.order_uuid else False,
             "terminal_tip_evidence": self.allocation_explicit,
             "provider_state": self.provider_state or False,
             "local_outcome": self.local_outcome or False, "retry_safe": False,
@@ -316,24 +321,10 @@ class PosRevolutRefundOperation(models.Model):
         return values
 
     def action_acknowledge_native_reconciliation(self):
-        """Record manager acknowledgement without creating native financial work."""
         for operation in self:
             operation.payment_method_id._check_refund_authority()
             operation._check_revolut_register_access()
-            self.env.cr.execute(
-                "SELECT id FROM pos_revolut_refund_operation WHERE id = %s FOR UPDATE",
-                [operation.id],
-            )
-            operation.invalidate_recordset()
-            if operation.origin != "external" or operation.state != "verified":
-                raise UserError(_("Only a completed external refund can be acknowledged as handled separately."))
-            if operation.native_reconciliation_status == "outstanding":
-                super(PosRevolutRefundOperation, operation.sudo()).write({
-                    "native_reconciliation_status": "reconciled",
-                    "native_reconciled_by": self.env.uid,
-                    "native_reconciled_at": fields.Datetime.now(),
-                })
-        return {"type": "ir.actions.client", "tag": "reload"}
+        raise UserError(_("Confirm a native return or record the no-products-returned disposition with its accounting document."))
 
 
 class PosPaymentMethod(models.Model):
@@ -437,7 +428,7 @@ class PosPaymentMethod(models.Model):
                 domain.append(("order_uuid", "=", str(UUID(order_uuid))))
             if payment_line_uuid:
                 domain.append(("payment_line_uuid", "=", str(UUID(payment_line_uuid))))
-            if order_uuid or payment_line_uuid or not operation_id:
+            if not operation_id and not (order_uuid and payment_line_uuid):
                 domain.append(("origin", "=", "odoo"))
             operation = env["pos.revolut.refund.operation"].sudo().search(domain, limit=1)
             if not operation:
@@ -454,6 +445,8 @@ class PosPaymentMethod(models.Model):
                     "order_id": operation.revolut_order_id, "state": operation.state}
 
     def _update_refund_owned(self, operation_id, values):
+        values = dict(values)
+        authenticated_detail = values.pop("_authenticated_refund_detail", None)
         for attempt in range(3):
             try:
                 with self.env.registry.cursor() as cursor:
@@ -468,6 +461,8 @@ class PosPaymentMethod(models.Model):
                     )
                     cursor.execute("SELECT id FROM pos_revolut_refund_operation WHERE id = %s FOR UPDATE", [operation_id])
                     operation.invalidate_recordset()
+                    if authenticated_detail is not None:
+                        operation._record_provider_refund_time(authenticated_detail)
                     if operation.state not in {"verified", "failed"}:
                         final = values.get("state") in {"verified", "failed"}
                         cause = values.get("local_outcome")
@@ -528,7 +523,6 @@ class PosPaymentMethod(models.Model):
                     env = api.Environment(cursor, self.env.uid, dict(self.env.context), su=self.env.su)
                     refunds = env["pos.revolut.refund.operation"].sudo().search([
                         ("company_id", "=", self.company_id.id),
-                        ("origin", "=", "odoo"),
                         ("order_uuid", "=", order_uuid),
                     ])
                     if refunds:
@@ -603,6 +597,7 @@ class PosPaymentMethod(models.Model):
             self._validate_refund_response(operation, payload)
             state = payload.get("state")
             values = {"revolut_order_id": operation["order_id"], "provider_state": state,
+                      "_authenticated_refund_detail": payload,
                       "state": "verified" if state == "completed" else "failed" if state in {"failed", "cancelled"} else "pending",
                       "local_outcome": False}
             if values["state"] == "verified":

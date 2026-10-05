@@ -391,9 +391,18 @@ class TestSharedPosSessionAccess(TransactionCase):
         self.request.reset_mock()
         self._assert_interactive_denied('colleague', started, authority)
         # Root cron remains trusted; revocation neither cancels nor releases.
+        # Install/upgrade runs retain committed concurrency fixtures. Put this
+        # fixture first in the bounded cron batch instead of assuming fewer
+        # than 50 older due attempts exist in the database.
+        operation = self.env['pos.revolut.payment.operation'].sudo().browse(started['operation_id'])
+        operation.write({'next_reconcile_at': self.observation_time - timedelta(days=1)})
         self.env['pos.revolut.payment.operation'].sudo()._cron_reconcile_payments()
         self.env.invalidate_all()
         operation = self.env['pos.revolut.payment.operation'].sudo().browse(started['operation_id'])
+        self.assertEqual(operation.observation_finished_at, self.observation_time)
+        self.assertTrue(any(call.args[0] == 'GET'
+                            and call.args[1].endswith(f'/api/payment-intents/{self.intent_reference}')
+                            for call in self.request.call_args_list))
         self.assertEqual(operation.state, 'pending')
         self.assertTrue(operation.blocking_terminal_key)
         self.assertFalse(self.cancelled)

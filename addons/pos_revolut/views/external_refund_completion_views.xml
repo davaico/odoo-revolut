@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_external_refund_completion_wizard" model="ir.ui.view">
+        <field name="name">pos.revolut.external.refund.wizard.form</field>
+        <field name="model">pos.revolut.external.refund.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Complete existing Revolut refund">
+                <p>This workflow sends no new payment or refund. Confirm goods independently of the amount.</p>
+                <group>
+                    <field name="refund_id"/><field name="original_order_id"/>
+                    <field name="amount"/><field name="currency_id" invisible="True"/>
+                    <field name="disposition"/><field name="requires_components" invisible="True"/>
+                </group>
+                <field name="line_ids" invisible="disposition != 'products'">
+                    <list editable="bottom" create="0" delete="0">
+                        <field name="original_line_id" column_invisible="True"/>
+                        <field name="currency_id" column_invisible="True"/>
+                        <field name="product_id"/><field name="purchased_quantity"/>
+                        <field name="returned_quantity"/><field name="original_amount"/>
+                        <field name="quantity"/><field name="lot_names"/>
+                    </list>
+                </field>
+                <group invisible="disposition != 'existing'">
+                    <field name="return_order_id" domain="[('lines.refunded_orderline_id.order_id', '=', original_order_id)]"/>
+                    <p>Select every external refund already recorded on this return and its exact card reimbursement. Include the refund opened from the worklist. Confirm any terminal tip allocation for each refund explicitly.</p>
+                    <field name="association_line_ids">
+                        <list editable="bottom">
+                            <field name="currency_id" column_invisible="True"/>
+                            <field name="payment_method_id" column_invisible="True"/>
+                            <field name="requires_components" column_invisible="True"/>
+                            <field name="refund_id" domain="[('origin', '=', 'external'), ('original_order_id', '=', parent.original_order_id), ('state', '!=', 'failed')]" options="{'no_create': True}"/>
+                            <field name="amount"/>
+                            <field name="payment_id" domain="[('pos_order_id', '=', parent.return_order_id), ('payment_method_id', '=', payment_method_id)]" options="{'no_create': True}"/>
+                            <field name="base_amount" readonly="not requires_components"/>
+                            <field name="tip_amount" readonly="not requires_components"/>
+                        </list>
+                    </field>
+                </group>
+                <group string="Confirm original payment components" invisible="disposition != 'products' or not requires_components">
+                    <p>Confirm the base and terminal tip portions explicitly. Their sum must equal the external card refund.</p>
+                    <field name="base_amount"/><field name="tip_amount"/>
+                </group>
+                <group invisible="disposition != 'financial'">
+                    <field name="reason"/><field name="correction_move_id"/>
+                    <p>A posted native correction for the exact original sale and amount is required. Leave the document empty to prepare a draft for accounting review. After posting, reopen completion and select it.</p>
+                </group>
+                <footer>
+                    <button name="action_prepare" type="object" string="Review native work" class="btn-primary"/>
+                    <button special="cancel" string="Cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+    <record id="view_pos_order_external_refund_completion" model="ir.ui.view">
+        <field name="name">pos.order.external.refund.completion</field>
+        <field name="model">pos.order</field>
+        <field name="inherit_id" ref="point_of_sale.view_pos_pos_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                <field name="revolut_external_refund_ids" invisible="True"/>
+                <button name="action_continue_external_native_return" type="object" string="Continue in register" groups="point_of_sale.group_pos_manager" invisible="not revolut_external_refund_ids or state != 'draft'"/>
+                <button name="action_validate_external_native_return" type="object" string="Validate confirmed external-refund return" groups="point_of_sale.group_pos_manager" invisible="not revolut_external_refund_ids or state != 'draft'" confirm="Validate the confirmed return using the existing card reimbursement. Native stock and accounting effects apply; no new money is requested."/>
+            </xpath>
+        </field>
+    </record>
+    <record id="view_account_move_external_refund_correction" model="ir.ui.view">
+        <field name="name">account.move.external.refund.correction</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_move_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet" position="inside">
+                <group string="External refund correction" invisible="not revolut_external_refund_id">
+                    <field name="revolut_external_refund_id"/><field name="revolut_original_order_id"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>
