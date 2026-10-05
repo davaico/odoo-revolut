@@ -1,6 +1,7 @@
 """Manager-confirmed native evidence for money already issued by Revolut."""
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone
+from contextvars import ContextVar
 from uuid import uuid4
 
 from odoo import Command, _, api, fields, models
@@ -19,6 +20,7 @@ _NATIVE_FIELDS = {
     "historical_acknowledged_at", "financial_only_reason", "financial_correction_move_id",
     "native_lot_snapshot",
 }
+_association_batch = ContextVar("revolut_native_association_batch", default=None)
 
 
 class ExternalRefundCompletion(models.Model):
@@ -39,7 +41,7 @@ class ExternalRefundCompletion(models.Model):
             "pos_order_id", "pos_payment_id", "native_reconciliation_status",
             "native_reconciled_by", "native_reconciled_at",
         }
-        if any((protected | {"provider_initiated_at", "last_provider_observed_at"}).intersection(values) for values in vals_list):
+        if any(any(values.get(name) for name in protected | {"provider_initiated_at", "last_provider_observed_at"}) for values in vals_list):
             raise ValidationError(_("Native completion evidence is recorded through manager actions."))
         if any(values.get("origin") == "external" and any(values.get(name) for name in (
             "order_uuid", "payment_line_uuid", "financial_snapshot", "pos_order_id", "pos_payment_id",
@@ -242,10 +244,49 @@ class ExternalRefundCompletion(models.Model):
             if order.state == "draft":
                 order._revolut_freeze_return_allocation(rows)
             self._resume_native_payment()
+            if _association_batch.get() != (self.env.cr, order.id):
+                order._check_revolut_order()
+                if order.state != "draft":
+                    self._complete_native_return()
+            return self._native_action()
+
+    def action_associate_native_return(self, return_order_id, allocations):
+        """Associate all already-issued reimbursements atomically, including legacy returns."""
+        if (not self or len(self) > 100 or not isinstance(allocations, list)
+                or len(allocations) != len(self) or not all(isinstance(row, dict) for row in allocations)
+                or {row.get("refund_id") for row in allocations} != set(self.ids)
+                or len({row.get("payment_id") for row in allocations}) != len(allocations)
+                or any(type(row.get("refund_id")) is not int or type(row.get("payment_id")) is not int for row in allocations)):
+            raise UserError(_("Select each external refund and its exact native reimbursement payment once."))
+        with self.env.cr.savepoint(), _revolut_mutation(self.env) as mutation:
+            for refund in self:
+                refund.payment_method_id._check_refund_authority()
+                refund._check_revolut_register_access()
+            order = self.env["pos.order"].browse(return_order_id).exists()
+            if not order:
+                raise UserError(_("Select the existing native return."))
+            order.check_access("read")
+            order.config_id._check_revolut_register_access(session=order.session_id, order=order)
+            self.env.cr.execute("UPDATE pos_session SET write_date = write_date WHERE id = %s", [order.session_id.id])
+            self.env["pos.revolut.payment.operation"].sudo()._lock_order(order.company_id.id, order.uuid)
+            # No mutation is admitted as a proven association until every
+            # selected refund has passed the same single-allocation checks.
+            token = _association_batch.set((self.env.cr, order.id))
+            try:
+                by_id = {row["refund_id"]: row for row in allocations}
+                for refund in self.sorted("id"):
+                    row = by_id[refund.id]
+                    refund.action_prepare_native_return(return_order_id=order.id,
+                        payment_id=row["payment_id"], base_amount_minor=row.get("base_amount_minor"),
+                        tip_amount_minor=row.get("tip_amount_minor"))
+            finally:
+                _association_batch.reset(token)
+            mutation.watch(order)
             order._check_revolut_order()
             if order.state != "draft":
-                self._complete_native_return()
-            return self._native_action()
+                for refund in self:
+                    refund._complete_native_return()
+            return self[0]._native_action()
 
     def _resume_native_payment(self):
         if self.state == "verified" and self.pos_order_id.state == "draft":
@@ -291,12 +332,19 @@ class NativeExternalReturn(models.Model):
     _inherit = "pos.order"
 
     revolut_external_refund_ids = fields.One2many("pos.revolut.refund.operation", "pos_order_id",
-        domain=[("origin", "=", "external")], readonly=True)
+        domain=[("origin", "=", "external")], readonly=True, groups="point_of_sale.group_pos_manager")
+
+    @api.model
+    def _load_pos_data_fields(self, config):
+        # Native POS requests an explicit field list, including new addon
+        # fields. Manager worklist relations belong only in the backend form.
+        names = super()._load_pos_data_fields(config) or list(self._fields)
+        return [name for name in names if name != "revolut_external_refund_ids"]
 
     def _check_revolut_order(self):
         result = super()._check_revolut_order()
         for order in self:
-            for refund in order.revolut_external_refund_ids:
+            for refund in order.sudo().revolut_external_refund_ids:
                 if (refund.native_lot_snapshot != {str(line.refunded_orderline_id.id): sorted(line.pack_lot_ids.mapped("lot_name")) for line in order.lines}
                         or refund.original_order_id.account_move and not order.to_invoice):
                     raise UserError(_("The native return's confirmed lot details or required invoice correction changed."))
@@ -305,7 +353,7 @@ class NativeExternalReturn(models.Model):
     def _process_saved_order(self, draft):
         result = super()._process_saved_order(draft)
         if not draft:
-            for refund in self.revolut_external_refund_ids:
+            for refund in self.sudo().revolut_external_refund_ids.with_env(self.env):
                 refund._complete_native_return()
         return result
 
@@ -315,6 +363,17 @@ class NativeExternalReturn(models.Model):
         if not refunds:
             raise UserError(_("This order has no associated external refund."))
         return refunds[0].action_validate_native_return()
+
+    def action_continue_external_native_return(self):
+        self.ensure_one()
+        refunds = self.revolut_external_refund_ids
+        if not refunds or self.state != "draft" or self.session_id.state != "opened":
+            raise UserError(_("Select an external-refund draft in its open register."))
+        for refund in refunds:
+            refund.payment_method_id._check_refund_authority()
+            refund._check_revolut_register_access()
+        return {"type": "ir.actions.act_url", "target": "self",
+                "url": f"/pos/ui/{self.config_id.id}/payment/{self.uuid}"}
 
     def write(self, values):
         if "to_invoice" not in values:

@@ -22,9 +22,21 @@
                 </field>
                 <group invisible="disposition != 'existing'">
                     <field name="return_order_id" domain="[('lines.refunded_orderline_id.order_id', '=', original_order_id)]"/>
-                    <field name="payment_id" domain="[('pos_order_id', '=', return_order_id)]"/>
+                    <p>Select every external refund already recorded on this return and its exact card reimbursement. Include the refund opened from the worklist. Confirm any terminal tip allocation for each refund explicitly.</p>
+                    <field name="association_line_ids">
+                        <list editable="bottom">
+                            <field name="currency_id" column_invisible="True"/>
+                            <field name="payment_method_id" column_invisible="True"/>
+                            <field name="requires_components" column_invisible="True"/>
+                            <field name="refund_id" domain="[('origin', '=', 'external'), ('original_order_id', '=', parent.original_order_id), ('state', '!=', 'failed')]" options="{'no_create': True}"/>
+                            <field name="amount"/>
+                            <field name="payment_id" domain="[('pos_order_id', '=', parent.return_order_id), ('payment_method_id', '=', payment_method_id)]" options="{'no_create': True}"/>
+                            <field name="base_amount" readonly="not requires_components"/>
+                            <field name="tip_amount" readonly="not requires_components"/>
+                        </list>
+                    </field>
                 </group>
-                <group string="Confirm original payment components" invisible="disposition == 'financial' or not requires_components">
+                <group string="Confirm original payment components" invisible="disposition != 'products' or not requires_components">
                     <p>Confirm the base and terminal tip portions explicitly. Their sum must equal the external card refund.</p>
                     <field name="base_amount"/><field name="tip_amount"/>
                 </group>
@@ -46,6 +58,7 @@
         <field name="arch" type="xml">
             <xpath expr="//header" position="inside">
                 <field name="revolut_external_refund_ids" invisible="True"/>
+                <button name="action_continue_external_native_return" type="object" string="Continue in register" groups="point_of_sale.group_pos_manager" invisible="not revolut_external_refund_ids or state != 'draft'"/>
                 <button name="action_validate_external_native_return" type="object" string="Validate confirmed external-refund return" groups="point_of_sale.group_pos_manager" invisible="not revolut_external_refund_ids or state != 'draft'" confirm="Validate the confirmed return using the existing card reimbursement. Native stock and accounting effects apply; no new money is requested."/>
             </xpath>
         </field>

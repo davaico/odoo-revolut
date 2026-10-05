@@ -116,6 +116,7 @@ class TestExternalNativeReturns(TestExternalRefunds):
         native = self._prepare(refund)
         self.assertEqual(native.payment_ids.payment_method_id, self.revolut_method)
         manager = self._mutation_actor()
+        self.assertTrue(native.with_user(manager).action_continue_external_native_return()["url"].endswith(f"/payment/{native.uuid}"))
         with self.assertRaises(UserError):
             refund.with_user(manager).action_validate_native_return()
         self.env["pos.payment"].with_user(manager).create({
@@ -267,4 +268,18 @@ class TestExternalNativeReturns(TestExternalRefunds):
         self.assertEqual(refund.pos_order_id, native)
         for model, count in before.items():
             self.assertEqual(self.env[model].search_count([]), count, model)
+        self.request.assert_not_called()
+
+    def test_native_return_reload_and_receipt_read_preserve_financial_evidence(self):
+        refund = self._discover([self._external("completed", amount=1234)])
+        native = self._prepare(refund)
+        manager = self._mutation_actor()
+        refund.with_user(manager).action_validate_native_return()
+        before = refund.read(["state", "amount_minor", "origin", "revolut_order_id", "native_reconciled_at"])
+        for _read in range(2):
+            data = self.env["pos.order"].with_user(manager).read_pos_data_uuid(native.uuid)
+            tender = next(row for row in data["pos.payment"] if row["id"] == refund.pos_payment_id.id)
+            self.assertEqual(tender["amount"], -12.34)
+            self.assertEqual(tender["transaction_id"], refund.revolut_order_id)
+            self.assertEqual(refund.read(["state", "amount_minor", "origin", "revolut_order_id", "native_reconciled_at"]), before)
         self.request.assert_not_called()
