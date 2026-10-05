@@ -4,7 +4,7 @@
 
 **Work branch:** `codex/39-cancel-payment-before-dispatch`
 
-**State:** claimed
+**State:** closed
 
 **Category:** bug
 
@@ -12,7 +12,7 @@
 
 **Priority:** P2
 
-**Work type:** Triaged bug with implementation brief, 2026-10-05. Ready for a separate implementation agent; no implementation performed or claimed.
+**Work type:** Implemented and verified bug fix, 2026-10-05. Mocked local acceptance complete; physical and staging acceptance remain ticket 12.
 
 **Dependencies and external blockers:** None for mocked local investigation or implementation. Coordinate integration with current payment work; staging and physical release acceptance remain ticket 12. Independent of ticket 40.
 
@@ -69,20 +69,41 @@ Preparation may already have saved and authorized a draft. Do not delete that dr
 
 **Acceptance criteria:**
 
-- [ ] Add a regression that fails on the current implementation using deferred payment preparation; cancelling before its successful resolution produces zero start calls and zero provider cancellation/timeout calls for a fresh undispatched attempt.
-- [ ] Request and cancellation promises settle without advancing the fake clock to the foreground timeout; the native screen releases its busy state and permits safe removal or a new explicit request.
-- [ ] Cover cancellation while draft persistence, authorization or canonical refresh is pending, using the adapter boundary plus native screen integration where needed.
-- [ ] Cover preparation failure and timeout after cancellation; no late continuation dispatches when an already-timed-out preparation eventually resolves.
-- [ ] Cover explicit retry of a safely failed prior attempt; cancellation prevents a new attempt and preserves the old immutable reference/evidence.
-- [ ] Repeated cancellation remains idempotent. Check-only, reload and explicit resume cannot silently create an extra start.
-- [ ] Preserve cancellation after possible dispatch, cancellation-versus-capture, verified success, refund preparation dismissal and uncertain-refund guards.
-- [ ] Run the focused state-machine regressions and relevant mocked native checkout/cancellation tests. Record exact revision and results; do not use a real terminal.
+- [x] Add a regression that fails on the current implementation using deferred payment preparation; cancelling before its successful resolution produces zero start calls and zero provider cancellation/timeout calls for a fresh undispatched attempt.
+- [x] Request and cancellation promises settle without advancing the fake clock to the foreground timeout; the native screen releases its busy state and permits safe removal or a new explicit request.
+- [x] Cover cancellation while draft persistence, authorization or canonical refresh is pending, using the adapter boundary plus native screen integration where needed.
+- [x] Cover preparation failure and timeout after cancellation; no late continuation dispatches when an already-timed-out preparation eventually resolves.
+- [x] Cover explicit retry of a safely failed prior attempt; cancellation prevents a new attempt and preserves the old immutable reference/evidence.
+- [x] Repeated cancellation remains idempotent. Check-only, reload and explicit resume cannot silently create an extra start.
+- [x] Preserve cancellation after possible dispatch, cancellation-versus-capture, verified success, refund preparation dismissal and uncertain-refund guards.
+- [x] Run the focused state-machine regressions and relevant mocked native checkout/cancellation tests. Record exact revision and results; do not use a real terminal.
 
 **Out of scope:** Refund rounding, server authorization policy changes, background order finalization, broad state-machine refactoring, deployment, live charges/refunds, and rewriting historical operations.
 
 ## Triage disposition
 
-Confirmed bug with a narrow correction and a complete behavioral brief. On the owner's request to triage ticket 39, the existing evidence and current code were reviewed again: the affected code is unchanged, no duplicate fix exists, and no product-policy decision or external access is missing. Promoted to `ready-for-agent`; no further grilling is needed. The ticket remains open and unclaimed for implementation by another agent.
+Confirmed bug with a narrow correction and a complete behavioral brief. On the owner's request to triage ticket 39, the existing evidence and current code were reviewed again: the affected code was unchanged, no duplicate fix existed, and no product-policy decision or external access was missing. Promoted to `ready-for-agent`; no further grilling was needed. The ticket was left open and unclaimed at triage, then implemented on the owner's request.
+
+## Implementation and verification — 2026-10-05
+
+Runtime revision: `d3a1db2913c80cd811061ef63da069dbef88160f`, based on freshly
+fetched main `f9249c589194d7a27b411ef82dc51aa8dcd13966`. A second fetch confirmed
+main was unchanged. Cancellation is checked after payment preparation and before
+dispatch; cancelled retry preparation preserves the prior final operation.
+
+The regression failed before the fix with an unwanted start; a second red/green
+case established preservation of the prior declined attempt without provider
+mutation. All 88 lifecycle tests passed. Five focused native browser tests passed,
+including all three preparation stages, post-dispatch cancellation and capture
+racing cancellation. Full Odoo acceptance ran 493 tests on fresh install and 493
+on upgrade with zero failures/errors, exit 0. Host tooling ran 43 tests with three
+PDF dependency skips; syntax and whitespace checks passed. No static typechecker
+is configured. Independent Standards and Spec reviews each found zero issues.
+
+Commands, test seams, exact revision and evidence limits are in the
+[verification report](../../testing/ticket-39-preparation-cancellation.md).
+All provider calls were mocked; no real terminal or staging operation was used.
+Ticket 12's physical/deployment gate remains separate.
 
 ## Comments
 
