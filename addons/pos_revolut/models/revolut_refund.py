@@ -39,6 +39,7 @@ class PosRevolutRefundOperation(models.Model):
     amount = fields.Monetary(required=True, readonly=True)
     amount_minor = fields.Integer(required=True, readonly=True)
     return_total_minor = fields.Integer(readonly=True)
+    return_allocation = fields.Json(readonly=True)
     allocation_explicit = fields.Boolean(readonly=True)
     base_amount_minor = fields.Integer(readonly=True)
     tip_amount_minor = fields.Integer(readonly=True)
@@ -76,7 +77,7 @@ class PosRevolutRefundOperation(models.Model):
         "AND financial_snapshot IS NULL AND idempotency_key IS NULL "
         "AND pos_order_id IS NULL AND pos_payment_id IS NULL AND revolut_order_id IS NOT NULL "
         "AND NOT COALESCE(allocation_explicit, FALSE) "
-        "AND COALESCE(return_total_minor, 0) = 0))",
+        "AND COALESCE(return_total_minor, 0) = 0 AND return_allocation IS NULL))",
         "Odoo refunds require their original return identity; external refunds cannot invent an Odoo return.",
     )
 
@@ -124,7 +125,7 @@ class PosRevolutRefundOperation(models.Model):
         if {"native_reconciliation_status", "native_reconciled_by", "native_reconciled_at"}.intersection(values):
             raise ValidationError(_("A manager must acknowledge native reconciliation through the dedicated action."))
         immutable = {"origin", "original_operation_id", "pos_session_id", "order_uuid", "payment_line_uuid",
-                     "amount", "amount_minor", "return_total_minor", "allocation_explicit", "base_amount_minor", "tip_amount_minor", "currency_id", "financial_snapshot", "idempotency_key", "dispatched_at"}
+                     "amount", "amount_minor", "return_total_minor", "return_allocation", "allocation_explicit", "base_amount_minor", "tip_amount_minor", "currency_id", "financial_snapshot", "idempotency_key", "dispatched_at"}
         if immutable.intersection(values):
             raise ValidationError(_("Refund operation details are immutable."))
         for operation in self:
@@ -624,18 +625,45 @@ class PosOrder(models.Model):
 
     def _revolut_return_target_minor(self):
         self.ensure_one()
+        if self.revolut_return_allocation:
+            return -sum(row["base_minor"] + row["tip_minor"]
+                        for row in self.revolut_return_allocation)
         original = self.lines.refunded_orderline_id.order_id
-        if (len(original) == 1 and original.revolut_authorization_id
+        if (len(original) == 1 and self._revolut_return_source()
                 and self.lines and all(line.refunded_orderline_id and line.qty < 0 for line in self.lines)):
+            normalize = self.env["pos.revolut.payment.operation"].normalize_amount
+            # Displaying completed historical documents never assigns new
+            # product entitlement or rewrites their recorded financial amount.
+            if self.state in {"paid", "done", "invoiced"}:
+                return normalize(self.currency_id, self.amount_total)[1]
+            refunds = self.env["pos.revolut.refund.operation"].sudo().search([
+                ("company_id", "=", self.company_id.id), ("order_uuid", "=", self.uuid),
+                ("origin", "=", "odoo"), ("state", "!=", "failed"),
+            ])
+            targets = set(refunds.mapped("return_total_minor")) - {0}
+            if len(targets) == 1:
+                return -targets.pop()
+            if len(targets) > 1:
+                raise UserError(_("The refund allocations have inconsistent return targets."))
+            if refunds:
+                # Pre-upgrade uncertain snapshots without a full target retain
+                # their saved display; new allocation discovery remains guarded.
+                return normalize(self.currency_id, self.amount_total)[1]
             allocation = ReturnAllocation(self.env)
             snapshot = allocation._normalize_return(self._revolut_order_values(), native_order=True)
-            return -allocation._return_total_minor(snapshot, original, self.currency_id)
+            return -allocation._return_total_minor(snapshot, original, self.currency_id, self.uuid)
         return None
 
     def _compute_prices(self):
+        # Native recomputation must not overwrite completed pre-upgrade amounts
+        # whose product-level adjustment was never recorded as new evidence.
+        historical = {order.id: self.env["pos.revolut.payment.operation"].normalize_amount(
+            order.currency_id, order.amount_total)[1]
+            for order in self if order.state in {"paid", "done", "invoiced"}
+            and not order.revolut_return_allocation and order._revolut_return_source()}
         result = super()._compute_prices()
         for order in self:
-            target = order._revolut_return_target_minor()
+            target = historical.get(order.id) if order.id in historical else order._revolut_return_target_minor()
             if target is not None:
                 order.amount_total = target / (10 ** order.currency_id.decimal_places)
                 order.amount_difference = order.amount_paid - order.amount_total
