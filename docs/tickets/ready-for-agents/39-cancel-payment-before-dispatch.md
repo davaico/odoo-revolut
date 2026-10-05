@@ -2,9 +2,9 @@
 
 # 39 — Honor payment cancellation before dispatch
 
-**Work branch:** `codex/39-cancel-payment-before-dispatch` (not created)
+**Work branch:** `codex/39-cancel-payment-before-dispatch`
 
-**State:** open
+**State:** claimed
 
 **Category:** bug
 

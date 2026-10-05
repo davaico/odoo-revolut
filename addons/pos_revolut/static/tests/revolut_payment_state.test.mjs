@@ -1324,6 +1324,174 @@ test("a failed refund can be removed for replacement but cannot be edited or set
 });
 
 
+test("cancelling payment preparation settles the native screen without dispatch or timeout", async () => {
+    const prepared = deferred();
+    const { state, clock, order, line, calls } = fixture({
+        preparePayment: () => prepared.promise,
+        call(method) {
+            if (method === "revolut_start_payment") {
+                return { operation_id: 80, state: "pending", order_id: "rev-80" };
+            }
+            return false;
+        },
+    });
+    let busy = true;
+    let requestResult;
+    let cancelResult;
+    const request = state.screenRequest(order, line, () => state.request(order, line))
+        .then((result) => { requestResult = result; });
+    await tick();
+    const cancellation = state.screenCancel(order, line,
+        () => { throw new Error("Cancellation must not resume an undispatched payment"); },
+        () => { busy = false; }).then((result) => { cancelResult = result; });
+    prepared.resolve({ status: "prepared", authorization_id: 1, cart_version: 1, tender_revision: 1 });
+    await tick();
+    assert.deepEqual(calls.map(({ method }) => method), ["revolut_find_payment"]);
+    assert.equal(requestResult, false);
+    assert.equal(cancelResult, true);
+    await Promise.all([request, cancellation]);
+    assert.equal(clock.now(), 0);
+    assert.equal(busy, false);
+    assert.equal(line.getPaymentStatus(), "retry");
+    assert.equal(line.uiState.revolutUndispatched, true);
+    assert.equal(line.uiState.revolutDiscovering, false);
+    assert.equal(paymentActions(line).canDelete, true);
+    assert.equal(paymentActions(line).canEditAmount, true);
+    assert.equal(orderActions(order).blocksAlternativeTender, false);
+    assert.equal(line.transaction_id, false);
+});
+
+test("cancelling explicit retry preparation preserves the prior final attempt without provider mutation", async () => {
+    const prepared = deferred();
+    const previous = { operation_id: 79, state: "declined", retry_safe: true,
+        order_id: "rev-79", payment_id: "declined-79", provider_state: "declined" };
+    const { state, clock, order, line, calls, errors } = fixture({
+        preparePayment: () => prepared.promise,
+        call(method) {
+            if (method === "revolut_cancel_payment") {
+                return { ...previous, state: "cancelled", provider_state: "cancelled" };
+            }
+            if (method === "revolut_start_payment") {
+                return { operation_id: 82, state: "verified", order_id: "rev-82", payment_id: "paid-82" };
+            }
+            return false;
+        },
+    });
+    line.uiState.revolutSnapshot = previous;
+    line.uiState.revolutOperationId = previous.operation_id;
+    line.setPaymentStatus("retry");
+    const request = state.request(order, line);
+    await tick();
+    const cancellation = state.cancel(order, line);
+    assert.equal(state.cancel(order, line), cancellation);
+    prepared.resolve({ status: "prepared", authorization_id: 1, cart_version: 1, tender_revision: 1 });
+    assert.equal(await request, false);
+    assert.equal(await cancellation, true);
+    assert.deepEqual(calls, []);
+    assert.deepEqual(errors, []);
+    assert.equal(clock.now(), 0);
+    assert.equal(line.uiState.revolutSnapshot, previous);
+    assert.equal(line.uiState.revolutOperationId, 79);
+    assert.equal(line.uiState.revolutPreviousOperationId, undefined);
+    assert.equal(paymentOutcome(line), "declined");
+    assert.equal(paymentActions(line).retrySafe, true);
+    assert.equal(paymentActions(line).canDelete, true);
+    restorePaymentLine(line);
+    assert.equal(await state.request(order, line, { checkOnly: true }), false);
+    assert.deepEqual(calls, []);
+    const resumed = state.request(order, line);
+    assert.equal(state.request(order, line), resumed);
+    assert.equal(await resumed, true);
+    assert.deepEqual(calls.map(({ method }) => method), ["revolut_start_payment"]);
+    assert.equal(calls[0].args[6], 79);
+    assert.equal(previous.state, "declined");
+    assert.equal(line.uiState.revolutSnapshot.operation_id, 82);
+    assert.equal(line.transaction_id, "paid-82");
+});
+
+for (const priorAttempt of [false, true]) {
+    for (const failure of ["rejected", "review_required", "timed_out"]) {
+        test(`cancelled ${priorAttempt ? "retry" : "fresh"} preparation ${failure} never dispatches a late result`, async () => {
+            const prepared = deferred();
+            const previous = { operation_id: 78, state: "failed", retry_safe: true, order_id: "rev-78" };
+            const { state, clock, order, line, calls } = fixture({
+                preparePayment: () => prepared.promise,
+            });
+            if (priorAttempt) {
+                line.uiState.revolutSnapshot = previous;
+                line.uiState.revolutOperationId = 78;
+                line.setPaymentStatus("retry");
+            }
+            const request = state.request(order, line);
+            await tick();
+            const cancellation = state.cancel(order, line);
+            assert.equal(state.cancel(order, line), cancellation);
+            if (failure === "rejected") {
+                prepared.reject(new Error("Draft persistence failed"));
+            } else if (failure === "review_required") {
+                prepared.resolve({ status: "review_required", message: "Review the canonical cart" });
+            } else {
+                clock.advance(60000);
+            }
+            assert.equal(await request, false);
+            assert.equal(await cancellation, true);
+            assert.equal(line.uiState.revolutDiscovering, false);
+            assert.equal(paymentActions(line).canDelete, true);
+            assert.equal(paymentActions(line).retrySafe, true);
+            if (priorAttempt) {
+                assert.equal(line.uiState.revolutSnapshot, previous);
+                assert.equal(line.uiState.revolutOperationId, 78);
+            } else {
+                assert.equal(line.uiState.revolutUndispatched, true);
+                assert.equal(line.uiState.revolutStarted, false);
+                assert.equal(line.transaction_id, false);
+            }
+            if (failure === "timed_out") {
+                prepared.resolve({ status: "prepared", authorization_id: 1, cart_version: 1, tender_revision: 1 });
+                await tick();
+            }
+            assert.deepEqual(calls.map(({ method }) => method), priorAttempt ? [] : ["revolut_find_payment"]);
+        });
+    }
+}
+
+test("a cancelled preparation stays undispatched through check and reload until one explicit resume", async () => {
+    const prepared = deferred();
+    const { state, clock, order, line, calls } = fixture({
+        preparePayment: () => prepared.promise,
+        call(method) {
+            if (method === "revolut_start_payment") {
+                return { operation_id: 81, state: "verified", order_id: "rev-81", payment_id: "paid-81" };
+            }
+            return false;
+        },
+    });
+    const request = state.request(order, line);
+    await tick();
+    const cancellation = state.cancel(order, line);
+    assert.equal(state.cancel(order, line), cancellation);
+    prepared.resolve({ status: "prepared", authorization_id: 1, cart_version: 1, tender_revision: 1 });
+    assert.equal(await request, false);
+    assert.equal(await cancellation, true);
+    assert.equal(await state.cancel(order, line), true);
+    line.setPaymentStatus("retry");
+    assert.equal(paymentOutcome(line), "discovery_cancelled");
+    assert.equal(await state.request(order, line, { checkOnly: true }), false);
+    const reloaded = { ...line, uiState: { ...line.uiState } };
+    order.payment_ids = [reloaded];
+    restorePaymentLine(reloaded);
+    assert.equal(await state.request(order, reloaded, { checkOnly: true }), false);
+    assert.equal(calls.some(({ method }) => method !== "revolut_find_payment"), false);
+    const resumed = state.screenRequest(order, reloaded, () => state.request(order, reloaded));
+    const repeated = state.screenRequest(order, reloaded, () => state.request(order, reloaded));
+    assert.deepEqual(await Promise.all([resumed, repeated]), [true, true]);
+    assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 1);
+    assert.equal(reloaded.transaction_id, "paid-81");
+    assert.equal(reloaded.payment_ref_no, "rev-81");
+    assert.equal(reloaded.uuid, "line-1");
+    assert.equal(clock.now(), 0);
+});
+
 test("preparation rejection keeps an untouched line editable and sends no start", async () => {
     const {state, order, line, calls, errors} = fixture({
         preparePayment: async () => { throw new Error("Review the canonical cart"); },
