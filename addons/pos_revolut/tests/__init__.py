@@ -35,3 +35,7 @@ from . import test_refund_session_close
 from . import test_restaurant_consolidation
 
 from . import test_return_allocation
+from . import test_external_native_returns
+from . import test_external_refund_disposition
+from . import test_external_native_stock
+from . import test_external_native_concurrency

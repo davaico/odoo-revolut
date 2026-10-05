@@ -57,7 +57,7 @@ class PosOrder(models.Model):
         if self.revolut_return_allocation and self.revolut_return_allocation != allocation:
             active = self.env["pos.revolut.refund.operation"].sudo().search_count([
                 ("company_id", "=", self.company_id.id), ("order_uuid", "=", self.uuid),
-                ("origin", "=", "odoo"), ("state", "!=", "failed"),
+                ("order_uuid", "!=", False), ("state", "!=", "failed"),
                 ("return_allocation", "!=", False),
             ])
             if self.state in {"paid", "done"} or active:

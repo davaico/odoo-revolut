@@ -94,7 +94,7 @@ class ReturnAllocation:
                 used[line.refunded_orderline_id.id] -= Decimal(str(line.qty))
         reservations = self.env["pos.revolut.refund.operation"].sudo().search([
             ("original_operation_id.pos_order_id", "=", original.id),
-            ("origin", "=", "odoo"),
+            ("order_uuid", "!=", False),
             ("state", "!=", "failed"),
         ])
         pending_by_return = {}
@@ -280,7 +280,7 @@ class ReturnAllocation:
         completed_by_uuid = {order.uuid: order for order in completed}
         refunds = self.env["pos.revolut.refund.operation"].sudo().search([
             ("original_operation_id.pos_order_id", "=", original.id),
-            ("origin", "=", "odoo"), ("state", "!=", "failed"),
+            ("order_uuid", "!=", False), ("state", "!=", "failed"),
         ], order="id")
         claims = {}
         snapshots = {}
@@ -398,7 +398,7 @@ class ReturnAllocation:
             remaining_tip = max(0, tip - sum(item[1] for item in allocations))
             remaining = max(0, source._revolut_paid_minor() - reserved)
             needs_review = source.external_refund_review_required
-            unknown_components = tip and any(item.origin == "external" for item in claimed)
+            unknown_components = tip and any(item.origin == "external" and not item.allocation_explicit for item in claimed)
             if needs_review:
                 remaining = 0
             if needs_review or unknown_components:
@@ -542,7 +542,7 @@ class ReturnAllocation:
             source, minor, base_amount_minor, tip_amount_minor, reserved,
         )
         source_base, source_tip, _evidence = self._source_components(source)
-        if source_tip and any(item.origin == "external" for item in source_refunds):
+        if source_tip and any(item.origin == "external" and not item.allocation_explicit for item in source_refunds):
             raise UserError(_("An external refund has no verified base and terminal tip allocation. Reconcile its components separately before another refund."))
         claimed = [self._refund_components(item) for item in source_refunds]
         if (sum(item[0] for item in claimed) + base_minor > source_base
@@ -717,13 +717,15 @@ class ReturnAllocation:
                 if payment and payment.get("payment_status") == "done":
                     raise UserError(_("A failed Revolut refund cannot complete a return payment."))
                 continue
+            if refund.origin == "external" and refund.state == "verified" and (refund.provider_state != "completed" or not refund.verified_at):
+                raise UserError(_("An external refund requires authoritative successful financial evidence."))
             # A verified refund can outlive its closed POS session. Keep its
             # original allocation fixed while allowing the same register to finish.
             if (not payment or snapshot != refund.financial_snapshot
                     or refund.original_order_id != original
                     or (refund.pos_session_id != session and (
-                        refund.state != "verified"
-                        or refund.pos_session_id.state != "closed"
+                        (refund.state != "verified" and not (refund.origin == "external" and order.get("state") == "draft"))
+                        or (refund.pos_session_id.state != "closed" and refund.origin != "external")
                         or session.state != "opened"
                         or refund.pos_session_id.config_id != session.config_id
                     ))

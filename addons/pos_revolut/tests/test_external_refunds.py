@@ -480,7 +480,7 @@ class TestExternalRefunds(CommonPosTest):
         self.assertEqual(len(refunds), 2)
         self.assertEqual(self._remaining()[self.source.id], 934)
 
-    def test_manager_acknowledgement_records_separate_native_work_without_mutation(self):
+    def test_retired_acknowledgement_cannot_prove_native_work(self):
         manager = self._mutation_actor()
         refund = self._discover([self._external("completed", amount=617)])
         before = {model: self.env[model].search_count([]) for model in (
@@ -488,11 +488,12 @@ class TestExternalRefunds(CommonPosTest):
         )}
         self.request.reset_mock()
         self.assertEqual(refund.native_reconciliation_status, "outstanding")
-        refund.with_user(manager).action_acknowledge_native_reconciliation()
+        with self.assertRaises(UserError):
+            refund.with_user(manager).action_acknowledge_native_reconciliation()
         refund.invalidate_recordset()
-        self.assertEqual(refund.native_reconciliation_status, "reconciled")
-        self.assertEqual(refund.native_reconciled_by, manager)
-        self.assertTrue(refund.native_reconciled_at)
+        self.assertEqual(refund.native_reconciliation_status, "outstanding")
+        self.assertFalse(refund.native_reconciled_by)
+        self.assertFalse(refund.native_reconciled_at)
         for model, count in before.items():
             self.assertEqual(self.env[model].search_count([]), count, model)
         self.request.assert_not_called()
@@ -1138,9 +1139,10 @@ class TestExternalRefunds(CommonPosTest):
         self.assertEqual(self.env["pos.revolut.refund.operation"].sudo().search_count([
             ("original_operation_id", "=", self.source.id),
         ]), 1)
-        refund.with_user(self._mutation_actor()).action_acknowledge_native_reconciliation()
+        with self.assertRaises(UserError):
+            refund.with_user(self._mutation_actor()).action_acknowledge_native_reconciliation()
         refund.invalidate_recordset()
-        self.assertEqual(refund.native_reconciliation_status, "reconciled")
+        self.assertEqual(refund.native_reconciliation_status, "outstanding")
         assert_capacity()
         with self.assertRaisesRegex(UserError, "external refund has no verified base"):
             self._start_allocated(base_minor=100, tip_minor=0)
