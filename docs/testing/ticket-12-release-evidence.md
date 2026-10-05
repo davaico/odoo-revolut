@@ -1,5 +1,12 @@
 # Ticket 12 — Release evidence and terminal acceptance handoff
 
+**Final release retest requested — 2026-10-05.** Resume from the
+[final release and open-source checklist](ticket-12-final-release-checklist.md).
+The owner now requests a complete retest on the final combined candidate,
+including ticket 41. Dated results below remain historical evidence; their
+instructions not to repeat completed scenarios do not waive the final retest.
+Use new authorized fixtures rather than repeating completed money movements.
+
 **Live acceptance remains open.** Dated entries distinguish observed passes,
 partial results and unexecuted cases. Mocked success does not establish terminal
 certification. Resume from the [simplified refund screens and remaining work](#simplified-refund-screens--2026-10-05);

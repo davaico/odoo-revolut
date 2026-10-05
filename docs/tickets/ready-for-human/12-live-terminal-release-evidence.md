@@ -1,40 +1,53 @@
-# 12 — Validate real terminal payments and publish release evidence
+# 12 — Retest the complete integration before release and open-source publication
 
 **Work branch:** `codex/12-live-terminal-release-evidence`
 
-Before starting, confirm this ticket’s blockers are closed and merge the latest reviewed `main` into this branch. Verify it includes the completed blocker implementations; do not start from the initial branch snapshot alone. Use a separate worktree when another agent is working in this repository.
+Start from the latest reviewed `main` in an isolated worktree. Freeze the final combined release candidate after the required implementation work is merged. Independent preparation may proceed while release dependencies remain open; final acceptance and publication must satisfy the gates below.
 
 **State:** open
 
 **Triage:** ready-for-human
 
-## Current handoff — 2026-10-05
+## Current handoff — final release retest, 2026-10-05
 
-Resume from the [simplified refund screens and remaining work](../../testing/ticket-12-release-evidence.md#simplified-refund-screens--2026-10-05).
-Staging runs **19.0.1.15.4** from reviewed source `bcb0204` / merged PR #51,
-with saved matching return/payment enforcement and corrected shared-Merchant
-discovery. Final runtime verification passed 493 full upgrade tests, 45 focused
-fresh-install tests and 88 Node tests; the initial screen candidate also passed
-493 full installation tests. Live screen checks passed and financial blockers
-remain zero. All discovery evidence is retained; unfamiliar foreign transactions
-are not attributed to this register.
+The owner wants to return to this ticket and **retest the whole integration
+before release and open-source publication**. Start with the
+[final release checklist](../../testing/ticket-12-final-release-checklist.md),
+which covers preparation, automated acceptance, operator scenarios, refund
+completion and publication readiness. Every final-candidate check starts
+unexecuted; earlier passes remain valid evidence of their dated revisions,
+not automatic passes for the next release.
 
-Restored return 24 / receipt **260-2-000002** is paid at **-£0.02**, with both
-original penny refunds verified and linked to its completed payments. Do not
-repeat recovery or refunds. External penny refund 10 / source 36 is completed
-and linked to original sale **000018**. The operator reported no products need
-returning. The confusing acknowledgement button and native review flag are
-removed from operator screens; no invented product return or acknowledgement
-is required to continue acceptance. Administrator's GBP register grant is
-preserved. Standard Restaurant is installed, but GBP register 2 remains retail.
+Preserve the [release chronology](../../testing/ticket-12-release-evidence.md),
+[operator observations](../../testing/ticket-12-operator-observations.md) and
+[refund-screen rollout](../../testing/refund-screen-clarity.md). Completed
+full/split/two-card checkout, busy-terminal recovery, older returns and the
+restored paid receipt are not undone. Use new explicitly authorized test
+fixtures where a fresh financial test is needed; never replay a completed
+refund or assume an old test budget is still available.
 
-Remaining human work is unseen tip/report and Restaurant scenarios, unexecuted
-failure/race/interruption cases, final test-money reconciliation (including any
-applicable separate accounting evidence) and combined-runtime/device acceptance.
-Retain completed full/split/two-card, busy-terminal and older-return evidence.
-Manager-confirmed native completion for external refunds is separately specified
-in ticket 41; this change only simplifies screens. Earlier checkpoints are
-superseded by this handoff. The ticket remains open and ready-for-human.
+The latest recorded staging checkpoint is **19.0.1.15.4**; recheck the actual
+deployed revision when resuming. Return 24 / receipt **260-2-000002** was paid
+at **-£0.02**. External refund 10 was completed and linked to original sale
+**000018**, with no product return reported by the operator. These are dated
+observations, not fixtures to modify automatically. Ticket 40's rounding fix
+is now merged; ticket 41's external native-completion workflow remains open.
+The final combined candidate must include both before accepting those rows.
+
+New mandatory cases cover ticket 41's product return visible in Orders, its
+explicit no-products-returned path, existing-return association, pending and
+reload/concurrency recovery, and **zero new money requests for an already
+issued refund**. Also retest fractional refund rounding, saved-return server
+protection, register permissions, printing, tips and Restaurant.
+
+Public publication additionally requires ticket 33's private evidence
+preservation/aliasing decision and review of the intended published material
+and history. Ticket 34's remaining native invoice PDF acceptance stays a
+release gate. This ticket remains **open / ready-for-human**; this update
+executes no tests, financial actions, deployments or publication.
+
+Earlier checkpoints below are historical. Their instructions to resume only
+untested cases are superseded by the owner's final complete-retest request.
 
 ## Resume checkpoint — 2026-10-01, 13:40 UTC
 
@@ -55,35 +68,44 @@ required before rollout. Ticket 12 remains open; other ticket states are unchang
 
 ## What to build
 
-Controlled real-terminal acceptance establishes whether the documented addon is ready for use, with traceable payment/refund evidence and complete operating instructions.
+One final go/no-go record establishes whether the complete reviewed Odoo 19
+integration is ready for release and open-source publication. Retest the
+final combined candidate, document actual payment/refund and native document
+outcomes, verify installation/upgrade and operating instructions, and review
+the exact material intended for public distribution. Preserve all earlier
+test evidence and keep new results separate.
 
 ## Acceptance criteria
 
-- [x] Confirm the reviewed release includes completed corrections 16–21 and an independent review of the payment-verification boundary. Before live acceptance, record the full integrated mocked suite on the final combined revision: install/upgrade, Restaurant, lifecycle, deployment checks, restart recovery, delivered-artifact acceptance and the new adversarial regressions for tickets 19–21.
-- [ ] Integrate the reviewed ticket 24 snapshot-resource correction and record its bounded Odoo validation, rejection/recovery regressions and independent security fix verification on the final combined candidate. Refresh affected payment/refund, settlement, lifecycle, install/upgrade and Restaurant evidence before release acceptance and closure; preserve earlier dated results as historical evidence.
-- [x] Confirm the deployed revision, target Odoo version, merchant environment, location, eligible terminal and operator-authorized test amounts before financial tests. Use non-production testing where supported; separately obtain explicit authorization for any real-money operation.
-- [ ] Validate successful full payment, split tender and retail/restaurant fulfilment using the confirmed contract. Demonstrate that only verified successful payment completes a fully paid order.
-- [ ] Validate decline/failure/cancellation and interruption/late recovery with provider-supported controlled methods. Verify safe retry and duplicate prevention using actual provider transaction references; never deliberately create uncontrolled duplicate charges.
-- [ ] Validate full and partial refunds through their asynchronous final outcome, preserving original and refund references. Reconcile all test charges and refunds.
-- [ ] Record observed results, sanitized references, timestamps and any scenarios that cannot be reproduced. Unexecuted required acceptance scenarios remain open release gaps, not implied passes.
-- [ ] Finalize fresh-install, configuration/secret rotation, cashier, manager reconciliation/refund, upgrade and troubleshooting instructions based on observed behavior.
-- [ ] Close only after mandatory acceptance gaps and provider contract discrepancies are resolved. Keep credentials and sensitive cardholder data out of release evidence; no changes to hosting or parent issues.
+- [ ] Freeze the reviewed combined candidate, Odoo/addon versions and release artifact/checksum; record current implementation dependencies, independent review and any unresolved release defects.
+- [ ] Run complete mocked install/upgrade, retail/Restaurant, POS lifecycle, public API boundary, restart/recovery, permission/migration, deployment and exact delivered-artifact acceptance on that candidate. Exercise risky behavior; a passing build or skipped browser test is not acceptance.
+- [ ] Recheck device/account/location, environment, currencies, register permissions and explicitly authorized amounts before any live test. Use supported controlled methods and a dedicated test session.
+- [ ] Complete every applicable operator scenario in the final checklist, including full/split/multiple-card checkout, tips, Restaurant, decline/failure/cancellation, timeout/interruption/late success, terminal busy and concurrent cashiers/status checks.
+- [ ] Retest full/partial/mixed-tender refunds, repeated fractional quantities and rounding, persisted draft/payment enforcement, safe recovery and asynchronous finality. Reject missing/mismatched drafts through direct API calls without contacting Revolut.
+- [ ] Accept ticket 41's product-return and no-products-returned workflows, existing-return association and recovery. Verify Orders/return links, receipts, actual configured stock/accounting effects and zero new financial requests for already-issued refunds.
+- [ ] Accept native historical sales receipt and terminal printing, plus an existing native invoice's downloadable/printable PDF (ticket 34). No custom Revolut receipt or automatic invoicing is required.
+- [ ] Reconcile all test charges/refunds, cash and base/tip allocations, active reservations and approved retained amounts against original sources; resolve discrepancies and verify no duplicate movement or unresolved exposure.
+- [ ] Verify that a cashier/manager can understand status, original sale, return or no-products outcome and recovery steps; test keyboard operation and readable actionable errors without weakening existing authorization.
+- [ ] Finalize fresh-install/configuration, server secret provisioning/rotation, cashier/manager workflows, upgrade, reconciliation and troubleshooting guidance from observations.
+- [ ] Complete the open-source publication checklist: preserve restricted evidence per ticket 33, review intended public content/history for secrets and original transaction/customer/device data, verify license/third-party notices and distributable artifact, and record the owner's publication decision.
+- [ ] Record PASS/FAIL/BLOCKED/NOT REPRODUCIBLE separately for every subcase, exact revision and evidence. Close only after required release/publication gaps are resolved; no old pass, acknowledgement or label change substitutes for current evidence.
 
 ## Blocked by
 
-- 02 — Resolve the Revolut terminal contract and testing prerequisites (closed)
-- 11 — Verify the complete addon on the target Odoo version
-- 16 — Preserve uncertain refunds when original-sale recovery fails
-- 17 — Deliver the Restaurant bridge with the reviewed addon release
-- 18 — Isolate internal payment records by allowed company
-- 19 — Enforce verified settlement and internal-operation permissions
-- 20 — Recover POS lines after a failed pre-payment lookup
-- 21 — Keep reconciliation progressing after malformed provider responses
-- 22 — Recover a POS line after a terminal-busy rejection (closed after live retest)
-- 23 — Preserve payment polling through valid processing states (closed after full, split and two-card live retests)
-- 24 — Bound financial snapshot processing before numeric expansion (closed; final combined release evidence remains required)
-- 27 — Enforce the authorized order balance before terminal dispatch (closed locally and merged; updated release still needs guarded deployment and target-device acceptance)
-- 28 — Bind Revolut credential authority to the owning company (closed; [fix, migration and independent verification evidence](../../testing/ticket-28-credential-authority-evidence.md) accepted; final combined-runtime acceptance remains)
+These are final release/closure gates, not a prohibition on independent
+preparation. Do not reopen completed implementation tickets just to retest them.
+
+- [41 — Complete Revolut-initiated refunds through native Odoo returns](../ready-for-agents/41-complete-external-refund-returns.md): open implementation; both dispositions and safe native completion must be merged and accepted before final release.
+- [34 — Provision and gate Odoo PDF generation](34-provision-and-gate-odoo-pdf-generation.md): remaining target native invoice PDF/printing acceptance.
+- [33 — Release evidence disclosure/preservation](../needs-info/33-investigate-release-evidence-disclosure.md): open public-publication gate; resolve restricted preservation/mapping and review the selected publication route/material before making anything public.
+- Physical terminal/operator availability, supported controlled failure methods, required native document fixtures and separately authorized financial test amounts.
+
+Completed integration corrections include 02, 11, 16–24, 27–28 and 35–40;
+their historical evidence is retained. Ticket 40 is closed/merged, but its
+rounding fix still needs acceptance with ticket 41 on the final candidate.
+The candidate must also contain the reviewed saved-return protection and
+refund discovery/screen corrections. Earlier blocker lists and test counts
+below describe their original dates.
 
 ## Release gate update — 2026-09-25
 
