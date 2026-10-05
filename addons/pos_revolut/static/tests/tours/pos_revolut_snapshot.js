@@ -9,6 +9,7 @@ import { registry } from "@web/core/registry";
 
 const IDENTITY_KEY = "revolutSnapshotIdentity";
 const STARTS_KEY = "revolutSnapshotStarts";
+const SAVES_KEY = "revolutSnapshotSaves";
 
 function identity() {
     return JSON.parse(sessionStorage.getItem(IDENTITY_KEY));
@@ -18,11 +19,31 @@ function starts() {
     return JSON.parse(sessionStorage.getItem(STARTS_KEY) || "[]");
 }
 
+function saves() {
+    return JSON.parse(sessionStorage.getItem(SAVES_KEY) || "[]");
+}
+
 function observeRpc({ rejectPayment = false } = {}) {
     const pos = window.posmodel;
     const call = pos.data.call.bind(pos.data);
     window.revolutSnapshotRpcs = new Set();
     pos.data.call = (model, method, args, ...rest) => {
+        if (model === "pos.order" && method === "sync_from_ui") {
+            const draft = args[0].find((order) => order.uuid === identity().orderUuid);
+            if (draft) {
+                const line = draft.lines.find((command) => command[2]?.qty !== undefined)?.[2];
+                let tracked;
+                tracked = call(model, method, args, ...rest).catch((error) => {
+                    sessionStorage.setItem(SAVES_KEY, JSON.stringify([...saves(), {
+                        orderUuid: draft.uuid, qty: line?.qty,
+                        message: error?.data?.message || error.message,
+                    }]));
+                    throw error;
+                }).finally(() => window.revolutSnapshotRpcs.delete(tracked));
+                window.revolutSnapshotRpcs.add(tracked);
+                return tracked;
+            }
+        }
         if (model !== "pos.payment.method" || !method.startsWith("revolut_")) {
             return call(model, method, args, ...rest);
         }
@@ -95,23 +116,18 @@ function checkUndispatchedLine(refund) {
         })}`);
     }
     line.setAmount(refund ? -12.34 : 12.34);
-    const rejected = starts().filter((request) => request.result?.start_rejected);
     if (!refund) {
         if (starts().length !== 0) {
             throw new Error("Invalid preparation reached a financial start RPC");
         }
         return;
     }
-    if (rejected.length !== 1 || rejected[0].qty !== (refund ? -1e10 : 1e10) ||
-        rejected[0].amount !== (refund ? -12.34 : 12.34)) {
-        throw new Error("The actual POS adapter did not submit the invalid numeric cart");
-    }
-    const result = rejected[0].result;
-    if (result.start_rejected !== "snapshot_invalid" || result.dispatched !== false ||
-        result.order_uuid !== saved.orderUuid || result.payment_line_uuid !== saved.lineUuid ||
-        result.previous_operation_id !== false || result.operation_id ||
-        !result.message?.includes("Correct the cart before starting payment")) {
-        throw new Error("Snapshot feedback lacked authoritative actionable non-dispatch proof");
+    const rejected = saves().filter((request) => request.qty === -1e10);
+    if (starts().length !== 0 || rejected.length !== 1 ||
+        rejected[0].orderUuid !== saved.orderUuid ||
+        !rejected[0].message?.includes("Correct the cart before starting payment") ||
+        !line.uiState.revolutRejectionMessage?.includes("Correct the cart before starting payment")) {
+        throw new Error("Invalid return did not fail native persistence before any refund dispatch with actionable feedback");
     }
 }
 
@@ -167,6 +183,7 @@ function rejectedSteps(refund) {
                     orderUuid: window.posmodel.getOrder().uuid,
                 }));
                 sessionStorage.setItem(STARTS_KEY, "[]");
+                sessionStorage.setItem(SAVES_KEY, "[]");
                 observeRpc({ rejectPayment: !refund });
             },
         },
@@ -191,7 +208,15 @@ function rejectedSteps(refund) {
             content: "Actionable snapshot feedback leaves the original unpaid line editable",
             trigger: `.payment-screen .electronic_status:contains('${refund
                 ? "Correct the return" : "Review or approve the cart"}')`,
-            run() { checkUndispatchedLine(refund); },
+            async run() {
+                checkUndispatchedLine(refund);
+                if (refund && await window.posmodel.data.call(
+                    "pos.revolut.refund.operation", "search_count",
+                    [[["order_uuid", "=", identity().orderUuid]]]
+                ) !== 0) {
+                    throw new Error("Invalid native return persistence created a refund reservation");
+                }
+            },
         },
         checkStatusTwice(refund),
         {
@@ -209,12 +234,10 @@ function rejectedSteps(refund) {
                     order.lines[0].setQuantity(1);
                 }
                 checkUndispatchedLine(refund);
-                if (!refund) {
-                    // Preparation now saves a native draft before asking for
-                    // authority. Persist the human's correction through the
-                    // same native sync so reload cannot restore the old cart.
-                    await pos.syncAllOrders({ orders: [order], force: true, throw: true });
-                }
+                // Both payment preparation and refund dispatch require a
+                // native draft. Save the correction before reload so server
+                // recovery cannot restore the rejected contents.
+                await pos.syncAllOrders({ orders: [order], force: true, throw: true });
             },
         },
     ].flat();
@@ -281,6 +304,7 @@ for (const refund of [false, true]) {
                     }
                     sessionStorage.removeItem(IDENTITY_KEY);
                     sessionStorage.removeItem(STARTS_KEY);
+                    sessionStorage.removeItem(SAVES_KEY);
                 },
             },
         ].flat(),
@@ -308,6 +332,7 @@ registry.category("web_tour.tours").add("pos_revolut_payment_snapshot_cash_alter
                 }
                 sessionStorage.removeItem(IDENTITY_KEY);
                 sessionStorage.removeItem(STARTS_KEY);
+                sessionStorage.removeItem(SAVES_KEY);
             },
         },
     ].flat(),
