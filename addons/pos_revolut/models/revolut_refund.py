@@ -9,6 +9,7 @@ from psycopg2.errors import DeadlockDetected, SerializationFailure
 
 from odoo import Command, _, api, fields, models
 from odoo.exceptions import AccessError, UserError, ValidationError
+from odoo.tools.misc import format_amount
 
 from .return_allocation import ReturnAllocation
 from .financial_snapshot import FinancialSnapshotError
@@ -24,8 +25,8 @@ class PosRevolutRefundOperation(models.Model):
     _order = "id desc"
 
     origin = fields.Selection([
-        ("odoo", "Odoo return"), ("external", "External refund"),
-    ], required=True, readonly=True, default="odoo", index=True)
+        ("odoo", "Odoo POS"), ("external", "Detected in Revolut"),
+    ], string="Source", required=True, readonly=True, default="odoo", index=True)
     original_operation_id = fields.Many2one("pos.revolut.payment.operation", required=True, readonly=True, ondelete="restrict", index=True)
     payment_method_id = fields.Many2one(related="original_operation_id.payment_method_id", store=True)
     company_id = fields.Many2one(related="original_operation_id.company_id", store=True)
@@ -87,6 +88,16 @@ class PosRevolutRefundOperation(models.Model):
         "COALESCE(base_amount_minor, 0) = 0 AND COALESCE(tip_amount_minor, 0) = 0))",
         "Refund base and terminal tip amounts must match the refund total.",
     )
+
+    @api.depends("amount", "currency_id", "original_order_id.display_name")
+    def _compute_display_name(self):
+        for refund in self:
+            amount = format_amount(self.env, refund.amount, refund.currency_id)
+            sale = refund.original_order_id.display_name
+            refund.display_name = (
+                _("Refund %(amount)s — %(sale)s", amount=amount, sale=sale)
+                if sale else _("Refund %(amount)s", amount=amount)
+            )
 
     @api.model_create_multi
     def create(self, vals_list):
