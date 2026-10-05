@@ -943,6 +943,33 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
     def test_payment_discovery_failure_recovers_after_reload_with_one_start(self):
         self._run_unsuccessful_checkout("captured", "pos_revolut_payment_discovery_recovery")
 
+    def _run_cancelled_payment_preparation(self, stage):
+        self._configure_revolut_checkout()
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+            side_effect=AssertionError("Cancelled preparation must not contact Revolut"),
+        ) as request:
+            self.start_pos_tour(f"pos_revolut_cancel_preparation_{stage}")
+        request.assert_not_called()
+        self.env.invalidate_all()
+        self.assertFalse(self.env["pos.revolut.payment.operation"].search([]))
+        orders = self.env["pos.order"].search([
+            ("session_id", "=", self.main_pos_config.current_session_id.id),
+        ])
+        self.assertEqual(len(orders), 1)
+        self.assertEqual(orders.state, "paid")
+        self.assertEqual(orders.amount_total, 12.34)
+        self.assertEqual(orders.payment_ids.payment_method_id.name, "Cash")
+
+    def test_cancel_payment_while_draft_persistence_is_pending(self):
+        self._run_cancelled_payment_preparation("draft")
+
+    def test_cancel_payment_while_authorization_is_pending(self):
+        self._run_cancelled_payment_preparation("authorization")
+
+    def test_cancel_payment_while_canonical_refresh_is_pending(self):
+        self._run_cancelled_payment_preparation("refresh")
+
     def test_payment_discovery_failure_allows_cash_without_dispatch(self):
         self._configure_revolut_checkout()
         with patch(
