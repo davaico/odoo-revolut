@@ -173,6 +173,19 @@ class TestExternalRefunds(CommonPosTest):
         self.assertEqual(refunds.ids, [previous])
         self.assertEqual(self._remaining()[self.source.id], 617)
 
+    def test_refund_list_without_parent_uses_authoritative_detail(self):
+        detail = self._external("completed", amount=617)
+        listed = dict(detail)
+        listed.pop("related_order_id")
+        refunds = self._discover([listed], {self.refund_id: detail})
+        self.assertEqual(len(refunds), 1)
+        self.assertEqual(refunds.original_operation_id, self.source)
+        self.assertEqual(refunds.state, "verified")
+        self.assertEqual(self._remaining()[self.source.id], 617)
+        self.assertFalse(self.source.external_refund_review_required)
+        self.assertTrue(any(call.args[1].endswith("/api/orders/" + self.refund_id)
+                            for call in self.request.call_args_list))
+
     def test_full_external_refund_consumes_card_capacity_without_returning_products(self):
         original_qty = self.original.lines.qty
         refunds = self._discover([self._external("completed", amount=1234)])
@@ -752,6 +765,38 @@ class TestExternalRefunds(CommonPosTest):
         self.assertTrue(any(call.args[1].endswith("/api/orders/" + self.refund_id)
                             for call in self.request.call_args_list))
 
+    def test_unrelated_list_parent_survives_omission_from_detail(self):
+        listed = self._external("completed", amount=100, related_order_id=str(uuid4()))
+        detail = dict(listed)
+        detail.pop("related_order_id")
+        self.assertFalse(self._discover([listed], {self.refund_id: detail}))
+        evidence = self.env["pos.revolut.external.refund.evidence"].sudo().search([
+            ("credential_id", "=", self.source.credential_id.id),
+            ("provider_order_id", "=", self.refund_id),
+        ])
+        self.assertEqual(evidence.reason, "unrelated_source")
+        self.assertFalse(evidence.deployment_blocking)
+        self.assertFalse(self.source.external_refund_review_required)
+
+    def test_final_unlinked_foreign_location_keeps_evidence_without_global_block(self):
+        candidate = self._external("completed", amount=100, location_id=str(uuid4()))
+        candidate.pop("related_order_id")
+        before = {model: self.env[model].search_count([]) for model in (
+            "pos.order", "pos.payment", "pos.revolut.refund.operation",
+        )}
+        self.assertFalse(self._discover([candidate]))
+        evidence = self.env["pos.revolut.external.refund.evidence"].sudo().search([
+            ("credential_id", "=", self.source.credential_id.id),
+            ("provider_order_id", "=", self.refund_id),
+        ])
+        self.assertEqual(evidence.reason, "outside_integration_location")
+        self.assertFalse(evidence.resolved)
+        self.assertFalse(evidence.deployment_blocking)
+        self.assertFalse(self.source.external_refund_review_required)
+        self.assertEqual(self._remaining()[self.source.id], 1234)
+        for model, count in before.items():
+            self.assertEqual(self.env[model].search_count([]), count, model)
+
     def test_known_unverified_original_remains_blocking_investigation_evidence(self):
         pending = self._operation(str(uuid4()), str(uuid4()), state="unresolved")
         self.env.flush_all()
@@ -771,6 +816,186 @@ class TestExternalRefunds(CommonPosTest):
         self.assertTrue(evidence.deployment_blocking)
         self.assertEqual(pending.state, "unresolved")
         self.assertFalse(pending.pos_order_id)
+
+    def test_discovery_scope_missing_same_invalid_location_stays_blocking(self):
+        evidence_model = self.env["pos.revolut.external.refund.evidence"].sudo()
+        for location in (None, self.LOCATION_ID, "invalid-location", "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"):
+            with self.subTest(location=location):
+                candidate = self._external("completed", amount=100, id=str(uuid4()))
+                candidate.pop("related_order_id")
+                if location is not None:
+                    candidate["location_id"] = location
+                self.assertFalse(self._discover([candidate]))
+                evidence = evidence_model.search([("provider_order_id", "=", candidate["id"])])
+                self.assertEqual(evidence.reason, "unmatched_source")
+                self.assertTrue(evidence.deployment_blocking)
+                self.assertTrue(self.source.external_refund_review_required)
+
+    def test_discovery_scope_foreign_location_nonfinal_stays_blocking(self):
+        evidence_model = self.env["pos.revolut.external.refund.evidence"].sudo()
+        for state in ("pending", "processing", "authorised", "unknown"):
+            with self.subTest(state=state):
+                candidate = self._external(state, amount=100, id=str(uuid4()), location_id=str(uuid4()))
+                candidate.pop("related_order_id")
+                self.assertFalse(self._discover([candidate]))
+                evidence = evidence_model.search([("provider_order_id", "=", candidate["id"])])
+                self.assertTrue(evidence.deployment_blocking)
+                self.assertNotEqual(evidence.reason, "outside_integration_location")
+
+    def test_discovery_scope_known_original_overrides_foreign_location(self):
+        foreign = str(uuid4())
+        candidate = self._external("completed", amount=100, location_id=foreign)
+        refunds = self._discover([candidate])
+        self.assertEqual(refunds.original_operation_id, self.source)
+        self.assertEqual(refunds.state, "verified")
+
+        legacy = self._operation(str(uuid4()), str(uuid4()))
+        self.env.flush_all()
+        self.cr.execute("UPDATE pos_revolut_payment_operation SET credential_id = NULL WHERE id = %s", [legacy.id])
+        legacy.invalidate_recordset()
+        candidate = self._external("completed", amount=100, source=legacy, id=str(uuid4()), location_id=foreign)
+        self._discover([candidate])
+        evidence = self.env["pos.revolut.external.refund.evidence"].sudo().search([
+            ("provider_order_id", "=", candidate["id"]),
+        ])
+        self.assertEqual(evidence.reason, "conflicting_original_authority")
+        self.assertTrue(evidence.deployment_blocking)
+        self.assertFalse(legacy.credential_id)
+        self.assertFalse(self.env["pos.revolut.refund.operation"].sudo().search([
+            ("original_operation_id", "=", legacy.id),
+        ]))
+
+    def test_discovery_scope_known_refund_id_or_key_stays_blocking(self):
+        refund = self.env["pos.revolut.refund.operation"].sudo().create({
+            "original_operation_id": self.source.id, "pos_session_id": self.session.id,
+            "order_uuid": self.payload["uuid"],
+            "payment_line_uuid": self.payload["payment_ids"][0][2]["uuid"],
+            "financial_snapshot": self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(self.payload),
+            "amount": 1, "amount_minor": 100, "currency_id": self.session.currency_id.id,
+            "state": "verified", "revolut_order_id": self.refund_id,
+        })
+        for reference, merchant in (
+            (refund.revolut_order_id, {}),
+            (str(uuid4()), {"reference": refund.idempotency_key}),
+        ):
+            with self.subTest(reference=reference):
+                candidate = self._external("completed", amount=100, id=reference,
+                                           location_id=str(uuid4()), merchant_order_data=merchant)
+                candidate.pop("related_order_id")
+                self._discover([candidate])
+                evidence = self.env["pos.revolut.external.refund.evidence"].sudo().search([
+                    ("provider_order_id", "=", reference),
+                ])
+                self.assertTrue(evidence.deployment_blocking)
+                self.assertNotEqual(evidence.reason, "outside_integration_location")
+                self.assertEqual(refund.state, "verified")
+        for merchant in (None, {}, {"reference": None}, {"reference": str(uuid4())}):
+            with self.subTest(detail_merchant=merchant):
+                candidate = self._external("completed", amount=100, id=str(uuid4()),
+                                           location_id=str(uuid4()),
+                                           merchant_order_data={"reference": refund.idempotency_key})
+                candidate.pop("related_order_id")
+                detail = dict(candidate)
+                if merchant is None:
+                    detail.pop("merchant_order_data")
+                else:
+                    detail["merchant_order_data"] = merchant
+                self._discover([candidate], {candidate["id"]: detail})
+                evidence = self.env["pos.revolut.external.refund.evidence"].sudo().search([
+                    ("provider_order_id", "=", candidate["id"]),
+                ])
+                self.assertTrue(evidence.deployment_blocking)
+                self.assertNotEqual(evidence.reason, "outside_integration_location")
+        self.assertEqual(self.env["pos.revolut.refund.operation"].sudo().search_count([
+            ("original_operation_id", "=", self.source.id),
+        ]), 1)
+
+    def test_discovery_scope_configured_archived_location_reopens_evidence(self):
+        foreign = str(uuid4())
+        candidate = self._external("completed", amount=100, location_id=foreign)
+        candidate.pop("related_order_id")
+        self._discover([candidate])
+        evidence = self.env["pos.revolut.external.refund.evidence"].sudo().search([
+            ("provider_order_id", "=", candidate["id"]),
+        ])
+        self.assertFalse(evidence.deployment_blocking)
+        identity = evidence.id
+        self.revolut_method.copy({
+            "name": "Archived integration location", "active": False,
+            "revolut_location_id": foreign, "revolut_terminal_id": str(uuid4()),
+            "revolut_environment": self.revolut_method.revolut_environment,
+            "revolut_fulfilment_type": "eat_in",
+            "revolut_secret_reference": self.revolut_method.revolut_secret_reference,
+        })
+        self._discover([candidate])
+        self.assertEqual(evidence.id, identity)
+        self.assertEqual(evidence.reason, "unmatched_source")
+        self.assertTrue(evidence.deployment_blocking)
+        self.assertTrue(self.source.external_refund_review_required)
+
+    def test_discovery_scope_frozen_legacy_location_stays_blocking(self):
+        foreign = str(uuid4())
+        historical = self._operation(str(uuid4()), str(uuid4()), state="failed", location_id=foreign)
+        self.env.flush_all()
+        self.cr.execute("UPDATE pos_revolut_payment_operation SET credential_id = NULL WHERE id = %s", [historical.id])
+        historical.invalidate_recordset()
+        candidate = self._external("completed", amount=100, location_id=foreign)
+        candidate.pop("related_order_id")
+        self.assertFalse(self._discover([candidate]))
+        evidence = self.env["pos.revolut.external.refund.evidence"].sudo().search([
+            ("provider_order_id", "=", candidate["id"]),
+        ])
+        self.assertTrue(evidence.deployment_blocking)
+        self.assertFalse(historical.credential_id)
+
+    def test_discovery_scope_foreign_evidence_cannot_bypass_public_refund_counter(self):
+        candidate = self._external("completed", amount=100, location_id=str(uuid4()))
+        candidate.pop("related_order_id")
+        self._discover([candidate])
+        self.assertFalse(self.source.external_refund_review_required)
+        manager = self._mutation_actor()
+        for counter in (None, 100):
+            with self.subTest(counter=counter):
+                claim = deepcopy(self.payload)
+                claim["uuid"] = str(uuid4())
+                claim["payment_ids"][0][2]["uuid"] = str(uuid4())
+                self._save_return_draft(claim, manager)
+                original = {"id": self.source.revolut_order_id, "state": "completed",
+                            "amount": 1234, "currency": self.session.currency_id.name}
+                if counter is not None:
+                    original["refunded_amount"] = counter
+                self.request.reset_mock()
+                self.request.side_effect = [self._response(**original)]
+                payment = claim["payment_ids"][0][2]
+                result = self._rpc_refund(manager, "pos.payment.method", "revolut_start_refund", [
+                    [self.revolut_method.id], self.session.id, claim["uuid"], payment["uuid"],
+                    payment["amount"], self.session.currency_id.id, claim,
+                ])
+                self.assertEqual(result["state"], "failed")
+                self.assertEqual(result["provider_state"], "original_ineligible")
+                self.assertEqual([call.args[0] for call in self.request.call_args_list], ["GET"])
+
+    def test_discovery_scope_null_invalid_conflicting_detail_parent_stays_blocking(self):
+        for parent in (None, "invalid-parent", str(uuid4())):
+            with self.subTest(parent=parent):
+                candidate = self._external("completed", amount=100, id=str(uuid4()), related_order_id=str(uuid4()))
+                detail = dict(candidate, related_order_id=parent, location_id=str(uuid4()))
+                self.assertFalse(self._discover([candidate], {candidate["id"]: detail}))
+                evidence = self.env["pos.revolut.external.refund.evidence"].sudo().search([
+                    ("provider_order_id", "=", candidate["id"]),
+                ])
+                self.assertTrue(evidence.deployment_blocking)
+                self.assertNotEqual(evidence.reason, "unrelated_source")
+                self.assertNotEqual(evidence.reason, "outside_integration_location")
+        candidate = self._external("completed", amount=100, id=str(uuid4()), location_id=str(uuid4()))
+        candidate.pop("related_order_id")
+        detail = dict(candidate, related_order_id=None)
+        self.assertFalse(self._discover([candidate], {candidate["id"]: detail}))
+        evidence = self.env["pos.revolut.external.refund.evidence"].sudo().search([
+            ("provider_order_id", "=", candidate["id"]),
+        ])
+        self.assertTrue(evidence.deployment_blocking)
+        self.assertNotEqual(evidence.reason, "outside_integration_location")
 
     def test_external_refund_on_terminal_tip_source_does_not_invent_component_authority(self):
         # The original decomposition is real report-verified payment evidence.
