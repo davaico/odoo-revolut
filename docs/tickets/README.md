@@ -101,6 +101,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [38 — Coalesce concurrent payment status polls](closed/38-coalesce-concurrent-payment-status-polls.md) | `ready-for-agent` at closure | Closed | Coalesced observations; 446 install / 446 upgrade / 9 Restaurant tests passed |
 | [39 — Honor payment cancellation before dispatch](closed/39-cancel-payment-before-dispatch.md) | `ready-for-agent` at closure | Closed | Cancelled preparation prevents dispatch; 88 lifecycle tests, 5 focused native tests and 493 install/493 upgrade tests verified |
 | [40 — Conserve rounding across partial refunds](ready-for-agents/40-conserve-partial-refund-rounding.md) | `ready-for-agent` | Open | None for local work; full Odoo reproduction and native accounting representation are implementation milestones |
+| [41 — Complete Revolut-initiated refunds through native Odoo returns](ready-for-agents/41-complete-external-refund-returns.md) | `ready-for-agent` | Open | None for local work; manager-confirmed product returns and financial-only corrections; coordinate with 40 |
 
 ## Mission audit triage — 2026-10-05
 
