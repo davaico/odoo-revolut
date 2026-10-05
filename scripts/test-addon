@@ -7,7 +7,8 @@ database_name="odoo_revolut_tests"
 test_tags="/pos_revolut"
 verify_install_upgrade=false
 delivered_scenario=""
-base_only_dir=""
+legacy_addons_dir=""
+migration_addons_dir=""
 
 while (($#)); do
     case "$1" in
@@ -27,8 +28,8 @@ while (($#)); do
             export ODOO_REVOLUT_ADDONS_DIR="$(realpath "$2")"
             shift 2
             ;;
-        --base-only-dir)
-            base_only_dir="$(realpath "$2")"
+        --legacy-addons-dir)
+            legacy_addons_dir="$(realpath "$2")"
             shift 2
             ;;
         *)
@@ -42,8 +43,8 @@ if [[ "$delivered_scenario" != "" && "$delivered_scenario" != retail && "$delive
     echo "--delivered-scenario must be retail or migration" >&2
     exit 2
 fi
-if [[ "$delivered_scenario" == migration && -z "$base_only_dir" ]]; then
-    echo "Migration acceptance requires --base-only-dir" >&2
+if [[ "$delivered_scenario" == migration && -z "$legacy_addons_dir" ]]; then
+    echo "Migration acceptance requires --legacy-addons-dir" >&2
     exit 2
 fi
 
@@ -51,6 +52,9 @@ compose=(docker compose --project-name "$project_name" --file "$repository_root/
 
 cleanup() {
     "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+    if [[ -n "$migration_addons_dir" ]]; then
+        rm -rf -- "$migration_addons_dir"
+    fi
 }
 trap cleanup EXIT
 
@@ -101,40 +105,56 @@ require_state() {
     fi
 }
 
+consolidation_tags="pos_revolut_restaurant,/pos_revolut:TestRevolutRetailPosStarts,/pos_revolut:TestRevolutVerifiedCheckout.test_cash_and_bank_still_checkout_without_revolut_dispatch,/pos_revolut:TestRestaurantConsolidation"
+
 if [[ "$delivered_scenario" == retail ]]; then
-    run_odoo --init pos_revolut \
-        --test-tags "/pos_revolut:TestRevolutRetailPosStarts,/pos_revolut:TestRevolutVerifiedCheckout.test_cash_and_bank_still_checkout_without_revolut_dispatch"
-    require_state pos_revolut installed
-    require_state pos_revolut_restaurant not-installed
-    run_odoo --init pos_restaurant
-    require_state pos_revolut_restaurant installed
-    run_odoo --update pos_revolut,pos_revolut_restaurant \
-        --test-tags pos_revolut_restaurant
-elif [[ "$delivered_scenario" == migration ]]; then
-    database_name="odoo_revolut_base_only_migration"
-    delivered_addons_dir="$ODOO_REVOLUT_ADDONS_DIR"
-    export ODOO_REVOLUT_ADDONS_DIR="$base_only_dir"
-    run_odoo --init pos_revolut,pos_restaurant
+    run_odoo --init pos_revolut --test-tags "$consolidation_tags"
     require_state pos_revolut installed
     require_state pos_restaurant installed
     require_state pos_revolut_restaurant absent
-    export ODOO_REVOLUT_ADDONS_DIR="$delivered_addons_dir"
-    run_odoo --update pos_revolut --init pos_revolut_restaurant \
-        --test-tags pos_revolut_restaurant
-    require_state pos_revolut_restaurant installed
-    run_odoo --update pos_revolut,pos_revolut_restaurant \
-        --test-tags pos_revolut_restaurant
+elif [[ "$delivered_scenario" == migration ]]; then
+    delivered_addons_dir="$ODOO_REVOLUT_ADDONS_DIR"
+    for legacy_mode in retail restaurant; do
+        database_name="odoo_revolut_${legacy_mode}_migration"
+        export ODOO_REVOLUT_ADDONS_DIR="$legacy_addons_dir"
+        legacy_modules=pos_revolut
+        if [[ "$legacy_mode" == restaurant ]]; then
+            legacy_modules+=,pos_restaurant
+        fi
+        run_odoo --init "$legacy_modules"
+        require_state pos_revolut installed
+        if [[ "$legacy_mode" == restaurant ]]; then
+            require_state pos_revolut_restaurant installed
+        else
+            require_state pos_revolut_restaurant not-installed
+        fi
+        # Match deployment: retain legacy assets until the upgrade retires them.
+        migration_addons_dir="$(mktemp -d /tmp/revolut-consolidation-addons.XXXXXX)"
+        cp -R -- "$delivered_addons_dir/pos_revolut" "$migration_addons_dir/"
+        cp -R -- "$legacy_addons_dir/pos_revolut_restaurant" "$migration_addons_dir/"
+        chmod -R u+w "$migration_addons_dir"
+        chmod a+rx "$migration_addons_dir"
+        export ODOO_REVOLUT_ADDONS_DIR="$migration_addons_dir"
+        run_odoo --update pos_revolut --test-tags "$consolidation_tags"
+        require_state pos_revolut installed
+        require_state pos_restaurant installed
+        require_state pos_revolut_restaurant absent
+        export ODOO_REVOLUT_ADDONS_DIR="$delivered_addons_dir"
+        rm -rf -- "$migration_addons_dir"
+        migration_addons_dir=""
+        run_odoo --update pos_revolut --test-tags "$consolidation_tags"
+        require_state pos_revolut_restaurant absent
+    done
 else
     run_odoo \
         --init pos_revolut \
         --test-tags "$test_tags"
     if [[ "$verify_install_upgrade" == true ]]; then
+        require_state pos_restaurant installed
+        require_state pos_revolut_restaurant absent
         run_odoo \
             --update pos_revolut \
             --test-tags "$test_tags"
-        run_odoo --init pos_restaurant
-        run_odoo \
-            --update pos_revolut \
-            --test-tags pos_revolut_restaurant
+        require_state pos_revolut_restaurant absent
     fi
 fi

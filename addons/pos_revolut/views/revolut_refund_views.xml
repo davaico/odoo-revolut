@@ -20,6 +20,7 @@
             <form create="0" edit="0" delete="0">
                 <header>
                     <button name="action_check_status" type="object" string="Check status" class="btn-primary" invisible="state in ('verified', 'failed')"/>
+                    <button name="action_recover_return" type="object" string="Recover Odoo return" class="btn-primary" groups="point_of_sale.group_pos_manager" invisible="origin != 'odoo' or state != 'verified' or pos_order_id"/>
                     <button name="action_acknowledge_native_reconciliation" type="object" string="Mark native work handled separately" groups="point_of_sale.group_pos_manager" invisible="origin != 'external' or state != 'verified' or native_reconciliation_status != 'outstanding'" confirm="Confirm that you have separately handled any required product return, accounting correction and cash adjustment. This action only records your acknowledgement."/>
                 </header>
                 <sheet>
@@ -34,6 +35,7 @@
                         <field name="dispatched_at"/><field name="verified_at"/><field name="next_reconcile_at"/>
                     </group>
                     <p invisible="origin == 'external'">Pending or uncertain refunds reserve the original payment. Check status; do not issue another refund or substitute cash. If no refund reference can be recovered, contact Revolut support with the original order and idempotency key.</p>
+                    <p invisible="origin != 'odoo' or state != 'verified' or pos_order_id">If the original return is missing from POS, Recover Odoo return restores a draft with its existing completed refunds. Review and validate that draft in the original register. Recovery sends no refund request and does not finalize stock or accounting.</p>
                     <p invisible="origin != 'external'">This refund was created outside Odoo. Its financial status reserves the original card payment while pending or uncertain, and records card money returned when completed. Product returns, accounting corrections and any cash reimbursement require separate manager work. Acknowledging that work creates no return or accounting entry.</p>
                 </sheet>
             </form>
