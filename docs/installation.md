@@ -841,11 +841,38 @@ document is linked; the purchase is still available under **Original Sale**.
 Review any required product or accounting work against that sale. Do not send
 another card refund to record money that Revolut has already returned.
 
-There is no separate acknowledgement step. Release `19.0.1.15.4` removes
-**Mark native work handled separately** and the unrelated review status from
-the refund screens. **Refund Status** reports the financial outcome. Historical
-acknowledgements remain stored for compatibility; they do not prove that stock,
-cash or accounting work occurred.
+Release `19.0.1.17.0` adds **Complete native work** in the shared refund
+worklist. A manager selects original products and quantities, reviews the native
+return draft, and validates it with the existing verified card reimbursement.
+The workflow sends no new card payment or refund. Use **Associate an existing
+native return** when separate native work already exists; select its exact
+reimbursement payment rather than duplicating it. Pending refunds can reserve a
+draft but cannot validate it. Card allocations retain their exact original tender;
+any remaining cash or additional refund is a separate explicit operation.
+
+**Native completion** reports the return/accounting work separately from
+**Refund Status**. Provider initiation time comes only from an authenticated
+refund detail and is labelled unavailable when absent; Odoo import and
+reconciliation times are separate. Original Sale opens the purchase, its product
+lines, amounts and tenders. Native returns use the normal POS sales receipt,
+configured inventory treatment and native credit notes for invoiced originals.
+
+Choose **No products returned** for a financial-only refund and record a reason.
+Every supported case requires a posted separate native correction: an exact
+original-invoice credit note for an invoiced sale, or an original-sale-linked
+journal adjustment crediting the original Revolut settlement account for an
+uninvoiced sale. The latter must be prepared from this refund, since consolidated
+session entries alone cannot prove the original-sale relationship. No returned
+quantity or stock movement is created. Preparing/editing/posting native accounting
+requires the caller's normal accounting access; completion requires an authorized
+POS manager who can read the posted document. Configure the original Revolut
+payment method's outstanding account for uninvoiced adjustments.
+
+Historical acknowledgements remain historical assertions with their responsible
+manager and time; they do not prove stock, cash or accounting work. They can enter
+this new workflow without another financial request. See the
+[staff procedure and controlled acceptance scenario](testing/ticket-41-external-refund-completion.md)
+for product confirmation, tracking details, draft recovery and separate accounting.
 
 Open **Point of Sale → Revolut Refund Discovery Evidence** for unmatched,
 ambiguous or conflicting provider evidence and incomplete discovery windows.
@@ -919,8 +946,10 @@ enforce that ceiling against a simultaneous terminal action.
 
 For an original payment containing a terminal tip, an external refund establishes
 only the refunded total, not its base/tip split. Further Odoo card allocations
-remain blocked when that split is unknown. A manager's native reconciliation
-acknowledgement does not establish a provider component allocation.
+remain blocked when that split is unknown. Product-return completion requires
+explicit base and terminal-tip allocation and preserves source/component caps.
+Once confirmed, later valid allocations can use the remaining components.
+Historical acknowledgement alone does not establish a component allocation.
 
 Before rollout, follow ticket 12's financial preflight and retain the dated
 [2026-10-02 investigation](testing/refund-investigation-2026-10-02.md).

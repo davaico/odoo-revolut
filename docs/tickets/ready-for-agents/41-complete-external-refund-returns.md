@@ -1,8 +1,8 @@
 # 41 — Complete Revolut-initiated refunds through native Odoo returns
 
-**Work branch:** `codex/41-complete-external-refund-returns` (not created)
+**Work branch:** `codex/41-complete-external-refund-returns`
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 

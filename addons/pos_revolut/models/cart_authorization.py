@@ -608,7 +608,7 @@ class PosSession(models.Model):
                 operations = self.env['pos.revolut.payment.operation'].sudo().search([
                     ('pos_session_id','=',session.id)], order='order_uuid,id')
                 refunds = self.env['pos.revolut.refund.operation'].sudo().search([
-                    ('origin','=','odoo'), '|',
+                    ('order_uuid','!=',False), '|',
                     ('pos_session_id','=',session.id),
                     ('pos_order_id.session_id','=',session.id)], order='order_uuid,id')
                 # Return allocations share the order locks used by charges.

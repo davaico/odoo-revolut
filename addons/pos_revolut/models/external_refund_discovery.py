@@ -319,6 +319,7 @@ class RefundDiscovery(models.Model):
         if detail is None:
             self._discovery_evidence(credential, reference, "unverified_refund", source, candidate)
             return
+        existing._record_provider_refund_time(detail)
         if existing.state not in {"verified", "failed"}:
             state = detail["state"]
             values = {"revolut_order_id": reference, "provider_state": state,
