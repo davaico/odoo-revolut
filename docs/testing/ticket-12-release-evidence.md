@@ -683,3 +683,71 @@ acceptance; importing them needs no replacement refund or new charge.
 No staging deployment, live Merchant read, charge/refund, configuration change
 or financial repair was performed during ticket 37's local implementation.
 Ticket 12 stays open for operator reconciliation and combined release acceptance.
+
+## Refund repair verification and staging rollout — 2026-10-05
+
+The reviewed repair is `93e2ba4`; regression adjustments are committed in
+`30492a67020acdfe34d7f560a9cf6d7fb20f6430`. Standards and Spec reviews
+against pre-work baseline `a66863e` have zero remaining findings. Spec review
+found and corrected session rollover closure coverage, recovery lock ordering
+and the current-checkpoint link.
+
+| Final verification | Result |
+| --- | --- |
+| `scripts/test-addon --verify-install-upgrade` | 463 install, 463 upgrade and 9 Restaurant tests; zero failures/errors; exit 0 |
+| POS lifecycle Node suite | 79 passed, zero failed/skipped |
+| Repository Python tests | 40 run, 37 passed and 3 optional Docker tests skipped; Docker runtime acceptance above ran separately |
+| Exact delivered artifact, retail | 2 retail and 9 later Restaurant tests passed |
+| Exact delivered artifact, base-only migration | 9 migration and 9 bridge upgrade tests passed |
+| Focused browser regressions | Completed return after loss of IndexedDB, lost-response reload, normal full return, and invalid native cart correction/reload passed |
+| Native refund recovery / session closure | Public recovery and legacy rollover scenarios passed; 9 close-guard tests passed, with an initial failing regression before the fix |
+| Syntax, XML and whitespace | Passed |
+
+The first broad run exposed two outdated test assumptions: public closure of
+an unfinished refund and an invalid refund cart reaching dispatch before
+native persistence. Their updated regressions passed at the stronger boundary;
+the final complete install/upgrade run above is the passing acceptance.
+The two final artifact runs used identical SHA-256
+`73bb8a0ed858ebbdc1cc12bb61724f61e034d635648ed60135d396b95e73070c`.
+
+The guarded staging upgrade installed `19.0.1.14.1` from exact source
+`30492a67020acdfe34d7f560a9cf6d7fb20f6430`, passed financial/PDF/health
+checks and saved configuration at
+`/var/backups/odoo-revolut-deploy/20261005T085406Z-30492a67020a`.
+The Odoo-origin refund ledger still contains exactly six records after upgrade.
+Restaurant and its bridge remain uninstalled on staging.
+
+This combined upgrade also includes the explicit register grants introduced
+in `19.0.1.11.0`. The GBP register initially had no granted backend users.
+The operator explicitly approved granting only the existing Administrator
+login (user 2, already operating session 9) access to GBP register 2 and
+restoring the completed two-penny return as a draft. Native Validate remains
+the operator's review/finalization step.
+
+### Live native draft restored
+
+The approved configuration change saved exactly one grant: register 2 /
+Administrator user 2. The operator-facing **Recover Odoo return** action on
+operation 6 created exactly one `pos.order` 24 in open session 9, state
+`draft`, total and paid amount `-0.02 GBP`. Its original return UUID is
+`b7ce760b-f05c-4a7c-b771-fe70fdda710c`. The new native reference is
+`260-2-000002`; POS displays **2 (Refund)**. The earlier browser label 1012
+is not recreated.
+
+Refund 5 now links to native payment 26 while retaining reservation session 5;
+refund 6 links to payment 27 while retaining session 9. Both remain verified,
+with their original refund IDs, payment-line UUIDs and source references.
+The Odoo-origin refund ledger remains six records. Recovery used the public
+manager action that contains no provider HTTP, and created no new refund
+operation. The browser payment screen shows two negative one-penny Revolut
+lines, total `-0.02 GBP`, zero change, **Refund Successful** for the selected
+allocation and an enabled **Validate** button.
+
+The recovered draft is left open for operator review and native Validate.
+No native receipt finalization, stock/accounting finalization, new card refund
+or physical terminal retest was performed. Screenshot evidence is
+`/tmp/refund-return-recovered.jpg`; runtime logs are
+`/tmp/refund-repair-accepted.log`, `/tmp/refund-final-retail.log`,
+`/tmp/refund-final-migration.log` and `/tmp/refund-repair-deployment.log`.
+Ticket 12 remains open until the restored receipt and its other outstanding
+physical/release gates are accepted.

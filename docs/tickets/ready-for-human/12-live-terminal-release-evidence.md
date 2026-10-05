@@ -597,3 +597,14 @@ See the [current repair checkpoint](../../testing/ticket-12-release-evidence.md#
 and [recovery operating instructions](../../installation.md#partial-and-allocated-revolut-returns-pos-manager).
 The cause of browser draft loss itself remains unproven. Native receipt
 validation and remaining physical/release gates keep this ticket open.
+
+The repair passed final 463-test install and 463-test upgrade suites, 9
+Restaurant tests, 79 POS lifecycle tests and both exact artifact scenarios.
+Standards and Spec review have no remaining findings. The guarded staging
+upgrade installed `19.0.1.14.1` from `30492a67020acdfe34d7f560a9cf6d7fb20f6430`.
+After the operator's explicit approval, Administrator user 2 received access
+to GBP register 2. Public manager recovery restored native draft order 24,
+shown as **2 (Refund)**, with the original return UUID and both existing
+verified penny refunds. The ledger still contains six Odoo-origin refunds.
+The current next step is operator review and **Validate** on that draft; no
+replacement refund is needed. The final receipt is still an open live gate.
