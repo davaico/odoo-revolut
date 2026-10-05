@@ -10,19 +10,20 @@ Before starting, confirm this ticket’s blockers are closed and merge the lates
 
 ## Resume checkpoint — 2026-10-01, 13:40 UTC
 
-Resume from the [current checkpoint and remaining-work matrix](../../testing/ticket-12-release-evidence.md#current-resume-checkpoint--2026-10-01-1340-utc).
+Resume from the [current checkpoint and remaining-work matrix](../../testing/ticket-12-release-evidence.md#current-refund-repair-checkpoint--2026-10-05).
 Completed full/split/two-card automatic checkout, terminal-busy recovery and
 the four finalized older returns retain their evidence; do not restart those
-scenarios. Read-only staging checks show refund `6` on existing return `1012`
-still pending/provider processing, with the first penny verified. The
-operator is away from the terminal, so no new live scenario ran.
+scenarios. Read-only staging checks on 2026-10-05 show all six refunds
+verified/completed. The last two allocations have no saved native return for
+the original UUID previously displayed as `1012`. Recover that draft with its
+existing references before validating its receipt; send no replacement refund.
 
 Remaining device work covers terminal tips, Restaurant, the unexecuted
 failure/race/interruption subcases and final reconciliation. Staging has no
-Restaurant installation or configured GBP Tip Product. Both outstanding
-exact packaged-artifact scenarios were attempted but blocked before Odoo
-started by an unavailable local Docker daemon. Their passing acceptance is
-still required. Ticket 12 remains open; other ticket states are unchanged.
+Restaurant installation or configured GBP Tip Product. Earlier packaged-artifact
+checks were blocked by the sandbox Docker socket; this repair now has access
+to the disposable Docker runtime. Exact combined-artifact acceptance remains
+required before rollout. Ticket 12 remains open; other ticket states are unchanged.
 
 ## What to build
 
@@ -583,3 +584,16 @@ and accounting work. Preserve return 1012 and its existing Odoo identity.
 The reported pending financial operations still require current reconciliation
 before guarded rollout. Mocked ticket 37 tests do not settle those live refunds
 or authorize deployment or additional money movement.
+
+## Missing native return repair — 2026-10-05
+
+The operator reports all refunds completed and that `1012` no longer exists in
+POS. Read-only SQL confirms operations 5 and 6 are verified/completed, but no
+native order exists for their original return UUID. Candidate `19.0.1.14.1`
+addresses the missing pre-dispatch draft save and offers manager recovery from
+existing verified allocations. It preserves original identities and creates a
+draft without another provider refund or automatic stock/accounting effects.
+See the [current repair checkpoint](../../testing/ticket-12-release-evidence.md#current-refund-repair-checkpoint--2026-10-05)
+and [recovery operating instructions](../../installation.md#partial-and-allocated-revolut-returns-pos-manager).
+The cause of browser draft loss itself remains unproven. Native receipt
+validation and remaining physical/release gates keep this ticket open.

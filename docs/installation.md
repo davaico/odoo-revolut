@@ -698,6 +698,32 @@ register and load the existing return. A verified refund can finalize there
 only after the original session is closed and the return contents and tender
 still match the reserved allocation. Do not create a new refund.
 
+With `19.0.1.14.1`, POS saves the native return and its selected payment line
+before sending a refund. If saving fails, restore the connection and retry that
+same line; no refund request was sent. Reloading POS restores the saved draft
+and reads its existing refund evidence. A completed line needs no further
+**Check status** request; select the saved return and use **Validate** once all
+its tenders are complete. Closing the register is blocked while an Odoo-origin
+refund is uncertain or its native return is unfinished.
+
+If an older release lost the native return entirely, open the original register
+with a POS-manager account. In **Revolut Refunds**, open either completed
+allocation and choose **Recover Odoo return**. Recovery gathers the completed
+allocations for the original return UUID and opens one draft with their existing
+payment UUIDs and provider references. It sends no new refund and performs no
+stock or accounting finalization. Review the products, quantities and tenders,
+then use **Validate** in POS. A repeated recovery reuses the same return. Its
+displayed order number can differ because the former browser label was not
+stored; the original return UUID is retained.
+
+Recovery refuses uncertain or inconsistent sibling allocations, an inaccessible
+register, and tracked products whose lost lot details cannot be reconstructed.
+It restores only proven Revolut tenders; a mixed return still requires review of
+its original cash or other tender share. Existing saved drafts in closed
+sessions require administrator investigation; do not change their UUID or
+session to bypass the guard. Follow the normal stopped-service upgrade procedure
+and reopen POS; no credential or configuration change is required.
+
 If a response was lost before the refund ID was saved, reconciliation searches
 by the stored merchant reference, then validates the refund's original order,
 amount, currency and completion. An empty, ambiguous or mismatched response

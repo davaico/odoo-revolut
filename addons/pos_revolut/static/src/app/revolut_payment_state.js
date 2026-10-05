@@ -330,6 +330,25 @@ export class RevolutPaymentState {
                     deadline = this.clock.now() + PAYMENT_TIMEOUT_MS;
                     line.uiState.revolutDiscovering = false;
                     this.adapter.setRefundAmount(line, allocation.amount);
+                    line.uiState.revolutDiscovering = true;
+                    try {
+                        await this.clock.before(this.adapter.prepareRefund(order, line), deadline);
+                    } catch (error) {
+                        // A saved return is required before financial dispatch.
+                        // Selection or a failed draft save is not a refund attempt.
+                        line.uiState.revolutStarted = false;
+                        line.uiState.revolutUndispatched = true;
+                        line.uiState.revolutDiscovering = false;
+                        line.uiState.revolutStartRejected = "snapshot_invalid";
+                        line.uiState.revolutLocalOutcome = "snapshot_invalid";
+                        line.uiState.revolutRejectionMessage = error?.data?.message || error.message;
+                        this.showError(line, "snapshot_invalid");
+                        return false;
+                    }
+                    if (owner.cancelDiscovery) {
+                        return false;
+                    }
+                    line.uiState.revolutDiscovering = false;
                     line.uiState.revolutOriginalOperationId = originalOperationId;
                 } else {
                     try {

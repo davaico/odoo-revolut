@@ -186,6 +186,7 @@ export class PaymentRevolut extends PaymentInterface {
                 call: (method, args) => this.pos.data.call("pos.payment.method", method, args),
                 financialSnapshot,
                 preparePayment: (order, line) => this._preparePayment(order, line),
+                prepareRefund: (order, line) => this._prepareRefund(order, line),
                 restoreRefundOriginals: (order) => restoreRefundOriginals(this.pos, order),
                 chooseAllocation: (sources, line) => chooseRefundAllocation(
                     this.env.services.dialog, sources, this.payment_method_id.id,
@@ -253,6 +254,46 @@ export class PaymentRevolut extends PaymentInterface {
             throw new Error(_t("The server updated this cart's prices, taxes or version. Review the displayed cart and payment allocations, then use Resume."));
         }
         return result;
+    }
+
+    async _prepareRefund(order, line) {
+        const amount = line.amount;
+        const saved = await this.pos.syncAllOrders({ orders: [order], force: true, throw: true });
+        const current = this.pos.models["pos.order"].getBy("uuid", order.uuid);
+        const payment = current?.getPaymentlineByUuid(line.uuid);
+        if (!saved?.some((returned) => returned.uuid === order.uuid) ||
+            !current || !Number.isInteger(current.id) || !payment ||
+            !Number.isInteger(payment.id) || payment.amount !== amount) {
+            throw new Error(_t("The return was not saved. Reconnect and save it before refunding."));
+        }
+    }
+
+    async restoreRefundState(line) {
+        const order = line.pos_order_id;
+        if (order.state !== "draft" || !Number.isInteger(order.id) || !Number.isInteger(line.id)) {
+            return;
+        }
+        try {
+            // Startup restores committed evidence only. Pending refunds keep
+            // Check status available without holding POS startup for polling.
+            const result = await this.pos.data.call("pos.payment.method", "revolut_find_refund", [
+                [this.payment_method_id.id], order.uuid, line.uuid,
+            ]);
+            if (!result?.operation_id) {
+                return;
+            }
+            this.paymentState.remember(line, result);
+            if (result.state === "verified") {
+                await this._setVerified(line, result);
+                line.handlePaymentResponse(true);
+            } else {
+                restorePaymentLine(line);
+            }
+        } catch {
+            // Retain the saved waiting/reference guards when offline or when
+            // this cashier cannot reconcile manager-owned refund evidence.
+            restorePaymentLine(line);
+        }
     }
 
     async _setVerified(line, result) {
@@ -383,6 +424,9 @@ patch(PosStore.prototype, {
         for (const line of this.models['pos.payment'].filter(isRevolut)) {
             restorePaymentLine(line);
             restoreRefundTarget(line, line.uiState.revolutSnapshot);
+            if (isRevolutRefund(line)) {
+                await line.payment_method_id.payment_terminal.restoreRefundState(line);
+            }
         }
         return result;
     },

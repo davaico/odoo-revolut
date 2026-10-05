@@ -5,7 +5,41 @@ partial results and unexecuted cases. Mocked success does not establish terminal
 certification. Use the current checkpoint below to resume; earlier matrices and
 balances retain their original dates.
 
-## Current resume checkpoint — 2026-10-01, 13:40 UTC
+## Current refund repair checkpoint — 2026-10-05
+
+Read-only staging records confirm all six provider refunds are now
+verified/completed. Operations 1–4 still link to paid native returns 20–23;
+operations 5 and 6 have no native order or payment. Their immutable return UUID
+is `b7ce760b-f05c-4a7c-b771-fe70fdda710c`, originally displayed as `1012` in the
+browser. Neither a draft nor a finalized `pos.order` exists for that UUID.
+Both allocations belong to original sale 12 / receipt `261-2-000011`, one penny
+each, with the same two-unit untaxed return snapshot. Operation 5 was reserved
+in closed session 5; operation 6 belongs to open session 9 of register 2.
+
+The precise event that removed the browser draft is unproven. The confirmed
+persistence gap is that refund dispatch previously skipped the server draft
+save used for payments. Candidate `19.0.1.14.1` saves returns before dispatch,
+restores committed refund evidence on reload, and adds manager recovery of an
+older missing return from its unchanged verified allocations. Recovery creates
+one native **draft**, preserving return/line/payment UUIDs and provider refund
+references, without provider HTTP or stock/accounting finalization. Closing a
+session with unfinished Odoo-origin refunds is also protected. Original refund
+reservation sessions remain immutable.
+
+Local verification includes the previously failing public recovery RPC, split
+and mixed-tender recovery, refusal of uncertain/inconsistent siblings, manager
+and register permissions, and a native browser regression that deletes its
+disposable IndexedDB cache before restoring and validating the same return.
+The browser fixture asserts exactly one refund POST. These are mocked tests;
+no physical terminal case or completed live test was repeated. Deployment and
+the recovered live receipt are recorded below once observed.
+
+The next live refund step is **Recover Odoo return** followed by review and
+**Validate** of the existing completed allocations; never start replacement
+refunds. Ticket 12 stays open for the remaining tip/report, Restaurant,
+failure/recovery, test-money reconciliation and combined-release observations.
+
+## Earlier resume checkpoint — 2026-10-01, 13:40 UTC
 
 The resumed checkout fast-forwarded to `57af76b`, preserving the previous
 session's work. Its addon, scripts, Compose and Docker trees match deployed

@@ -607,11 +607,25 @@ class PosSession(models.Model):
                 self.env.cr.execute("UPDATE pos_session SET write_date = write_date WHERE id = %s", [session.id])
                 operations = self.env['pos.revolut.payment.operation'].sudo().search([
                     ('pos_session_id','=',session.id)], order='order_uuid,id')
-                for operation in operations:
-                    operation._lock_order(operation.company_id.id,operation.order_uuid)
+                refunds = self.env['pos.revolut.refund.operation'].sudo().search([
+                    ('origin','=','odoo'), '|',
+                    ('pos_session_id','=',session.id),
+                    ('pos_order_id.session_id','=',session.id)], order='order_uuid,id')
+                # Return allocations share the order locks used by charges.
+                # Keep one stable order even when this session has both kinds.
+                keys = {(record.company_id.id, record.order_uuid) for record in operations}
+                keys.update((record.company_id.id, record.order_uuid) for record in refunds)
+                for company_id, order_uuid in sorted(keys):
+                    self.env['pos.revolut.payment.operation']._lock_order(company_id, order_uuid)
                 operations.invalidate_recordset()
+                refunds.invalidate_recordset()
                 if any((not op.retry_safe and op.state != 'verified') or (op.state == 'verified' and (not op.pos_payment_id or op.pos_order_id.state == 'draft')) for op in operations):
                     raise UserError(_('Reconcile or settle the original Revolut payments before closing this session.'))
+                if any(refund.state != 'failed' and (
+                    refund.state != 'verified' or not refund.pos_payment_id
+                    or refund.pos_order_id.state not in {'paid', 'done', 'invoiced'}
+                ) for refund in refunds):
+                    raise UserError(_('Reconcile or settle the original Revolut refunds before closing this session.'))
         return super().write(values)
 
 
