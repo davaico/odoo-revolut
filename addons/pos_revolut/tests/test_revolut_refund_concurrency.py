@@ -356,3 +356,60 @@ class TestRevolutRefundConcurrency(TransactionCase):
         replay = self._start()
         self.assertEqual(replay["operation_id"], recovered["operation_id"])
         self.assertEqual(len(self._posts()), 1)
+
+    def test_concurrent_odd_partitions_reject_stale_cent_then_exhaust_balance(self):
+        barrier = Barrier(2)
+        prepared = []
+        for quantity, minor in ((0.25, 309), (0.75, 926)):
+            snapshot = {
+                **self.snapshot, "amount_total": -minor / 100,
+                "lines": [{**self.snapshot["lines"][0], "qty": -quantity, "uuid": str(uuid4())}],
+            }
+            order_uuid, line_uuid = str(uuid4()), str(uuid4())
+            self._save_native_return(order_uuid, line_uuid, snapshot, -minor / 100)
+            prepared.append((order_uuid, line_uuid, snapshot, minor))
+
+        def http(method, url, **kwargs):
+            if method == "POST":
+                return self._response({
+                    "id": str(uuid4()), "type": "refund", "state": "pending",
+                    "related_order_id": self.provider_order,
+                    "amount": kwargs["json"]["amount"], "currency": self.currency_code,
+                })
+            return self._http(method, url, **kwargs)
+
+        def start(candidate):
+            order_uuid, line_uuid, snapshot, minor = candidate
+            barrier.wait(timeout=10)
+            try:
+                self._rpc("revolut_start_refund", self.session_id, order_uuid,
+                          line_uuid, -minor / 100, self.currency_id, snapshot)
+                return (order_uuid, "accepted")
+            except UserError:
+                return (order_uuid, "rejected")
+
+        self.request.side_effect = http
+        results = self._run_workers([(f"odd-partition-{index}", lambda row=row: start(row))
+                                     for index, row in enumerate(prepared)])
+        self.assertEqual([status for _uuid, status in results].count("rejected"), 1)
+        self.assertEqual(len(self._posts()), 1)
+        rejected_uuid = next(uuid for uuid, status in results if status == "rejected")
+        order_uuid, line_uuid, snapshot, stale_minor = next(row for row in prepared if row[0] == rejected_uuid)
+        sources = self._rpc("revolut_refund_sources", self.session_id, self.currency_id, snapshot)
+        corrected_minor = sources[0]["return_total_minor"]
+        self.assertEqual(corrected_minor, stale_minor - 1)
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            order = env["pos.order"].search([("uuid", "=", order_uuid)])
+            order.payment_ids.write({"amount": -corrected_minor / 100})
+            cursor.commit()
+        snapshot["amount_total"] = -corrected_minor / 100
+        self._rpc("revolut_start_refund", self.session_id, order_uuid,
+                  line_uuid, -corrected_minor / 100, self.currency_id, snapshot)
+        self.assertEqual(sum(call.kwargs["json"]["amount"] for call in self._posts()), 1234)
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            claims = env["pos.revolut.refund.operation"].search([
+                ("original_operation_id", "=", self.source_id), ("state", "!=", "failed"),
+            ])
+            self.assertEqual(sum(claims.mapped("return_total_minor")), 1234)
