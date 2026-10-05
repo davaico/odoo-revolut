@@ -692,8 +692,10 @@ status** again; it looks up the existing refund operation and its final result.
 Do not remove the line or select another tender while the refund is uncertain.
 
 Managers can also open **Point of Sale → Revolut Refunds** to inspect pending,
-failed, uncertain and completed refunds, their original sale, return UUID,
-provider references, and idempotency key. **Check status** and the scheduled
+failed, uncertain and completed refunds. The list shows **Original Sale**,
+**Odoo Return**, amount, **Refund Status** and **Source**. **Odoo Return** means
+the separate document recording returned products, not the original purchase.
+Open **Details** for provider references and technical return/request identifiers. **Check status** and the scheduled
 reconciler read provider status; background reconciliation does not finish the
 POS return by itself. Resume the unchanged return to complete it after a late
 success. Failed refunds remain visible and cannot finish that return.
@@ -712,7 +714,7 @@ refund is uncertain or its native return is unfinished.
 
 If an older release lost the native return entirely, open the original register
 with a POS-manager account. In **Revolut Refunds**, open either completed
-allocation and choose **Recover Odoo return**. Recovery gathers the completed
+allocation and choose **Restore missing return**. Recovery gathers the completed
 allocations for the original return UUID and opens one draft with their existing
 payment UUIDs and provider references. It sends no new refund and performs no
 stock or accounting finalization. Review the products, quantities and tenders,
@@ -830,13 +832,20 @@ block dispatch, including for legacy payments; there is no inferred-zero
 fallback. Provider totals are checked rather than added to local reservations. A completed card refund does not reimburse the
 cash part of a mixed-tender sale.
 
-An external financial refund creates no Odoo product return, returned quantity,
-inventory movement, native negative tender or accounting credit. The manager
-reviews its original sale and separate native reconciliation status, then
-handles any required return, cash adjustment or accounting correction through
-the appropriate Odoo workflow. Review the imported financial refund before
-issuing any additional card refund. Marking native reconciliation complete is
-a record of this separate manager work; it does not change provider status.
+A refund with source **Detected in Revolut** is linked to its known original
+payment and sale. Revolut reports the refunded amount, but does not identify
+which products or quantities were returned. The import therefore records the
+money refund without creating a product return, stock movement, cash
+reimbursement or accounting credit. A blank **Odoo Return** means no return
+document is linked; the purchase is still available under **Original Sale**.
+Review any required product or accounting work against that sale. Do not send
+another card refund to record money that Revolut has already returned.
+
+There is no separate acknowledgement step. Release `19.0.1.15.4` removes
+**Mark native work handled separately** and the unrelated review status from
+the refund screens. **Refund Status** reports the financial outcome. Historical
+acknowledgements remain stored for compatibility; they do not prove that stock,
+cash or accounting work occurred.
 
 Open **Point of Sale → Revolut Refund Discovery Evidence** for unmatched,
 ambiguous or conflicting provider evidence and incomplete discovery windows.
