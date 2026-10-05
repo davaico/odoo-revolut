@@ -136,7 +136,6 @@ def deploy(args, runner):
                 args.revision,
                 "--",
                 "addons/pos_revolut",
-                "addons/pos_revolut_restaurant",
             ],
             "Revision archive",
             cwd=args.repository,

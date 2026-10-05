@@ -19,15 +19,17 @@ the full authorized base and all proven tips are paid.
 
 - Odoo Community `19.0.20260908`
 - PostgreSQL 16
-- the standard Odoo `point_of_sale` addon
+- the standard Odoo `point_of_sale` and `pos_restaurant` addons (installed as dependencies)
 - outbound HTTPS from the Odoo server to the selected fixed Revolut host
 - a Revolut Merchant secret key, location UUID, and terminal UUID
 - a fulfilment selection supported by the published terminal guide: `eat_in`
   or `take_away`
 
-`pos_restaurant` is optional. When it is installed alongside `pos_revolut`, the
-small `pos_revolut_restaurant` bridge installs automatically and guards bill
-splits, merges and transfers after a Revolut payment starts. Controlled Sandbox
+Install only **POS Revolut** (`pos_revolut`). Restaurant bill-split, merge and
+transfer guards are included in that addon. Odoo’s standard `pos_restaurant`
+addon is a dependency; its installation does not require enabling Restaurant
+mode on retail registers. There is no separate Revolut Restaurant addon to
+activate. Controlled Sandbox
 probes confirmed that the pinned Merchant API accepts the terminal guide's
 `eat_in` and `take_away` values and rejects omission as invalid `SERVICE`.
 Revolut documents no retail-specific value; the project owner therefore selects
@@ -131,35 +133,37 @@ Version `19.0.1.10.3` corrects historical attestation for system administrators
 without a POS role and prevents existing-method saves from silently authorizing
 unreviewed references. It also rejects redirects on connection, payment and
 reconciliation HTTP, keeping requests on the selected provider origin. Deploy
-both addons from the reviewed release, upgrade `pos_revolut` and restart every
+`pos_revolut` from the reviewed release, upgrade `pos_revolut` and restart every
 Odoo worker before reopening POS. No secret rotation or automatic historical
 binding is performed. Existing unbound records still require the independent
 review and committed attestation above.
 
-Place **both** `addons/pos_revolut` and `addons/pos_revolut_restaurant` from the
-same reviewed release in one directory on Odoo's `addons_path`. Refresh the
-Apps list, stop Odoo after taking database and filestore backups, and install
-the base module offline:
+Place `addons/pos_revolut` from the reviewed release in a directory on Odoo's
+`addons_path`. Refresh the Apps list, stop Odoo after taking database and
+filestore backups, and install the module offline:
 
 ```bash
 odoo --database DATABASE_NAME --init pos_revolut \
   --stop-after-init --no-http --workers=0
 ```
 
-On a retail database without `pos_restaurant`, the bridge stays uninstalled.
-When Restaurant is already installed, its auto-install bridge is installed with
-the base module. If Restaurant is installed later, refresh the Apps list and
-install Restaurant; verify `pos_revolut_restaurant` is installed before opening
-POS. Reopen existing POS sessions to load the bridge assets.
-
-For a base-only upgrade, deliver both addon directories before the offline
-update. If Restaurant is installed and the bridge is missing, run
-`--update pos_revolut --init pos_revolut_restaurant`. If the bridge is already
-installed, run `--update pos_revolut,pos_revolut_restaurant`. A retail-only
-upgrade uses `--update pos_revolut`. Use the same `--stop-after-init --no-http
---workers=0` flags shown above, verify the expected module states, and restart
-only after every update succeeds. Keep Odoo stopped and reconcile uncertain
+Odoo installs its standard Restaurant dependency automatically. Keep retail
+registers in retail mode. For an existing installation, use `--update
+pos_revolut` with the same `--stop-after-init --no-http --workers=0` flags.
+Verify the module update succeeds before restarting Odoo, and reopen POS
+sessions to load the combined assets. Keep Odoo stopped and reconcile uncertain
 payments or refunds before recovering a failed update.
+
+Version `19.0.1.15.0` consolidates the former `pos_revolut_restaurant` bridge
+into `pos_revolut`. For an upgrade from a two-addon release, retain the old
+bridge directory on `addons_path` until the offline `pos_revolut` update
+succeeds. The migration retires the asset-only bridge and removes its Apps
+record; it does not move or delete payment/refund models or financial records.
+After a successful upgrade, remove the old `pos_revolut_restaurant` directory
+from `addons_path` and refresh the Apps list. Verify **POS Revolut** and the
+standard Odoo Restaurant addon are installed, then reopen POS. Do not manually
+uninstall POS Revolut or delete financial records to remove the extra Apps tile.
+A fresh installation also removes a stale uninstalled bridge Apps record.
 
 For the existing managed staging environment, do not copy working-tree files or
 run these commands by hand. Use the reviewed-revision deployment tool and its
@@ -296,7 +300,7 @@ Upgrade from earlier versions does not invent authorizations or zero-tip
 evidence for old operations. Historical verified/uncertain attempts remain
 recoverable with their original references and refund limits. They
 cannot receive another new allocation without audited manager reconciliation.
-Safe failed drafts can be prepared under the new rules. Deliver both addons,
+Safe failed drafts can be prepared under the new rules. Deliver `pos_revolut`,
 run the stopped-service module update, and reopen POS to load the new assets.
 No credential is stored in Odoo and no automatic credential rotation occurs.
 
@@ -381,9 +385,9 @@ rejects checkout through cash or another terminal while any Revolut attempt for
 that order is unresolved. Wait for a verified or provider-final result before
 continuing; never use another tender to cover uncertain exposure.
 
-The Restaurant bridge adds no Merchant credentials or direct browser API calls.
-If Restaurant is installed later, upgrade the addons and reopen POS to load its
-assets. Installation of `pos_revolut` alone remains supported without Restaurant.
+The Restaurant guards are part of `pos_revolut` and add no Merchant credentials
+or direct browser API calls. They load with the main addon; no separate
+Revolut module needs activation.
 
 ### Recovery after reload, server restart, or late success
 
@@ -697,6 +701,32 @@ If the register was closed after the refund was reserved, reopen that same
 register and load the existing return. A verified refund can finalize there
 only after the original session is closed and the return contents and tender
 still match the reserved allocation. Do not create a new refund.
+
+With `19.0.1.14.1`, POS saves the native return and its selected payment line
+before sending a refund. If saving fails, restore the connection and retry that
+same line; no refund request was sent. Reloading POS restores the saved draft
+and reads its existing refund evidence. A completed line needs no further
+**Check status** request; select the saved return and use **Validate** once all
+its tenders are complete. Closing the register is blocked while an Odoo-origin
+refund is uncertain or its native return is unfinished.
+
+If an older release lost the native return entirely, open the original register
+with a POS-manager account. In **Revolut Refunds**, open either completed
+allocation and choose **Recover Odoo return**. Recovery gathers the completed
+allocations for the original return UUID and opens one draft with their existing
+payment UUIDs and provider references. It sends no new refund and performs no
+stock or accounting finalization. Review the products, quantities and tenders,
+then use **Validate** in POS. A repeated recovery reuses the same return. Its
+displayed order number can differ because the former browser label was not
+stored; the original return UUID is retained.
+
+Recovery refuses uncertain or inconsistent sibling allocations, an inaccessible
+register, and tracked products whose lost lot details cannot be reconstructed.
+It restores only proven Revolut tenders; a mixed return still requires review of
+its original cash or other tender share. Existing saved drafts in closed
+sessions require administrator investigation; do not change their UUID or
+session to bypass the guard. Follow the normal stopped-service upgrade procedure
+and reopen POS; no credential or configuration change is required.
 
 If a response was lost before the refund ID was saved, reconciliation searches
 by the stored merchant reference, then validates the refund's original order,

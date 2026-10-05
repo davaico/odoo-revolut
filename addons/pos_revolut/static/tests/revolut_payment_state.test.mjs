@@ -51,6 +51,7 @@ const snapshotRejection = {
 
 function fixture({ refund = false, call, chooseAllocation = async () => false,
     restoreRefundOriginals = async () => {},
+    prepareRefund = async () => {},
     preparePayment = async () => ({status:"prepared", authorization_id:1, cart_version:1, tender_revision:1}),
     projectVerified = async () => {} } = {}) {
     const clock = new ControlledClock();
@@ -69,6 +70,7 @@ function fixture({ refund = false, call, chooseAllocation = async () => false,
     const preparationMessages = [];
     const adapter = {
         preparePayment,
+        prepareRefund,
         async call(method, args) {
             calls.push({ method, args });
             return call?.(method, args, calls) ?? false;
@@ -92,6 +94,103 @@ function fixture({ refund = false, call, chooseAllocation = async () => false,
     const state = new RevolutPaymentState({ adapter, clock, methodId: 7, sessionId: 8, currencyId: 9 });
     return { state, clock, order, line, calls, errors, preparationErrors, preparationMessages };
 }
+
+test("refund dispatch waits until its selected return allocation is saved", async () => {
+    const saved = deferred();
+    let amountAtSave;
+    const { state, order, line, calls } = fixture({
+        refund: true,
+        chooseAllocation: async () => ({ operationId: 10, amount: 5 }),
+        prepareRefund: async (returnOrder, payment) => {
+            amountAtSave = payment.amount;
+            await saved.promise;
+            returnOrder.id = 42;
+        },
+        call(method) {
+            if (method === "revolut_refund_sources") {
+                return [{ operation_id: 10, remaining_minor: 1234 }];
+            }
+            if (method === "revolut_start_refund") {
+                assert.equal(order.id, 42);
+                return { operation_id: 20, state: "verified", payment_id: "refund-20", order_id: "refund-20" };
+            }
+            return false;
+        },
+    });
+    const request = state.request(order, line);
+    await tick();
+    assert.equal(amountAtSave, -5);
+    assert.equal(calls.some(({ method }) => method === "revolut_start_refund"), false);
+    assert.equal(line.uiState.revolutStarted, undefined);
+    saved.resolve();
+    assert.equal(await request, true);
+    assert.equal(line.transaction_id, "refund-20");
+});
+
+test("a failed return save preserves completed allocations and permits an explicit safe retry", async () => {
+    let failSave = true;
+    const { state, order, line, calls, errors } = fixture({
+        refund: true,
+        chooseAllocation: async () => ({ operationId: 10, amount: 5 }),
+        prepareRefund: async () => {
+            if (failSave) {
+                throw new Error("Reconnect and save the return before refunding.");
+            }
+        },
+        call(method) {
+            if (method === "revolut_refund_sources") {
+                return [{ operation_id: 10, remaining_minor: 500 }];
+            }
+            if (method === "revolut_start_refund") {
+                return { operation_id: 20, state: "verified", payment_id: "refund-20", order_id: "refund-20" };
+            }
+            return false;
+        },
+    });
+    const completed = { ...line, uuid: "completed-line", amount: -7.34,
+        payment_status: "done", transaction_id: "refund-19",
+        uiState: { revolutSnapshot: { operation_id: 19, state: "verified" } } };
+    order.payment_ids.unshift(completed);
+    assert.equal(await state.request(order, line), false);
+    assert.equal(calls.some(({ method }) => method === "revolut_start_refund"), false);
+    assert.deepEqual(errors, ["snapshot_invalid"]);
+    assert.equal(line.uiState.revolutUndispatched, true);
+    assert.equal(paymentActions(line).canDelete, true);
+    assert.equal(paymentActions(line).canEditAmount, true);
+    assert.equal(paymentActions(completed).canDelete, false);
+    assert.equal(completed.transaction_id, "refund-19");
+    assert.equal(await state.request(order, line, { checkOnly: true }), false);
+    failSave = false;
+    assert.equal(await state.request(order, line), true);
+    assert.equal(calls.filter(({ method }) => method === "revolut_start_refund").length, 1);
+    assert.equal(order.payment_ids[0], completed);
+});
+
+test("cancelling while a return saves prevents a late refund dispatch", async () => {
+    const saved = deferred();
+    const { state, order, line, calls } = fixture({
+        refund: true,
+        chooseAllocation: async () => ({ operationId: 10, amount: 12.34 }),
+        prepareRefund: () => saved.promise,
+        call(method) {
+            if (method === "revolut_refund_sources") {
+                return [{ operation_id: 10, remaining_minor: 1234 }];
+            }
+            if (method === "revolut_start_refund") {
+                return { operation_id: 20, state: "verified", payment_id: "refund-20", order_id: "refund-20" };
+            }
+            return false;
+        },
+    });
+    const request = state.request(order, line);
+    await tick();
+    const cancel = state.cancel(order, line);
+    saved.resolve();
+    assert.equal(await request, false);
+    assert.equal(await cancel, true);
+    assert.equal(calls.some(({ method }) => method === "revolut_start_refund"), false);
+    assert.equal(paymentActions(line).canDelete, true);
+});
 
 test("an invalid refund source snapshot exposes the server correction message without dispatching", async () => {
     const { state, order, line, calls, preparationErrors, preparationMessages } = fixture({

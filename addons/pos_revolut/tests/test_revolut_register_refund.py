@@ -205,7 +205,12 @@ class TestRevolutRegisterRefund(CommonPosTest):
         manager = self._actor(granted=True)
         current_manager = self._actor()
         started = self._start_for(manager)
-        self.session.write({"state": "closed"})
+        # Legacy versions permitted closing an uncertain refund's session.
+        # Seed that history; current public closure must reject it.
+        self.env.flush_all()
+        self.env.cr.execute("UPDATE pos_session SET state = 'closed' WHERE id = %s", [self.session.id])
+        self.session.invalidate_recordset()
+        self.session.modified(["state"])
         other_config = self.pos_config_usd.copy({"name": "Current method register"})
         other_config.sudo().write({"revolut_user_ids": [Command.link(current_manager.id)]})
         self.pos_config_usd.write({"payment_method_ids": [Command.unlink(self.revolut_method.id)]})
