@@ -41,10 +41,4 @@
         <field name="domain_force">[('company_id', 'in', company_ids), ('original_operation_id.pos_config_id.revolut_user_ids', 'in', [user.id]), ('pos_session_id.config_id.revolut_user_ids', 'in', [user.id])]</field>
         <field name="groups" eval="[(4, ref('point_of_sale.group_pos_manager'))]"/>
     </record>
-    <record id="rule_revolut_external_refund_evidence_company_manager" model="ir.rule">
-        <field name="name">Revolut external refund evidence in allowed companies</field>
-        <field name="model_id" ref="model_pos_revolut_external_refund_evidence"/>
-        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
-        <field name="groups" eval="[(4, ref('point_of_sale.group_pos_manager'))]"/>
-    </record>
 </odoo>
