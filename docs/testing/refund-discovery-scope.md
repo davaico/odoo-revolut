@@ -161,3 +161,61 @@ Its bootstrap accepts a stored zero placeholder only when a fresh strict
 integer exceeds the field limit and the exact reviewed reconciler classifies
 the row as unresolved `outside_integration_location`. No amount is rewritten.
 All other mismatches or remaining blockers roll back the transaction.
+
+## Guarded rollout completed — 2026-10-05
+
+[PR #46](https://github.com/davaico/odoo-revolut/pull/46) and
+[PR #47](https://github.com/davaico/odoo-revolut/pull/47) are merged. Staging
+now runs **19.0.1.15.3** from exact tested source
+`0bc84ecf2d8fb22a94b80465eaae8943c299f9e7`; PR #47's merge is
+`972361212d2b83c17d4bd6315c09c34cff69353e`. The standard deployer completed
+its financial preflights, backup, upgrade and restart without weakening its guard.
+The active addon symlink points to
+`/opt/odoo-releases/revolut/staging/0bc84ecf2d8fb22a94b80465eaae8943c299f9e7/pos_revolut`.
+Service health is active and `/web/login` returns HTTP 200. Deployment backup:
+`/var/backups/odoo-revolut-deploy/20261005T120324Z-0bc84ecf2d8f`.
+
+Before deployment, independent original/payment GET proofs and the existing
+administrator action explicitly attested the six historical sources listed
+above. The final reconciliation payload validated 33 current observations
+with 99 guarded GETs and committed one transaction: six authority conflicts
+resolved, ten unrelated originals retained as unresolved `unrelated_source`,
+and seventeen foreign-location records retained as unresolved
+`outside_integration_location`. No evidence was deleted or fictitiously resolved.
+Native record counts and all six existing Odoo-origin refunds were preserved.
+
+After upgrade and a subsequent cron run, staging contains 531 retained evidence
+rows: six resolved authority conflicts, 508 unresolved unrelated originals and
+17 unresolved foreign-location observations, all nonblocking. Most unrelated
+rows already existed; 531 is the retained total, not the repair count. Payment
+and refund financial blocker counts are both zero. Refund cron 21 is active
+and ran again at **12:09:46 UTC** without reopening false blockers.
+
+Provider GET-only reconciliation imported one existing verified external penny refund
+as operation 10, linked to original source 36. Its native reconciliation remains
+`outstanding`; no product return, native payment or accounting document was
+created for it. Provider refunded balances for originals 4, 10, 11, 14, 16, 17
+and 36 each equal their verified local ledger of one penny. These are existing
+refunds, not new financial instructions.
+
+Live public API checks as Administrator user 2, without superuser mode, rejected
+both an unsaved return and a saved return with a missing selected payment line.
+Each made **zero provider HTTP calls** and created no refund. The checks rolled
+back their test transaction. Saved-return enforcement is now active on staging.
+
+Native draft 24 remains `draft`, total **-£0.02**, with its two completed
+allocations (refunds 5 and 6, payments 26 and 27). The Administrator's explicit
+register 2 grant remains present. Standard `pos_restaurant` is installed, but
+GBP register 2 remains in retail mode; the retired bridge is absent.
+No new financial POST, native Validate or physical terminal retest was issued
+during this correction. [The current ticket handoff](ticket-12-release-evidence.md#shared-merchant-discovery-rollout--2026-10-05)
+records the remaining human acceptance work.
+
+| Live verification | Evidence |
+| --- | --- |
+| Original/payment GET proofs and explicit historical authority attestation | `/tmp/discovery-live-legacy-proof.log`, `/tmp/discovery-live-legacy-repair.log` |
+| Final committed reconciliation, native/ledger preservation | `/tmp/discovery-bootstrap-final-live-apply.log` |
+| Guarded deployment, service health and active release | `/tmp/discovery-final-deployment.log`, `/tmp/discovery-final-health.log`, `/tmp/discovery-final-active-release.log` |
+| Public API rejection with zero provider HTTP | `/tmp/discovery-final-api-smoke.log` |
+| Seven provider/local refund balance matches | `/tmp/discovery-final-balance-audit.log` |
+| Post-cron retained evidence, native draft, grant and retail mode | `/tmp/discovery-final-state-after-cron.log`, `/tmp/discovery-final-cron-proof.log` |

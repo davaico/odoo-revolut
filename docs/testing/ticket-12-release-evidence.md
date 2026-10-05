@@ -2,10 +2,13 @@
 
 **Live acceptance remains open.** Dated entries distinguish observed passes,
 partial results and unexecuted cases. Mocked success does not establish terminal
-certification. Use the current checkpoint below to resume; earlier matrices and
-balances retain their original dates.
+certification. Resume from the [latest rollout and next steps](#shared-merchant-discovery-rollout--2026-10-05);
+earlier checkpoints, matrices and balances retain their original dates.
 
 ## Current refund repair checkpoint — 2026-10-05
+
+This is the initial diagnosis before draft recovery and deployment. It is
+superseded by the [latest rollout checkpoint](#shared-merchant-discovery-rollout--2026-10-05).
 
 Read-only staging records confirm all six provider refunds are now
 verified/completed. Operations 1–4 still link to paid native returns 20–23;
@@ -775,3 +778,47 @@ credential attribution was changed. Staging remains `19.0.1.14.1`, so the new
 server protection is not yet active there. The [deployment checkpoint](refund-saved-return.md#guarded-deployment-stopped--2026-10-05)
 preserves the blocker and exact candidate revision. Reconciliation and a
 successful guarded deployment remain required; ticket 12 stays open.
+
+## Shared Merchant discovery rollout — 2026-10-05
+
+Staging now runs **19.0.1.15.3**, tested source
+`0bc84ecf2d8fb22a94b80465eaae8943c299f9e7`, after merged
+[PR #46](https://github.com/davaico/odoo-revolut/pull/46) and
+[PR #47](https://github.com/davaico/odoo-revolut/pull/47). The
+[detailed rollout record](refund-discovery-scope.md#guarded-rollout-completed--2026-10-05)
+records the backup, exact archive, independent reviews and live postconditions.
+This supersedes the earlier missing-draft and blocked-deployment checkpoints.
+
+The initial 15 discovery blockers combined six historical credential-binding
+gaps with nine account-wide observations outside the known original payments.
+Continued history discovery added further records, including oversized foreign
+metadata. Fresh GET reconciliation validated 33 affected observations, preserved
+the six Odoo-origin refunds and all native record counts, and retained every
+observation. The full retained evidence total is now 531, with zero payment or
+refund financial blockers. The restored cron ran again without reopening false
+blockers. No cash/card origin is inferred for unfamiliar transactions.
+
+Final verification passed **490 install and 490 upgrade tests**, 44 complete
+external refund tests, 16 exact-archive retail checks and four groups of 16
+migration checks. The unchanged lifecycle and tooling paths retain their
+79-case POS and financial-guard evidence. Live non-superuser Administrator API
+requests for an unsaved return and a missing payment line each rejected with
+zero provider HTTP. Seven original-provider refunded balances match the verified
+local ledgers, one penny each. These checks did not issue a financial POST.
+
+Administrator user 2 still has the approved access to GBP register 2. Native
+return 24 is still a **-£0.02 draft**, displayed as **2 (Refund)**, with refunds
+5 and 6 verified and linked to its two negative payment lines. The historical
+browser number `1012` does not need to reappear. Standard Restaurant is now
+installed; the dedicated GBP register remains in retail mode.
+
+| Next step | Required observation |
+| --- | --- |
+| Review existing **2 (Refund)** and Validate | Confirm the two completed one-penny Revolut lines, then finalize the existing native receipt. Do not start replacement refunds. |
+| Review external refund 10 / original source 36 | This existing external penny is financially verified, but native reconciliation is `outstanding`. A manager must compare the original sale and any existing product, stock, cash or accounting records, complete only required native bookkeeping, then use the audited native reconciliation workflow. Do not invent a product return or issue another card refund. |
+| Resume unseen device scenarios | Terminal zero/nonzero tips and report matching; Restaurant dine-in/takeaway and partially paid recovery; remaining failure, cancellation-race, different-user/simultaneous-start and interruption subcases. Record unavailable controlled provider methods explicitly. |
+| Final release acceptance | Reconcile all test-money disposition by original source and record final combined-runtime/device acceptance and operating guidance. Preserve the completed full/split/two-card, busy-terminal and older return observations. |
+
+Ticket 12 remains **open / ready-for-human**. Automated and read-only checks do
+not establish the remaining physical acceptance. No native Validate, new
+financial POST or repeated physical terminal test was performed in this rollout.

@@ -848,8 +848,19 @@ within their allowed companies. An administrator may therefore need to
 investigate evidence that crosses a manager's register boundary. Unresolved
 financial evidence and active or uncertain imported refunds participate in deployment
 preflight; do not bypass their reservation or create a replacement refund.
-Evidence is resolved automatically after authoritative reconciliation. If a
-refund has no merchant reference and could be the lost response of an existing
+Evidence is resolved automatically after authoritative reconciliation.
+Discovery covers the shared Merchant account. A final unlinked observation at
+an authenticated location outside every configured or historical integration
+location can remain visible as `outside_integration_location` without blocking
+this integration. An authenticated original absent from all integration payments
+can likewise remain `unrelated_source`. Neither reason claims that no money
+moved. Known original/refund references prevent either exclusion. Location
+exclusion additionally requires a canonical foreign location and a final outcome;
+missing or invalid locations and uncertain outcomes cannot establish it.
+Later discovery can reopen evidence
+when the integration scope changes. These exclusions do not bypass the original
+payment's provider/local refunded-balance check before any new refund.
+If a refund has no merchant reference and could be the lost response of an existing
 Odoo attempt, discovery retains the original reservation and records ambiguous
 evidence instead of guessing external provenance or reserving the same money
 twice. An authoritative detail read can recover a reference omitted by the
