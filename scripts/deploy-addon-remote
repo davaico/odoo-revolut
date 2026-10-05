@@ -21,7 +21,8 @@ class DeploymentError(RuntimeError):
     """An expected safety refusal or remote command failure."""
 
 
-ADDONS = ("pos_revolut", "pos_revolut_restaurant")
+ADDONS = ("pos_revolut",)
+LEGACY_ADDON = "pos_revolut_restaurant"
 
 
 # No database, HTTP, provider credentials, or saved transaction data are used.
@@ -318,7 +319,7 @@ WHERE state IN (
                     symlinks=True,
                 )
             previous_releases = {}
-            for addon in ADDONS:
+            for addon in (*ADDONS, LEGACY_ADDON):
                 current = self._rooted(f"/opt/odoo-hosting/addons/{addon}")
                 if current.is_symlink():
                     previous_releases[addon] = os.readlink(current)
@@ -425,7 +426,7 @@ WHERE state IN (
             source = temporary_path / "addons"
             if any(not (source / addon / "__manifest__.py").is_file() for addon in ADDONS):
                 raise DeploymentError(
-                    "Deployment artifact does not contain both addon manifests."
+                    "Deployment artifact does not contain the POS Revolut addon manifest."
                 )
             if revision_root.exists():
                 marker = revision_root / "REVISION"
@@ -486,7 +487,8 @@ WHERE state IN (
     def _activate_release(self, release):
         currents = [self._rooted(f"/opt/odoo-hosting/addons/{addon}") for addon in ADDONS]
         currents[0].parent.mkdir(parents=True, exist_ok=True)
-        for current in currents:
+        legacy = self._rooted(f"/opt/odoo-hosting/addons/{LEGACY_ADDON}")
+        for current in [*currents, legacy]:
             if os.path.lexists(current) and not current.is_symlink():
                 raise DeploymentError(
                     f"Existing {current.name} addon is not a release symlink; "
@@ -507,21 +509,12 @@ WHERE state IN (
 
     def _update_module(self):
         before = self._module_states()
-        restaurant_installed = before.get("pos_restaurant") == "installed"
-        bridge_installed = before.get("pos_revolut_restaurant") == "installed"
-        if bridge_installed and not restaurant_installed:
-            raise DeploymentError("Restaurant bridge is installed without Restaurant.")
+        if before.get(LEGACY_ADDON) in {"to install", "to upgrade", "to remove"}:
+            raise DeploymentError("Restaurant bridge has a pending module operation.")
         if self.mode == "install":
             operations = ["--init", "pos_revolut"]
         else:
             operations = ["--update", "pos_revolut"]
-        if restaurant_installed:
-            if bridge_installed:
-                operations[1] += ",pos_revolut_restaurant"
-            elif self.mode == "install":
-                operations[1] += ",pos_revolut_restaurant"
-            else:
-                operations += ["--init", "pos_revolut_restaurant"]
         venv_python = self._rooted("/opt/odoo-hosting/venv/bin/python")
         odoo_command = ["/usr/bin/odoo"]
         if venv_python.is_file() and os.access(venv_python, os.X_OK):
@@ -551,8 +544,13 @@ WHERE state IN (
         after = self._module_states()
         if after.get("pos_revolut") != "installed":
             raise DeploymentError("POS Revolut base addon is not installed after update.")
-        if restaurant_installed and after.get("pos_revolut_restaurant") != "installed":
-            raise DeploymentError("Restaurant bridge is not installed after update.")
+        if after.get("pos_restaurant") != "installed":
+            raise DeploymentError("Restaurant dependency is not installed after update.")
+        if after.get(LEGACY_ADDON) is not None:
+            raise DeploymentError("Restaurant bridge was not merged during update.")
+        legacy = self._rooted(f"/opt/odoo-hosting/addons/{LEGACY_ADDON}")
+        if legacy.is_symlink():
+            legacy.unlink()
 
     def _module_states(self):
         rows = self._psql(
@@ -564,7 +562,7 @@ WHERE state IN (
         states = {}
         for row in rows:
             name, separator, state = row.strip().partition("|")
-            if not separator or name not in {*ADDONS, "pos_restaurant"} or not state:
+            if not separator or name not in {*ADDONS, LEGACY_ADDON, "pos_restaurant"} or not state:
                 raise DeploymentError("Odoo module state check returned invalid data.")
             states[name] = state
         return states

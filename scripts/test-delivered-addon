@@ -5,8 +5,8 @@ import argparse
 import importlib.machinery
 import importlib.util
 import re
-import shutil
 import subprocess
+import tarfile
 import tempfile
 from pathlib import Path
 
@@ -18,7 +18,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--revision", required=True)
     parser.add_argument("--scenario", choices=("retail", "migration"), required=True)
+    parser.add_argument("--migration-from", help="Full SHA of a legacy two-addon release")
     args = parser.parse_args()
+    if args.scenario == "migration" and not args.migration_from:
+        parser.error("--scenario migration requires --migration-from")
+    if args.migration_from and not re.fullmatch(r"[0-9a-f]{40}", args.migration_from):
+        parser.error("--migration-from must be a full commit SHA")
     if not re.fullmatch(r"[0-9a-f]{40}", args.revision):
         parser.error("--revision must be a full commit SHA")
     resolved = subprocess.check_output(
@@ -33,7 +38,7 @@ def main():
         archive = root / "release.tar.gz"
         subprocess.run(
             ["git", "archive", "--format=tar.gz", "--output", str(archive),
-             args.revision, "--", "addons/pos_revolut", "addons/pos_revolut_restaurant"],
+             args.revision, "--", "addons/pos_revolut"],
             cwd=REPOSITORY, check=True,
         )
         remote_source = subprocess.check_output(
@@ -53,14 +58,23 @@ def main():
             mode="install",
         )
         release = deployment._extract_release()
-        base_only = root / "base-only-addons"
-        base_only.mkdir()
-        shutil.copytree(release / "pos_revolut", base_only / "pos_revolut")
+        legacy_args = []
+        if args.scenario == "migration":
+            legacy_archive = root / "legacy.tar.gz"
+            subprocess.run(
+                ["git", "archive", "--format=tar.gz", "--output", str(legacy_archive),
+                 args.migration_from, "--", "addons/pos_revolut", "addons/pos_revolut_restaurant"],
+                cwd=REPOSITORY, check=True,
+            )
+            legacy_root = root / "legacy"
+            with tarfile.open(legacy_archive) as bundle:
+                bundle.extractall(legacy_root, filter="data")
+            legacy_args = ["--legacy-addons-dir", str(legacy_root / "addons")]
         print(f"Artifact revision: {args.revision}", flush=True)
         print(f"Artifact SHA256: {remote.sha256(archive)}", flush=True)
         subprocess.run(
             [str(REPOSITORY / "scripts" / "test-addon"),
-             "--addons-dir", str(release), "--base-only-dir", str(base_only),
+             "--addons-dir", str(release), *legacy_args,
              "--delivered-scenario", args.scenario],
             cwd=REPOSITORY, check=True,
         )
