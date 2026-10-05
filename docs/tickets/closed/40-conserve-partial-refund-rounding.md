@@ -2,9 +2,9 @@
 
 # 40 — Conserve rounding across partial refunds
 
-**Work branch:** `codex/40-conserve-partial-refund-rounding` (not created)
+**Work branch:** `codex/40-conserve-partial-refund-rounding`
 
-**State:** open
+**State:** closed
 
 **Category:** bug
 
@@ -12,7 +12,7 @@
 
 **Priority:** P2
 
-**Work type:** Triaged bug with implementation brief, 2026-10-05. Native accounting representation is an explicit implementation milestone; no fix is claimed.
+**Work type:** Completed bug fix with public RPC, native accounting/receipt and history-upgrade verification, 2026-10-05.
 
 **Dependencies and external blockers:** None for local implementation and mocked verification. Start from reviewed integration code and coordinate overlapping refund changes in a separate worktree. Incorporate the latest reviewed refund-reconciliation work when integrating and rerun affected external-refund tests. That work handles discovery/authority, not this rounding defect. Independent of ticket 39; live release acceptance remains ticket 12.
 
@@ -69,25 +69,35 @@ Historical refunds require a separate compatibility check. Preserve completed am
 
 **Acceptance criteria:**
 
-- [ ] First reproduce the failure through public Odoo refund RPC and native finalization with mocked provider I/O; assert actual POST amounts and native totals, not only helper output.
-- [ ] Complete the 1,234-minor-unit quarter/three-quarter case with refunds of 309 then 925; total refunded equals the original paid entitlement and both native returns finalize consistently.
-- [ ] Document and test the native representation of rounding differences. Receipt, tax/accounting output, saved total and allocated tenders agree; product quantities/prices/discounts/taxes retain their original authority.
-- [ ] Test rounding up/down, reversed return order, more than two partitions, multiple original lines and supported currency precision. All eligible quantities returned exhaust entitlement exactly, with no extra cent and no stranded residual.
-- [ ] Source discovery, locked reservation, settlement and reload/recovery use consistent authoritative amounts. Reject a stale/conflicting provisional selection before financial dispatch.
-- [ ] Pending/uncertain claims reserve capacity; concurrent returns cannot double-allocate cents or quantities. Multiple tenders on one return do not consume its target twice.
-- [ ] A definitively failed claim can release capacity without mutating another dispatched target. Duplicate submission and lost responses reuse immutable references and cannot cause another refund POST.
-- [ ] Preserve mixed-tender source limits and explicit base/tip conservation; cover applicable tax/cash rounding and the existing external-refund restrictions.
-- [ ] Test trustworthy historical records and ambiguous history separately. Do not rewrite completed or uncertain evidence, infer unsupported product allocations, or create replacement refunds to repair existing records.
-- [ ] Run focused allocation/refund/native document tests, affected concurrency/external-refund checks and relevant upgrade tests. Record the exact tested revision and compatibility limitations.
+- [x] First reproduce the failure through public Odoo refund RPC and native finalization with mocked provider I/O; assert actual POST amounts and native totals, not only helper output.
+- [x] Complete the 1,234-minor-unit quarter/three-quarter case with refunds of 309 then 925; total refunded equals the original paid entitlement and both native returns finalize consistently.
+- [x] Document and test the native representation of rounding differences. Receipt, tax/accounting output, saved total and allocated tenders agree; product quantities/prices/discounts/taxes retain their original authority.
+- [x] Test rounding up/down, reversed return order, more than two partitions, multiple original lines and supported currency precision. All eligible quantities returned exhaust entitlement exactly, with no extra cent and no stranded residual.
+- [x] Source discovery, locked reservation, settlement and reload/recovery use consistent authoritative amounts. Reject a stale/conflicting provisional selection before financial dispatch.
+- [x] Pending/uncertain claims reserve capacity; concurrent returns cannot double-allocate cents or quantities. Multiple tenders on one return do not consume its target twice.
+- [x] A definitively failed claim can release capacity without mutating another dispatched target. Duplicate submission and lost responses reuse immutable references and cannot cause another refund POST.
+- [x] Preserve mixed-tender source limits and explicit base/tip conservation; cover applicable tax/cash rounding and the existing external-refund restrictions.
+- [x] Test trustworthy historical records and ambiguous history separately. Do not rewrite completed or uncertain evidence, infer unsupported product allocations, or create replacement refunds to repair existing records.
+- [x] Run focused allocation/refund/native document tests, affected concurrency/external-refund checks and relevant upgrade tests. Record the exact tested revision and compatibility limitations.
 
 **Out of scope:** Weakening over-refund protection, a general Odoo pricing rewrite, arbitrary return discounts, external-refund reconciliation redesign, automatic historical money repair, live refunds/deployment, and general architecture cleanup.
 
 ## Triage disposition
 
-Confirmed production arithmetic defect with statically established blocking checks. On the owner's request to triage ticket 40, the evidence and current code were reviewed again; the affected code is unchanged and no duplicate fix or relevant prior rejection was found. Promoted to `ready-for-agent`: the desired conservation behavior is specified, and native representation is an engineering investigation within the implementation brief. The full Odoo reproduction and native representation remain uncompleted milestones, not evidence already obtained. No additional reporter data or external access is required. The ticket remains open and unclaimed for a separate implementation agent.
+Confirmed production arithmetic defect with statically established blocking checks. On the owner's request to triage ticket 40, the evidence and current code were reviewed again; the affected code is unchanged and no duplicate fix or relevant prior rejection was found. Promoted to `ready-for-agent`: the desired conservation behavior is specified, and native representation is an engineering investigation within the implementation brief. The full Odoo reproduction and native representation remain uncompleted milestones, not evidence already obtained. No additional reporter data or external access is required. At triage, the ticket remained open and unclaimed for a separate implementation agent; the completion record below supersedes that status.
 
 ## Comments
 
 > *This was generated by AI during triage.*
 
 Readiness means the implementation task and its completion criteria are clear; it does not mean the accounting design or fix has already been verified. Preserve existing over-refund guards and immutable financial evidence. Complete the Odoo reproduction and native document/accounting checks before treating any arithmetic correction as sufficient.
+
+## Completion — 2026-10-05
+
+Implemented on `codex/40-conserve-partial-refund-rounding` in the dedicated ticket-40 worktree, with latest reviewed main `7df76793d7bd772af69b1e3e5054c96d9c69b84b` incorporated. Runtime candidate: `7697af0c660356ff276236ca7a1ce2eeca050a59`; subsequent `7867d52157d297faef88d431827314c80f924bda` changes only the standalone receipt-upgrade comparison helper. Addon version: `19.0.1.16.0`.
+
+Locked per-line allocations conserve remaining cents over remaining quantities, remain immutable after dispatch and are consumed once across multiple tenders. The 1,234-cent public RPC/native-finalization regression posts 309 then 925, with saved totals and tenders -3.09 and -9.25. Failed claims release capacity without repricing surviving dispatches. Native tax bases, balanced session accounting/credit notes and real receipt/browser paths preserve the accepted target without changing product inputs or weakening caps. Historical uncertainty retains its identity and references; ambiguous per-line history blocks a new allocation conservatively.
+
+Verification: **508 clean-install tests + 508 upgrade tests**, both with zero failures/errors; **88 POS state tests**; **40 host tooling tests passed, 3 Odoo-dependent PDF tests skipped locally**. Actual reviewed-main financial-history upgrade and receipt-era financial/PDF preservation both pass. Independent Standards review: **0 documented violations, 0 actionable smells**. Independent Spec review: **0 remaining findings**. Syntax and patch checks pass; no static typechecker is configured.
+
+See [the reproducible commands, allocation/accounting representation, history recovery and compatibility limits](../../testing/ticket-40-return-rounding.md). Conserved returns must be invoiced separately from ordinary orders; subsequent manual credit-note reversals are not verified. No live refund or deployment is part of this closure; existing release acceptance remains separate.

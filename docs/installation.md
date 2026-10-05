@@ -692,8 +692,10 @@ status** again; it looks up the existing refund operation and its final result.
 Do not remove the line or select another tender while the refund is uncertain.
 
 Managers can also open **Point of Sale → Revolut Refunds** to inspect pending,
-failed, uncertain and completed refunds, their original sale, return UUID,
-provider references, and idempotency key. **Check status** and the scheduled
+failed, uncertain and completed refunds. The list shows **Original Sale**,
+**Odoo Return**, amount, **Refund Status** and **Source**. **Odoo Return** means
+the separate document recording returned products, not the original purchase.
+Open **Details** for provider references and technical return/request identifiers. **Check status** and the scheduled
 reconciler read provider status; background reconciliation does not finish the
 POS return by itself. Resume the unchanged return to complete it after a late
 success. Failed refunds remain visible and cannot finish that return.
@@ -712,7 +714,7 @@ refund is uncertain or its native return is unfinished.
 
 If an older release lost the native return entirely, open the original register
 with a POS-manager account. In **Revolut Refunds**, open either completed
-allocation and choose **Recover Odoo return**. Recovery gathers the completed
+allocation and choose **Restore missing return**. Recovery gathers the completed
 allocations for the original return UUID and opens one draft with their existing
 payment UUIDs and provider references. It sends no new refund and performs no
 stock or accounting finalization. Review the products, quantities and tenders,
@@ -830,20 +832,27 @@ block dispatch, including for legacy payments; there is no inferred-zero
 fallback. Provider totals are checked rather than added to local reservations. A completed card refund does not reimburse the
 cash part of a mixed-tender sale.
 
-An external financial refund creates no Odoo product return, returned quantity,
-inventory movement, native negative tender or accounting credit. The manager
-reviews its original sale and separate native reconciliation status, then
-handles any required return, cash adjustment or accounting correction through
-the appropriate Odoo workflow. Review the imported financial refund before
-issuing any additional card refund. Marking native reconciliation complete is
-a record of this separate manager work; it does not change provider status.
+A refund with source **Detected in Revolut** is linked to its known original
+payment and sale. Revolut reports the refunded amount, but does not identify
+which products or quantities were returned. The import therefore records the
+money refund without creating a product return, stock movement, cash
+reimbursement or accounting credit. A blank **Odoo Return** means no return
+document is linked; the purchase is still available under **Original Sale**.
+Review any required product or accounting work against that sale. Do not send
+another card refund to record money that Revolut has already returned.
+
+There is no separate acknowledgement step. Release `19.0.1.15.4` removes
+**Mark native work handled separately** and the unrelated review status from
+the refund screens. **Refund Status** reports the financial outcome. Historical
+acknowledgements remain stored for compatibility; they do not prove that stock,
+cash or accounting work occurred.
 
 Unmatched, ambiguous or conflicting provider observations and incomplete
 discovery windows are retained as internal server evidence. Merchant-wide
 observations can include transactions outside this Odoo integration, so they
 have no POS page or user read permission, including direct RPC reads. The
 **Revolut Refund Discovery Evidence** menu, action, views and manager permission
-are removed on upgrade to `19.0.1.15.4`; existing financial records are preserved.
+are removed on upgrade to `19.0.1.16.1`; existing financial records are preserved.
 Matched integration refunds remain in **Point of Sale → Revolut Refunds**.
 If an original payment reports that external refund review is required, ask an
 administrator to investigate through trusted server reconciliation, using the
@@ -942,3 +951,12 @@ See [ticket 38 evidence](testing/ticket-38-payment-observations.md) for elapsed
 phase budgets, remaining physical HTTP overlap after expiry, recovery delays
 and the mocked two-worker acceptance probe. Ticket 12 retains rollout and
 physical-terminal acceptance.
+
+
+## Conserved fractional returns (`19.0.1.16.0`)
+
+Upgrade the addon with the normal stopped-service procedure. This version adds immutable per-line refund allocation evidence and native return/accounting authority fields; it does not backfill older financial records. No new credential or terminal setting is required.
+
+Fractional returns allocate remaining cents across remaining original quantity. A 12.34 sale returned as one quarter and then the remainder refunds 3.09 and 9.25. Saved totals, original tender limits and native credit notes use the accepted target; the receipt displays any rounding difference while original quantities, prices, discounts and taxes stay fixed. Pending or uncertain refunds retain their capacity until reconciled. A definitively failed earlier refund releases capacity without repricing another dispatched return.
+
+Older single-line records can establish remaining entitlement from recorded completed totals. Ambiguous multi-line history or a missing historical rounding basis requires manager reconciliation before another refund. Preserve the existing operations and references; do not create replacement refunds to repair history. Existing uncertain attempts remain recoverable by their original identity. Conserved returns must be invoiced separately from ordinary orders; manual credit-note reversals are not verified by this change. See the [allocation, native accounting and verification record](testing/ticket-40-return-rounding.md).
