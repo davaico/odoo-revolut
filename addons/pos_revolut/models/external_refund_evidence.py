@@ -1,4 +1,8 @@
-"""Read-only manager evidence for refunds that cannot be safely associated."""
+"""Internal server evidence for refunds that cannot be safely associated.
+
+No user ACL is granted: Merchant-wide observations must not enter POS worklists.
+Reconciliation and financial safeguards access this preserved ledger with sudo.
+"""
 
 import re
 
