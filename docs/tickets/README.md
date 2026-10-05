@@ -100,7 +100,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [37 — Reconcile refunds created outside Odoo](closed/37-reconcile-external-terminal-refunds.md) | `ready-for-agent` at closure | Closed | GET-only discovery and separate native reconciliation verified; 430 install + tip regression/431 upgrade/9 Restaurant; rollout and live reconciliation remain 12 |
 | [38 — Coalesce concurrent payment status polls](closed/38-coalesce-concurrent-payment-status-polls.md) | `ready-for-agent` at closure | Closed | Coalesced observations; 446 install / 446 upgrade / 9 Restaurant tests passed |
 | [39 — Honor payment cancellation before dispatch](closed/39-cancel-payment-before-dispatch.md) | `ready-for-agent` at closure | Closed | Cancelled preparation prevents dispatch; 88 lifecycle tests, 5 focused native tests and 493 install/493 upgrade tests verified |
-| [40 — Conserve rounding across partial refunds](ready-for-agents/40-conserve-partial-refund-rounding.md) | `ready-for-agent` | Claimed | None for local work; full Odoo reproduction and native accounting representation are implementation milestones |
+| [40 — Conserve rounding across partial refunds](closed/40-conserve-partial-refund-rounding.md) | `ready-for-agent` at closure | Closed | Conserved 309/925 returns; 508 install / 508 upgrade, native accounting/receipts and actual history upgrades verified |
 | [41 — Complete Revolut-initiated refunds through native Odoo returns](ready-for-agents/41-complete-external-refund-returns.md) | `ready-for-agent` | Open | None for local work; manager-confirmed product returns and financial-only corrections; coordinate with 40 |
 
 ## Mission audit triage — 2026-10-05
@@ -110,13 +110,13 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 The owner requested investigation and future implementation tickets for the
 two defects in the [mission audit](../testing/mission-audit-2026-10-05.md).
 Tickets 39 and 40 preserve the causes, reproducible cases, proposed fix
-directions and evidence limits. Ticket 39 is implemented and closed;
-ticket 40 remains open. Both were subsequently triaged at the owner's request and are
-`ready-for-agent`, with no missing reporter information or product decision.
-Ticket 40 retains explicit Odoo reproduction and native accounting milestones.
-They are independent. Ticket 40 must incorporate reviewed refund-reconciliation work
-when integrating, without treating that work as a fix for partial-return
-rounding. No existing ticket disposition or release acceptance was changed.
+directions and evidence limits. Both were triaged at the owner's request and
+are now implemented and closed. Ticket 40 completed its public Odoo reproduction,
+conserved allocation and native accounting/receipt milestones, incorporating
+reviewed refund-reconciliation and current refund-screen work. It passed 508
+install and 508 upgrade tests plus actual financial-history preservation checks.
+The tickets were independent; the reconciliation work did not fix the rounding
+defect. Existing release acceptance remains separate.
 
 ## Architecture triage — 2026-09-25
 
