@@ -42,7 +42,9 @@ The refund keeps its original source payment and source session; the native
 return may use an open session on the same authorized register and company.
 
 For several external refunds, associate each with its correct original card
-tender and one payment on the same native return. Review their exact total. If
+tender and one payment on the same native return. Review their exact total.
+Use **Continue in register** on a saved draft to review remaining tenders and
+perform any additional explicit reimbursement through the normal POS flow. If
 the selected return exceeds the reimbursements already issued, handle any
 additional reimbursement as a separate authorized operation. Do not invent a
 cash payment or mark an unpaid balance as complete.
@@ -68,6 +70,13 @@ or accounting errors as unfinished native work; a financial status of
 **Completed** does not prove those documents finished.
 
 ## A return already exists
+
+For a finalized return with several external card reimbursements, select every
+external refund and its exact existing card payment in the association table.
+They are verified and linked together in one operation; a partial association
+cannot hide another unproven tender. Compatible finalized documents remain
+linkable after their later return session closes, with their original financial
+provenance retained and no session reopening or repeated native effects.
 
 Choose **Associate existing return** when a separate native draft or finalized
 return already records the same original sale and actual returned quantities.
@@ -170,13 +179,15 @@ provider states or issue money solely to exercise these cases.
 
 ## Public workflow entry points
 
-The manager wizard offers `select_products`, `existing_return` and
-`financial_only` dispositions. Its server operations are:
+The manager wizard offers **Select returned products**, **Associate an existing
+native return** and **No products returned** dispositions. Its server operations are:
 
 - `action_prepare_native_return(selection, session_id=None,
   return_order_id=None, payment_id=None, base_amount_minor=None,
   tip_amount_minor=None)`, where selection rows identify `original_line_id`,
   `quantity` and `lot_names`;
+- `action_associate_native_return(return_order_id, allocations)` on the selected
+  refund records, with explicit refund/payment IDs and applicable base/tip amounts;
 - `action_validate_native_return()` for normal native completion;
 - `action_record_financial_only(...)` with a reason and native correction.
 
@@ -210,3 +221,95 @@ Temporary local log: `/tmp/ticket41-stock.log`. Python compilation and
 `git diff --check` also passed. This focused result does not establish physical
 acceptance, the full-suite result, or final review; those are recorded by the
 implementation verification before ticket closure.
+
+
+## Review and broader verification
+
+Review baseline: `2bdede6a58e609bd451bb29aad5f57cec5919450` (owner confirmed).
+Ticket 40's completed branch supplies its existing rounding policy; no second
+correction was implemented. Ticket 41 runtime candidate: `a2b3c98b7e74e91a8f32663b74f665ecc010289b`.
+
+## Standards
+
+Independent review found 0 documented violations and 0 actionable smells.
+
+## Spec
+
+Independent review initially found missing atomic association of several finalized
+reimbursements and association after a later return session closed. Both were
+corrected and independently re-reviewed: 0 outstanding findings.
+Regression tests verify those cases through the
+manager wizard/server entry points, with no replayed native effects or HTTP.
+
+Review totals: Standards 0 findings; Spec 0 outstanding findings.
+
+## Broader verification
+
+The first broader run caught a cashier regression when native POS loaded the
+manager-only completion relation. The relation is now excluded from POS payloads;
+internal invariant reads preserve public access checks. The focused rerun passed
+**91 tests, 0 failures/errors**, including native receipt browser tours, shared
+session access, cancellation/mutation boundaries, original native document rules,
+new manager workflow and finalized association. Log: `/tmp/ticket41-review-green.log`.
+
+Other focused evidence: 59 workflow/discovery tests, 8 actual stock/accounting
+tests, 7 financial-only accounting tests, and 3 real independent-cursor manager
+races passed. The races prove one saved draft/payment, safe competing quantity
+reservations and one actual native stock transfer under concurrent validation.
+Every new workflow tests mocked Merchant HTTP and retained original references.
+The standalone JS state test passed; the script/PDF suite ran 43 tests:
+40 passed and 3 were skipped for existing dependencies. Python compilation and
+whitespace checks pass.
+There is no configured static type checker in this Python/Odoo repository.
+
+| Behavior | Public/native verification |
+| --- | --- |
+| Product confirmation, partial/full returns, mixed/multiple tenders, pending recovery, tips and reload | `TestExternalNativeReturns` |
+| Exact existing reimbursements, atomic finalized association and later closed sessions | `TestExternalNativeAssociation` |
+| Actual stock quantities, lots/serials, posted original-invoice credit notes and validation rollback | `TestExternalNativeStock` |
+| Exact posted financial-only corrections, accountant authority and protected completed evidence | `TestExternalRefundDisposition` |
+| Competing managers, overlapping quantity reservations and one actual stock transfer | `TestExternalNativeConcurrency` |
+| Native POS loading, receipts, access revocation and mutation guards | Native printing/document, shared-session and mutation suites |
+| Preserved pre-ticket financial/audit history and historical acknowledgement recovery | `scripts/test-external-native-upgrade` |
+
+The first full clean-install verification passed **545 tests, 0 failures/errors**.
+Its upgrade phase exposed an existing shared-access test assumption: 51 earlier
+due attempts filled a cron batch limited to 50, so its new attempt was not observed.
+The test now schedules its own attempt first and asserts its exact provider GET
+and observation timestamp, retaining authority, reservation and recovery checks.
+Independent review found no issues in this test-only correction. The focused
+shared-access rerun passed **26 installation and 26 upgrade tests**, with zero
+failures/errors (`9f2a24c`, log `/tmp/ticket41-shared-access-verified.log`). The full
+install/upgrade rerun is in progress on unchanged runtime code. Physical terminal
+acceptance and deployment remain the existing release process; this implementation
+performs no live financial operation.
+
+## Actual pre-ticket history upgrade
+
+The following isolated probe passed on 2026-10-05 with runner exit 0:
+
+```sh
+ODOO_REVOLUT_TEST_PROJECT=odoo-revolut-ticket41-history ./scripts/test-external-native-upgrade
+```
+
+It installs revision `354ca65` (addon `19.0.1.16.0`), saves native original sales,
+executes the old public manager acknowledgement action, persists completed and
+pending external refund evidence, then upgrades to `19.0.1.17.0`. Before any new
+workflow, every captured stored scalar and relationship ID is unchanged, including
+financial references, amounts, source links, acknowledgement actor/time and
+creation/write audit fields. The seed flushes and reloads records before capturing
+its persisted snapshot.
+
+The old acknowledgement remains an unproven assertion with no invented native
+association or provider dates. The public manager workflow creates and validates
+one return, preserves the prior acknowledgement separately and retains the
+original financial evidence. Repeated completion keeps the same lines, payment
+and completion time. The migrated pending refund still reserves its full source
+capacity, can acquire a recoverable draft, and rejects validation, payment-proof
+mutation, forced paid state and deletion. Merchant HTTP is blocked by the runner
+and mocked to fail in both fixture phases; zero calls occur.
+
+This migration probe uses uninvoiced services; actual inventory and invoice
+effects are exercised by the separate native stock/accounting suite. Independent
+review of the script and probes found no standards or safety issues. Log:
+`/tmp/ticket41-history-upgrade.log`.
