@@ -405,9 +405,12 @@ class RefundDiscovery(models.Model):
             self._discovery_evidence(credential, reference, "unmatched_source", candidate=candidate)
             return
         try:
-            self._validated_discovery_detail(method, authority, candidate, detail=detail)
+            detail = self._validated_discovery_detail(method, authority, candidate, detail=detail)
         except (requests.RequestException, UserError, ValueError):
             self._discovery_evidence(credential, reference, "unmatched_source", candidate=candidate)
+            return
+        if self._known_discovery_reference(detail):
+            self._discovery_evidence(credential, reference, "conflicting_reference", candidate=candidate)
             return
         self._discovery_evidence(credential, reference, "unrelated_source", candidate=candidate)
 
@@ -425,16 +428,9 @@ class RefundDiscovery(models.Model):
                 return False
         except (ValueError, TypeError, AttributeError):
             return False
-        merchant = detail.get("merchant_order_data")
-        key = merchant.get("reference") if isinstance(merchant, dict) else None
-        refund_domain = [("revolut_order_id", "=", detail["id"])]
-        if isinstance(key, str) and key:
-            refund_domain = ["|", *refund_domain, ("idempotency_key", "=", key)]
-        if self.sudo().search_count(refund_domain, limit=1):
+        if self._known_discovery_reference(detail):
             return False
         payments = self.env["pos.revolut.payment.operation"].sudo().with_context(active_test=False)
-        if payments.search_count([("revolut_order_id", "=", detail["id"])], limit=1):
-            return False
         if payments.search_count([
             ("secret_reference", "=", credential.secret_reference),
             ("environment", "=", credential.environment), ("location_id", "=", location),
@@ -445,3 +441,17 @@ class RefundDiscovery(models.Model):
             ("revolut_environment", "=", credential.environment),
             ("revolut_location_id", "=", location),
         ], limit=1)
+
+    @api.model
+    def _known_discovery_reference(self, detail):
+        merchant = detail.get("merchant_order_data")
+        key = merchant.get("reference") if isinstance(merchant, dict) else None
+        refund_domain = [("revolut_order_id", "=", detail["id"])]
+        if isinstance(key, str) and key:
+            refund_domain = ["|", *refund_domain, ("idempotency_key", "=", key)]
+        if self.sudo().search_count(refund_domain, limit=1):
+            return True
+        payments = self.env["pos.revolut.payment.operation"].sudo().with_context(active_test=False)
+        return bool(payments.search_count([
+            ("revolut_order_id", "=", detail["id"]),
+        ], limit=1))
