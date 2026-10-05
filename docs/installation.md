@@ -838,22 +838,25 @@ the appropriate Odoo workflow. Review the imported financial refund before
 issuing any additional card refund. Marking native reconciliation complete is
 a record of this separate manager work; it does not change provider status.
 
-Open **Point of Sale → Revolut Refund Discovery Evidence** for unmatched,
-ambiguous or conflicting provider evidence and incomplete discovery windows.
-This list preserves reported references and a short investigation reason without
-inventing an original-sale link. Records with an established original payment
-follow that payment's register access. Unmatched records are visible only to
-managers who can read every original operation under that Merchant credential,
-within their allowed companies. An administrator may therefore need to
-investigate evidence that crosses a manager's register boundary. Unresolved
+Unmatched, ambiguous or conflicting provider observations and incomplete
+discovery windows are retained as internal server evidence. Merchant-wide
+observations can include transactions outside this Odoo integration, so they
+have no POS page or user read permission, including direct RPC reads. The
+**Revolut Refund Discovery Evidence** menu, action, views and manager permission
+are removed on upgrade to `19.0.1.15.4`; existing financial records are preserved.
+Matched integration refunds remain in **Point of Sale → Revolut Refunds**.
+If an original payment reports that external refund review is required, ask an
+administrator to investigate through trusted server reconciliation, using the
+original payment's Merchant authority. Do not grant user access to the internal
+evidence model. Unresolved
 financial evidence and active or uncertain imported refunds participate in deployment
 preflight; do not bypass their reservation or create a replacement refund.
 Evidence is resolved automatically after authoritative reconciliation.
 Discovery covers the shared Merchant account. A final unlinked observation at
 an authenticated location outside every configured or historical integration
-location can remain visible as `outside_integration_location` without blocking
+location can remain recorded as `outside_integration_location` without blocking
 this integration. An authenticated original absent from all integration payments
-can likewise remain `unrelated_source`. Neither reason claims that no money
+can likewise remain recorded as `unrelated_source`. Neither reason claims that no money
 moved. Known original/refund references prevent either exclusion. Location
 exclusion additionally requires a canonical foreign location and a final outcome;
 missing or invalid locations and uncertain outcomes cannot establish it.
@@ -867,7 +870,7 @@ twice. An authoritative detail read can recover a reference omitted by the
 list response.
 
 An authoritative refund whose complete parent reference is absent from every
-integration payment record remains visible with reason `unrelated_source`, but
+integration payment record remains internally recorded with reason `unrelated_source`, but
 does not block these POS sales or deployment. Discovery checks unverified,
 legacy and other credential/company payment records before making that
 classification. Missing or invalid detail and known originals that cannot be
