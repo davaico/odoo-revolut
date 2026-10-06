@@ -142,7 +142,12 @@ own project names too.
 
 Cleanup runs on success, failure, SIGINT and SIGTERM, including signals sent
 to only the runner PID. The runner forwards interruption to its active child
-and waits for it before removing resources. It removes the report
+and waits for it before removing resources. Signals arriving during cleanup
+are deferred until teardown and temporary-file removal finish. Cleanup commands
+run in separate sessions so a signal to the runner's process group cannot
+kill them. A cleanup-time interruption returns 130/143 unless an earlier phase
+already failed, in which case its original failure status is retained. The
+host needs `flock` and `setsid` (both provided by util-linux). It removes the report
 process, Compose resources/volumes, and owned temporary addon directories. A
 cleanup failure is reported and makes a successful verification exit nonzero;
 a prior phase failure keeps its original exit status. The success message is
