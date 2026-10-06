@@ -2,7 +2,7 @@
 
 **Work branch:** `codex/42-deepen-native-return-allocation`
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 
