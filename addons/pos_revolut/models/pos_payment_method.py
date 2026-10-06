@@ -4,7 +4,7 @@ from uuid import UUID
 
 import requests
 from psycopg2 import IntegrityError
-from psycopg2.errors import DeadlockDetected, SerializationFailure
+from psycopg2.errors import SerializationFailure
 
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError, ValidationError
@@ -595,23 +595,6 @@ class PosPaymentMethod(models.Model):
             return True
         return False
 
-    def _apply_revolut_observation_owned(self, operation_id, kind, evidence=None):
-        # Retry only local evidence application. Provider I/O and financial
-        # dispatch stay outside this loop, and each conflict ends its cursor.
-        for attempt in range(3):
-            try:
-                with self.env.registry.cursor() as cursor:
-                    owned_env = api.Environment(cursor, self.env.uid, dict(self.env.context))
-                    operation = owned_env["pos.revolut.payment.operation"].sudo().browse(
-                        operation_id
-                    )
-                    snapshot = operation._apply_payment_observation(kind, evidence)
-                    cursor.commit()
-                    return snapshot
-            except (SerializationFailure, DeadlockDetected):
-                if attempt == 2:
-                    raise
-
     def _revolut_authorized_operation_secret(self, operation):
         """Resolve the frozen operation authority before every provider request."""
         self.ensure_one()
@@ -901,82 +884,6 @@ class PosPaymentMethod(models.Model):
         return self.env[
             "pos.revolut.payment.operation"
         ].operation_snapshot(operation)
-
-    def revolut_poll_payment(self, operation_id, order_uuid, payment_line_uuid):
-        self.ensure_one()
-        try:
-            order_uuid = str(UUID(order_uuid))
-            payment_line_uuid = str(UUID(payment_line_uuid))
-        except (TypeError, ValueError, AttributeError):
-            raise UserError(_("The POS payment identifiers are invalid.")) from None
-        operation = self._read_revolut_operation_owned(
-            operation_id, order_uuid, payment_line_uuid
-        )
-        snapshot = self._apply_revolut_observation_owned(operation_id, "legacy_final")
-        if snapshot["state"] == "verified" or snapshot["retry_safe"]:
-            return snapshot
-        if not operation["payment_intent_id"] or not operation["order_id"]:
-            return self._apply_revolut_observation_owned(
-                operation_id, "references_unavailable"
-            )
-        try:
-            intent = self._revolut_api_request(
-                operation, "GET",
-                f"/api/payment-intents/{operation['payment_intent_id']}",
-            )
-            snapshot = self._apply_revolut_observation_owned(
-                operation_id, "intent", intent
-            )
-            if snapshot["state"] in {"verified", "unresolved"} or snapshot["retry_safe"]:
-                # An invalid intent must not be overridden by a later payment
-                # read using a reference retained from an earlier observation.
-                return snapshot
-            if (intent.get("state") in ("cancelled", "failed")
-                    and not intent.get("payment_id")
-                    and not operation["payment_id"]):
-                # Another poll may have stored a payment while this intent GET
-                # was in flight. Its result is authoritative only after a
-                # fresh payment read; leave that to the next poll.
-                return snapshot
-            if not snapshot["payment_id"]:
-                return snapshot
-            operation = self._read_revolut_operation_owned(operation_id)
-            payment = self._revolut_api_request(
-                operation, "GET", f"/api/payments/{snapshot['payment_id']}"
-            )
-            return self._apply_revolut_observation_owned(
-                operation_id, "payment", payment
-            )
-        except requests.RequestException:
-            return self._apply_revolut_observation_owned(operation_id, "interrupted")
-        except (ValueError, UserError):
-            return self._apply_revolut_observation_owned(operation_id, "unknown")
-
-    def revolut_cancel_payment(self, operation_id, order_uuid, payment_line_uuid):
-        # A fresh read decides eligibility. A POST result alone never means the
-        # line can be removed: cancellation can race with customer payment.
-        result = self.revolut_poll_payment(operation_id, order_uuid, payment_line_uuid)
-        if result["state"] != "pending" or result["provider_state"] != "pending":
-            return result
-        if not self._claim_revolut_dispatch_owned(operation_id, "cancel_intent"):
-            return self._read_revolut_operation_owned(operation_id)["snapshot"]
-        operation = self._read_revolut_operation_owned(operation_id)
-        try:
-            self._revolut_api_request(
-                operation, "POST",
-                f"/api/payment-intents/{operation['payment_intent_id']}/cancel",
-            )
-            self._apply_revolut_observation_owned(
-                operation_id, "dispatch_cancel_intent",
-                {"reference": operation["payment_intent_id"]},
-            )
-        except (requests.RequestException, ValueError, UserError):
-            self._apply_revolut_observation_owned(
-                operation_id, "dispatch_cancel_intent",
-                {"uncertain": True, "cause": "interrupted"},
-            )
-        # Even a rejection or lost response must be reconciled, never replayed.
-        return self.revolut_poll_payment(operation_id, order_uuid, payment_line_uuid)
 
     def revolut_mark_timeout(self, operation_id, order_uuid, payment_line_uuid):
         self.ensure_one()

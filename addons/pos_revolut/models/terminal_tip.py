@@ -7,11 +7,10 @@ import csv
 import hashlib
 import io
 import json
-import logging
 import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import requests
 
@@ -32,7 +31,6 @@ REPORT_MAX_BYTES = 262144
 REPORT_MAX_ROWS = 1000
 REPORT_MAX_CELL = 128
 REPORT_DECIMAL = re.compile(r"[0-9]{1,16}(?:\.[0-9]{1,6})?\Z")
-_logger = logging.getLogger(__name__)
 
 
 def _utc_datetime(value):
@@ -254,57 +252,3 @@ class PosPaymentMethod(models.Model):
                                "created_date": row["created_date"], "captured_date": row["captured_date"],
                                "amount": row["amount"], "tip_amount": row["tip_amount"],
                                "file_sha256": hashlib.sha256(content).hexdigest()}}
-
-    def revolut_poll_payment(self, operation_id, order_uuid, payment_line_uuid):
-        snapshot = super().revolut_poll_payment(operation_id, order_uuid, payment_line_uuid)
-        if snapshot["state"] == "verified" or snapshot["retry_safe"]:
-            return snapshot
-        # An invalid fresh intent/payment observation must not be overridden by
-        # a report applied against captured data retained from an earlier poll.
-        if snapshot["state"] != "pending" or snapshot["provider_state"] not in {"captured", "completed"}:
-            return snapshot
-        operation = self._read_revolut_operation_owned(operation_id, order_uuid, payment_line_uuid)
-        if not operation["authorized"] or not operation["captured_amount_minor"]:
-            return snapshot
-        run_id = operation["report_run_id"]
-        report_resource = True
-        try:
-            if not run_id:
-                claim = str(uuid4())
-                self._apply_revolut_observation_owned(operation_id, "tip_report_claim", {"claim": claim})
-                operation = self._read_revolut_operation_owned(operation_id)
-                if operation["report_claim"] != claim:
-                    return operation["snapshot"]
-                report = self._revolut_report_request(operation, "POST", "/api/report-runs",
-                                                       body=self._revolut_report_body(operation))
-                run_id, status = self._revolut_report_run(report)
-                self._apply_revolut_observation_owned(operation_id, "tip_report_created", {"claim": claim, "run_id": run_id})
-                operation = self._read_revolut_operation_owned(operation_id)
-                if operation["report_run_id"] != run_id:
-                    return operation["snapshot"]
-            else:
-                report = self._revolut_report_request(operation, "GET", f"/api/report-runs/{run_id}")
-                _, status = self._revolut_report_run(report, run_id)
-            if status in {"expired", "failed"}:
-                return self._apply_revolut_observation_owned(operation_id, "tip_report_retire", {"run_id": run_id, "reason": status})
-            if status == "processing":
-                return self._apply_revolut_observation_owned(operation_id, "tip_report_wait")
-            content = self._revolut_report_request(operation, "GET", f"/api/report-runs/{run_id}/file", csv_file=True)
-            report_resource = False
-            order = self._revolut_report_request(operation, "GET", f"/api/orders/{operation['order_id']}")
-            evidence = self._revolut_tip_report_evidence(operation, content, order)
-            if evidence is None:
-                return self._apply_revolut_observation_owned(operation_id, "tip_report_retire", {"run_id": run_id, "reason": "payment_not_yet_reported"})
-            return self._apply_revolut_observation_owned(operation_id, "tip_report_verified", evidence)
-        except requests.HTTPError as error:
-            if report_resource and run_id and error.response is not None and error.response.status_code in {404, 410}:
-                return self._apply_revolut_observation_owned(operation_id, "tip_report_retire", {"run_id": run_id, "reason": "file_unavailable"})
-            return self._apply_revolut_observation_owned(operation_id, "interrupted")
-        except requests.RequestException:
-            return self._apply_revolut_observation_owned(operation_id, "interrupted")
-        except (ValueError, TypeError, UnicodeError, csv.Error, UserError) as error:
-            # Configuration/settlement errors are already safe user messages.
-            # Never log report rows, response bodies or credential headers.
-            _logger.warning("Revolut operation %s tip reconciliation remains unresolved (%s)",
-                            operation_id, str(error) if isinstance(error, UserError) else type(error).__name__)
-            return self._apply_revolut_observation_owned(operation_id, "tip_report_invalid")
