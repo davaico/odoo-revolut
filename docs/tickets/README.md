@@ -106,7 +106,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [43 — Deepen external return association and unify return locking](closed/43-deepen-external-return-allocation.md) | `ready-for-agent` at closure | Closed | Shared batch association and complete native ownership locking; 561 install / 561 upgrade, historical compatibility and independent Standards/Spec review |
 | [44 — Recover payment reservations interrupted before dispatch](closed/44-recover-unclaimed-payment-reservations.md) | `ready-for-agent` at closure | Closed | Safe unclaimed cancellation; 573 install / 573 upgrade, native recovery and clean Standards/Spec review |
 | [45 — Complete refunds for discounted and rounded sales](closed/45-refund-discounted-and-rounded-sales.md) | `ready-for-agent` at closure | Closed | Conserved discounts/rounding and frozen history; 591 install / 591 upgrade tests, native returns and independent reviews passed |
-| [46 — Recover checkout refresh after payment verification](ready-for-agents/46-recover-verified-checkout-refresh.md) | `ready-for-agent` | Open | None |
+| [46 — Recover checkout refresh after payment verification](closed/46-recover-verified-checkout-refresh.md) | `ready-for-agent` at closure | Closed | Read-only verified checkout recovery; 597 install / 597 upgrade tests, six native scenarios and independent reviews passed |
 
 ## Integration review follow-up — 2026-10-06
 
@@ -122,7 +122,9 @@ safe unclaimed-reservation recovery passed 573 install / 573 upgrade tests,
 native checkout/session closure and independent Standards/Spec review.
 Ticket 45 is now closed after discounted and rounded return conservation passed
 591 install / 591 upgrade tests, native browser/stock/accounting checks and
-independent Standards/Spec review. Ticket 46 remains open.
+independent Standards/Spec review. Ticket 46 is now closed after verified
+checkout recovery passed 597 install / 597 upgrade tests, six native recovery
+scenarios and independent Standards/Spec review.
 
 The review reproduced the reservation and refund defects in pinned Odoo and
 the browser recovery defect in the exact state module with the pinned native
