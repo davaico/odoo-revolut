@@ -362,6 +362,26 @@ missing, ask support to reconcile it with Revolut. Do not clear database locks,
 force the line paid, or delete audit records. Physical-terminal payment and
 refund acceptance remain ticket 12 work.
 
+### Recover a reservation stopped before terminal dispatch
+
+Upgrade `pos_revolut` to `19.0.1.17.1` using the normal stopped-service module
+upgrade. No configuration or credential change is required.
+
+If an interrupted payment stays unresolved after **Check status**, keep its
+original order and select **Cancel** or delete the payment line through POS.
+Odoo can safely cancel a saved reservation when no financial request was claimed,
+or when order creation was acknowledged but the terminal intent was never
+claimed. Cancellation retains the original cart, attempt identity, provider order
+reference if present, and dispatch history. Once POS confirms cancellation,
+use **Retry** on the retained line or add a new tender after removing it.
+
+A request claimed before a worker stopped may already have reached Revolut.
+Missing references or an empty provider lookup do not make that request safe.
+Such attempts remain reserved: use **Check status** and the manager
+reconciliation worklist, and contact support for missing references. Status
+checks, scheduled reconciliation and timeouts do not release an unclaimed
+reservation automatically. Never clear database locks or force a payment paid.
+
 ### Split tender and Restaurant checkout
 
 Set the cash or other normal payment line to its intended amount, then select
