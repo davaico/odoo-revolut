@@ -4,7 +4,7 @@
 
 **State:** open
 
-**Triage:** needs-triage
+**Triage:** ready-for-agent
 
 **Category:** architecture
 
@@ -48,4 +48,8 @@ No automatic goods identification from money, replacement reimbursement, generic
 
 ## Publication and verification
 
-Published under needs-triage according to the local tracker mapping. The owner approved this behavior-preserving architecture work; implementation has not started. Earlier closed tickets remain historical evidence and are not reopened. The declared work branch is an implementation assignment, not a branch created by publication. No parent issue, runtime code, provider communication or deployment is changed. Publication checks cover ticket metadata, dependency/index links and whitespace; runtime tests are not required for this documentation-only change.
+Initially published under needs-triage according to the local tracker mapping. The owner approved this behavior-preserving architecture work; implementation has not started. Earlier closed tickets remain historical evidence and are not reopened. The declared work branch is an implementation assignment, not a branch created by publication. No parent issue, runtime code, provider communication or deployment is changed. Publication checks cover ticket metadata, dependency/index links and whitespace; runtime tests are not required for this documentation-only change.
+
+## Triage decision — 2026-10-06
+
+The owner requested promotion to ready-for-agent. The approved scope and acceptance criteria are fully specified for local implementation with mocked provider calls; no additional product decision or external access is required. State remains open and unclaimed. Ticket 43 remains blocked by ticket 42; readiness does not waive that dependency. Implementation, deployment and live acceptance have not been performed by this triage change.
