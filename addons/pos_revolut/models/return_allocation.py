@@ -2,7 +2,7 @@
 
 from contextlib import contextmanager
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from odoo import _
 from odoo.exceptions import AccessError, UserError
@@ -192,7 +192,7 @@ class ReturnAllocation:
                     selected = {row["original_line_id"]: Decimal(str(row["quantity"])) for row in selection}
                 except (KeyError, TypeError, ArithmeticError):
                     raise UserError(_("Resume the existing return without changing confirmed products or quantities.")) from None
-                saved = {line.refunded_orderline_id.id: -Decimal(str(line.qty)) for line in order.lines}
+                saved = {line.refunded_orderline_id.id: abs(Decimal(str(line.qty))) for line in order.lines}
                 if len(selected) != len(selection) or selected != saved:
                     raise UserError(_("Resume the existing return without changing confirmed products or quantities."))
         else:
@@ -202,7 +202,7 @@ class ReturnAllocation:
             raise UserError(_("The native return belongs to a different original sale."))
         self._validate_return_quantities(snapshot, original, order.uuid)
         for line in order.lines:
-            refunds[0]._check_selected_lots(line.refunded_orderline_id, -Decimal(str(line.qty)),
+            refunds[0]._check_selected_lots(line.refunded_orderline_id, abs(Decimal(str(line.qty))),
                                            line.pack_lot_ids.mapped("lot_name"), order)
         decision = self._decision(snapshot, original, order.currency_id, order.uuid)
         normalize = self.env["pos.revolut.payment.operation"].normalize_amount
@@ -305,7 +305,7 @@ class ReturnAllocation:
         )
         try:
             for line in snapshot["lines"]:
-                if not line["refunded_orderline_id"] or Decimal(line["qty"]) >= 0:
+                if not line["refunded_orderline_id"] or not Decimal(line["qty"]):
                     raise ValueError()
         except (KeyError, ValueError, TypeError):
             raise UserError(_("Use the normal POS return flow for the original sale.")) from None
@@ -333,8 +333,9 @@ class ReturnAllocation:
         by_id = {line.id: line for line in originals}
         for line in snapshot["lines"]:
             old = by_id[line["refunded_orderline_id"]]
-            if (Decimal(line["qty"]) < -Decimal(str(old.qty))
-                    or old.qty <= 0 or line["product_id"] != old.product_id.id
+            if (Decimal(line["qty"]) * Decimal(str(old.qty)) >= 0
+                    or abs(Decimal(line["qty"])) > abs(Decimal(str(old.qty)))
+                    or line["product_id"] != old.product_id.id
                     or Decimal(line["price_unit"]) != Decimal(str(old.price_unit))
                     or Decimal(line["discount"]) != Decimal(str(old.discount))
                     or line["tax_ids"] != sorted(old.tax_ids.ids)):
@@ -358,7 +359,7 @@ class ReturnAllocation:
         return base + tip
 
     def _validate_return_quantities(self, snapshot, original, order_uuid):
-        requested = {line["refunded_orderline_id"]: -Decimal(line["qty"]) for line in snapshot["lines"]}
+        requested = {line["refunded_orderline_id"]: abs(Decimal(line["qty"])) for line in snapshot["lines"]}
         used = {line.id: Decimal(0) for line in original.lines}
         completed = self.env["pos.order.line"].sudo().search([
             ("refunded_orderline_id", "in", original.lines.ids),
@@ -366,7 +367,7 @@ class ReturnAllocation:
         ])
         for line in completed:
             if line.order_id.uuid != order_uuid:
-                used[line.refunded_orderline_id.id] -= Decimal(str(line.qty))
+                used[line.refunded_orderline_id.id] += abs(Decimal(str(line.qty)))
         reservations = self.env["pos.revolut.refund.operation"].sudo().search([
             ("original_operation_id.pos_order_id", "=", original.id),
             ("order_uuid", "!=", False),
@@ -383,8 +384,8 @@ class ReturnAllocation:
             for line in prior["lines"]:
                 old_id = line["refunded_orderline_id"]
                 if old_id in used:
-                    used[old_id] -= Decimal(line["qty"])
-        if any(used.get(line.id, 0) + requested.get(line.id, 0) > Decimal(str(line.qty)) for line in original.lines):
+                    used[old_id] += abs(Decimal(line["qty"]))
+        if any(used.get(line.id, 0) + requested.get(line.id, 0) > abs(Decimal(str(line.qty))) for line in original.lines):
             raise UserError(_("The return exceeds the original quantity after earlier returns and reservations."))
 
     def _eligible_sources(self, original, session):
@@ -427,7 +428,7 @@ class ReturnAllocation:
         accepted = {line_total}
         if frozen_total is None:
             accepted.add(self._return_total_minor(snapshot, original, currency, order_uuid))
-        elif frozen_total:
+        else:
             accepted.add(frozen_total)
         authority = original.revolut_authorization_id.sudo()
         if authority:
@@ -453,21 +454,26 @@ class ReturnAllocation:
             raise UserError(_("The original payment's base and terminal tip evidence are inconsistent."))
         return source.amount_minor, source.terminal_tip_minor, True
 
-    def _original_line_entitlements(self, original, currency):
-        # Freeze product identity and base cash rounding independently of tips.
-        # Full base returns refund P, not unrounded T. For partial returns,
-        # assign each original line its proportion of P once; the final UUID
-        # retains the minor-unit remainder, so all line ceilings sum exactly P.
+    def _original_line_entitlements(self, original, currency, *, legacy=False):
+        # Preserve healthy existing ceilings. If independent rounding creates
+        # negative capacity, distribute the collected base over positive goods
+        # by cumulative rounding. Negative adjustments keep their native lines
+        # but have no separate monetary entitlement; their discount is shared
+        # proportionally by goods. Terminal tips remain a separate component.
         normalize = self.env["pos.revolut.payment.operation"].normalize_amount
         sources = self._eligible_sources(original, original.session_id)
         authorities = sources.filtered(lambda item: item.authorization_id).authorization_id
         if not authorities:
-            # Historical sales retain their recorded line ceilings and have no
-            # authority to classify a currently configured tip product.
+            # Exact recorded totals can prove a historical base ceiling, but
+            # cannot classify a currently configured terminal tip product.
             entitlements = {line.id: (normalize(currency, line.price_subtotal_incl)[1], 0)
                             for line in original.lines}
             if sum(base for base, _tip in entitlements.values()) != normalize(currency, original.amount_total)[1]:
                 raise UserError(_("The historical sale has no trustworthy per-line rounding basis. Reconcile it before another return."))
+            if not legacy and any(base < 0 for base, _tip in entitlements.values()):
+                weights = {line.id: max(0, entitlements[line.id][0]) for line in original.lines.sorted("uuid")}
+                allocated = self._distribute_minor(normalize(currency, original.amount_total)[1], weights)
+                entitlements = {identity: (base, 0) for identity, base in allocated.items()}
             return entitlements
         tip_products = authorities.tip_product_id
         normalize = self.env["pos.revolut.payment.operation"].normalize_amount
@@ -477,9 +483,24 @@ class ReturnAllocation:
             raise UserError(_("The original sale has inconsistent frozen cart authority."))
         authority = authorities
         raw_base = sum(allocation.values())
+        raw_amounts = {line.id: Decimal(str(line.price_subtotal_incl)) for line in original_base}
         if raw_base <= 0:
+            # A whole-cart authorization can collect sub-minor-priced goods
+            # even when recorded line subtotals cancel or round to zero. Native
+            # unrounded gross amounts supply weights only while their original
+            # tax/fiscal inputs remain unchanged since the frozen authority.
+            taxes = original_base.tax_ids | original_base.tax_ids_after_fiscal_position
+            references = (list(taxes | taxes.flatten_taxes_hierarchy())
+                          + list(original.fiscal_position_id) + list(original.fiscal_position_id.tax_ids))
+            if any(record.write_date and record.write_date > authority.create_date for record in references):
+                raise UserError(_("The original sale has no trustworthy unrounded tax basis. Reconcile its history before another return."))
+            base_lines = original_base._prepare_tax_base_line_values()
+            self.env["account.tax"]._add_tax_details_in_base_lines(base_lines, original.company_id)
+            raw_amounts = {base["record"].id: Decimal(str(base["tax_details"]["raw_total_included_currency"]))
+                           for base in base_lines}
+        if sum(raw_amounts.values()) <= 0 or authority.payable_minor <= 0:
             raise UserError(_("The original base line allocations are invalid."))
-        if authority.payable_minor != raw_base:
+        if raw_base > 0 and authority.payable_minor != raw_base:
             # Native global tax rounding may itself make the whole-cart total
             # differ from summed line totals. The immutable payable authority
             # supplies the final ceiling, while original line amounts supply
@@ -492,9 +513,31 @@ class ReturnAllocation:
                 allocation[line.id] = minor
                 remaining -= minor
             allocation[original_base[-1].id] = remaining
+        if raw_base <= 0 or not legacy and (any(minor < 0 for minor in allocation.values())
+                                          or any(amount < 0 for amount in raw_amounts.values())):
+            # Product precision can exceed currency precision: individually
+            # rounded zero-cent lines still have positive relative weights.
+            weights = {identity: max(Decimal(0), amount) for identity, amount in raw_amounts.items()}
+            allocation = self._distribute_minor(authority.payable_minor, weights)
         return {line.id: ((0, normalize(currency, line.price_subtotal_incl)[1])
                           if line.product_id in tip_products else (allocation[line.id], 0))
                 for line in original.lines}
+
+    def _distribute_minor(self, total, weights):
+        """Conserve integer money without rounding a last line below zero."""
+        denominator = sum(weights.values())
+        if total < 0 or denominator <= 0:
+            raise UserError(_("The original base line allocations are invalid."))
+        cumulative = Decimal(0)
+        allocated = 0
+        result = {}
+        for identity, weight in weights.items():
+            cumulative += weight
+            target = int((Decimal(total) * cumulative / denominator).quantize(
+                Decimal(1), rounding=ROUND_HALF_UP))
+            result[identity] = target - allocated
+            allocated = target
+        return result
 
     def _historical_return_allocation(self, snapshot, target, entitlements):
         # A whole-return amount only proves its line allocation when one original
@@ -504,12 +547,12 @@ class ReturnAllocation:
         line = snapshot["lines"][0]
         old_id = line["refunded_orderline_id"]
         base, tip = entitlements[old_id]
-        return [{"original_line_id": old_id, "quantity": str(-Decimal(line["qty"])),
+        return [{"original_line_id": old_id, "quantity": str(abs(Decimal(line["qty"]))),
                  "base_minor": target if not tip else 0,
                  "tip_minor": target if tip else 0}]
 
     def _validate_line_allocation(self, allocation, snapshot, entitlements):
-        requested = {line["refunded_orderline_id"]: -Decimal(line["qty"])
+        requested = {line["refunded_orderline_id"]: abs(Decimal(line["qty"]))
                      for line in snapshot["lines"]}
         try:
             if not isinstance(allocation, list) or len(allocation) != len(requested):
@@ -538,6 +581,9 @@ class ReturnAllocation:
         nor its cents; all other saved allocations remain immutable.
         """
         entitlements = self._original_line_entitlements(original, currency)
+        legacy = self._original_line_entitlements(original, currency, legacy=True)
+        historical_limits = {identity: (max(base, legacy[identity][0]), tip)
+                             for identity, (base, tip) in entitlements.items()}
         completed = self.env["pos.order"].sudo().search([
             ("lines.refunded_orderline_id", "in", original.lines.ids),
             ("state", "in", ["paid", "done", "invoiced"]),
@@ -563,7 +609,7 @@ class ReturnAllocation:
                 if not target:
                     raise UserError(_("An earlier refund has no trustworthy return target. Reconcile its history before another return."))
                 allocation = self._historical_return_allocation(prior, target, entitlements)
-            self._validate_line_allocation(allocation, prior, entitlements)
+            self._validate_line_allocation(allocation, prior, historical_limits)
             previous = claims.setdefault(refund.order_uuid, allocation)
             if previous != allocation:
                 raise UserError(_("An earlier refund has inconsistent per-line monetary evidence. Reconcile it first."))
@@ -576,7 +622,7 @@ class ReturnAllocation:
             if not allocation:
                 allocation = self._historical_return_allocation(
                     prior, -normalize(currency, order.amount_total)[1], entitlements)
-            self._validate_line_allocation(allocation, prior, entitlements)
+            self._validate_line_allocation(allocation, prior, historical_limits)
             if sum(row["base_minor"] + row["tip_minor"] for row in allocation) != -normalize(currency, order.amount_total)[1]:
                 raise UserError(_("An earlier return's native total and refund allocations disagree. Reconcile it first."))
             if order.uuid in claims and claims[order.uuid] != allocation:
@@ -601,11 +647,28 @@ class ReturnAllocation:
                 used_base[old_id] += row["base_minor"]
                 used_tip[old_id] += row["tip_minor"]
         by_id = {line.id: line for line in original.lines}
+        if (sum(used_base.values()) > sum(base for base, _tip in entitlements.values())
+                or any(used_tip[identity] > tip for identity, (_base, tip) in entitlements.items())
+                or any(used_qty[identity] > abs(Decimal(str(by_id[identity].qty))) for identity in entitlements)):
+            raise UserError(_("Earlier returns exceed the original monetary or quantity entitlement. Reconcile their evidence first."))
+        if any(used_base[identity] > base or
+               used_qty[identity] == abs(Decimal(str(by_id[identity].qty))) and used_base[identity] != base
+               for identity, (base, _tip) in entitlements.items()):
+            remaining = sum(base for base, _tip in entitlements.values()) - sum(used_base.values())
+            weights = {identity: max(0, base - used_base[identity])
+                       for identity, (base, _tip) in entitlements.items()
+                       if used_qty[identity] < abs(Decimal(str(by_id[identity].qty)))}
+            if remaining and not sum(weights.values()):
+                raise UserError(_("Earlier returns leave no trustworthy remaining product allocation. Reconcile their evidence first."))
+            residual = (self._distribute_minor(remaining, weights) if sum(weights.values())
+                        else dict.fromkeys(weights, 0))
+            entitlements = {identity: (used_base[identity] + residual.get(identity, 0), tip)
+                            for identity, (_base, tip) in entitlements.items()}
         result = []
         for line in snapshot["lines"]:
             old_id = line["refunded_orderline_id"]
-            quantity = -Decimal(line["qty"])
-            remaining_qty = Decimal(str(by_id[old_id].qty)) - used_qty[old_id]
+            quantity = abs(Decimal(line["qty"]))
+            remaining_qty = abs(Decimal(str(by_id[old_id].qty))) - used_qty[old_id]
             remaining_base = entitlements[old_id][0] - used_base[old_id]
             remaining_tip = entitlements[old_id][1] - used_tip[old_id]
             if (remaining_qty <= 0 or quantity > remaining_qty
@@ -647,7 +710,8 @@ class ReturnAllocation:
     def _native_return_sale(self, order):
         original = order.lines.refunded_orderline_id.order_id
         if not (len(original) == 1 and order._revolut_return_source() and order.lines
-                and all(line.refunded_orderline_id and line.qty < 0 for line in order.lines)):
+                and all(line.refunded_orderline_id and line.qty * line.refunded_orderline_id.qty < 0
+                        for line in order.lines)):
             return None
         return original
 
@@ -1119,12 +1183,12 @@ class ReturnAllocation:
         snapshot = self._normalize_return(order, native_order=True)
         normalize = self.env["pos.revolut.payment.operation"].normalize_amount
         total_minor = normalize(session.currency_id, order.get("amount_total"))[1]
-        if total_minor >= 0:
-            raise UserError(_("A Revolut-linked return must have a negative total."))
         original = self._return_original(snapshot, session)
         # Cash-only returns of a mixed-tender sale use the same original-sale lock.
         self._validate_return_quantities(snapshot, original, order_uuid)
         decision = self._decision(snapshot, original, session.currency_id, order_uuid)
+        if total_minor >= 0 and decision.total_minor:
+            raise UserError(_("A Revolut-linked return must have a negative total."))
         self._check_total(snapshot, original, session.currency_id, -total_minor, order_uuid,
                           frozen_total=decision.total_minor)
         total_minor = -decision.total_minor

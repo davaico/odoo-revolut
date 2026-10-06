@@ -117,7 +117,7 @@ class ExternalRefundActions(models.Model):
             "disposition": "financial" if self.financial_correction_move_id else "products",
             "association_line_ids": [Command.create({"refund_id": self.id})],
             "line_ids": [Command.create({"original_line_id": line.id})
-                         for line in self.original_order_id.lines if line.qty > 0],
+                         for line in self.original_order_id.lines if line.qty],
         })
         return {"type": "ir.actions.act_window", "res_model": wizard._name,
                 "res_id": wizard.id, "view_mode": "form", "target": "new"}

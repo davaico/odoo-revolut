@@ -105,7 +105,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [42 — Deepen native return allocation and recovery](closed/42-deepen-native-return-allocation.md) | `ready-for-agent` at closure | Closed | Shared native decisions and recovery; 552 install / 552 upgrade, 90 compatibility checks and clean Standards/Spec review |
 | [43 — Deepen external return association and unify return locking](closed/43-deepen-external-return-allocation.md) | `ready-for-agent` at closure | Closed | Shared batch association and complete native ownership locking; 561 install / 561 upgrade, historical compatibility and independent Standards/Spec review |
 | [44 — Recover payment reservations interrupted before dispatch](closed/44-recover-unclaimed-payment-reservations.md) | `ready-for-agent` at closure | Closed | Safe unclaimed cancellation; 573 install / 573 upgrade, native recovery and clean Standards/Spec review |
-| [45 — Complete refunds for discounted and rounded sales](ready-for-agents/45-refund-discounted-and-rounded-sales.md) | `ready-for-agent` | Open | None |
+| [45 — Complete refunds for discounted and rounded sales](ready-for-agents/45-refund-discounted-and-rounded-sales.md) | `ready-for-agent` | Claimed | None |
 | [46 — Recover checkout refresh after payment verification](ready-for-agents/46-recover-verified-checkout-refresh.md) | `ready-for-agent` | Open | None |
 
 ## Integration review follow-up — 2026-10-06

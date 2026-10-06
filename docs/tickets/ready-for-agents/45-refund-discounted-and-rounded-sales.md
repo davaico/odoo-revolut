@@ -2,7 +2,7 @@
 
 **Work branch:** `codex/45-refund-discounted-and-rounded-sales`
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 
@@ -46,7 +46,7 @@ No new refund policy, provider contract change, rewrite of historical financial 
 ## Approval and publication — 2026-10-06
 
 The owner approved the three-ticket breakdown and explicitly requested direct
-publication as ready-for-agent. This ticket remains open and unclaimed. Its
+publication as ready-for-agent. This ticket was claimed for implementation on 2026-10-06. Its
 work branch is an implementation assignment, not a branch created by this
 publication. Recheck the current implementation before starting; review
 evidence describes the pinned main revision above. Implementation has not started as part of this publication. Deployment and

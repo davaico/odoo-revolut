@@ -5,6 +5,7 @@ import { patch } from "@web/core/utils/patch";
 import { Component, useState } from "@odoo/owl";
 import { PaymentScreenPaymentLines } from "@point_of_sale/app/screens/payment_screen/payment_lines/payment_lines";
 import { PaymentScreen } from "@point_of_sale/app/screens/payment_screen/payment_screen";
+import { TicketScreen } from "@point_of_sale/app/screens/ticket_screen/ticket_screen";
 import { register_payment_method } from "@point_of_sale/app/services/pos_store";
 import { PosStore } from "@point_of_sale/app/services/pos_store";
 import { PosOrderline } from "@point_of_sale/app/models/pos_order_line";
@@ -29,6 +30,12 @@ async function restoreRefundOriginals(pos, order) {
 
 export function hasRevolutExposure(order) {
     return orderActions(order).hasExposure;
+}
+
+function isRevolutNegativeOriginal(line) {
+    return line?.qty < 0 && !line.refunded_orderline_id &&
+        line.order_id?.payment_ids?.some((payment) => payment.revolut_operation_id ||
+            payment.payment_method_id?.use_payment_terminal === "revolut");
 }
 
 function financialSnapshot(order) {
@@ -399,9 +406,85 @@ patch(PosStore.prototype, {
     },
 });
 
+patch(TicketScreen.prototype, {
+    _setToRefundDetail(detail, buffer) {
+        if (!isRevolutNegativeOriginal(detail.line)) {
+            return super._setToRefundDetail(...arguments);
+        }
+        if (detail.destinationOrder) {
+            return this.numberBuffer.reset();
+        }
+        const available = Math.abs(detail.line.qty) - Math.abs(detail.line.refundedQty);
+        detail.refundableQty = available;
+        const quantity = buffer == null || buffer === "" ? 0 : Math.abs(parseFloat(buffer));
+        if (!Number.isFinite(quantity) || quantity > available) {
+            this.numberBuffer.reset();
+            this.dialog.add(AlertDialog, {
+                title: _t("Maximum Exceeded"),
+                body: _t("The requested quantity is higher than the remaining original quantity."),
+            });
+            return;
+        }
+        detail.qty = quantity;
+    },
+
+    async addAdditionalRefundInfo(original, order) {
+        const result = await super.addAdditionalRefundInfo(...arguments);
+        // Native creation uses -selected quantity for every line. Preserve
+        // its product, prices, taxes and lots while reversing a negative
+        // original with the opposite sign before it reaches PaymentScreen.
+        for (const line of order.lines) {
+            if (isRevolutNegativeOriginal(line.refunded_orderline_id)) {
+                line.qty = Math.abs(line.qty);
+            }
+        }
+        if (order.lines.length && order.lines.every((line) => {
+            const source = line.refunded_orderline_id;
+            return source && source.prices.total_included_currency <= 0 &&
+                source.order_id.payment_ids.some((payment) => payment.revolut_operation_id ||
+                    payment.payment_method_id?.use_payment_terminal === "revolut");
+        })) {
+            // A remaining adjustment reverses its native quantity without
+            // collecting money. Load the server's conserved zero target before
+            // the native PaymentScreen decides whether it needs a tender.
+            await this.pos.syncAllOrders({ orders: [order], force: true, throw: true });
+        }
+        return result;
+    },
+});
+
 patch(PosOrderline.prototype, {
-    setQuantity() {
-        return hasRevolutExposure(this.order_id) ? false : super.setQuantity(...arguments);
+    setQuantity(quantity) {
+        if (hasRevolutExposure(this.order_id)) {
+            return false;
+        }
+        const original = this.refunded_orderline_id;
+        if (!isRevolutNegativeOriginal(original)) {
+            return super.setQuantity(...arguments);
+        }
+        const value = typeof quantity === "number" ? quantity : parseFloat(quantity || 0);
+        const others = original.refund_orderline_ids.filter((line) =>
+            line !== this && line.order_id?.state !== "cancel");
+        const available = Math.abs(original.qty) - others.reduce((sum, line) => sum + Math.abs(line.qty), 0);
+        const rounder = this.product_id.uom_id ||
+            this.models["decimal.precision"].find((precision) => precision.name === "Product Unit");
+        const rounded = rounder.round(value);
+        if (!Number.isFinite(value) || value < 0 || value > available || rounded > available) {
+            return {
+                title: _t("Invalid return quantity"),
+                body: _t("Reverse this adjustment with a positive quantity within its remaining original quantity."),
+            };
+        }
+        this.uiState.oldQty = this.qty;
+        this.qty = rounded;
+        const detail = original.order_id.uiState.lineToRefund[original.uuid];
+        if (detail) {
+            detail.qty = rounded;
+        }
+        for (const child of this.combo_line_ids) {
+            child.setQuantity((child.qty / this.uiState.oldQty || 1) * rounded, true);
+        }
+        return true;
     },
     setUnitPrice() {
         return hasRevolutExposure(this.order_id) ? false : super.setUnitPrice(...arguments);
