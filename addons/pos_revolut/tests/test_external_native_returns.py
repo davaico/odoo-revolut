@@ -283,3 +283,20 @@ class TestExternalNativeReturns(TestExternalRefunds):
             self.assertEqual(tender["transaction_id"], refund.revolut_order_id)
             self.assertEqual(refund.read(["state", "amount_minor", "origin", "revolut_order_id", "native_reconciled_at"]), before)
         self.request.assert_not_called()
+
+    def test_unknown_sibling_tip_components_protect_native_association(self):
+        self._terminal_sale(tip_minor=200)
+        selected = self._external("completed", amount=200)
+        unknown = self._external(amount=200, id=str(uuid4()))
+        refunds = self._discover([selected, unknown])
+        refund = refunds.filtered(lambda row: row.revolut_order_id == selected["id"])
+        selection = [{"original_line_id": self.original.lines.filtered(
+            lambda line: line.product_id == self.tip_product).id, "quantity": 1}]
+        before = self.env["pos.order"].search_count([])
+        self.request.reset_mock()
+        with self.assertRaisesRegex(UserError, "components"):
+            refund.with_user(self._mutation_actor()).action_prepare_native_return(
+                selection, base_amount_minor=0, tip_amount_minor=200)
+        self.assertFalse(refunds.pos_order_id)
+        self.assertEqual(self.env["pos.order"].search_count([]), before)
+        self.request.assert_not_called()

@@ -1,7 +1,6 @@
 """Manager-confirmed native evidence for money already issued by Revolut."""
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone
-from contextvars import ContextVar
 from uuid import uuid4
 
 from odoo import Command, _, api, fields, models
@@ -20,7 +19,6 @@ _NATIVE_FIELDS = {
     "historical_acknowledged_at", "financial_only_reason", "financial_correction_move_id",
     "native_lot_snapshot",
 }
-_association_batch = ContextVar("revolut_native_association_batch", default=None)
 
 
 class ExternalRefundCompletion(models.Model):
@@ -65,25 +63,6 @@ class ExternalRefundCompletion(models.Model):
                       "historical_acknowledged_at": self.native_reconciled_at, **values}
         return super(RefundRecord, self.sudo()).write(values)
 
-    def _lock_native_completion(self):
-        self.ensure_one()
-        self.payment_method_id._check_refund_authority()
-        self._check_revolut_register_access()
-        if self.origin != "external" or not self.original_order_id:
-            raise UserError(_("Select an external refund matched to an original sale."))
-        # Match native reservation/checkout: session, return identity, original
-        # sale, source payment, refund. Updates force stale snapshots to retry.
-        session = self.pos_order_id.session_id or self.original_order_id.config_id.current_session_id
-        if session:
-            self.env.cr.execute("UPDATE pos_session SET write_date = write_date WHERE id = %s", [session.id])
-        if self.order_uuid:
-            self.env["pos.revolut.payment.operation"].sudo()._lock_order(self.company_id.id, self.order_uuid)
-        self.env.cr.execute("UPDATE pos_order SET write_date = NOW() AT TIME ZONE 'UTC' WHERE id = %s", [self.original_order_id.id])
-        self.env.cr.execute("UPDATE pos_revolut_payment_operation SET write_date = NOW() AT TIME ZONE 'UTC' WHERE id = %s", [self.original_operation_id.id])
-        self.env.cr.execute("UPDATE pos_revolut_refund_operation SET write_date = NOW() AT TIME ZONE 'UTC' WHERE id = %s", [self.id])
-        self.invalidate_recordset()
-        return self
-
     def _native_action(self):
         return {"type": "ir.actions.act_window", "res_model": "pos.order",
                 "res_id": self.pos_order_id.id, "view_mode": "form", "target": "current"}
@@ -126,166 +105,52 @@ class ExternalRefundCompletion(models.Model):
             if set(lot_names).intersection(previous.pack_lot_ids.mapped("lot_name")):
                 raise UserError(_("An original serial number is already returned or reserved."))
 
+    def _prepare_native_products(self, selection, session, order_uuid):
+        """Use native product/lot helpers only after allocation acquired locks."""
+        original = self.original_order_id
+        if not isinstance(selection, list) or not selection or len(selection) > 100:
+            raise UserError(_("Confirm original products and quantities; the refund amount cannot identify goods."))
+        values = original._prepare_refund_values(session)
+        values.update(uuid=order_uuid, user_id=self.env.uid, to_invoice=bool(original.account_move),
+                      payment_ids=[Command.clear()], lines=[Command.clear()])
+        order = original.copy(values)
+        selected_ids = set()
+        for row in selection:
+            try:
+                line_id = row["original_line_id"]
+                quantity = Decimal(str(row["quantity"]))
+                if type(line_id) is not int or not quantity.is_finite() or quantity <= 0 or line_id in selected_ids:
+                    raise ValueError()
+            except (KeyError, TypeError, ValueError, InvalidOperation):
+                raise UserError(_("Select each original product line once with a positive quantity.")) from None
+            selected_ids.add(line_id)
+            line = original.lines.filtered(lambda item: item.id == line_id)
+            if not line:
+                raise UserError(_("Selected products must belong to the original sale."))
+            names = row.get("lot_names", [])
+            self._check_selected_lots(line, quantity, names)
+            copied = line._prepare_refund_data(order, [Command.create({"lot_name": name}) for name in names])
+            copied.update(qty=-float(quantity), uuid=str(uuid4()))
+            line.copy(copied)._onchange_amount_line_all()
+        order._compute_prices()
+        return order
+
     def action_prepare_native_return(self, selection=None, session_id=None, return_order_id=None,
                                      payment_id=None, base_amount_minor=None, tip_amount_minor=None):
-        """Persist a selected return and bind existing reimbursement, never dispatch."""
+        """Manager projection of one already-issued reimbursement."""
+        self.ensure_one()
         with self.env.cr.savepoint(), _revolut_mutation(self.env):
-            self._lock_native_completion()
-            if self.state == "failed" or self.native_reconciliation_status == "financial_only" or self.financial_correction_move_id:
-                raise UserError(_("This refund cannot be allocated to a product return."))
-            if self.pos_order_id:
-                if return_order_id and return_order_id != self.pos_order_id.id:
-                    raise UserError(_("This refund already belongs to another native return."))
-                if payment_id and payment_id != self.pos_payment_id.id:
-                    raise UserError(_("This refund already belongs to another native payment."))
-                if base_amount_minor is not None and base_amount_minor != self.base_amount_minor or tip_amount_minor is not None and tip_amount_minor != self.tip_amount_minor:
-                    raise UserError(_("The confirmed base and terminal tip allocation cannot change."))
-                if selection is not None:
-                    selected = {row["original_line_id"]: Decimal(str(row["quantity"])) for row in selection}
-                    saved = {line.refunded_orderline_id.id: -Decimal(str(line.qty)) for line in self.pos_order_id.lines}
-                    if len(selected) != len(selection) or selected != saved:
-                        raise UserError(_("Resume the existing return without changing confirmed products or quantities."))
-                self._resume_native_payment()
-                return self._native_action()
-            original = self.original_order_id
-            order = self.env["pos.order"].browse(return_order_id).exists() if return_order_id else self.env["pos.order"]
-            if return_order_id and not order:
-                raise UserError(_("Select an existing native return."))
-            session = order.session_id if order else self.env["pos.session"].browse(session_id).exists() if session_id else original.config_id.current_session_id
-            if not session or (not order or order.state == "draft") and session.state != "opened":
-                raise UserError(_("Open the original register before preparing a native return."))
-            session.config_id._check_revolut_register_access(session=session, order=order)
-            allocation = ReturnAllocation(self.env)
-            if order:
-                order.check_access("write" if order.state == "draft" else "read")
-                if order.state not in {"draft", "paid", "done", "invoiced"}:
-                    raise UserError(_("Select a draft or completed native return."))
-                self.env["pos.revolut.payment.operation"].sudo()._lock_order(order.company_id.id, order.uuid)
-            else:
-                if not isinstance(selection, list) or not selection or len(selection) > 100:
-                    raise UserError(_("Confirm original products and quantities; the refund amount cannot identify goods."))
-                values = original._prepare_refund_values(session)
-                values.update(uuid=str(uuid4()), user_id=self.env.uid, to_invoice=bool(original.account_move),
-                              payment_ids=[Command.clear()], lines=[Command.clear()])
-                order = original.copy(values)
-                selected_ids = set()
-                for row in selection:
-                    try:
-                        line_id = row["original_line_id"]
-                        quantity = Decimal(str(row["quantity"]))
-                        if type(line_id) is not int or not quantity.is_finite() or quantity <= 0 or line_id in selected_ids:
-                            raise ValueError()
-                    except (KeyError, TypeError, ValueError, InvalidOperation):
-                        raise UserError(_("Select each original product line once with a positive quantity.")) from None
-                    selected_ids.add(line_id)
-                    line = original.lines.filtered(lambda item: item.id == line_id)
-                    if not line:
-                        raise UserError(_("Selected products must belong to the original sale."))
-                    names = row.get("lot_names", [])
-                    self._check_selected_lots(line, quantity, names)
-                    copied = line._prepare_refund_data(order, [Command.create({"lot_name": name}) for name in names])
-                    copied.update(qty=-float(quantity), uuid=str(uuid4()))
-                    line.copy(copied)._onchange_amount_line_all()
-                order._compute_prices()
-            snapshot = allocation._normalize_return(order._revolut_order_values(), native_order=True)
-            for line in order.lines:
-                self._check_selected_lots(line.refunded_orderline_id, -Decimal(str(line.qty)), line.pack_lot_ids.mapped("lot_name"), order)
-            if allocation._return_original(snapshot, session) != original:
-                raise UserError(_("The native return belongs to a different original sale."))
-            allocation._lock_original_return(snapshot, original, order.uuid)
-            source = allocation._validate_original(snapshot, self.payment_method_id, session, self.amount_minor, self.original_operation_id.id)
-            source_base, source_tip, _evidence = allocation._source_components(source)
-            if not source_tip and base_amount_minor is None and tip_amount_minor is None:
-                base_amount_minor, tip_amount_minor = self.amount_minor, 0
-            base, tip, _explicit = allocation._allocation(source, self.amount_minor, base_amount_minor, tip_amount_minor, self.amount_minor)
-            related = self.sudo().search([( "original_operation_id", "=", source.id), ("state", "!=", "failed"), ("id", "!=", self.id)])
-            if sum(related.mapped("amount_minor")) + self.amount_minor > source._revolut_paid_minor():
-                raise UserError(_("Existing financial refunds exceed the original card payment; reconcile their evidence first."))
-            known = related.filtered(lambda item: item.origin != "external" or item.allocation_explicit)
-            components = [allocation._refund_components(item) for item in known]
-            if sum(item[0] for item in components) + base > source_base or sum(item[1] for item in components) + tip > source_tip:
-                raise UserError(_("Confirmed refunds exceed the original base or terminal tip capacity."))
-            rows = allocation._return_allocation(snapshot, original, self.currency_id, order.uuid)
-            total = sum(row["base_minor"] + row["tip_minor"] for row in rows)
-            peers = self.sudo().search([( "order_uuid", "=", order.uuid), ("company_id", "=", self.company_id.id), ("state", "!=", "failed")])
-            if (sum(peers.mapped("amount_minor")) + self.amount_minor > total
-                    or sum(allocation._refund_components(peer)[0] for peer in peers) + base > sum(row["base_minor"] for row in rows)
-                    or sum(allocation._refund_components(peer)[1] for peer in peers) + tip > sum(row["tip_minor"] for row in rows)):
-                raise UserError(_("External refund allocations exceed the selected native return."))
-            payment = order.payment_ids.filtered(lambda item: item.id == payment_id) if payment_id else self.env["pos.payment"]
-            if payment_id and not payment:
-                raise UserError(_("Select a payment on this native return."))
-            if not payment and order.state != "draft":
-                raise UserError(_("A completed return requires its exact existing Revolut reimbursement payment."))
-            if not payment and order.payment_ids.filtered(lambda item: item.payment_method_id == self.payment_method_id and not item.revolut_refund_operation_id):
-                raise UserError(_("Select the existing card reimbursement explicitly; do not duplicate its payment line."))
-            if payment:
-                if (payment.payment_method_id != self.payment_method_id
-                        or self.env["pos.revolut.payment.operation"].normalize_amount(self.currency_id, payment.amount)[1] != -self.amount_minor
-                        or payment.revolut_refund_operation_id or payment.revolut_operation_id
-                        or payment.transaction_id not in (False, self.revolut_order_id)
-                        or payment.payment_ref_no not in (False, self.revolut_order_id)
-                        or order.state != "draft" and (self.state != "verified" or payment.transaction_id != self.revolut_order_id)):
-                    raise UserError(_("The native payment is unrelated, ambiguous, or already used by another refund."))
-            else:
-                payment = self.env["pos.payment"].create({"pos_order_id": order.id, "uuid": str(uuid4()),
-                    "payment_method_id": self.payment_method_id.id, "amount": -self.amount,
-                    "payment_status": "waiting", "name": fields.Datetime.now()})
-            if order.state != "draft" and (not order.revolut_return_allocation or order.revolut_return_allocation != rows):
-                # Historical native work is acceptable only when its exact
-                # saved totals establish the same unambiguous allocation.
-                if self.env["pos.revolut.payment.operation"].normalize_amount(self.currency_id, order.amount_total)[1] != -total:
-                    raise UserError(_("The completed native return has incompatible monetary evidence."))
-            self._write_native_completion({"order_uuid": order.uuid, "payment_line_uuid": payment.uuid,
-                "pos_order_id": order.id, "pos_payment_id": payment.id, "financial_snapshot": snapshot,
-                "return_allocation": rows, "return_total_minor": total, "allocation_explicit": True,
-                "base_amount_minor": base, "tip_amount_minor": tip, "native_reconciliation_status": "native_draft",
-                "native_lot_snapshot": {str(line.refunded_orderline_id.id): sorted(line.pack_lot_ids.mapped("lot_name")) for line in order.lines}})
-            if order.state == "draft":
-                order._revolut_freeze_return_allocation(rows)
-            self._resume_native_payment()
-            if _association_batch.get() != (self.env.cr, order.id):
-                order._check_revolut_order()
-                if order.state != "draft":
-                    self._complete_native_return()
+            ReturnAllocation(self.env).associate(self, [{
+                "refund_id": self.id, "payment_id": payment_id,
+                "base_amount_minor": base_amount_minor, "tip_amount_minor": tip_amount_minor,
+            }], return_order_id=return_order_id, selection=selection, session_id=session_id)
             return self._native_action()
 
     def action_associate_native_return(self, return_order_id, allocations):
-        """Associate all already-issued reimbursements atomically, including legacy returns."""
-        if (not self or len(self) > 100 or not isinstance(allocations, list)
-                or len(allocations) != len(self) or not all(isinstance(row, dict) for row in allocations)
-                or {row.get("refund_id") for row in allocations} != set(self.ids)
-                or len({row.get("payment_id") for row in allocations}) != len(allocations)
-                or any(type(row.get("refund_id")) is not int or type(row.get("payment_id")) is not int for row in allocations)):
-            raise UserError(_("Select each external refund and its exact native reimbursement payment once."))
-        with self.env.cr.savepoint(), _revolut_mutation(self.env) as mutation:
-            for refund in self:
-                refund.payment_method_id._check_refund_authority()
-                refund._check_revolut_register_access()
-            order = self.env["pos.order"].browse(return_order_id).exists()
-            if not order:
-                raise UserError(_("Select the existing native return."))
-            order.check_access("read")
-            order.config_id._check_revolut_register_access(session=order.session_id, order=order)
-            self.env.cr.execute("UPDATE pos_session SET write_date = write_date WHERE id = %s", [order.session_id.id])
-            self.env["pos.revolut.payment.operation"].sudo()._lock_order(order.company_id.id, order.uuid)
-            # No mutation is admitted as a proven association until every
-            # selected refund has passed the same single-allocation checks.
-            token = _association_batch.set((self.env.cr, order.id))
-            try:
-                by_id = {row["refund_id"]: row for row in allocations}
-                for refund in self.sorted("id"):
-                    row = by_id[refund.id]
-                    refund.action_prepare_native_return(return_order_id=order.id,
-                        payment_id=row["payment_id"], base_amount_minor=row.get("base_amount_minor"),
-                        tip_amount_minor=row.get("tip_amount_minor"))
-            finally:
-                _association_batch.reset(token)
-            mutation.watch(order)
-            order._check_revolut_order()
-            if order.state != "draft":
-                for refund in self:
-                    refund._complete_native_return()
+        """Bind the complete selected batch in the caller's savepoint."""
+        with self.env.cr.savepoint(), _revolut_mutation(self.env):
+            ReturnAllocation(self.env).associate(self, allocations, return_order_id=return_order_id,
+                                                exact_payments=True)
             return self[0]._native_action()
 
     def _resume_native_payment(self):
@@ -311,7 +176,11 @@ class ExternalRefundCompletion(models.Model):
 
     def action_validate_native_return(self):
         with self.env.cr.savepoint(), _revolut_mutation(self.env):
-            self._lock_native_completion()
+            self.payment_method_id._check_refund_authority()
+            self._check_revolut_register_access()
+            if self.origin != "external" or not self.original_order_id:
+                raise UserError(_("Select an external refund matched to an original sale."))
+            ReturnAllocation(self.env).acquire_refund_status(self)
             if not self.pos_order_id or self.state != "verified":
                 raise UserError(_("Only a verified external refund with a native return can be validated."))
             order = self.pos_order_id

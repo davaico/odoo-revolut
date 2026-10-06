@@ -5,6 +5,8 @@ from contextvars import ContextVar
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
+from .return_allocation import ReturnAllocation
+
 
 _correction_cursor = ContextVar("revolut_financial_correction_cursor", default=None)
 
@@ -38,7 +40,11 @@ class ExternalRefundDisposition(models.Model):
         """Open a recoverable native draft; an accountant chooses its correction."""
         self.ensure_one()
         with self.env.cr.savepoint():
-            self._lock_native_completion()
+            self.payment_method_id._check_refund_authority()
+            self._check_revolut_register_access()
+            if self.origin != "external" or not self.original_order_id:
+                raise UserError(_("Select an external refund matched to an original sale."))
+            ReturnAllocation(self.env).acquire_refund_status(self)
             self._check_financial_only_source()
             move = self.financial_correction_move_id
             if not move:
@@ -116,7 +122,11 @@ class ExternalRefundDisposition(models.Model):
         if not isinstance(reason, str) or not reason.strip():
             raise UserError(_("Explain why no products were returned."))
         with self.env.cr.savepoint():
-            self._lock_native_completion()
+            self.payment_method_id._check_refund_authority()
+            self._check_revolut_register_access()
+            if self.origin != "external" or not self.original_order_id:
+                raise UserError(_("Select an external refund matched to an original sale."))
+            ReturnAllocation(self.env).acquire_refund_status(self)
             self._check_financial_only_source()
             move = self.env["account.move"].browse(
                 correction_move_id or self.financial_correction_move_id.id,
