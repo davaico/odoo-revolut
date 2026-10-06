@@ -184,7 +184,11 @@ class PosPaymentMethod(models.Model):
                         scope["failed"] = True
                         applied_kind, applied_evidence = "interrupted", None
                     snapshot = operation._apply_payment_observation(applied_kind, applied_evidence)
-                    if scope and kind != "legacy_final" and snapshot["state"] == "unresolved":
+                    if (scope and kind not in {"legacy_final", "cancel_unclaimed"}
+                            and snapshot["state"] == "unresolved"):
+                        # An ineligible local cancellation check establishes
+                        # no provider outcome. Let the following fresh read
+                        # decide whether normal intent cancellation is safe.
                         scope["failed"] = True
                     if scope and scope.get("defer_until"):
                         # Flush the outcome's scheduled ORM write before SQL
