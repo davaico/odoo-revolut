@@ -97,3 +97,48 @@ The recovered two-penny draft remains open for operator review and Validate;
 no replacement refund or native receipt finalization was performed. The POS
 continues to persist the draft automatically before a new refund, with no
 additional cashier step.
+
+### Frontend recovery ownership — 2026-10-06
+
+Refund recovery still had decisions in the Odoo adapter after the payment-state
+module was introduced: persisted-draft eligibility, startup lookup, handling
+verified versus pending evidence, restoring the checked return total, and
+offering Resume after a safe rejection. These now belong to the existing
+`revolut_payment_state.js` module. The startup hook calls `restore(order, line)`;
+the payment screen consumes `paymentActions(line).canResume`. Native order
+refresh, missing-original reads, dialogs and receipt rendering remain in the
+Odoo adapter.
+
+Startup restores committed evidence without polling or dispatching a refund.
+An offline, unauthorized, empty or timed-out lookup preserves saved waiting
+and reference guards. Recovery uses the remembered result so a delayed pending
+observation cannot regress verified evidence. A verified return's checked total
+is restored after native refresh and on local-state reload, preserving totals
+that differ from native cash rounding.
+
+The controlled lifecycle suite passes 99 tests, including startup recovery for
+verified, pending, unresolved and failed refunds; empty, offline and timed-out
+lookups; delayed observations; checked-total projection; and Resume eligibility.
+Command: `node addons/pos_revolut/static/tests/revolut_payment_state.test.mjs`.
+Evidence: `/tmp/revolut-refund-recovery-node.log`.
+
+The browser regression clears IndexedDB after a pending refund is saved, then
+reloads real POS from server data. It checks the same order, payment-line and
+operation identities, protected amount/deletion/tender/checkout actions, and
+explicit reconciliation to a verified receipt. The server assertions require
+one refund dispatch, the original references and paid native return settlement.
+The existing completed-refund recovery tour also checks the restored payable
+target. Revolut HTTP calls are mocked and guarded throughout.
+
+Final focused Odoo `19.0.20260908` browser run: **7 passed, zero failures or
+errors**. It exercises completed and pending server-only refund recovery,
+lost-refund-response recovery with an original-sale read failure, undispatched
+refund discovery recovery, corrected snapshot recovery, declined-payment retry
+and late-success payment reload. Run with `scripts/test-addon --test-tags`
+selecting those seven `TestRevolutVerifiedCheckout` methods; the new regression
+is `test_pending_refund_recovers_from_saved_return_without_browser_state`.
+Evidence: `/tmp/revolut-refund-recovery-final.log`.
+
+JavaScript syntax, Python syntax and `git diff --check` passed. Independent
+review found no actionable regression. This is a local refactor with mocked
+browser verification; no deployment or live terminal action was performed.
