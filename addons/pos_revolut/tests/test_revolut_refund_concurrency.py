@@ -279,13 +279,18 @@ class TestRevolutRefundConcurrency(TransactionCase):
             return self._http(method, url, **kwargs)
 
         prepared = []
-        for qty, amount in ((-0.5, -6.17), (-0.501, -6.18)):
+        # Both requests must survive native quantity precision unchanged. A
+        # .501 quantity rounds to .50 in Odoo's two-decimal quantity field and
+        # rejects on stale submitted evidence before competing for entitlement.
+        for qty, amount in ((-0.5, -6.17), (-0.51, -6.29)):
             snapshot = {
                 **self.snapshot, "amount_total": amount,
                 "lines": [{**self.snapshot["lines"][0], "qty": qty, "uuid": str(uuid4())}],
             }
             order_uuid, line_uuid = str(uuid4()), str(uuid4())
-            self._save_native_return(order_uuid, line_uuid, snapshot, amount)
+            saved = self._save_native_return(order_uuid, line_uuid, snapshot, amount)
+            self.assertEqual(float(saved["lines"][0]["qty"]), qty)
+            self.assertEqual(saved["amount_total"], amount)
             prepared.append((order_uuid, line_uuid, snapshot, amount))
 
         def start(order_uuid, line_uuid, snapshot, amount):

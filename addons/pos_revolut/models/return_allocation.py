@@ -1,5 +1,6 @@
 """Return invariants shared by source discovery, reservation, and checkout."""
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -18,6 +19,68 @@ class ReservationClaim:
     verified_before_claim: int | None = None
     source_base_minor: int | None = None
     source_tip_minor: int | None = None
+
+
+@dataclass(frozen=True)
+class ReturnDecision:
+    allocation: list
+
+    @property
+    def base_minor(self):
+        return sum(row["base_minor"] for row in self.allocation)
+
+    @property
+    def tip_minor(self):
+        return sum(row["tip_minor"] for row in self.allocation)
+
+    @property
+    def total_minor(self):
+        return self.base_minor + self.tip_minor
+
+
+@dataclass(frozen=True)
+class RefundCapacity:
+    gross_minor: int
+    base_minor: int
+    tip_minor: int
+    reserved_minor: int
+    reserved_base_minor: int
+    reserved_tip_minor: int
+
+    def check(self, gross=0, base=0, tip=0, *, component_error, gross_error):
+        if (self.reserved_base_minor + base > self.base_minor
+                or self.reserved_tip_minor + tip > self.tip_minor):
+            raise UserError(component_error)
+        if self.reserved_minor + gross > self.gross_minor:
+            raise UserError(gross_error)
+
+
+@dataclass(frozen=True)
+class RecoveryContents:
+    existing_order: object
+    original: object
+    snapshot: dict
+    decision: ReturnDecision
+    refunds: object
+
+
+class RecoveryEvidence:
+    """Checked contents usable only inside this recovery transaction/scope."""
+
+    def __init__(self, env, contents):
+        self._cursor = env.cr
+        self._contents = contents
+        self._valid = True
+        env.cr.postcommit.add(self._expire)
+        env.cr.postrollback.add(self._expire)
+
+    def _expire(self):
+        self._valid = False
+
+    def read(self, env):
+        if not self._valid or env.cr is not self._cursor or self._cursor.closed:
+            raise UserError(_("Reload the return recovery evidence in its current transaction."))
+        return self._contents
 
 
 class ReturnAllocation:
@@ -362,6 +425,171 @@ class ReturnAllocation:
         return ((refund.base_amount_minor, refund.tip_amount_minor)
                 if refund.allocation_explicit else (refund.amount_minor, 0))
 
+    def _capacity(self, gross, base, tip, refunds):
+        components = [self._refund_components(refund) for refund in refunds]
+        return RefundCapacity(gross, base, tip, sum(refunds.mapped("amount_minor")),
+                              sum(item[0] for item in components),
+                              sum(item[1] for item in components))
+
+    def _source_capacity(self, source):
+        base, tip, explicit = self._source_components(source)
+        refunds = self.env["pos.revolut.refund.operation"].sudo().search([
+            ("original_operation_id", "=", source.id), ("state", "!=", "failed"),
+        ])
+        return self._capacity(source._revolut_paid_minor(), base, tip, refunds), refunds, explicit
+
+    def _decision(self, snapshot, original, currency, order_uuid):
+        return ReturnDecision(self._return_allocation(snapshot, original, currency, order_uuid))
+
+    def _native_return_sale(self, order):
+        original = order.lines.refunded_orderline_id.order_id
+        if not (len(original) == 1 and order._revolut_return_source() and order.lines
+                and all(line.refunded_orderline_id and line.qty < 0 for line in order.lines)):
+            return None
+        return original
+
+    def display_target(self, order):
+        """Advisory native total. Never locks, freezes or recomputes prices."""
+        if order.revolut_return_allocation:
+            return -ReturnDecision(order.revolut_return_allocation).total_minor
+        original = self._native_return_sale(order)
+        if not original:
+            return None
+        normalize = self.env["pos.revolut.payment.operation"].normalize_amount
+        if order.state in {"paid", "done", "invoiced"}:
+            return normalize(order.currency_id, order.amount_total)[1]
+        refunds = self.env["pos.revolut.refund.operation"].sudo().search([
+            ("company_id", "=", order.company_id.id), ("order_uuid", "=", order.uuid),
+            ("origin", "=", "odoo"), ("state", "!=", "failed"),
+        ])
+        targets = set(refunds.mapped("return_total_minor")) - {0}
+        if len(targets) == 1:
+            return -targets.pop()
+        if len(targets) > 1:
+            raise UserError(_("The refund allocations have inconsistent return targets."))
+        if refunds:
+            # Historical uncertain claims without a target retain their display.
+            return normalize(order.currency_id, order.amount_total)[1]
+        snapshot = self._normalize_return(order._revolut_order_values(), native_order=True)
+        return -self._decision(snapshot, original, order.currency_id, order.uuid).total_minor
+
+    def freeze_native_return(self, order):
+        """Independently validate saved contents and freeze under the sale lock."""
+        if not self._native_return_sale(order):
+            return
+        snapshot = self._normalize_return(order._revolut_order_values(), native_order=True)
+        original = self._return_original(snapshot, order.session_id)
+        self._lock_original_return(snapshot, original, order.uuid)
+        decision = self._decision(snapshot, original, order.currency_id, order.uuid)
+        total = -self.env["pos.revolut.payment.operation"].normalize_amount(order.currency_id, order.amount_total)[1]
+        self._check_total(snapshot, original, order.currency_id, total, order.uuid,
+                          frozen_total=decision.total_minor)
+        order._revolut_freeze_return_allocation(decision.allocation)
+
+    @contextmanager
+    def recover(self, refund, session):
+        """Check all siblings under the existing recovery lock protocol.
+
+        Native reconstruction stays in the caller's savepoint/transaction. This
+        operation never commits or dispatches money. Ticket 43 will consolidate
+        acquisition with external association; keep the existing order here.
+        """
+        refund.ensure_one()
+        refund.payment_method_id._check_refund_authority()
+        refund._check_revolut_register_access()
+        if refund.origin != "odoo" or refund.state != "verified":
+            raise UserError(_("Only a completed Odoo refund can recover its original return."))
+        if not session:
+            raise UserError(_("Open the original Point of Sale register before recovering this return."))
+        session.config_id._check_revolut_register_access(session=session)
+        if (session.config_id != refund.pos_session_id.config_id
+                or session.company_id != refund.company_id or session.currency_id != refund.currency_id):
+            raise AccessError(_("Recover the return in its original register, company and currency."))
+        self.env.cr.execute("UPDATE pos_session SET write_date = write_date WHERE id = %s", [session.id])
+        session.invalidate_recordset()
+        self.env["pos.revolut.payment.operation"].sudo()._lock_order(refund.company_id.id, refund.order_uuid)
+        refunds = self.env["pos.revolut.refund.operation"].sudo().search([
+            ("company_id", "=", refund.company_id.id), ("order_uuid", "=", refund.order_uuid),
+            ("state", "!=", "failed"),
+        ], order="id", limit=101)
+        if len(refunds) > 100:
+            raise UserError(_("Reconcile this return's allocations before recovery."))
+        self.env.cr.execute(
+            "SELECT id FROM pos_revolut_refund_operation WHERE id = ANY(%s) ORDER BY id FOR UPDATE",
+            [refunds.ids],
+        )
+        refunds.invalidate_recordset()
+        if refund.id not in refunds.ids:
+            raise UserError(_("Reconcile every refund allocation before recovering this return."))
+        for sibling in refunds.with_env(self.env):
+            sibling.payment_method_id._check_refund_authority()
+            sibling._check_revolut_register_access()
+        if any(sibling.state != "verified" or not sibling.revolut_order_id
+               or (sibling.origin == "external" and (
+                   sibling.provider_state != "completed" or not sibling.verified_at)) for sibling in refunds):
+            raise UserError(_("Reconcile every refund allocation before recovering this return."))
+        existing = self.env["pos.order"].sudo().search([
+            ("company_id", "=", refund.company_id.id), ("uuid", "=", refund.order_uuid),
+        ], limit=1).with_env(self.env)
+        if existing:
+            existing.check_access("read")
+            if existing.session_id != session:
+                raise UserError(_("The return was recovered in another session. Reload its existing draft."))
+        if session.state != "opened" and (not existing or existing.state == "draft"):
+            raise UserError(_("Reopen the original return's session before continuing in POS."))
+        snapshot = self._normalize_return(refund.financial_snapshot)
+        if any(sibling.financial_snapshot != snapshot for sibling in refunds):
+            raise UserError(_("The refund allocations have inconsistent return contents."))
+        original = self._return_original(snapshot, session)
+        sources = self._eligible_sources(original, session)
+        if any(sibling.original_operation_id not in sources or sibling.original_order_id != original
+               or sibling.currency_id != session.currency_id
+               or sibling.pos_session_id.config_id != session.config_id
+               or (sibling.pos_session_id != session and sibling.origin == "odoo"
+                   and sibling.pos_session_id.state != "closed") for sibling in refunds):
+            raise UserError(_("The refund allocations have inconsistent original sale or session evidence."))
+        self._lock_original_return(snapshot, original, refund.order_uuid)
+        decision = self._decision(snapshot, original, session.currency_id, refund.order_uuid)
+        normalize = self.env["pos.revolut.payment.operation"].normalize_amount
+        if any((sibling.return_total_minor and sibling.return_total_minor != decision.total_minor)
+               or (sibling.return_allocation and sibling.return_allocation != decision.allocation)
+               or normalize(session.currency_id, sibling.amount)[1] != sibling.amount_minor
+               for sibling in refunds):
+            raise UserError(_("The refund allocations have inconsistent conserved monetary evidence."))
+        self._capacity(decision.total_minor, decision.base_minor, decision.tip_minor, refunds).check(
+            component_error=_("Refund base and terminal tip allocations exceed the original return lines."),
+            gross_error=_("Revolut allocations exceed the return total."))
+        for source in refunds.original_operation_id:
+            capacity, _claimed, _explicit = self._source_capacity(source)
+            capacity.check(component_error=_("The original payment has insufficient refundable base or terminal tip balance."),
+                           gross_error=_("The original Revolut payment has insufficient refundable balance."))
+        payments = self.env["pos.payment"].sudo().search([("uuid", "in", refunds.mapped("payment_line_uuid"))])
+        if (len(set(refunds.mapped("payment_line_uuid"))) != len(refunds)
+                or any(sibling.pos_order_id and sibling.pos_order_id != existing
+                       or sibling.pos_payment_id and sibling.pos_payment_id.pos_order_id != existing
+                       for sibling in refunds)
+                or any(payment.pos_order_id != existing for payment in payments)):
+            raise UserError(_("An allocation already belongs to another saved return."))
+        if existing:
+            for sibling in refunds:
+                matching = payments.filtered(lambda payment: payment.uuid == sibling.payment_line_uuid)
+                if (len(matching) != 1 or sibling.pos_payment_id and sibling.pos_payment_id != matching
+                        or matching.payment_method_id != sibling.payment_method_id
+                        or normalize(session.currency_id, matching.amount)[1] != -sibling.amount_minor
+                        or matching.transaction_id != sibling.revolut_order_id
+                        or matching.revolut_refund_operation_id
+                        and matching.revolut_refund_operation_id != sibling):
+                    raise UserError(_("The verified refund payment link does not match its original allocation."))
+            existing._check_revolut_order()
+        elif any(original.lines.filtered(lambda line: line.id == row["refunded_orderline_id"])
+                 .product_id.tracking != "none" for row in snapshot["lines"]):
+            raise UserError(_("The lost return has tracked products. A manager must recover its original lot details first."))
+        evidence = RecoveryEvidence(self.env, RecoveryContents(existing, original, snapshot, decision, refunds))
+        try:
+            yield evidence
+        finally:
+            evidence._expire()
+
     def _allocation(self, source, minor, base_minor, tip_minor, reserved):
         base, tip, explicit = self._source_components(source)
         if not explicit:
@@ -383,22 +611,21 @@ class ReturnAllocation:
             session.currency_id, -Decimal(str(financial_snapshot.get("amount_total")))
         )[1]
         order_uuid = financial_snapshot.get("uuid")
-        self._check_total(snapshot, original, session.currency_id, total_minor, order_uuid)
-        return_base, return_tip = self._return_components(snapshot, original, session.currency_id, order_uuid)
-        refunds = self.env["pos.revolut.refund.operation"].sudo()
+        decision = self._decision(snapshot, original, session.currency_id, order_uuid)
+        self._check_total(snapshot, original, session.currency_id, total_minor, order_uuid,
+                          frozen_total=decision.total_minor)
         result = []
         for source in self._eligible_sources(original, session):
-            base, tip, explicit = self._source_components(source)
-            claimed = refunds.search([
-                ("original_operation_id", "=", source.id), ("state", "!=", "failed"),
-            ])
-            reserved = sum(claimed.mapped("amount_minor"))
-            allocations = [self._refund_components(item) for item in claimed]
-            remaining_base = max(0, base - sum(item[0] for item in allocations))
-            remaining_tip = max(0, tip - sum(item[1] for item in allocations))
-            remaining = max(0, source._revolut_paid_minor() - reserved)
+            capacity, claimed, explicit = self._source_capacity(source)
+            base, tip = capacity.base_minor, capacity.tip_minor
+            remaining_base = max(0, base - capacity.reserved_base_minor)
+            remaining_tip = max(0, tip - capacity.reserved_tip_minor)
+            remaining = max(0, capacity.gross_minor - capacity.reserved_minor)
             needs_review = source.external_refund_review_required
             unknown_components = tip and any(item.origin == "external" and not item.allocation_explicit for item in claimed)
+            if not needs_review and not unknown_components:
+                capacity.check(component_error=_("The original payment's refund components exceed its refundable balance."),
+                               gross_error=_("The original Revolut payment has insufficient refundable balance."))
             if needs_review:
                 remaining = 0
             if needs_review or unknown_components:
@@ -414,8 +641,8 @@ class ReturnAllocation:
                 "base_amount_minor": base, "tip_amount_minor": tip,
                 "remaining_base_minor": remaining_base, "remaining_tip_minor": remaining_tip,
                 "terminal_tip_evidence": explicit,
-                "return_base_minor": return_base, "return_tip_minor": return_tip,
-                "return_total_minor": return_base + return_tip,
+                "return_base_minor": decision.base_minor, "return_tip_minor": decision.tip_minor,
+                "return_total_minor": decision.total_minor,
                 "remaining_amount": remaining / (10 ** session.currency_id.decimal_places),
                 "currency_id": session.currency_id.id,
             })
@@ -517,10 +744,13 @@ class ReturnAllocation:
 
         source = self._validate_original(snapshot, method, session, minor, original_operation_id)
         self._lock_original_return(snapshot, original, order_uuid)
-        return_allocation = self._return_allocation(snapshot, original, currency, order_uuid)
-        return_total_minor = sum(row["base_minor"] + row["tip_minor"] for row in return_allocation)
-        self._check_total(snapshot, original, currency, submitted_total_minor, order_uuid)
-        self._check_total(snapshot, original, currency, -saved_total, order_uuid)
+        decision = self._decision(snapshot, original, currency, order_uuid)
+        return_allocation = decision.allocation
+        return_total_minor = decision.total_minor
+        self._check_total(snapshot, original, currency, submitted_total_minor, order_uuid,
+                          frozen_total=return_total_minor)
+        self._check_total(snapshot, original, currency, -saved_total, order_uuid,
+                          frozen_total=return_total_minor)
         if minor > return_total_minor:
             raise UserError(_("The Revolut allocation exceeds the return total. Reload its current allocation before refunding."))
         # Lock the selected source after the original sale, in the same order
@@ -529,27 +759,21 @@ class ReturnAllocation:
             "UPDATE pos_revolut_payment_operation SET write_date = NOW() AT TIME ZONE 'UTC' WHERE id = %s",
             [source.id],
         )
-        source_refunds = refunds.search([
-            ("original_operation_id", "=", source.id), ("state", "!=", "failed"),
-        ])
+        source_capacity, source_refunds, _source_explicit = self._source_capacity(source)
         if source.external_refund_review_required:
             raise UserError(_("External refund evidence needs manager investigation before another refund."))
-        reserved = sum(source_refunds.mapped("amount_minor"))
         verified_before_claim = sum(source_refunds.filtered(
             lambda item: item.state == "verified"
         ).mapped("amount_minor"))
         base_minor, tip_minor, explicit = self._allocation(
-            source, minor, base_amount_minor, tip_amount_minor, reserved,
+            source, minor, base_amount_minor, tip_amount_minor, source_capacity.reserved_minor,
         )
-        source_base, source_tip, _evidence = self._source_components(source)
+        source_base, source_tip = source_capacity.base_minor, source_capacity.tip_minor
         if source_tip and any(item.origin == "external" and not item.allocation_explicit for item in source_refunds):
             raise UserError(_("An external refund has no verified base and terminal tip allocation. Reconcile its components separately before another refund."))
-        claimed = [self._refund_components(item) for item in source_refunds]
-        if (sum(item[0] for item in claimed) + base_minor > source_base
-                or sum(item[1] for item in claimed) + tip_minor > source_tip):
-            raise UserError(_("The original payment has insufficient refundable base or terminal tip balance."))
-        if reserved + minor > source._revolut_paid_minor():
-            raise UserError(_("The original Revolut payment has insufficient refundable balance."))
+        source_capacity.check(minor, base_minor, tip_minor,
+                              component_error=_("The original payment has insufficient refundable base or terminal tip balance."),
+                              gross_error=_("The original Revolut payment has insufficient refundable balance."))
         return_refunds = refunds.search([
             ("company_id", "=", method.company_id.id), ("order_uuid", "=", order_uuid),
         ])
@@ -564,13 +788,11 @@ class ReturnAllocation:
                or (item.state != "failed" and item.return_allocation
                    and item.return_allocation != return_allocation) for item in return_refunds):
             raise UserError(_("The return changed after a refund allocation was reserved."))
-        return_base, return_tip = self._return_components(snapshot, original, currency, order_uuid)
-        return_allocations = [self._refund_components(item) for item in return_refunds if item.state != "failed"]
-        if (sum(item[0] for item in return_allocations) + base_minor > return_base
-                or sum(item[1] for item in return_allocations) + tip_minor > return_tip):
-            raise UserError(_("Refund base and terminal tip allocations exceed the original return lines."))
-        if sum(item.amount_minor for item in return_refunds if item.state != "failed") + minor > return_total_minor:
-            raise UserError(_("Revolut allocations exceed the return total."))
+        return_capacity = self._capacity(decision.total_minor, decision.base_minor, decision.tip_minor,
+                                         return_refunds.filtered(lambda item: item.state != "failed"))
+        return_capacity.check(minor, base_minor, tip_minor,
+                              component_error=_("Refund base and terminal tip allocations exceed the original return lines."),
+                              gross_error=_("Revolut allocations exceed the return total."))
         if self.env["pos.order"].sudo().search_count([
             ("uuid", "=", order_uuid), ("state", "!=", "draft"),
         ]):
@@ -706,9 +928,16 @@ class ReturnAllocation:
         original = self._return_original(snapshot, session)
         # Cash-only returns of a mixed-tender sale use the same original-sale lock.
         self._lock_original_return(snapshot, original, order_uuid)
-        self._check_total(snapshot, original, session.currency_id, -total_minor, order_uuid)
-        total_minor = -self._return_total_minor(snapshot, original, session.currency_id, order_uuid)
+        decision = self._decision(snapshot, original, session.currency_id, order_uuid)
+        self._check_total(snapshot, original, session.currency_id, -total_minor, order_uuid,
+                          frozen_total=decision.total_minor)
+        total_minor = -decision.total_minor
         active = refunds.filtered(lambda item: item.state != "failed")
+        for source in active.original_operation_id:
+            source_capacity, _claimed, _explicit = self._source_capacity(source)
+            source_capacity.check(
+                component_error=_("The original payment has insufficient refundable base or terminal tip balance."),
+                gross_error=_("The original Revolut payment has insufficient refundable balance."))
         verified = refunds.browse()
         for refund in refunds:
             refund.payment_method_id._check_refund_authority()
@@ -731,8 +960,7 @@ class ReturnAllocation:
                     ))
                     or refund.currency_id != session.currency_id
                     or (refund.return_total_minor and refund.return_total_minor != -total_minor)
-                    or (refund.return_allocation and refund.return_allocation != self._return_allocation(
-                        snapshot, original, session.currency_id, order_uuid))
+                    or (refund.return_allocation and refund.return_allocation != decision.allocation)
                     or (refund.pos_order_id and refund.pos_order_id != existing_order)
                     or payment.get("payment_method_id") != refund.payment_method_id.id
                     or normalize(session.currency_id, payment.get("amount"))[1] != -refund.amount_minor):
@@ -744,16 +972,11 @@ class ReturnAllocation:
             if payment.get("payment_status") != "done" or payment.get("transaction_id") != refund.revolut_order_id:
                 raise UserError(_("The refund payment details do not match Revolut verification."))
             verified |= refund
-        return_base, return_tip = self._return_components(snapshot, original, session.currency_id, order_uuid)
-        components = [self._refund_components(item) for item in active]
-        base_allocated = sum(item[0] for item in components)
-        tip_allocated = sum(item[1] for item in components)
-        if base_allocated > return_base or tip_allocated > return_tip:
-            raise UserError(_("Refund base and terminal tip allocations exceed the original return lines."))
-        if order.get("state") != "draft" and tip_allocated != return_tip:
+        capacity = self._capacity(decision.total_minor, decision.base_minor, decision.tip_minor, active)
+        capacity.check(component_error=_("Refund base and terminal tip allocations exceed the original return lines."),
+                       gross_error=_("Revolut allocations exceed the return total."))
+        if order.get("state") != "draft" and capacity.reserved_tip_minor != decision.tip_minor:
             raise UserError(_("Return every terminal tip through its explicit original Revolut allocation."))
-        if sum(active.mapped("amount_minor")) > -total_minor:
-            raise UserError(_("Revolut allocations exceed the return total."))
         for payment in payments.values():
             method = self.env["pos.payment.method"].browse(payment.get("payment_method_id"))
             payment_minor = normalize(session.currency_id, payment.get("amount"))[1]
