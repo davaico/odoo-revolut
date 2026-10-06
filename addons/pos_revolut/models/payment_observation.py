@@ -346,6 +346,9 @@ class PosPaymentMethod(models.Model):
     def _cancel_revolut_payment(self, operation_id):
         # A fresh read decides eligibility. A POST result alone never means the
         # line can be removed: cancellation can race with customer payment.
+        result = self._apply_revolut_observation_owned(operation_id, "cancel_unclaimed")
+        if result["state"] == "verified" or result["retry_safe"]:
+            return result
         result = self._poll_revolut_payment(operation_id)
         if result["state"] != "pending" or result["provider_state"] != "pending":
             return result

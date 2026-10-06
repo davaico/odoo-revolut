@@ -31,6 +31,8 @@ class PosRevolutPaymentOperation(models.Model):
                     "Keep this attempt blocked and ask a system administrator to "
                     "verify and authorize its original Merchant account."
                 )
+            elif operation.retry_safe and operation.provider_state == "not_dispatched":
+                explanation = _("The reservation was safely cancelled before terminal dispatch. Retry or remove the POS line.")
             elif not operation.revolut_order_id:
                 explanation = _(
                     "Revolut order reference missing. Locate the original order "
@@ -60,6 +62,7 @@ class PosRevolutPaymentOperation(models.Model):
     )
     def _compute_sanitized_error(self):
         provider_messages = {
+            "not_dispatched": _("Reservation cancelled before terminal dispatch."),
             "terminal_unavailable": _("Configured terminal was unavailable."),
             "terminal_check_failed": _("Terminal eligibility check failed."),
             "declined": _("Revolut reported a declined payment."),

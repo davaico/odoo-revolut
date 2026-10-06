@@ -777,6 +777,139 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.assertNotEqual(operation.pos_order_id.state, "paid")
         self.assertEqual(cancel_calls, 1)
 
+    def _run_unclaimed_worker_recovery(self, stage):
+        revolut_method = self._configure_revolut_checkout()
+        session = self.main_pos_config.current_session_id
+        stopped = False
+        calls = []
+        provider_orders = []
+        payment_model = type(revolut_method)
+        original_claim = payment_model._claim_revolut_dispatch_owned
+        original_start = payment_model.revolut_start_payment
+
+        class StoppedWorker(RuntimeError):
+            pass
+
+        def start(method, *args, **kwargs):
+            try:
+                return original_start(method, *args, **kwargs)
+            except StoppedWorker:
+                # HttpCase shares a rollback cursor across HTTP requests. Its
+                # exception dispatcher would erase the committed reservation,
+                # unlike a real stopped process. Lose the response at this
+                # test RPC boundary after the original worker has terminated.
+                return False
+
+        def claim(method, operation_id, action):
+            nonlocal stopped
+            if stage == "intent" and action == "create_intent" and not stopped:
+                stopped = True
+                # The original request ends here permanently; no later worker
+                # resume is used to make recovery appear successful.
+                raise StoppedWorker("Simulated worker stop before intent claim")
+            return original_claim(method, operation_id, action)
+
+        def request(method, url, **kwargs):
+            nonlocal stopped
+            calls.append((method, url, kwargs))
+            if method == "GET" and url.endswith("/api/terminals"):
+                if stage == "order" and not stopped:
+                    stopped = True
+                    raise StoppedWorker("Simulated worker stop before order claim")
+                return self._response({"terminals": [{
+                    "id": self.TERMINAL_ID, "online": True,
+                    "operation_mode": "pos", "location_id": self.LOCATION_ID,
+                }]})
+            if method == "POST" and url.endswith("/api/orders"):
+                order_id = str(uuid4())
+                provider_orders.append(order_id)
+                return self._response({"id": order_id})
+            if method == "POST" and url.endswith("/payment-intents"):
+                self.assertTrue(url.endswith(f"/{provider_orders[-1]}/payment-intents"))
+                return self._response({"id": self.INTENT_ID, "state": "pending"})
+            if method == "GET" and "/api/payment-intents/" in url:
+                return self._response({
+                    "id": self.INTENT_ID, "order_id": provider_orders[-1],
+                    "state": "completed", "payment_id": self.PAYMENT_ID,
+                })
+            if method == "GET" and "/api/payments/" in url:
+                return self._response({
+                    "id": self.PAYMENT_ID, "order_id": provider_orders[-1],
+                    "state": "captured", "amount": 1234,
+                    "currency": self.main_pos_config.currency_id.name,
+                })
+            raise AssertionError(f"Unexpected Revolut request: {method} {url}")
+
+        with patch.object(payment_model, "revolut_start_payment", start), patch.object(
+            payment_model, "_claim_revolut_dispatch_owned", claim
+        ), patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+            side_effect=request,
+        ) as provider:
+            install_zero_reports(self.env, provider)
+            self.start_pos_tour("pos_revolut_unclaimed_worker_recovery")
+
+        self.env.invalidate_all()
+        self.assertTrue(stopped)
+        operations = self.env["pos.revolut.payment.operation"].search([
+            ("payment_method_id", "=", revolut_method.id),
+        ], order="id")
+        self.assertEqual(len(operations), 2)
+        original, replacement = operations
+        self.assertEqual(original.state, "cancelled")
+        self.assertTrue(original.retry_safe)
+        self.assertFalse(original.blocking_order_key)
+        self.assertFalse(original.blocking_terminal_key)
+        self.assertFalse(original.revolut_payment_intent_id)
+        self.assertFalse(original.revolut_payment_id)
+        self.assertTrue(original.authorization_id.exists())
+        claims = self.env["pos.revolut.payment.dispatch"].search([
+            ("operation_id", "=", original.id),
+        ])
+        if stage == "intent":
+            self.assertEqual(claims.action, "create_order")
+            self.assertEqual(claims.outcome, "succeeded")
+            self.assertEqual(claims.provider_reference, original.revolut_order_id)
+            self.assertNotEqual(original.revolut_order_id, replacement.revolut_order_id)
+        else:
+            self.assertFalse(claims)
+            self.assertFalse(original.revolut_order_id)
+        self.assertEqual(replacement.state, "verified")
+        self.assertEqual(original.pos_order_id, replacement.pos_order_id)
+        self.assertEqual(original.order_uuid, replacement.order_uuid)
+        self.assertNotEqual(original.payment_line_uuid, replacement.payment_line_uuid)
+        self.assertEqual(original.financial_snapshot, replacement.financial_snapshot)
+        self.assertEqual(original.cart_version, replacement.cart_version)
+        self.assertEqual(operations.mapped("amount_minor"), [1234, 1234])
+        self.assertEqual(operations.mapped("currency_code"), [session.currency_id.name] * 2)
+        self.assertEqual(replacement.revolut_order_id, provider_orders[-1])
+        self.assertEqual(replacement.revolut_payment_intent_id, self.INTENT_ID)
+        self.assertEqual(replacement.revolut_payment_id, self.PAYMENT_ID)
+        order = replacement.pos_order_id
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(order.amount_total, 12.34)
+        self.assertEqual(len(order.lines), 1)
+        self.assertEqual(order.lines.product_id, self.desk_pad)
+        self.assertEqual(order.lines.qty, 1)
+        self.assertEqual(len(order.payment_ids), 1)
+        self.assertEqual(order.payment_ids.amount, 12.34)
+        self.assertEqual(order.payment_ids.transaction_id, self.PAYMENT_ID)
+        self.assertEqual(order.payment_ids.payment_ref_no, provider_orders[-1])
+        financial_posts = [call for call in calls if call[0] == "POST" and "/api/report-runs" not in call[1]]
+        self.assertEqual(len(financial_posts), 3 if stage == "intent" else 2)
+        self.assertEqual(len(provider_orders), 2 if stage == "intent" else 1)
+        self.assertTrue(all(call[2]["json"]["amount"] == 1234 for call in financial_posts))
+        # Replacement checkout proves the original terminal reservation was
+        # released; the native close API also proves the session is unblocked.
+        result = session.with_user(self.pos_admin).close_session_from_ui()
+        self.assertEqual(session.state, "closed", result)
+
+    def test_cashier_recovers_worker_stopped_before_order_claim(self):
+        self._run_unclaimed_worker_recovery("order")
+
+    def test_cashier_recovers_worker_stopped_before_intent_claim(self):
+        self._run_unclaimed_worker_recovery("intent")
+
     def _run_unsuccessful_checkout(self, outcome, tour, retry=False):
         revolut_method = self._configure_revolut_checkout()
         calls = []

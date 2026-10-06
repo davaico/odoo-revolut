@@ -487,6 +487,151 @@ class TestRevolutRetryConcurrency(TransactionCase):
         ), replacement)
         self.assertEqual(len(financial_posts(self.request)), 2)
 
+    def test_stopped_terminal_discovery_can_be_cancelled_without_dispatch(self):
+        self.request.side_effect = RuntimeError("stopped worker during discovery")
+        with self.assertRaises(RuntimeError):
+            self._start()
+        original = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
+        self.assertEqual(original["state"], "unresolved")
+        self.assertFalse(financial_posts(self.request))
+        timed_out = self._rpc("revolut_mark_timeout", original["operation_id"],
+                              self.order_uuid, self.line_uuid)
+        self.assertFalse(timed_out["retry_safe"])
+        self.request.reset_mock()
+        recovered = self._rpc("revolut_cancel_payment", original["operation_id"],
+                              self.order_uuid, self.line_uuid)
+        self.assertEqual(recovered["operation_id"], original["operation_id"])
+        self.assertEqual(recovered["state"], "cancelled")
+        self.assertTrue(recovered["retry_safe"])
+        self.request.assert_not_called()
+        support = self._manager_rpc(original["operation_id"], "read",
+                                    ["support_explanation", "sanitized_error"])[0]
+        self.assertIn("safely cancelled", support["support_explanation"])
+        self.assertIn("before terminal dispatch", support["sanitized_error"])
+        self.request.side_effect = self._start_http
+        replacement = self._start(original["operation_id"])
+        self.assertNotEqual(replacement["operation_id"], original["operation_id"])
+        self.assertEqual(replacement["state"], "pending")
+        self.assertEqual(len(financial_posts(self.request)), 2)
+
+    def test_stopped_worker_before_intent_claim_can_be_cancelled_without_replay(self):
+        method_type = type(self.env["pos.payment.method"])
+        claim = method_type._claim_revolut_dispatch_owned
+
+        def stop_before_intent(method, operation_id, action):
+            if action == "create_intent":
+                raise RuntimeError("stopped worker before intent claim")
+            return claim(method, operation_id, action)
+
+        self.request.side_effect = self._start_http
+        with patch.object(method_type, "_claim_revolut_dispatch_owned",
+                          autospec=True, side_effect=stop_before_intent), self.assertRaises(RuntimeError):
+            self._start()
+        original = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
+        self.assertEqual(original["order_id"], self.provider_order)
+        self.assertFalse(original["payment_intent_id"])
+        self.assertEqual(len(financial_posts(self.request)), 1)
+        self.request.reset_mock()
+        recovered = self._rpc("revolut_cancel_payment", original["operation_id"],
+                              self.order_uuid, self.line_uuid)
+        self.assertEqual(recovered["operation_id"], original["operation_id"])
+        self.assertEqual(recovered["order_id"], self.provider_order)
+        self.assertEqual(recovered["state"], "cancelled")
+        self.assertTrue(recovered["retry_safe"])
+        self.request.assert_not_called()
+        self.provider_order, self.provider_intent = str(uuid4()), str(uuid4())
+        replacement = self._start(original["operation_id"])
+        self.assertNotEqual(replacement["operation_id"], original["operation_id"])
+        self.assertEqual(replacement["state"], "pending")
+        self.assertEqual(len(financial_posts(self.request)), 2)
+
+    def _assert_cancellation_before_claim_fences_delayed_worker(self, action):
+        paused, cancelled, reconciled = Event(), Event(), Event()
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            cashiers = [new_test_user(env, login=f"recover_{uuid4().hex}",
+                groups="point_of_sale.group_pos_user", company_id=env.company.id)
+                for _index in range(2)]
+            env["pos.session"].browse(self.session_id).config_id.write({
+                "revolut_user_ids": [Command.link(user.id) for user in cashiers],
+            })
+            cashier_ids = [user.id for user in cashiers]
+            cursor.commit()
+        # Register grants change the pricing configuration's durable stamp.
+        self._prepare(self.order_uuid, self.line_uuid)
+        method_type = type(self.env["pos.payment.method"])
+        claim = method_type._claim_revolut_dispatch_owned
+
+        def pause_claim(method, operation_id, claimed_action):
+            if claimed_action == action:
+                paused.set()
+                self.assertTrue(cancelled.wait(10))
+            return claim(method, operation_id, claimed_action)
+
+        def cancel():
+            self.assertTrue(paused.wait(10), "Original worker never reached the unclaimed step")
+            try:
+                current = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
+                args = (current["operation_id"], self.order_uuid, self.line_uuid)
+                result = self._rpc("revolut_cancel_payment", *args, user_id=cashier_ids[0])
+                # A concurrent status holder can return cached unresolved
+                # evidence. The cashier follows the same bounded check again.
+                self.assertTrue(reconciled.wait(10), "Reconciliation worker did not finish")
+                if not result["retry_safe"]:
+                    result = self._rpc("revolut_cancel_payment", *args, user_id=cashier_ids[0])
+                self.assertTrue(result["retry_safe"], repr(result))
+                repeated = self._rpc("revolut_cancel_payment", *args, user_id=cashier_ids[1])
+                self.assertTrue(repeated["retry_safe"])
+                self._manager_rpc(current["operation_id"], "action_revolut_reconcile")
+            finally:
+                cancelled.set()
+
+        def reconcile():
+            self.assertTrue(paused.wait(10), "Original worker never reached the unclaimed step")
+            current = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
+            self._rpc("revolut_poll_payment", current["operation_id"], self.order_uuid, self.line_uuid)
+            try:
+                with self.registry.cursor() as cursor:
+                    env = api.Environment(cursor, SUPERUSER_ID, self.context)
+                    env["pos.revolut.payment.operation"]._cron_reconcile_payments()
+                    cursor.commit()
+            finally:
+                reconciled.set()
+
+        def delayed_start():
+            result = self._start()
+            self.assertTrue(paused.is_set(), f"Start did not reach {action}: {result!r}")
+            return result
+
+        def http(method, url, **kwargs):
+            # Other committed tests can leave unrelated attempts due for cron.
+            # Keep their outcomes uncertain; the target has no intent to read.
+            if method == "GET" and "/api/payment-intents/" in url:
+                raise requests.Timeout("Unrelated scheduled fixture")
+            return self._start_http(method, url, **kwargs)
+
+        self.request.side_effect = http
+        with patch.object(method_type, "_claim_revolut_dispatch_owned",
+                          autospec=True, side_effect=pause_claim):
+            self._run_workers([("delayed-start", delayed_start), ("cancel", cancel),
+                               ("reconciliation", reconcile)])
+        final = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
+        self.assertEqual(final["state"], "cancelled")
+        self.assertTrue(final["retry_safe"])
+        self.assertEqual(len(financial_posts(self.request)), 0 if action == "create_order" else 1)
+        self.assertFalse(final["payment_intent_id"])
+        self.request.reset_mock()
+        self.provider_order, self.provider_intent = str(uuid4()), str(uuid4())
+        replacement = self._start(final["operation_id"])
+        self.assertEqual(replacement["state"], "pending")
+        self.assertEqual(len(financial_posts(self.request)), 2)
+
+    def test_cancel_before_order_claim_fences_delayed_worker_and_reconciliation(self):
+        self._assert_cancellation_before_claim_fences_delayed_worker("create_order")
+
+    def test_cancel_before_intent_claim_fences_delayed_worker_and_reconciliation(self):
+        self._assert_cancellation_before_claim_fences_delayed_worker("create_intent")
+
     def _assert_creation_crash_keeps_dispatch(self, action, after_response):
         def http(method, url, **kwargs):
             if not after_response and method == "POST" and (
@@ -526,6 +671,22 @@ class TestRevolutRetryConcurrency(TransactionCase):
             bool(recovered["order_id"]), action == "create_intent"
         )
         self.assertFalse(recovered["payment_intent_id"])
+        financial_count = len(financial_posts(self.request))
+        self.request.reset_mock()
+        cancelled = self._rpc("revolut_cancel_payment", recovered["operation_id"],
+                              self.order_uuid, self.line_uuid)
+        self.assertEqual(cancelled["state"], "unresolved")
+        self.assertFalse(cancelled["retry_safe"])
+        self.request.assert_not_called()
+        other_order, other_line = str(uuid4()), str(uuid4())
+        self._prepare(other_order, other_line)
+        blocked = self._start(order_uuid=other_order, line_uuid=other_line)
+        self.assertEqual(blocked["start_rejected"], "terminal_busy")
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            with self.assertRaises(UserError):
+                env["pos.session"].browse(self.session_id).write({"state": "closing_control"})
+        self.request.assert_not_called()
         with self.registry.cursor() as cursor:
             env = api.Environment(cursor, SUPERUSER_ID, self.context)
             dispatch = env["pos.revolut.payment.dispatch"].search([
@@ -535,7 +696,7 @@ class TestRevolutRetryConcurrency(TransactionCase):
             self.assertEqual(len(dispatch), 1)
             self.assertFalse(dispatch.completed_at)
         self.assertEqual(
-            len(financial_posts(self.request)),
+            financial_count,
             2 if action == "create_intent" else 1,
         )
 
@@ -544,6 +705,9 @@ class TestRevolutRetryConcurrency(TransactionCase):
 
     def test_crash_before_intent_request_blocks_replay(self):
         self._assert_creation_crash_keeps_dispatch("create_intent", False)
+
+    def test_crash_after_order_response_blocks_replay(self):
+        self._assert_creation_crash_keeps_dispatch("create_order", True)
 
     def test_crash_after_intent_response_blocks_replay(self):
         self._assert_creation_crash_keeps_dispatch("create_intent", True)
@@ -1175,6 +1339,12 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self._assert_observation_during_creation_dispatch(
             "create_intent", "revolut_poll_payment"
         )
+
+    def test_cancel_during_order_dispatch_keeps_reservation_and_acknowledgement(self):
+        self._assert_observation_during_creation_dispatch("create_order", "revolut_cancel_payment")
+
+    def test_cancel_during_intent_dispatch_keeps_reservation_and_acknowledgement(self):
+        self._assert_observation_during_creation_dispatch("create_intent", "revolut_cancel_payment")
 
     def test_timeout_during_order_dispatch_resumes_valid_acknowledgement(self):
         self._assert_observation_during_creation_dispatch(

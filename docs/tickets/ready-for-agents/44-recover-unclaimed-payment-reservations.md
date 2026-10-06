@@ -2,7 +2,7 @@
 
 **Work branch:** `codex/44-recover-unclaimed-payment-reservations`
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 
