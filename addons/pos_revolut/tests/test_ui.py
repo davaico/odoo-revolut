@@ -1076,6 +1076,38 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
     def test_payment_discovery_failure_recovers_after_reload_with_one_start(self):
         self._run_unsuccessful_checkout("captured", "pos_revolut_payment_discovery_recovery")
 
+    def _assert_restored_checkout(self, operation, amount, transaction_id, receipt_reference):
+        self.assertEqual(len(operation), 1)
+        self.assertEqual(operation.state, "verified")
+        order = operation.pos_order_id
+        payment = operation.pos_payment_id
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(order.uuid, operation.order_uuid)
+        self.assertEqual(order.amount_total, amount)
+        self.assertEqual(order.currency_id, self.main_pos_config.currency_id)
+        self.assertEqual(order.payment_ids, payment)
+        self.assertEqual(payment.uuid, operation.payment_line_uuid)
+        self.assertEqual(payment.amount, amount)
+        self.assertEqual(payment.transaction_id, transaction_id)
+        self.assertEqual(payment.payment_ref_no, receipt_reference)
+        self.assertEqual(self.env["pos.order"].search_count([
+            ("uuid", "=", operation.order_uuid),
+        ]), 1)
+
+    def test_verified_payment_checkout_rejection_recovers_after_reload(self):
+        operation, calls = self._run_unsuccessful_checkout(
+            "captured", "pos_revolut_payment_checkout_reject",
+        )
+        self._assert_restored_checkout(operation, 12.34, self.PAYMENT_ID, self.ORDER_ID)
+        self.assertEqual(sum(method == "POST" for method, _url in calls), 2)
+
+    def test_verified_payment_checkout_timeout_recovers_without_second_charge(self):
+        operation, calls = self._run_unsuccessful_checkout(
+            "captured", "pos_revolut_payment_checkout_timeout",
+        )
+        self._assert_restored_checkout(operation, 12.34, self.PAYMENT_ID, self.ORDER_ID)
+        self.assertEqual(sum(method == "POST" for method, _url in calls), 2)
+
     def _run_cancelled_payment_preparation(self, stage):
         self._configure_revolut_checkout()
         with patch(
@@ -1341,6 +1373,25 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
 
     def test_manager_returns_full_revolut_sale_in_normal_pos_flow(self):
         self._run_full_refund("pos_revolut_full_refund")
+
+    def _run_refund_checkout_recovery(self, kind):
+        calls = self._run_full_refund(f"pos_revolut_refund_checkout_{kind}")
+        self.env.invalidate_all()
+        refund = self.env["pos.revolut.refund.operation"].search([
+            ("revolut_order_id", "=", self.REFUND_ID),
+        ])
+        self._assert_restored_checkout(refund, -12.34, self.REFUND_ID, self.REFUND_ID)
+        self.assertEqual(refund.original_operation_id.state, "verified")
+        self.assertEqual(refund.original_operation_id.revolut_order_id, self.ORDER_ID)
+        self.assertEqual(refund.pos_order_id.lines.refunded_orderline_id,
+                         refund.original_operation_id.pos_order_id.lines)
+        self.assertEqual(sum(method == "POST" for method, _url, _kwargs in calls), 3)
+
+    def test_verified_saved_refund_checkout_rejection_recovers_without_second_refund(self):
+        self._run_refund_checkout_recovery("reject")
+
+    def test_verified_saved_refund_checkout_timeout_recovers_without_second_refund(self):
+        self._run_refund_checkout_recovery("timeout")
 
     def test_refund_discovery_failure_recovers_after_reload_with_one_start(self):
         self._run_full_refund("pos_revolut_refund_discovery_recovery")
