@@ -545,6 +545,45 @@ class TestRevolutRetryConcurrency(TransactionCase):
         self.assertEqual(replacement["state"], "pending")
         self.assertEqual(len(financial_posts(self.request)), 2)
 
+    def test_two_cashiers_cancel_the_same_stopped_reservation_once(self):
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            users = [new_test_user(env, login=f"cancel_{uuid4().hex}",
+                groups="point_of_sale.group_pos_user", company_id=env.company.id)
+                for _index in range(2)]
+            user_ids = [user.id for user in users]
+            env["pos.session"].browse(self.session_id).config_id.write({
+                "revolut_user_ids": [Command.link(user.id) for user in users],
+            })
+            cursor.commit()
+        self._prepare(self.order_uuid, self.line_uuid)
+        self.request.side_effect = RuntimeError("stopped discovery worker")
+        with self.assertRaises(RuntimeError):
+            self._start()
+        original = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
+        self.request.reset_mock()
+        barrier = Barrier(2)
+
+        def cancel(user_id):
+            barrier.wait(10)
+            return self._rpc("revolut_cancel_payment", original["operation_id"],
+                             self.order_uuid, self.line_uuid, user_id=user_id)
+
+        results = self._run_workers([
+            ("first-cashier", lambda: cancel(user_ids[0])),
+            ("second-cashier", lambda: cancel(user_ids[1])),
+        ])
+        self.assertTrue(any(result["retry_safe"] for result in results))
+        final = self._rpc("revolut_find_payment", self.order_uuid, self.line_uuid)
+        self.assertEqual(final["operation_id"], original["operation_id"])
+        self.assertEqual(final["state"], "cancelled")
+        self.assertTrue(final["retry_safe"])
+        self.request.assert_not_called()
+        self.request.side_effect = self._start_http
+        replacement = self._start(original["operation_id"])
+        self.assertEqual(replacement["state"], "pending")
+        self.assertEqual(len(financial_posts(self.request)), 2)
+
     def _assert_cancellation_before_claim_fences_delayed_worker(self, action):
         paused, cancelled, reconciled = Event(), Event(), Event()
         with self.registry.cursor() as cursor:

@@ -57,6 +57,9 @@ registry.category("web_tour.tours").add("pos_revolut_unclaimed_worker_recovery",
                     observed.state !== operation.state) {
                     throw new Error("Read-only status released or restarted the stopped reservation");
                 }
+                // Cancellation shares the bounded observation cadence. Follow
+                // the public server advice before the cashier's next action.
+                await new Promise((resolve) => setTimeout(resolve, observed.next_check_seconds * 1000));
             },
         },
         PaymentScreen.clickPaymentlineDelButton("Revolut", "12.34"),
