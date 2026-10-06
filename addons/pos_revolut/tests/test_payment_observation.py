@@ -3,6 +3,7 @@
 from contextlib import nullcontext
 from datetime import datetime, timedelta
 from threading import Event, current_thread
+from time import monotonic
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
@@ -620,6 +621,73 @@ class TestRevolutPaymentObservation(TransactionCase):
         self.assertEqual(len(self._provider_reads("/api/orders/")), 0)
         self.assertEqual(len(self.request.call_args_list), 4)
         self.assertEqual(financial_posts(self.request), [])
+
+    def test_report_verification_waiting_on_locks_cannot_outlive_budget(self):
+        started = self._pending()
+        self._controlled_clock()
+        elapsed = [0.0]
+        final_read, locked = Event(), Event()
+        results = []
+
+        def http(method, url, **kwargs):
+            if "/api/payment-intents/" in url:
+                return self._intent("completed", payment_id=self.provider_payment,
+                                    amount=1234, currency=self.currency_code,
+                                    terminal_id=self.terminal_id)
+            if "/api/payments/" in url:
+                return self._response({"id": self.provider_payment, "order_id": self.provider_order,
+                    "amount": 1234, "currency": self.currency_code, "state": "captured",
+                    "created_at": "2026-10-01T08:00:00Z"})
+            with self.registry.cursor() as cursor:
+                env = api.Environment(cursor, SUPERUSER_ID, self.context)
+                response = zero_report_response(env, method, url)
+            self.assertIsNotNone(response)
+            if "/api/orders/" in url:
+                final_read.set()
+                self.assertTrue(locked.wait(10), "Session lock was not acquired")
+            return response
+
+        def delay_verification():
+            self.assertTrue(final_read.wait(10), "Final report read did not begin")
+            with self.registry.cursor() as cursor:
+                cursor.execute("SELECT id FROM pos_session WHERE id = %s FOR UPDATE", [self.session_id])
+                cursor.execute("SELECT pg_backend_pid()")
+                blocker = cursor.fetchone()[0]
+                locked.set()
+                deadline = monotonic() + 10
+                while monotonic() < deadline:
+                    cursor.execute("SELECT pg_stat_clear_snapshot()")
+                    cursor.execute(
+                        "SELECT EXISTS (SELECT 1 FROM pg_stat_activity "
+                        "WHERE datname = current_database() AND %s = ANY(pg_blocking_pids(pid)))",
+                        [blocker],
+                    )
+                    if cursor.fetchone()[0]:
+                        # HTTP finished within budget; the evidence transaction
+                        # used up the rest waiting for its actual financial locks.
+                        elapsed[0] = 50.0
+                        return
+                    Event().wait(0.01)
+                self.fail("Verification did not wait on the session lock")
+
+        self.request.side_effect = http
+        with patch("odoo.addons.pos_revolut.models.payment_observation.time.monotonic",
+                   side_effect=lambda: elapsed[0]):
+            self._run_workers([
+                ("report-verification", lambda: results.append(self._direct_rpc(
+                    "revolut_poll_payment", started["operation_id"], self.order_uuid, self.line_uuid))),
+                ("session-lock-holder", delay_verification),
+            ])
+        self.assertEqual(results[0]["state"], "unresolved")
+        self.assertTrue(results[0]["awaiting_tip_details"])
+        self.assertFalse(results[0]["retry_safe"])
+        self.assertFalse(results[0]["observation_fresh"])
+        self.assertEqual(financial_posts(self.request), [])
+        self._advance(1)
+        recovered = self._direct_rpc("revolut_poll_payment", started["operation_id"],
+                                     self.order_uuid, self.line_uuid)
+        self.assertEqual(recovered["state"], "verified")
+        self.assertTrue(recovered["observation_fresh"])
 
     def test_cancel_rate_limit_defers_recovery_without_replaying_post(self):
         started = self._pending()
