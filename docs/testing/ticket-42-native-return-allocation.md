@@ -127,3 +127,49 @@ The full runner exited successfully on 2026-10-06. The final closure commit only
 updates ticket/evidence documentation; runtime remains the reviewed and tested
 `b717438`. Local integration follows the tracker workflow; remote publishing is
 a separate action.
+
+
+## Shared historical runner retest — 2026-10-06
+
+At the owner's request, fetched remote main `4e55a21` (PR 57 shared historical
+upgrade runner) and merged it with ticket 42 as `d96d5f4`. The assigned ticket
+branch was updated from that main. Comparison with `1168168` confirms the addon
+models and POS static code are unchanged; this retest checks the actual new
+runner and its historical fixtures against the integrated candidate.
+
+All commands below exited 0 on pinned Odoo `19.0.20260908`. Each historical
+scenario used `ODOO_REVOLUT_TEST_PROJECT=odoo-revolut-42-retest-<scenario>` for
+isolated resources. Expected provider calls remain mocked and Merchant HTTP
+remains blocked.
+
+| Shared runner command | Verified result |
+| --- | --- |
+| `scripts/test-historical-upgrade return-rounding` | Immutable history, remaining 925 cents and uncertain replay references preserved without HTTP |
+| `scripts/test-historical-upgrade external-native` | Exact financial history, one native completion and protected pending capacity; zero HTTP |
+| `scripts/test-historical-upgrade cart-authority` | Six historical states preserved, no invented authority/tip evidence, historical native refund verified |
+| `scripts/test-historical-upgrade credential-authority` | Legacy attempt fails closed, administrator attestation and GET-only recovery work |
+| `scripts/test-historical-upgrade register-access` | No implicit grants, late success reconciled, original order recoverable after explicit grant |
+| `scripts/test-historical-upgrade evidence-retirement` | Removed page/ACL and denied RPC; immutable financial evidence and server resolution retained |
+| `scripts/test-historical-upgrade receipt-retirement` | Financial/document values unchanged; actual QWeb invoice PDF and repeated authenticated downloads verified |
+
+The runner's focused CLI suite passed all **10 tests**:
+`python3 -m unittest discover -s tests -p test_historical_upgrade_runner.py -v`.
+`bash -n` passed for the shared runner and all seven wrapper commands.
+
+Fresh affected native verification passed **112 tests**, with zero failures or
+errors, using the isolated `odoo-revolut-42-retest-native` project:
+
+```bash
+scripts/test-addon --test-tags /pos_revolut:TestReturnAllocation,/pos_revolut:TestRevolutRefund,/pos_revolut:TestRevolutTipRefund,/pos_revolut:TestRevolutRegisterRefund,/pos_revolut:TestRevolutRefundConcurrency,/pos_revolut:TestRefundSessionClose
+```
+
+This exercises source allocation, frozen residual cents, full/partial refund
+lifecycle, lost-draft recovery, native stock/accounting projection, real competing
+reservations and session closure. No addon corrections were needed. The earlier
+552-install/552-upgrade results remain their original evidence; those full phases
+were not repeated because the integration changes only runner infrastructure and
+historical verification fixtures, while all affected native and historical paths
+were freshly exercised here.
+
+Logs are ephemeral under `/tmp/ticket42-shared-<scenario>.log`,
+`/tmp/ticket42-shared-native.log` and `/tmp/ticket42-shared-cli.log`.
