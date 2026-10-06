@@ -889,7 +889,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.assertEqual(order.state, "paid")
         self.assertEqual(order.amount_total, 12.34)
         self.assertEqual(len(order.lines), 1)
-        self.assertEqual(order.lines.product_id, self.desk_pad)
+        self.assertEqual(order.lines.product_id, self.desk_pad.product_variant_id)
         self.assertEqual(order.lines.qty, 1)
         self.assertEqual(len(order.payment_ids), 1)
         self.assertEqual(order.payment_ids.amount, 12.34)
