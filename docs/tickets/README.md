@@ -104,6 +104,27 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [41 — Complete Revolut-initiated refunds through native Odoo returns](closed/41-complete-external-refund-returns.md) | `ready-for-agent` at closure | Closed | Native returns and financial corrections; 546 install tests, 90 merged checks and real history upgrades verified; full upgrade stopped at owner request |
 | [42 — Deepen native return allocation and recovery](closed/42-deepen-native-return-allocation.md) | `ready-for-agent` at closure | Closed | Shared native decisions and recovery; 552 install / 552 upgrade, 90 compatibility checks and clean Standards/Spec review |
 | [43 — Deepen external return association and unify return locking](closed/43-deepen-external-return-allocation.md) | `ready-for-agent` at closure | Closed | Shared batch association and complete native ownership locking; 561 install / 561 upgrade, historical compatibility and independent Standards/Spec review |
+| [44 — Recover payment reservations interrupted before dispatch](ready-for-agents/44-recover-unclaimed-payment-reservations.md) | `ready-for-agent` | Open | None |
+| [45 — Complete refunds for discounted and rounded sales](ready-for-agents/45-refund-discounted-and-rounded-sales.md) | `ready-for-agent` | Open | None |
+| [46 — Recover checkout refresh after payment verification](ready-for-agents/46-recover-verified-checkout-refresh.md) | `ready-for-agent` | Open | None |
+
+## Integration review follow-up — 2026-10-06
+
+The owner approved three P2 tickets from the full integration review of main
+`597a59ae0f8e489773e02f7776bda7001beb5741` and requested direct publication
+as `ready-for-agent`. Ticket 44 covers recovery of an interrupted reservation
+before financial dispatch is claimed. Ticket 45 groups the negative/discount
+line and rounding-remainder findings into one complete return-allocation slice,
+with separate regressions for both defects. Ticket 46 covers browser checkout
+restoration after financial verification. All three are open and unclaimed,
+with no blocking edges between them.
+
+The review reproduced the reservation and refund defects in pinned Odoo and
+the browser recovery defect in the exact state module with the pinned native
+lifecycle traced. Its existing-suite baseline passed 561 fresh-install Odoo
+tests, 88 state-machine tests and 50 tooling tests, with three optional checks
+skipped. These results describe the reviewed baseline, not fixes or completed
+ticket acceptance. Existing live-device and release gates remain separate.
 
 ## Return allocation deepening — 2026-10-06
 
