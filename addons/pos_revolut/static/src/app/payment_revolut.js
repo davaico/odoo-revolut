@@ -27,13 +27,6 @@ async function restoreRefundOriginals(pos, order) {
     }
 }
 
-function discardUnstartedRefund(order, line) {
-    line.uiState.revolutStarted = false;
-    // This line never reached the server. Remove it so a different tender can
-    // complete the return without carrying an unallocated terminal payment.
-    order.removePaymentline(line);
-}
-
 export function hasRevolutExposure(order) {
     return orderActions(order).hasExposure;
 }
@@ -57,17 +50,6 @@ function financialSnapshot(order) {
             ...(line.refunded_orderline_id ? { refunded_orderline_id: line.refunded_orderline_id.id } : {}),
         })),
     };
-}
-
-function restoreRefundTarget(line, result) {
-    if (isRevolutRefund(line) && result?.state === 'verified' &&
-        Number.isSafeInteger(result.return_total_minor) && result.return_total_minor > 0) {
-        // Display the server-checked return total even before native draft sync.
-        // Settlement still independently validates this return on the server.
-        line.pos_order_id.revolut_payable_target = -result.return_total_minor /
-            10 ** line.pos_order_id.currency.decimal_places;
-        line.pos_order_id.revolut_has_authority_exposure = true;
-    }
 }
 
 class RefundAllocationDialog extends Component {
@@ -200,7 +182,7 @@ export class PaymentRevolut extends PaymentInterface {
                         line.uiState.revolutSelectingAllocation = false;
                     }
                 },
-                discardRefund: (line) => discardUnstartedRefund(line.pos_order_id, line),
+                discardRefund: (line) => line.pos_order_id.removePaymentline(line),
                 setVerified: (line, result) => this._setVerified(line, result),
                 showError: (line, state) => this._showResultError(line, state),
                 showPreparationError: (line, reason, message) => this._showPreparationError(reason, message),
@@ -268,39 +250,10 @@ export class PaymentRevolut extends PaymentInterface {
         }
     }
 
-    async restoreRefundState(line) {
-        const order = line.pos_order_id;
-        if (order.state !== "draft" || !Number.isInteger(order.id) || !Number.isInteger(line.id)) {
-            return;
-        }
-        try {
-            // Startup restores committed evidence only. Pending refunds keep
-            // Check status available without holding POS startup for polling.
-            const result = await this.pos.data.call("pos.payment.method", "revolut_find_refund", [
-                [this.payment_method_id.id], order.uuid, line.uuid,
-            ]);
-            if (!result?.operation_id) {
-                return;
-            }
-            this.paymentState.remember(line, result);
-            if (result.state === "verified") {
-                await this._setVerified(line, result);
-                line.handlePaymentResponse(true);
-            } else {
-                restorePaymentLine(line);
-            }
-        } catch {
-            // Retain the saved waiting/reference guards when offline or when
-            // this cashier cannot reconcile manager-owned refund evidence.
-            restorePaymentLine(line);
-        }
-    }
-
     async _setVerified(line, result) {
         if (result.authorization_id || (isRevolutRefund(line) && Number.isInteger(line.pos_order_id.id))) {
             await this._refreshAuthorizedOrder(line.pos_order_id);
         }
-        restoreRefundTarget(line, result);
         line.transaction_id = result.payment_id;
         line.payment_ref_no = result.order_id;
         const receipt = isRevolutRefund(line)
@@ -422,11 +375,7 @@ patch(PosStore.prototype, {
         // Native startup reloads shared draft statuses after local state was
         // restored. Recover the checked action only after that final merge.
         for (const line of this.models['pos.payment'].filter(isRevolut)) {
-            restorePaymentLine(line);
-            restoreRefundTarget(line, line.uiState.revolutSnapshot);
-            if (isRevolutRefund(line)) {
-                await line.payment_method_id.payment_terminal.restoreRefundState(line);
-            }
+            await line.payment_method_id.payment_terminal.paymentState.restore(line.pos_order_id, line);
         }
         return result;
     },
@@ -636,8 +585,7 @@ patch(PaymentScreenPaymentLines.prototype, {
     },
 
     revolutCanResume(line) {
-        return ["terminal_busy", "snapshot_invalid", "authority_required"].includes(line.uiState.revolutStartRejected) &&
-            paymentActions(line).retrySafe;
+        return paymentActions(line).canResume;
     },
 });
 
