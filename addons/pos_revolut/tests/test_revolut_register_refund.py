@@ -1,5 +1,6 @@
 """Public refund and manager actions use the persisted register entitlement."""
 
+import json
 import os
 from copy import deepcopy
 from unittest.mock import patch
@@ -7,10 +8,11 @@ from uuid import uuid4
 
 from odoo import Command
 from odoo.addons.point_of_sale.tests.common import CommonPosTest
-from odoo.exceptions import AccessError
+from odoo.exceptions import AccessError, UserError
 from odoo.tests.common import tagged
 
 from .test_revolut_refund import TestRevolutRefund
+from .test_revolut_tip_refund import TestRevolutTipRefund
 
 
 @tagged("post_install", "-at_install")
@@ -27,6 +29,12 @@ class TestRevolutRegisterRefund(CommonPosTest):
     _save_return_draft = TestRevolutRefund._save_return_draft
     _rpc_start_refund = TestRevolutRefund._rpc_start_refund
     _rpc_refund_sources = TestRevolutRefund._rpc_refund_sources
+    _split_original = TestRevolutRefund._split_original
+    _lost_split_refunds = TestRevolutRefund._lost_split_refunds
+    _stream_response = TestRevolutTipRefund._stream_response
+    _terminal_sale = TestRevolutTipRefund._terminal_sale
+    _tip_return = TestRevolutTipRefund._tip_return
+    _start_allocated = TestRevolutTipRefund._start_allocated
 
     @classmethod
     def setUpClass(cls):
@@ -296,4 +304,203 @@ class TestRevolutRegisterRefund(CommonPosTest):
             with self.subTest(native_denial=method), self.assertRaises(AccessError):
                 self._rpc_refund(manager, "pos.revolut.payment.operation", method, [[self.source.id], *extra])
         self.assertEqual(audit_model.search_count([("operation_id", "=", self.source.id)]), 1)
+        self.request.assert_not_called()
+
+    def test_lost_return_recovery_rejects_inconsistent_verified_components(self):
+        refunds = self._lost_split_refunds()
+        manager = self._actor(granted=True)
+        # Seed legacy evidence bypassing immutable ORM facts. The row's total
+        # still balances, but the original sale had no terminal-selected tip.
+        self.env.flush_all()
+        self.env.cr.execute(
+            "UPDATE pos_revolut_refund_operation SET allocation_explicit = TRUE, "
+            "base_amount_minor = 616, tip_amount_minor = 1 WHERE id = %s",
+            [refunds[1].id],
+        )
+        refunds.invalidate_recordset()
+        with self.assertRaises(UserError):
+            self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refunds[0].id]])
+        self.assertFalse(self.env["pos.order"].search_count([("uuid", "=", self.payload["uuid"])]))
+        self.assertFalse(refunds.mapped("pos_payment_id"))
+        self.assertEqual(refunds.mapped("state"), ["verified", "verified"])
+        self.request.assert_not_called()
+
+    def test_lost_return_recovery_rejects_source_from_another_sale(self):
+        unrelated_source = self.source
+        refunds = self._lost_split_refunds()
+        manager = self._actor(granted=True)
+        self.env.flush_all()
+        self.env.cr.execute(
+            "UPDATE pos_revolut_refund_operation SET original_operation_id = %s WHERE id = %s",
+            [unrelated_source.id, refunds[1].id],
+        )
+        refunds.invalidate_recordset()
+        with self.assertRaises(UserError):
+            self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refunds[0].id]])
+        self.assertFalse(self.env["pos.order"].search_count([("uuid", "=", self.payload["uuid"])]))
+        self.assertFalse(refunds.mapped("pos_payment_id"))
+        self.request.assert_not_called()
+
+    def test_lost_return_recovery_cannot_ignore_an_external_sibling(self):
+        refunds = self._lost_split_refunds()
+        manager = self._actor(granted=True)
+        allocation = [{"original_line_id": self.original.lines.id,
+                       "quantity": "1", "base_minor": 1234, "tip_minor": 0}]
+        # A historical association with the same return identity is relevant
+        # even though it came from the external workflow and retains a link.
+        self.env.flush_all()
+        self.env.cr.execute(
+            "UPDATE pos_revolut_refund_operation SET origin = 'external', "
+            "idempotency_key = NULL, pos_order_id = %s, pos_payment_id = %s, "
+            "return_allocation = %s WHERE id = %s",
+            [self.original.id, self.original.payment_ids[-1].id,
+             json.dumps(allocation), refunds[1].id],
+        )
+        refunds.invalidate_recordset()
+        with self.assertRaises(UserError):
+            self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refunds[0].id]])
+        self.assertFalse(self.env["pos.order"].search_count([("uuid", "=", self.payload["uuid"])]))
+        self.assertFalse(refunds[0].pos_order_id)
+        self.assertEqual(refunds[1].pos_order_id, self.original)
+        self.request.assert_not_called()
+
+    def test_lost_return_reconstruction_failure_rolls_back_native_data_only(self):
+        refunds = self._lost_split_refunds()
+        manager = self._actor(granted=True)
+        fields = ["state", "revolut_order_id", "idempotency_key", "financial_snapshot",
+                  "return_total_minor", "return_allocation", "pos_order_id", "pos_payment_id"]
+        evidence = deepcopy(refunds.read(fields))
+        journal = self.pos_config_usd.invoice_journal_id
+        # Native _process_saved_order checks this after creating the order,
+        # its lines and payments, so recovery must roll the whole draft back.
+        self.pos_config_usd.write({"invoice_journal_id": False})
+        with self.assertRaisesRegex(UserError, "No invoice journal configured"):
+            self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refunds[0].id]])
+        refunds.invalidate_recordset()
+        self.assertEqual(refunds.read(fields), evidence)
+        self.assertFalse(self.env["pos.order"].search_count([("uuid", "=", self.payload["uuid"])]))
+        self.assertFalse(self.env["pos.order.line"].search_count([
+            ("uuid", "=", self.payload["lines"][0][2]["uuid"]),
+        ]))
+        self.assertFalse(self.env["pos.payment"].search_count([
+            ("uuid", "in", refunds.mapped("payment_line_uuid")),
+        ]))
+        self.request.assert_not_called()
+
+        self.pos_config_usd.write({"invoice_journal_id": journal.id})
+        action = self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refunds[1].id]])
+        recovered = refunds.mapped("pos_order_id")
+        self.assertEqual(len(recovered), 1)
+        self.assertEqual(action["url"], f"/pos/ui/{self.pos_config_usd.id}/payment/{recovered.uuid}")
+        self.assertEqual(recovered.amount_total, -12.34)
+        self.assertEqual(recovered.amount_paid, -12.34)
+        self.assertEqual(len(recovered.payment_ids), 2)
+        self._rpc_refund(manager, "pos.order", "action_pos_order_paid", [[recovered.id]])
+        self.assertEqual(recovered.state, "paid")
+        payment_ids = recovered.payment_ids.ids
+        completed = self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refunds[0].id]])
+        self.assertEqual(completed["res_id"], recovered.id)
+        self.assertEqual(recovered.payment_ids.ids, payment_ids)
+        self.assertEqual(refunds.mapped("revolut_order_id"), [item["revolut_order_id"] for item in evidence])
+        self.request.assert_not_called()
+
+    def test_lost_odd_cent_return_native_checkout_projects_effects_once(self):
+        self.product.write({"is_storable": True})
+        self._terminal_sale(tip_minor=0, partner=self.partner_mobt)
+        self._tip_return(goods_qty=0.25, tip_qty=0, payment_minor=309)
+        self.payload.update(amount_total=-3.09, partner_id=self.partner_mobt.id)
+        manager = self._actor(granted=True)
+        self.assertEqual(self._rpc_refund_sources(manager)[0]["return_total_minor"], 309)
+        self.request.side_effect = [
+            self._response(id=self.source.revolut_order_id, state="completed", amount=1234,
+                           currency=self.session.currency_id.name, refunded_amount=0),
+            self._refund_response(amount=309), self._refund_response("completed", amount=309),
+        ]
+        started = self._start_allocated(309, 0)
+        payment = self.payload["payment_ids"][0][2]
+        completed = self._rpc_refund(manager, "pos.payment.method", "revolut_poll_refund", [
+            [self.revolut_method.id], started["operation_id"], self.payload["uuid"], payment["uuid"],
+        ])
+        self.assertEqual(completed["state"], "verified")
+        self.env.invalidate_all()
+        refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
+        proof_fields = ["financial_snapshot", "return_total_minor", "return_allocation",
+                        "base_amount_minor", "tip_amount_minor", "idempotency_key", "revolut_order_id"]
+        proof = deepcopy(refund.read(proof_fields)[0])
+        lost = self.env["pos.order"].search([("uuid", "=", self.payload["uuid"])])
+        self.assertEqual(len(lost), 1)
+        self.assertEqual(lost.state, "draft")
+        self.assertFalse(lost.picking_ids)
+        self.assertFalse(lost.account_move)
+        lost_order_id = lost.id
+        # Simulate an older installation losing its browser draft after the
+        # provider reimbursement was durably verified. Current ORM forbids it.
+        self.env.flush_all()
+        self.env.cr.execute(
+            "UPDATE pos_revolut_refund_operation SET pos_order_id = NULL, pos_payment_id = NULL WHERE id = %s",
+            [refund.id],
+        )
+        self.env.cr.execute("DELETE FROM pos_payment WHERE pos_order_id = %s", [lost_order_id])
+        self.env.cr.execute("DELETE FROM pos_order_line WHERE order_id = %s", [lost_order_id])
+        self.env.cr.execute("DELETE FROM pos_order WHERE id = %s", [lost_order_id])
+        self.env.invalidate_all()
+        self.request.reset_mock(side_effect=True)
+
+        action = self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refund.id]])
+        recovered = refund.pos_order_id
+        self.assertEqual(action["url"], f"/pos/ui/{self.pos_config_usd.id}/payment/{recovered.uuid}")
+        self.assertNotEqual(recovered.id, lost_order_id)
+        self.assertEqual(recovered.revolut_return_allocation, proof["return_allocation"])
+        self.assertEqual(refund.read(proof_fields)[0], proof)
+        self.assertEqual(recovered.lines.qty, -0.25)
+        self.assertEqual(recovered.amount_total, -3.09)
+        self.assertEqual(recovered.payment_ids.amount, -3.09)
+        self.assertFalse(recovered.picking_ids)
+        self.assertFalse(recovered.account_move)
+
+        checkout = deepcopy(self.payload)
+        checkout.update(id=recovered.id, state="paid", amount_total=-3.09, amount_paid=-3.09,
+                        user_id=manager.id)
+        line_values = checkout["lines"][0][2]
+        line_values.update(price_subtotal=recovered.lines.price_subtotal,
+                           price_subtotal_incl=recovered.lines.price_subtotal_incl)
+        checkout["lines"] = [Command.update(recovered.lines.id, line_values)]
+        payment_values = checkout["payment_ids"][0][2]
+        payment_values.update(payment_status="done", transaction_id=refund.revolut_order_id)
+        checkout["payment_ids"] = [Command.update(recovered.payment_ids.id, payment_values)]
+        self._rpc_refund(manager, "pos.order", "sync_from_ui", [[deepcopy(checkout)]])
+        recovered.invalidate_recordset()
+        self.assertEqual(recovered.state, "paid")
+        self.assertEqual(len(recovered.picking_ids), 1)
+        picking = recovered.picking_ids
+        self.assertEqual(picking.state, "done")
+        self.assertEqual(picking.move_ids.product_id, self.product)
+        self.assertEqual(picking.move_ids.quantity, 0.25)
+        self.assertEqual(picking.location_id.usage, "customer")
+        self.assertEqual(picking.location_dest_id.usage, "internal")
+        invoice = recovered.with_user(manager).with_context(generate_pdf=False).action_pos_order_invoice()
+        move = self.env["account.move"].browse(invoice["res_id"])
+        self.assertEqual(move.state, "posted")
+        self.assertEqual(move.move_type, "out_refund")
+        self.assertEqual(move.amount_total, 3.09)
+        self.assertAlmostEqual(sum(move.line_ids.mapped("balance")), 0, places=6)
+        payment_ids = recovered.payment_ids.ids
+        self._rpc_refund(manager, "pos.order", "sync_from_ui", [[deepcopy(checkout)]])
+        repeated = self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refund.id]])
+        self.assertEqual(repeated["res_id"], recovered.id)
+        self.assertEqual(recovered.picking_ids, picking)
+        self.assertEqual(recovered.account_move, move)
+        self.assertEqual(self.env["account.move"].search([
+            ("reversed_pos_order_id", "=", recovered.id),
+        ]), move)
+        self.assertEqual(recovered.payment_ids.ids, payment_ids)
+        self.assertEqual(refund.read(proof_fields)[0], proof)
+        self.assertEqual(refund.pos_payment_id.revolut_refund_operation_id, refund)
+        self.assertEqual(refund.pos_payment_id.transaction_id, proof["revolut_order_id"])
+        receipt = self._rpc_refund(manager, "pos.order", "read_pos_data_uuid", [recovered.uuid])
+        self.assertEqual(next(order for order in receipt["pos.order"]
+                              if order["uuid"] == recovered.uuid)["amount_total"], -3.09)
+        self._tip_return(goods_qty=0.75, tip_qty=0, payment_minor=925)
+        self.payload["amount_total"] = -9.25
+        self.assertEqual(self._rpc_refund_sources(manager)[0]["return_total_minor"], 925)
         self.request.assert_not_called()

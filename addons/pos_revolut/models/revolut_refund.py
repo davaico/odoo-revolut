@@ -228,64 +228,25 @@ class PosRevolutRefundOperation(models.Model):
             if existing:
                 existing.check_access("read")
             session = existing.session_id if existing else self.pos_session_id.config_id.current_session_id
-            if not session:
-                raise UserError(_("Open the original Point of Sale register before recovering this return."))
-            session.config_id._check_revolut_register_access(session=session)
-            # Use the same session -> order lock order as reservation and
-            # closure, so closing cannot miss a newly reconstructed draft.
-            self.env.cr.execute("UPDATE pos_session SET write_date = write_date WHERE id = %s", [session.id])
-            session.invalidate_recordset()
-            if session.state != "opened" and (not existing or existing.state == "draft"):
-                raise UserError(_("Reopen the original return's session before continuing in POS."))
-            self.env["pos.revolut.payment.operation"].sudo()._lock_order(self.company_id.id, self.order_uuid)
-            refunds = self.sudo().search([
-                ("company_id", "=", self.company_id.id), ("order_uuid", "=", self.order_uuid),
-                ("origin", "=", "odoo"), ("state", "!=", "failed"),
-            ], order="id", limit=101)
-            if len(refunds) > 100:
-                raise UserError(_("Reconcile this return's allocations before recovery."))
-            self.env.cr.execute(
-                "SELECT id FROM pos_revolut_refund_operation WHERE id = ANY(%s) ORDER BY id FOR UPDATE",
-                [refunds.ids],
-            )
-            refunds.invalidate_recordset()
-            for refund in refunds.with_env(self.env):
-                refund.payment_method_id._check_refund_authority()
-                refund._check_revolut_register_access()
-            if any(refund.state != "verified" or not refund.revolut_order_id for refund in refunds):
-                raise UserError(_("Reconcile every refund allocation before recovering this return."))
-            existing = self.env["pos.order"].sudo().search(order_domain, limit=1).with_env(self.env)
-            if existing:
-                existing.check_access("read")
-                if existing.session_id != session:
-                    raise UserError(_("The return was recovered in another session. Reload its existing draft."))
-                existing._check_revolut_order()
-                if existing.state != "draft":
+            with ReturnAllocation(self.env).recover(self, session) as evidence:
+                recovery = evidence.read(self.env)
+                existing = recovery.existing_order
+                if existing and existing.state != "draft":
                     return {"type": "ir.actions.act_window", "res_model": "pos.order",
                             "res_id": existing.id, "view_mode": "form", "target": "current"}
-            else:
-                if any(refund.pos_order_id or refund.pos_payment_id for refund in refunds):
-                    raise UserError(_("An allocation already belongs to another saved return."))
-                values = self._recovered_return_values(refunds, session)
-                saved = self.env["pos.order"].sync_from_ui([values])
-                existing = self.env["pos.order"].browse(next(
-                    item["id"] for item in saved["pos.order"] if item["uuid"] == self.order_uuid
-                ))
-            if session.state != "opened":
-                raise UserError(_("Reopen the original return's session before continuing in POS."))
-            return {"type": "ir.actions.act_url", "target": "self",
-                    "url": f"/pos/ui/{session.config_id.id}/payment/{existing.uuid}"}
+                if not existing:
+                    values = self._recovered_return_values(recovery, session)
+                    saved = self.env["pos.order"].sync_from_ui([values])
+                    existing = self.env["pos.order"].browse(next(
+                        item["id"] for item in saved["pos.order"] if item["uuid"] == self.order_uuid
+                    ))
+                if session.state != "opened":
+                    raise UserError(_("Reopen the original return's session before continuing in POS."))
+                return {"type": "ir.actions.act_url", "target": "self",
+                        "url": f"/pos/ui/{session.config_id.id}/payment/{existing.uuid}"}
 
-    def _recovered_return_values(self, refunds, session):
-        allocation = ReturnAllocation(self.env)
-        snapshot = allocation._normalize_return(self.financial_snapshot)
-        if any(refund.financial_snapshot != snapshot for refund in refunds):
-            raise UserError(_("The refund allocations have inconsistent return contents."))
-        original = allocation._return_original(snapshot, session)
-        allocation._lock_original_return(snapshot, original, self.order_uuid)
-        originals = {line.id: line for line in original.lines}
-        if any(originals[line["refunded_orderline_id"]].product_id.tracking != "none" for line in snapshot["lines"]):
-            raise UserError(_("The lost return has tracked products. A manager must recover its original lot details first."))
+    def _recovered_return_values(self, recovery, session):
+        snapshot, original = recovery.snapshot, recovery.original
         values = {
             "uuid": self.order_uuid, "session_id": session.id, "user_id": self.env.uid,
             "company_id": session.company_id.id, "config_id": session.config_id.id,
@@ -294,7 +255,7 @@ class PosRevolutRefundOperation(models.Model):
             "pricelist_id": snapshot["pricelist_id"],
             "fiscal_position_id": snapshot["fiscal_position_id"] or False,
             "partner_id": original.partner_id.id or False,
-            "amount_total": -self.return_total_minor / 10 ** session.currency_id.decimal_places,
+            "amount_total": -recovery.decision.total_minor / 10 ** session.currency_id.decimal_places,
             "amount_tax": 0, "amount_paid": 0, "amount_return": 0,
             "lines": [Command.create({
                 **line, "qty": float(line["qty"]), "price_unit": float(line["price_unit"]),
@@ -303,12 +264,13 @@ class PosRevolutRefundOperation(models.Model):
             }) for line in snapshot["lines"]],
             "payment_ids": [Command.create({
                 "uuid": refund.payment_line_uuid, "payment_method_id": refund.payment_method_id.id,
-                "amount": -refund.amount, "payment_status": "done",
+                "amount": -refund.amount_minor / 10 ** session.currency_id.decimal_places,
+                "payment_status": "done",
                 "transaction_id": refund.revolut_order_id, "payment_ref_no": refund.revolut_order_id,
                 "name": fields.Datetime.now(),
-            }) for refund in refunds],
+            }) for refund in recovery.refunds],
         }
-        # Use the native tax and frozen-return total engines before persisting.
+        # Native tax calculation and validation remain caller-owned projection.
         draft = self.env["pos.order"].new(values)
         for line in draft.lines:
             line.order_id = draft
@@ -620,34 +582,7 @@ class PosOrder(models.Model):
 
     def _revolut_return_target_minor(self):
         self.ensure_one()
-        if self.revolut_return_allocation:
-            return -sum(row["base_minor"] + row["tip_minor"]
-                        for row in self.revolut_return_allocation)
-        original = self.lines.refunded_orderline_id.order_id
-        if (len(original) == 1 and self._revolut_return_source()
-                and self.lines and all(line.refunded_orderline_id and line.qty < 0 for line in self.lines)):
-            normalize = self.env["pos.revolut.payment.operation"].normalize_amount
-            # Displaying completed historical documents never assigns new
-            # product entitlement or rewrites their recorded financial amount.
-            if self.state in {"paid", "done", "invoiced"}:
-                return normalize(self.currency_id, self.amount_total)[1]
-            refunds = self.env["pos.revolut.refund.operation"].sudo().search([
-                ("company_id", "=", self.company_id.id), ("order_uuid", "=", self.uuid),
-                ("origin", "=", "odoo"), ("state", "!=", "failed"),
-            ])
-            targets = set(refunds.mapped("return_total_minor")) - {0}
-            if len(targets) == 1:
-                return -targets.pop()
-            if len(targets) > 1:
-                raise UserError(_("The refund allocations have inconsistent return targets."))
-            if refunds:
-                # Pre-upgrade uncertain snapshots without a full target retain
-                # their saved display; new allocation discovery remains guarded.
-                return normalize(self.currency_id, self.amount_total)[1]
-            allocation = ReturnAllocation(self.env)
-            snapshot = allocation._normalize_return(self._revolut_order_values(), native_order=True)
-            return -allocation._return_total_minor(snapshot, original, self.currency_id, self.uuid)
-        return None
+        return ReturnAllocation(self.env).display_target(self)
 
     def _compute_prices(self):
         # Native recomputation must not overwrite completed pre-upgrade amounts

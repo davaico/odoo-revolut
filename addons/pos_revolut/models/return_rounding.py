@@ -71,20 +71,17 @@ class PosOrder(models.Model):
             self.write({"revolut_return_allocation": allocation,
                         "amount_total": target / (10 ** self.currency_id.decimal_places)})
         self.invalidate_recordset(["revolut_payable_target", "revolut_has_authority_exposure"])
-        self._compute_prices()
+        self.amount_difference = self.amount_paid - self.amount_total
 
     def _process_saved_order(self, draft):
         # Native synchronization stores browser floating subtotals verbatim.
         # Freeze the locked server allocation and persist its currency total
         # before native finalization, including returns settled only in cash.
-        original = self.lines.refunded_orderline_id.order_id
-        if (len(original) == 1 and self._revolut_return_source() and self.lines
-                and all(line.refunded_orderline_id and line.qty < 0 for line in self.lines)):
-            allocator = ReturnAllocation(self.env)
-            snapshot = allocator._normalize_return(self._revolut_order_values(), native_order=True)
-            allocator._lock_original_return(snapshot, original, self.uuid)
-            allocation = allocator._return_allocation(snapshot, original, self.currency_id, self.uuid)
-            self._revolut_freeze_return_allocation(allocation)
+        ReturnAllocation(self.env).freeze_native_return(self)
+        if self.revolut_return_allocation:
+            # Tax projection belongs to native Odoo, after authority is fixed.
+            # Its advisory target lookup cannot freeze or recurse into locking.
+            self._compute_prices()
         return super()._process_saved_order(draft)
 
     def _prepare_tax_base_line_values(self):
