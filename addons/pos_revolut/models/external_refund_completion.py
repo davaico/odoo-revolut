@@ -137,7 +137,7 @@ class ExternalRefundCompletion(models.Model):
             names = row.get("lot_names", [])
             self._check_selected_lots(line, quantity, names)
             copied = line._prepare_refund_data(order, [Command.create({"lot_name": name}) for name in names])
-            copied.update(qty=-float(quantity), uuid=str(uuid4()))
+            copied.update(qty=float(quantity) * (-1 if line.qty > 0 else 1), uuid=str(uuid4()))
             line.copy(copied)._onchange_amount_line_all()
         order._compute_prices()
         return order

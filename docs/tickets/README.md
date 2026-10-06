@@ -105,7 +105,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [42 — Deepen native return allocation and recovery](closed/42-deepen-native-return-allocation.md) | `ready-for-agent` at closure | Closed | Shared native decisions and recovery; 552 install / 552 upgrade, 90 compatibility checks and clean Standards/Spec review |
 | [43 — Deepen external return association and unify return locking](closed/43-deepen-external-return-allocation.md) | `ready-for-agent` at closure | Closed | Shared batch association and complete native ownership locking; 561 install / 561 upgrade, historical compatibility and independent Standards/Spec review |
 | [44 — Recover payment reservations interrupted before dispatch](closed/44-recover-unclaimed-payment-reservations.md) | `ready-for-agent` at closure | Closed | Safe unclaimed cancellation; 573 install / 573 upgrade, native recovery and clean Standards/Spec review |
-| [45 — Complete refunds for discounted and rounded sales](ready-for-agents/45-refund-discounted-and-rounded-sales.md) | `ready-for-agent` | Open | None |
+| [45 — Complete refunds for discounted and rounded sales](closed/45-refund-discounted-and-rounded-sales.md) | `ready-for-agent` at closure | Closed | Conserved discounts/rounding and frozen history; 591 install / 591 upgrade tests, native returns and independent reviews passed |
 | [46 — Recover checkout refresh after payment verification](ready-for-agents/46-recover-verified-checkout-refresh.md) | `ready-for-agent` | Open | None |
 
 ## Integration review follow-up — 2026-10-06
@@ -120,7 +120,9 @@ restoration after financial verification. All three were published open and
 unclaimed, with no blocking edges between them. Ticket 44 is now closed after
 safe unclaimed-reservation recovery passed 573 install / 573 upgrade tests,
 native checkout/session closure and independent Standards/Spec review.
-Tickets 45 and 46 remain open.
+Ticket 45 is now closed after discounted and rounded return conservation passed
+591 install / 591 upgrade tests, native browser/stock/accounting checks and
+independent Standards/Spec review. Ticket 46 remains open.
 
 The review reproduced the reservation and refund defects in pinned Odoo and
 the browser recovery defect in the exact state module with the pinned native
