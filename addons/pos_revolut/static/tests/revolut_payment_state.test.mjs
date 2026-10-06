@@ -55,13 +55,17 @@ function fixture({ refund = false, call, chooseAllocation = async () => false,
     preparePayment = async () => ({status:"prepared", authorization_id:1, cart_version:1, tender_revision:1}),
     projectVerified = async () => {} } = {}) {
     const clock = new ControlledClock();
-    const order = { uuid: "order-1", payment_ids: [], isRefund: refund };
+    const order = { uuid: "order-1", payment_ids: [], isRefund: refund,
+        state: "draft", currency: { decimal_places: 2 } };
     const line = {
         uuid: "line-1", amount: refund ? -12.34 : 12.34, pos_order_id: order,
         payment_method_id: { use_payment_terminal: "revolut" }, uiState: {},
         payment_status: "pending", transaction_id: false,
         getPaymentStatus() { return this.payment_status; },
         setPaymentStatus(status) { this.payment_status = status; },
+        handlePaymentResponse(successful) {
+            this.setPaymentStatus(paymentResponseSuccessful(this, successful) ? "done" : "retry");
+        },
     };
     order.payment_ids.push(line);
     const calls = [];
@@ -94,6 +98,176 @@ function fixture({ refund = false, call, chooseAllocation = async () => false,
     const state = new RevolutPaymentState({ adapter, clock, methodId: 7, sessionId: 8, currencyId: 9 });
     return { state, clock, order, line, calls, errors, preparationErrors, preparationMessages };
 }
+
+function savedRefund(options) {
+    const context = fixture({ ...options, refund: true });
+    context.order.id = 42;
+    context.line.id = 43;
+    context.line.payment_status = "waiting";
+    return context;
+}
+
+const recoveredRefund = {
+    operation_id: 20, state: "verified", payment_id: "refund-20", order_id: "refund-20",
+    original_order_id: "sale-10", return_total_minor: 1003,
+};
+
+test("Resume is available only for a safely rejected payment or refund outside discovery", () => {
+    for (const refund of [false, true]) {
+        for (const rejection of ["terminal_busy", "snapshot_invalid", "authority_required", false]) {
+            const { line } = fixture({ refund });
+            line.uiState.revolutUndispatched = true;
+            line.uiState.revolutStartRejected = rejection;
+            assert.equal(paymentActions(line).canResume, rejection !== false);
+            line.uiState.revolutDiscovering = true;
+            assert.equal(paymentActions(line).canResume, false);
+            line.uiState.revolutDiscovering = false;
+            line.transaction_id = "surviving-reference";
+            assert.equal(paymentActions(line).canResume, false);
+        }
+    }
+});
+
+test("startup recovers a saved verified refund and its checked total without dispatch or polling", async () => {
+    const projection = deferred();
+    const { state, order, line, calls } = savedRefund({
+        call: () => recoveredRefund,
+        projectVerified: async () => {
+            await projection.promise;
+            // Native draft refresh can bring back a cash-rounded total.
+            order.revolut_payable_target = -10.05;
+        },
+    });
+    const recovery = state.restore(order, line);
+    await tick();
+    assert.equal(line.getPaymentStatus(), "retry");
+    assert.equal(paymentActions(line).canDelete, false);
+    projection.resolve();
+    await recovery;
+    assert.equal(line.getPaymentStatus(), "done");
+    assert.equal(line.transaction_id, "refund-20");
+    assert.equal(line.payment_ref_no, "refund-20");
+    assert.equal(order.revolut_payable_target, -10.03);
+    assert.equal(order.revolut_has_authority_exposure, true);
+    assert.equal(paymentActions(line).blocksCheckout, false);
+    assert.deepEqual(calls, [{ method: "revolut_find_refund", args: [[7], "order-1", "line-1"] }]);
+});
+
+for (const outcome of ["pending", "unresolved", "failed"]) {
+    test(`startup restores a saved ${outcome} refund without polling or replacing its allocation`, async () => {
+        const { state, order, line, calls, errors } = savedRefund({
+            call: () => ({ ...recoveredRefund, state: outcome }),
+        });
+        await state.restore(order, line);
+        assert.equal(line.getPaymentStatus(), "retry");
+        assert.equal(paymentOutcome(line), outcome);
+        assert.equal(line.uuid, "line-1");
+        assert.equal(order.uuid, "order-1");
+        assert.equal(order.payment_ids[0], line);
+        assert.equal(paymentActions(line).canDelete, outcome === "failed");
+        assert.equal(paymentActions(line).canEditAmount, false);
+        assert.equal(paymentActions(line).retrySafe, false);
+        assert.equal(orderActions(order).blocksCheckout, true);
+        assert.equal(orderActions(order).blocksAlternativeTender, outcome !== "failed");
+        assert.equal(order.revolut_has_authority_exposure, undefined);
+        assert.deepEqual(calls.map(({ method }) => method), ["revolut_find_refund"]);
+        assert.deepEqual(errors, []);
+    });
+}
+
+for (const failure of ["offline", "timeout", "empty"]) {
+    test(`startup ${failure} lookup preserves saved refund guards until a status check recovers it`, async () => {
+        const lateLookup = deferred();
+        let failing = true;
+        const { state, clock, order, line, calls, errors } = savedRefund({
+            call(method) {
+                if (failing) {
+                    if (failure === "offline") {
+                        throw new Error("Offline or manager evidence unavailable");
+                    }
+                    return failure === "timeout" ? lateLookup.promise : false;
+                }
+                return method === "revolut_find_refund"
+                    ? { ...recoveredRefund, state: "pending" } : recoveredRefund;
+            },
+        });
+        line.payment_ref_no = "refund-20";
+        const recovery = state.restore(order, line);
+        if (failure === "timeout") {
+            clock.advance(60000);
+        }
+        await recovery;
+        assert.equal(line.getPaymentStatus(), "retry");
+        assert.equal(paymentActions(line).canDelete, false);
+        assert.equal(paymentActions(line).canEditAmount, false);
+        assert.equal(orderActions(order).blocksAlternativeTender, true);
+        assert.equal(orderActions(order).blocksCheckout, true);
+        assert.equal(line.payment_ref_no, "refund-20");
+        assert.equal(order.payment_ids[0], line);
+        assert.deepEqual(errors, []);
+        // A late lookup response does not mutate a timed-out recovery.
+        lateLookup.resolve(recoveredRefund);
+        await tick();
+        assert.equal(line.getPaymentStatus(), "retry");
+        failing = false;
+        assert.equal(await state.request(order, line, { checkOnly: true }), true);
+        line.handlePaymentResponse(true);
+        assert.equal(line.getPaymentStatus(), "done");
+        assert.equal(line.transaction_id, "refund-20");
+        assert.deepEqual(calls.map(({ method }) => method), [
+            "revolut_find_refund", "revolut_find_refund", "revolut_poll_refund",
+        ]);
+    });
+}
+
+test("a late startup observation cannot regress a foreground verified refund", async () => {
+    const lookup = deferred();
+    let finds = 0;
+    const { state, order, line, calls } = savedRefund({
+        call() { return ++finds === 1 ? lookup.promise : recoveredRefund; },
+    });
+    const recovery = state.restore(order, line);
+    assert.equal(await state.request(order, line, { checkOnly: true }), true);
+    line.handlePaymentResponse(true);
+    lookup.resolve({ ...recoveredRefund, state: "pending", payment_id: false, return_total_minor: 1005 });
+    await recovery;
+    assert.equal(line.getPaymentStatus(), "done");
+    assert.equal(line.transaction_id, "refund-20");
+    assert.equal(paymentOutcome(line), "verified");
+    assert.equal(order.revolut_payable_target, -10.03);
+    assert.deepEqual(calls.map(({ method }) => method), ["revolut_find_refund", "revolut_find_refund"]);
+});
+
+test("startup only looks up persisted draft refunds and still restores payment guards", async () => {
+    for (const skipped of ["unsaved_order", "unsaved_line", "paid", "payment"]) {
+        const { state, order, line, calls } = savedRefund();
+        if (skipped === "unsaved_order") {
+            order.id = "local-order";
+        } else if (skipped === "unsaved_line") {
+            line.id = "local-line";
+        } else if (skipped === "paid") {
+            order.state = "paid";
+        } else {
+            order.isRefund = false;
+            line.amount = 12.34;
+        }
+        await state.restore(order, line);
+        assert.equal(line.getPaymentStatus(), "retry");
+        assert.equal(paymentActions(line).canDelete, false);
+        assert.deepEqual(calls, []);
+    }
+});
+
+test("local verified refund reload restores only a valid server-checked return total", () => {
+    for (const total of [1003, 0, -1003, 10.03, "1003", undefined]) {
+        const { line, order } = fixture({ refund: true });
+        line.uiState.revolutSnapshot = { ...recoveredRefund, return_total_minor: total };
+        line.payment_status = "done";
+        restorePaymentLine(line);
+        assert.equal(order.revolut_payable_target, total === 1003 ? -10.03 : undefined);
+        assert.equal(line.getPaymentStatus(), "done");
+    }
+});
 
 test("refund dispatch waits until its selected return allocation is saved", async () => {
     const saved = deferred();
@@ -1158,12 +1332,14 @@ test("a safe payment replacement stays on the same logical line and retains its 
 test("reloaded refund reconciles its existing operation and preserves its reference", async () => {
     const { state, order, line, calls } = fixture({
         refund: true,
+        projectVerified: async () => { order.revolut_payable_target = -10.05; },
         call(method) {
             if (method === "revolut_find_refund") {
                 return { operation_id: 31, state: "pending" };
             }
             if (method === "revolut_poll_refund") {
-                return { operation_id: 31, state: "verified", payment_id: "refund-31", order_id: "rev-refund-31" };
+                return { operation_id: 31, state: "verified", payment_id: "refund-31",
+                    order_id: "rev-refund-31", return_total_minor: 1003 };
             }
             return false;
         },
@@ -1173,6 +1349,8 @@ test("reloaded refund reconciles its existing operation and preserves its refere
     assert.equal(line.payment_status, "retry");
     assert.equal(await state.request(order, line), true);
     assert.equal(line.payment_ref_no, "rev-refund-31");
+    assert.equal(order.revolut_payable_target, -10.03);
+    assert.equal(order.revolut_has_authority_exposure, true);
     assert.equal(paymentActions(line).blocksCheckout, false);
     assert.equal(calls.some(({ method }) => method === "revolut_start_refund"), false);
 });

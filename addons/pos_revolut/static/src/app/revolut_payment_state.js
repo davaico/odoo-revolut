@@ -26,7 +26,7 @@ export function paymentActions(line) {
     if (!isRevolut(line)) {
         return {
             canEditAmount: true, canDelete: true, blocksCheckout: false,
-            blocksAlternativeTender: false, hasExposure: false, retrySafe: false,
+            blocksAlternativeTender: false, hasExposure: false, retrySafe: false, canResume: false,
             shouldCancelBeforeDelete: false,
         };
     }
@@ -43,6 +43,9 @@ export function paymentActions(line) {
     const reconcile = (state.revolutDiscovering || !unstartedRefund) &&
         !failedRefund && (locked || refund) &&
         state.revolutSnapshot?.state !== "verified";
+    const retrySafe = !state.revolutDiscovering &&
+        (state.revolutSnapshot?.retry_safe === true ||
+            (state.revolutUndispatched === true && !financialStartMayHaveOccurred(line)));
     return {
         canEditAmount: !locked && !failedRefund,
         canDelete: !locked,
@@ -52,9 +55,9 @@ export function paymentActions(line) {
         hasExposure: locked || state.revolutStarting || Boolean(line.transaction_id) ||
             line.getPaymentStatus() === "done",
         refundException: (!state.revolutDiscovering && unstartedRefund) || failedRefund,
-        retrySafe: !state.revolutDiscovering &&
-            (state.revolutSnapshot?.retry_safe === true ||
-                (state.revolutUndispatched === true && !financialStartMayHaveOccurred(line))),
+        retrySafe,
+        canResume: retrySafe &&
+            ["terminal_busy", "snapshot_invalid", "authority_required"].includes(state.revolutStartRejected),
     };
 }
 
@@ -98,6 +101,19 @@ export function restorePaymentLine(line) {
         line.getPaymentStatus() !== "done") {
         line.setPaymentStatus("retry");
     }
+    restoreRefundTarget(line);
+}
+
+function restoreRefundTarget(line) {
+    const result = line.uiState.revolutSnapshot;
+    if (isRevolutRefund(line) && result?.state === "verified" &&
+        Number.isSafeInteger(result.return_total_minor) && result.return_total_minor > 0) {
+        // Use the server-checked total even before native draft sync. Native
+        // cash rounding can differ; settlement still validates the return.
+        line.pos_order_id.revolut_payable_target = -result.return_total_minor /
+            10 ** line.pos_order_id.currency.decimal_places;
+        line.pos_order_id.revolut_has_authority_exposure = true;
+    }
 }
 
 export function paymentResponseSuccessful(line, successful) {
@@ -132,6 +148,40 @@ export class RevolutPaymentState {
         this.currencyId = currencyId;
         this.clock = clock;
         this.lines = new Map();
+    }
+
+    async restore(order, line) {
+        restorePaymentLine(line);
+        if (!isRevolutRefund(line) || order.state !== "draft" ||
+            !Number.isInteger(order.id) || !Number.isInteger(line.id)) {
+            return;
+        }
+        try {
+            // Recover committed evidence only. Startup never polls or starts
+            // a refund; pending evidence leaves Check status available.
+            const result = await this.clock.before(this.adapter.call("revolut_find_refund", [
+                [this.methodId], order.uuid, line.uuid,
+            ]), this.clock.now() + PAYMENT_TIMEOUT_MS);
+            if (!result?.operation_id) {
+                return;
+            }
+            this.remember(line, result);
+            if (line.uiState.revolutSnapshot.state === "verified") {
+                await this.setVerified(line);
+                line.handlePaymentResponse(true);
+            }
+        } catch {
+            // Offline or unauthorized reads cannot establish absence or
+            // unlock a saved waiting line or its surviving references.
+        } finally {
+            restorePaymentLine(line);
+        }
+    }
+
+    async setVerified(line) {
+        await this.adapter.setVerified(line, line.uiState.revolutSnapshot);
+        // A native order refresh can replace the locally displayed target.
+        restoreRefundTarget(line);
     }
 
     owner(order, line) {
@@ -241,7 +291,7 @@ export class RevolutPaymentState {
             }
             if (owner.cancelDiscovery) {
                 if (result?.state === "verified") {
-                    await this.adapter.setVerified(line, result);
+                    await this.setVerified(line);
                     return true;
                 }
                 if (!started && !result) {
@@ -452,7 +502,7 @@ export class RevolutPaymentState {
                 }
                 result = line.uiState.revolutSnapshot;
                 if (result.state === "verified") {
-                    await this.adapter.setVerified(line, result);
+                    await this.setVerified(line);
                     return true;
                 }
                 const deferredObservation = !refund && result.state === "unresolved" &&
@@ -472,7 +522,7 @@ export class RevolutPaymentState {
             throw new ForegroundTimeout();
         } catch (error) {
             if (line.uiState.revolutSnapshot?.state === "verified") {
-                await this.adapter.setVerified(line, line.uiState.revolutSnapshot);
+                await this.setVerified(line);
                 return true;
             }
             const failure = error instanceof ForegroundTimeout ? "timed_out" : "interrupted";
@@ -577,7 +627,7 @@ export class RevolutPaymentState {
             ));
             const result = line.uiState.revolutSnapshot;
             if (result.state === "verified") {
-                await this.adapter.setVerified(line, result);
+                await this.setVerified(line);
                 line.setPaymentStatus("done");
                 return false;
             }
@@ -586,7 +636,7 @@ export class RevolutPaymentState {
             return result.retry_safe === true;
         } catch (error) {
             if (line.uiState.revolutSnapshot?.state === "verified") {
-                await this.adapter.setVerified(line, line.uiState.revolutSnapshot);
+                await this.setVerified(line);
                 line.setPaymentStatus("done");
                 return false;
             }
