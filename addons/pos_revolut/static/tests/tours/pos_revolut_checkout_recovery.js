@@ -33,11 +33,11 @@ function interceptCheckout(kind, reset = true) {
     }
     const call = pos.data.call.bind(pos.data);
     const control = window.revolutCheckoutRecovery = {
-        attempts: 0, kind, release: null, unhandled: [], originalCall: call,
+        attempts: 0, kind, release: null, unhandled: [], originalCall: call, offlinePayloads: 0,
     };
     window.addEventListener("unhandledrejection", (event) => control.unhandled.push(event.reason));
     const method = pos.models["pos.payment.method"].find((item) => item.use_payment_terminal === "revolut");
-    method.payment_terminal.paymentState.checkoutRestoreTimeoutMs = 100;
+    method.payment_terminal.paymentState.checkoutRestoreTimeoutMs = kind === "offline" ? 5000 : 100;
     pos.data.call = async (model, rpc, args, ...rest) => {
         const identity = saved();
         if (model === "pos.payment.method" &&
@@ -63,6 +63,14 @@ function interceptCheckout(kind, reset = true) {
             }
             if (control.kind === "timeout") {
                 return new Promise(() => {});
+            }
+            if (control.kind === "offline") {
+                const result = await call(model, rpc, args, ...rest);
+                // Exercise the native loader's real offline branch: the RPC
+                // succeeded, but missingRecursive returns no canonical data.
+                pos.data.network.offline = true;
+                control.offlinePayloads++;
+                return result;
             }
             if (control.kind === "hold") {
                 const result = await call(model, rpc, args, ...rest);
@@ -93,6 +101,7 @@ function assertRecoverable(refund) {
         line.uiState.revolutLocalOutcome !== "checkout_restore_failed" ||
         pos.paymentTerminalInProgress || control.unhandled.length ||
         identity.starts.length !== 1 ||
+        (control.kind === "offline" && (!pos.data.network.offline || !control.offlinePayloads)) ||
         (refund && (!Number.isInteger(order.id) || !Number.isInteger(line.id))) ||
         (identity.operationId && snapshot.operation_id !== identity.operationId)) {
         throw new Error(`Verified checkout must retain evidence, remain unpaid and release native busy state: ${JSON.stringify({
@@ -121,7 +130,7 @@ function failureSteps(refund) {
 }
 
 for (const refund of [false, true]) {
-    for (const kind of ["reject", "timeout"]) {
+    for (const kind of ["reject", "timeout", "offline"]) {
         const reload = !refund && kind === "reject";
         registry.category("web_tour.tours").add(`pos_revolut_${refund ? "refund" : "payment"}_checkout_${kind}`, {
             steps: () => [
@@ -192,6 +201,7 @@ for (const refund of [false, true]) {
                     async run() {
                         const control = window.revolutCheckoutRecovery;
                         control.kind = "hold";
+                        current().pos.data.network.offline = false;
                         current().line.payment_method_id.payment_terminal.paymentState.checkoutRestoreTimeoutMs = 5000;
                         const before = control.attempts;
                         this.anchor.click();

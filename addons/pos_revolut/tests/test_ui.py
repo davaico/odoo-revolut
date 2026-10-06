@@ -1108,6 +1108,13 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self._assert_restored_checkout(operation, 12.34, self.PAYMENT_ID, self.ORDER_ID)
         self.assertEqual(sum(method == "POST" for method, _url in calls), 2)
 
+    def test_verified_payment_checkout_offline_loader_recovers_without_second_charge(self):
+        operation, calls = self._run_unsuccessful_checkout(
+            "captured", "pos_revolut_payment_checkout_offline",
+        )
+        self._assert_restored_checkout(operation, 12.34, self.PAYMENT_ID, self.ORDER_ID)
+        self.assertEqual(sum(method == "POST" for method, _url in calls), 2)
+
     def _run_cancelled_payment_preparation(self, stage):
         self._configure_revolut_checkout()
         with patch(
@@ -1392,6 +1399,9 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
 
     def test_verified_saved_refund_checkout_timeout_recovers_without_second_refund(self):
         self._run_refund_checkout_recovery("timeout")
+
+    def test_verified_saved_refund_checkout_offline_loader_recovers_without_second_refund(self):
+        self._run_refund_checkout_recovery("offline")
 
     def test_refund_discovery_failure_recovers_after_reload_with_one_start(self):
         self._run_full_refund("pos_revolut_refund_discovery_recovery")

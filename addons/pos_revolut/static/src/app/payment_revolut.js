@@ -218,6 +218,13 @@ export class PaymentRevolut extends PaymentInterface {
         if (!isCurrent()) {
             return;
         }
+        // Native missingRecursive can return an empty or partial accumulator
+        // when connectivity changes after the checkout RPC has succeeded.
+        if (this.pos.data.network.offline || !missing["pos.order"]?.some(
+            (record) => record.id === order.id && record.uuid === order.uuid
+        )) {
+            throw new Error(_t("Could not load canonical checkout data. Reconnect and check status."));
+        }
         this.pos.models.loadConnectedData(missing);
         order.uiState.revolutAuthority = state.authority;
         return state;
