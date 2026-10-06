@@ -441,13 +441,19 @@ class ReturnAllocation:
     def _decision(self, snapshot, original, currency, order_uuid):
         return ReturnDecision(self._return_allocation(snapshot, original, currency, order_uuid))
 
+    def _native_return_sale(self, order):
+        original = order.lines.refunded_orderline_id.order_id
+        if not (len(original) == 1 and order._revolut_return_source() and order.lines
+                and all(line.refunded_orderline_id and line.qty < 0 for line in order.lines)):
+            return None
+        return original
+
     def display_target(self, order):
         """Advisory native total. Never locks, freezes or recomputes prices."""
         if order.revolut_return_allocation:
             return -ReturnDecision(order.revolut_return_allocation).total_minor
-        original = order.lines.refunded_orderline_id.order_id
-        if not (len(original) == 1 and order._revolut_return_source() and order.lines
-                and all(line.refunded_orderline_id and line.qty < 0 for line in order.lines)):
+        original = self._native_return_sale(order)
+        if not original:
             return None
         normalize = self.env["pos.revolut.payment.operation"].normalize_amount
         if order.state in {"paid", "done", "invoiced"}:
@@ -469,9 +475,7 @@ class ReturnAllocation:
 
     def freeze_native_return(self, order):
         """Independently validate saved contents and freeze under the sale lock."""
-        original = order.lines.refunded_orderline_id.order_id
-        if not (len(original) == 1 and order._revolut_return_source() and order.lines
-                and all(line.refunded_orderline_id and line.qty < 0 for line in order.lines)):
+        if not self._native_return_sale(order):
             return
         snapshot = self._normalize_return(order._revolut_order_values(), native_order=True)
         original = self._return_original(snapshot, order.session_id)
