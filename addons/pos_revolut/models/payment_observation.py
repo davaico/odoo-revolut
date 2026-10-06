@@ -1,8 +1,11 @@
-"""Committed, fenced leases for provider observation (never financial dispatch).
+"""Own payment reads, tip-report follow-up and cancellation under fenced leases.
 
+Financial dispatch claims remain separate from observation claims.
 Elapsed budgets are cooperative checks, not cancellable HTTP deadlines. A
 stalled socket can outlive the lease; its result cannot modify newer evidence.
 """
+import csv
+import logging
 import math
 import re
 import time
@@ -24,6 +27,7 @@ OBSERVATION_CADENCE_SECONDS = 1
 OBSERVATION_PAYMENT_SECONDS = 20
 OBSERVATION_REPORT_SECONDS = 30
 OBSERVATION_TOTAL_SECONDS = 50
+_logger = logging.getLogger(__name__)
 _OBSERVATION = ContextVar("revolut_observation", default=None)
 _OBSERVATION_FIELDS = {
     "observation_token", "observation_expires_at", "observation_started_at",
@@ -151,10 +155,11 @@ class PosPaymentMethod(models.Model):
                     raise
 
     def _apply_revolut_observation_owned(self, operation_id, kind, evidence=None):
+        # Retry only local application, never HTTP or financial dispatch.
         scope = _OBSERVATION.get()
-        if not scope or scope["operation_id"] != operation_id:
-            return super()._apply_revolut_observation_owned(operation_id, kind, evidence)
-        if kind in {"interrupted", "unknown", "tip_report_invalid", "references_unavailable"}:
+        if scope and scope["operation_id"] != operation_id:
+            scope = None
+        if scope and kind in {"interrupted", "unknown", "tip_report_invalid", "references_unavailable"}:
             scope["failed"] = True
         for attempt in range(3):
             try:
@@ -164,15 +169,24 @@ class PosPaymentMethod(models.Model):
                     # Preserve financial lock ordering; fence before *all*
                     # applications, including report claims and projection.
                     ReturnAllocation(env).acquire_payment_observation(operation)
-                    if (operation.observation_token != scope["token"]
+                    if scope and (operation.observation_token != scope["token"]
                             or not operation.observation_expires_at
                             or operation.observation_expires_at <= observation_now()):
                         scope["failed"] = True
                         return operation.operation_snapshot(operation)
-                    snapshot = operation._apply_payment_observation(kind, evidence)
-                    if kind != "legacy_final" and snapshot["state"] == "unresolved":
+                    applied_kind, applied_evidence = kind, evidence
+                    if (scope and kind in {
+                            "intent", "payment", "tip_report_claim", "tip_report_created", "tip_report_retire",
+                            "tip_report_wait", "tip_report_verified",
+                        } and time.monotonic() >= min(scope["deadline"], scope["phase_deadline"])):
+                        # Local lock waits consume the same cooperative budget
+                        # as HTTP. Never verify late evidence after this wait.
                         scope["failed"] = True
-                    if scope.get("defer_until"):
+                        applied_kind, applied_evidence = "interrupted", None
+                    snapshot = operation._apply_payment_observation(applied_kind, applied_evidence)
+                    if scope and kind != "legacy_final" and snapshot["state"] == "unresolved":
+                        scope["failed"] = True
+                    if scope and scope.get("defer_until"):
                         # Flush the outcome's scheduled ORM write before SQL
                         # extends it, so commit cannot overwrite Retry-After.
                         operation.flush_recordset(["next_reconcile_at"])
@@ -264,9 +278,9 @@ class PosPaymentMethod(models.Model):
         try:
             try:
                 if cancel:
-                    super().revolut_cancel_payment(operation_id, order_uuid, payment_line_uuid)
+                    self._cancel_revolut_payment(operation_id)
                 else:
-                    super().revolut_poll_payment(operation_id, order_uuid, payment_line_uuid)
+                    self._poll_revolut_payment(operation_id)
             except (SerializationFailure, DeadlockDetected):
                 # Recovery belongs to the original holder too. An expired
                 # holder must not postpone its successor's schedule after
@@ -278,14 +292,137 @@ class PosPaymentMethod(models.Model):
             # Never slide expiry or release without the original fenced token.
             _OBSERVATION.reset(context_token)
 
-    def revolut_poll_payment(self, operation_id, order_uuid, payment_line_uuid):
+    def _poll_revolut_payment(self, operation_id):
+        # Both cancellation passes reuse the original claim and total budget.
+        # Phase ordering is explicit instead of public RPC/MRO re-entry.
         scope = _OBSERVATION.get()
-        if scope and scope["operation_id"] == operation_id:
-            # Cancellation's precheck and immediate recovery stay under the
-            # same claim, without a cadence gap or replay of its POST.
-            scope["phase_deadline"] = min(scope["deadline"], time.monotonic() + OBSERVATION_PAYMENT_SECONDS)
-            scope["report_phase"] = False
-            return super().revolut_poll_payment(operation_id, order_uuid, payment_line_uuid)
+        scope["phase_deadline"] = min(scope["deadline"], time.monotonic() + OBSERVATION_PAYMENT_SECONDS)
+        scope["report_phase"] = False
+        snapshot = self._read_revolut_payment(operation_id)
+        return self._read_revolut_terminal_tip(operation_id, snapshot)
+
+    def _read_revolut_payment(self, operation_id):
+        operation = self._read_revolut_operation_owned(operation_id)
+        snapshot = self._apply_revolut_observation_owned(operation_id, "legacy_final")
+        if snapshot["state"] == "verified" or snapshot["retry_safe"]:
+            return snapshot
+        if not operation["payment_intent_id"] or not operation["order_id"]:
+            return self._apply_revolut_observation_owned(
+                operation_id, "references_unavailable"
+            )
+        try:
+            intent = self._revolut_api_request(
+                operation, "GET",
+                f"/api/payment-intents/{operation['payment_intent_id']}",
+            )
+            snapshot = self._apply_revolut_observation_owned(
+                operation_id, "intent", intent
+            )
+            if snapshot["state"] in {"verified", "unresolved"} or snapshot["retry_safe"]:
+                # An invalid intent must not be overridden by a later payment
+                # read using a reference retained from an earlier observation.
+                return snapshot
+            if (intent.get("state") in ("cancelled", "failed")
+                    and not intent.get("payment_id")
+                    and not operation["payment_id"]):
+                # Another poll may have stored a payment while this intent GET
+                # was in flight. Its result is authoritative only after a
+                # fresh payment read; leave that to the next poll.
+                return snapshot
+            if not snapshot["payment_id"]:
+                return snapshot
+            operation = self._read_revolut_operation_owned(operation_id)
+            payment = self._revolut_api_request(
+                operation, "GET", f"/api/payments/{snapshot['payment_id']}"
+            )
+            return self._apply_revolut_observation_owned(
+                operation_id, "payment", payment
+            )
+        except requests.RequestException:
+            return self._apply_revolut_observation_owned(operation_id, "interrupted")
+        except (ValueError, UserError):
+            return self._apply_revolut_observation_owned(operation_id, "unknown")
+
+    def _cancel_revolut_payment(self, operation_id):
+        # A fresh read decides eligibility. A POST result alone never means the
+        # line can be removed: cancellation can race with customer payment.
+        result = self._poll_revolut_payment(operation_id)
+        if result["state"] != "pending" or result["provider_state"] != "pending":
+            return result
+        if not self._claim_revolut_dispatch_owned(operation_id, "cancel_intent"):
+            return self._read_revolut_operation_owned(operation_id)["snapshot"]
+        operation = self._read_revolut_operation_owned(operation_id)
+        try:
+            self._revolut_api_request(
+                operation, "POST",
+                f"/api/payment-intents/{operation['payment_intent_id']}/cancel",
+            )
+            self._apply_revolut_observation_owned(
+                operation_id, "dispatch_cancel_intent",
+                {"reference": operation["payment_intent_id"]},
+            )
+        except (requests.RequestException, ValueError, UserError):
+            self._apply_revolut_observation_owned(
+                operation_id, "dispatch_cancel_intent",
+                {"uncertain": True, "cause": "interrupted"},
+            )
+        # Even a rejection or lost response must be reconciled, never replayed.
+        return self._poll_revolut_payment(operation_id)
+
+    def _read_revolut_terminal_tip(self, operation_id, snapshot):
+        if snapshot["state"] == "verified" or snapshot["retry_safe"]:
+            return snapshot
+        # An invalid fresh intent/payment observation must not be overridden by
+        # a report applied against captured data retained from an earlier poll.
+        if snapshot["state"] != "pending" or snapshot["provider_state"] not in {"captured", "completed"}:
+            return snapshot
+        operation = self._read_revolut_operation_owned(operation_id)
+        if not operation["authorized"] or not operation["captured_amount_minor"]:
+            return snapshot
+        run_id = operation["report_run_id"]
+        report_resource = True
+        try:
+            if not run_id:
+                claim = str(uuid4())
+                self._apply_revolut_observation_owned(operation_id, "tip_report_claim", {"claim": claim})
+                operation = self._read_revolut_operation_owned(operation_id)
+                if operation["report_claim"] != claim:
+                    return operation["snapshot"]
+                report = self._revolut_report_request(operation, "POST", "/api/report-runs",
+                                                       body=self._revolut_report_body(operation))
+                run_id, status = self._revolut_report_run(report)
+                self._apply_revolut_observation_owned(operation_id, "tip_report_created", {"claim": claim, "run_id": run_id})
+                operation = self._read_revolut_operation_owned(operation_id)
+                if operation["report_run_id"] != run_id:
+                    return operation["snapshot"]
+            else:
+                report = self._revolut_report_request(operation, "GET", f"/api/report-runs/{run_id}")
+                _, status = self._revolut_report_run(report, run_id)
+            if status in {"expired", "failed"}:
+                return self._apply_revolut_observation_owned(operation_id, "tip_report_retire", {"run_id": run_id, "reason": status})
+            if status == "processing":
+                return self._apply_revolut_observation_owned(operation_id, "tip_report_wait")
+            content = self._revolut_report_request(operation, "GET", f"/api/report-runs/{run_id}/file", csv_file=True)
+            report_resource = False
+            order = self._revolut_report_request(operation, "GET", f"/api/orders/{operation['order_id']}")
+            evidence = self._revolut_tip_report_evidence(operation, content, order)
+            if evidence is None:
+                return self._apply_revolut_observation_owned(operation_id, "tip_report_retire", {"run_id": run_id, "reason": "payment_not_yet_reported"})
+            return self._apply_revolut_observation_owned(operation_id, "tip_report_verified", evidence)
+        except requests.HTTPError as error:
+            if report_resource and run_id and error.response is not None and error.response.status_code in {404, 410}:
+                return self._apply_revolut_observation_owned(operation_id, "tip_report_retire", {"run_id": run_id, "reason": "file_unavailable"})
+            return self._apply_revolut_observation_owned(operation_id, "interrupted")
+        except requests.RequestException:
+            return self._apply_revolut_observation_owned(operation_id, "interrupted")
+        except (ValueError, TypeError, UnicodeError, csv.Error, UserError) as error:
+            # Configuration/settlement errors are already safe user messages.
+            # Never log report rows, response bodies or credential headers.
+            _logger.warning("Revolut operation %s tip reconciliation remains unresolved (%s)",
+                            operation_id, str(error) if isinstance(error, UserError) else type(error).__name__)
+            return self._apply_revolut_observation_owned(operation_id, "tip_report_invalid")
+
+    def revolut_poll_payment(self, operation_id, order_uuid, payment_line_uuid):
         return self._observe_revolut_payment(operation_id, order_uuid, payment_line_uuid)
 
     def revolut_cancel_payment(self, operation_id, order_uuid, payment_line_uuid):
