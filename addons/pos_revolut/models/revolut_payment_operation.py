@@ -358,6 +358,32 @@ class PosRevolutPaymentOperation(models.Model):
         if kind == "legacy_final":
             self._recover_legacy_final()
             return self.operation_snapshot(self)
+        if kind == "cancel_unclaimed":
+            # Explicit cashier cancellation competes with the first dispatch
+            # under the same financial locks. Timeouts and missing provider
+            # references alone never release a reservation.
+            dispatches = self.env["pos.revolut.payment.dispatch"].sudo().search([
+                ("operation_id", "=", self.id),
+            ])
+            before_order = (self.state == "created" and not dispatches
+                            and not self.revolut_order_id)
+            before_intent = (
+                self.state == "order_created" and len(dispatches) == 1
+                and dispatches.action == "create_order"
+                and dispatches.completed_at and dispatches.outcome == "succeeded"
+                and dispatches.provider_reference == self.revolut_order_id
+                and self.revolut_order_id
+            )
+            if ((before_order or before_intent)
+                    and not self.revolut_payment_intent_id
+                    and not self.revolut_payment_id):
+                self.sudo().write({
+                    "state": "cancelled", "provider_state": "not_dispatched",
+                    "retry_safe": True, "local_outcome": False,
+                    "blocking_order_key": False, "blocking_terminal_key": False,
+                    "next_reconcile_at": False, "reconcile_failures": 0,
+                })
+            return self.operation_snapshot(self)
         if kind == "references_unavailable":
             # Missing references were seen before this lock. A dispatch may
             # still be in flight, or a manager may have just linked them and
