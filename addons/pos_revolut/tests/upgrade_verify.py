@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from odoo import Command
 from odoo.exceptions import UserError
+from odoo.modules.module import get_manifest
 
 
 def response(payload):
@@ -16,7 +17,7 @@ def response(payload):
 
 history = json.loads(env["ir.config_parameter"].get_param("pos_revolut.upgrade_fixture"))
 assert len(history) == 6
-assert env["ir.module.module"].search([("name", "=", "pos_revolut")]).installed_version == "19.0.1.13.0"
+assert env["ir.module.module"].search([("name", "=", "pos_revolut")]).installed_version == get_manifest("pos_revolut")["version"]
 assert not env["pos.revolut.cart.authorization"].search_count([])
 with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request") as provider:
     for fixture in history:
@@ -38,8 +39,14 @@ with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
             assert recovered["order_id"] == operation.revolut_order_id, recovered
             assert recovered["payment_intent_id"] == operation.revolut_payment_intent_id, recovered
             if scenario.endswith("verified"):
-                polled = method.revolut_poll_payment(operation.id, operation.order_uuid, operation.payment_line_uuid)
-                assert polled["state"] == "verified", polled
+                # Cached final evidence still requires explicit original-account
+                # authority. Migration must never invent that authorization.
+                try:
+                    method.revolut_poll_payment(operation.id, operation.order_uuid, operation.payment_line_uuid)
+                except UserError:
+                    pass
+                else:
+                    raise AssertionError("Historical final evidence gained implicit Merchant authority")
                 assert operation.pos_payment_id.transaction_id == operation.revolut_payment_id
                 assert operation.pos_payment_id.amount == 12.34
             if scenario != "safe_failed":
@@ -85,6 +92,16 @@ with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
     # this one back. Persist the administrator's explicit migration action.
     env.cr.commit()
     env.invalidate_all()
+
+    # After the explicit administrator action, final historical evidence
+    # remains recoverable without a provider request or a replacement charge.
+    for fixture in history:
+        if fixture["scenario"].endswith("verified"):
+            operation = env["pos.revolut.payment.operation"].browse(fixture["operation_id"])
+            method = env["pos.payment.method"].browse(fixture["method_id"])
+            polled = method.revolut_poll_payment(operation.id, operation.order_uuid, operation.payment_line_uuid)
+            assert polled["state"] == "verified", polled
+            provider.assert_not_called()
 
     # A confirmed undispatched failure may retry against fresh canonical
     # authority while keeping its historical operation and references intact.
@@ -132,6 +149,14 @@ with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
         "uuid": return_line, "payment_method_id": method.id, "amount": -12.34,
         "payment_status": "waiting", "transaction_id": False,
     })]
+    # Current refund dispatch requires a persisted native return. Keep the
+    # historical amount-based lane while supplying that trusted draft.
+    # Match the POS JSON transport: native sync mutates relation commands
+    # when the same draft is later finalized, so they must be mutable lists.
+    returned = json.loads(json.dumps(returned))
+    env["pos.order"].sync_from_ui([returned])
+    env.cr.commit()
+    env.invalidate_all()
     sources = method.revolut_refund_sources(order.session_id.id, order.currency_id.id, returned)
     assert len(sources) == 1 and sources[0]["operation_id"] == operation.id, sources
     assert sources[0]["amount_minor"] == sources[0]["remaining_minor"] == 1234, sources
