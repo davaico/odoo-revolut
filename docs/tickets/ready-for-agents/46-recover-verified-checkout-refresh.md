@@ -2,7 +2,7 @@
 
 **Work branch:** `codex/46-recover-verified-checkout-refresh`
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 

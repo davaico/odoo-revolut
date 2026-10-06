@@ -1024,3 +1024,22 @@ A selected adjustment or small returned fraction can have zero entitlement. Save
 Previously accepted monetary allocations remain frozen, including pending and uncertain operations. New returns subtract their actual cents and quantities; when a previous full-line refund used its old ceiling, only unclaimed residual entitlement is redistributed. A failed claim releases its own reservation without changing surviving claims. No completed refund, reference, original price or native allocation is rewritten. Missing or inconsistent historical evidence still requires manager reconciliation; preserve the existing records and do not issue replacement refunds to repair history.
 
 See the [allocation and verification record](testing/ticket-45-discounted-rounded-returns.md) for the separate reproductions, native effects and compatibility checks.
+
+If a Revolut payment or refund is verified but the checkout refresh fails or
+exceeds its 60-second limit, the payment line shows **Verified — reconnect and
+Check status to restore checkout**. Reconnect and choose **Check status** on
+that same line. This action only reloads canonical Odoo checkout data; it does
+not send a charge, refund, cancellation or payment-status request to Revolut.
+Repeated clicks share one restoration attempt. Keep the original order and
+payment line; do not delete browser storage or create a replacement payment.
+Reload also preserves the original recovery action. Checkout remains blocked
+until the canonical totals, terminal tip and return targets are restored; the
+normal Odoo settlement checks still apply. A partial payment remains partial.
+The register releases its terminal-busy indicator when restoration fails,
+times out or finishes, so another eligible order can use the terminal subject
+to the server's financial guards.
+
+Addon version `19.0.1.18.1` contains this browser recovery correction. Upgrade
+`pos_revolut` and reload POS assets using the usual deployment procedure; no
+schema migration, configuration change or credential rotation is required.
+See the [verification record](testing/ticket-46-verified-checkout-recovery.md).
