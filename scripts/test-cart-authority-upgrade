@@ -1,48 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-project_name="${ODOO_REVOLUT_TEST_PROJECT:-odoo-revolut-cart-upgrade}"
-database_name="odoo_revolut_cart_upgrade"
-old_revision="719bae93390c3a326673af2d0e6b89aea0a84b65"
-old_tree="$(mktemp -d)"
-compose=(docker compose --project-name "$project_name" --file "$repository_root/compose.yaml")
-
-cleanup() {
-    "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
-    rm -rf "$old_tree"
-}
-trap cleanup EXIT
-
-git -C "$repository_root" archive "$old_revision" addons | tar -x -C "$old_tree"
-export ODOO_REVOLUT_ADDONS_DIR="$old_tree/addons"
-"${compose[@]}" down --volumes --remove-orphans
-"${compose[@]}" build odoo
-installed_version="$(
-    "${compose[@]}" run --rm --no-deps --entrypoint dpkg-query odoo \
-        --show --showformat='${Version}' odoo
-)"
-if [[ "$installed_version" != "19.0.20260908" ]]; then
-    echo "Expected Odoo 19.0.20260908, found $installed_version" >&2
-    exit 1
-fi
-"${compose[@]}" run --rm --no-deps --entrypoint python3 odoo \
-    /opt/odoo-test-guard/verify_merchant_http_guard.py
-"${compose[@]}" up --detach --wait db
-"${compose[@]}" run --rm odoo --database "$database_name" --init pos_revolut \
-    --stop-after-init --workers 0 --max-cron-threads 0 --log-level warn
-
-shell_phase() {
-    "${compose[@]}" run --rm -T --entrypoint odoo odoo shell \
-        --database "$database_name" --db_host db --db_user odoo \
-        --db_password odoo --no-http --max-cron-threads 0 \
-        --shell-interface python --log-level warn \
-        < "$repository_root/addons/pos_revolut/tests/$1"
-}
-
-shell_phase upgrade_seed.py
-export ODOO_REVOLUT_ADDONS_DIR="$repository_root/addons"
-"${compose[@]}" run --rm odoo --database "$database_name" --update pos_revolut \
-    --stop-after-init --workers 0 --max-cron-threads 0 --log-level warn
-shell_phase upgrade_verify.py
-echo "Historical cart-authority upgrade passed across old and new Odoo processes"
+script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$script_directory/test-historical-upgrade" cart-authority "$@"
