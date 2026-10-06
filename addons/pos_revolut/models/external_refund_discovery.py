@@ -188,10 +188,10 @@ class RefundDiscovery(models.Model):
 
         self._resolve_discovery_evidence(credential, f"failed-window:{start}:{end}")
 
-        # Provider candidate order is unspecified. Acquire the complete source
-        # set before any per-candidate refund locks, rather than holding source
+        # Provider candidate order is unspecified. Acquire the complete visible
+        # source set before any per-candidate refund locks, rather than holding source
         # B while later waiting for source A against a native sorted contender.
-        ReturnAllocation(self.env).acquire_discovery(sources)
+        ReturnAllocation(self.env).acquire_discovery(sources, candidates=candidates)
 
         # Process even a full page before splitting. This gives immediate
         # reservations for visible refunds while the rest of the scan resumes.

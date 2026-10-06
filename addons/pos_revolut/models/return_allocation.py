@@ -1228,10 +1228,6 @@ class ReturnAllocation:
                            "payment_ref_no": refund.revolut_order_id})
             refund.write({"pos_order_id": pos_order.id, "pos_payment_id": payment.id})
 
-    def _acquire_native_sets(self, sessions, identities, originals):
-        """Lock complete ORM mutation sets without interleaving lock stages."""
-        self.acquire_many(sessions, identities, originals)
-
     def _acquire_sources_and_refunds(self, sources, refunds=None):
         """Compatible suffix for discovery, which never requests earlier locks."""
         sources.flush_recordset()
@@ -1251,37 +1247,120 @@ class ReturnAllocation:
         current.invalidate_recordset()
         return current
 
+    def _native_line_auxiliary_owners(self, values):
+        """Discover the two native line relations whose child hooks watch POS."""
+        owners = self.env["pos.order"].sudo().browse()
+        for field, model in (
+            ("pack_lot_ids", "pos.pack.operation.lot"),
+            ("custom_attribute_value_ids", "product.attribute.custom.value"),
+        ):
+            commands = values.get(field) or []
+            for start in range(0, len(commands), MAX_LINES):
+                referenced = []
+                line_ids = []
+                for command in commands[start:start + MAX_LINES]:
+                    if not isinstance(command, (tuple, list)) or not command:
+                        continue
+                    kind = command[0]
+                    if kind in {1, 2, 3, 4} and len(command) > 1:
+                        if type(command[1]) is int and command[1] > 0:
+                            referenced.append(command[1])
+                    elif kind == 6 and len(command) > 2 and isinstance(command[2], (tuple, list)):
+                        referenced.extend(identifier for identifier in command[2]
+                                          if type(identifier) is int and identifier > 0)
+                    if kind in {0, 1} and len(command) > 2 and isinstance(command[2], dict):
+                        line_id = command[2].get("pos_order_line_id")
+                        if type(line_id) is int and line_id > 0:
+                            line_ids.append(line_id)
+                for offset in range(0, len(referenced), MAX_LINES):
+                    records = self.env[model].sudo().browse(referenced[offset:offset + MAX_LINES]).exists()
+                    owners |= records.pos_order_line_id.order_id
+                owners |= self.env["pos.order.line"].sudo().browse(line_ids).exists().order_id
+        return owners
+
+    def _native_command_identities(self, values):
+        """Discover complete ORM owner/source sets in bounded lookup batches.
+
+        This interprets relationship identifiers only. Native ORM access and
+        allocation validation remain authoritative after acquisition.
+        """
+        owners = self.env["pos.order"].sudo().browse()
+        originals = self.env["pos.order"].sudo().browse()
+        for field, model, owner_field in (
+            ("lines", "pos.order.line", "order_id"),
+            ("payment_ids", "pos.payment", "pos_order_id"),
+        ):
+            commands = values.get(field) or []
+            for start in range(0, len(commands), MAX_LINES):
+                referenced = []
+                original_ids = []
+                owner_ids = []
+                for command in commands[start:start + MAX_LINES]:
+                    if not isinstance(command, (tuple, list)) or not command:
+                        continue
+                    kind = command[0]
+                    if kind in {1, 2, 3, 4} and len(command) > 1:
+                        if type(command[1]) is int and command[1] > 0:
+                            referenced.append(command[1])
+                    elif kind == 6 and len(command) > 2 and isinstance(command[2], (tuple, list)):
+                        # SET can itself contain more identifiers than one
+                        # lookup batch; preserve the same bound below.
+                        referenced.extend(identifier for identifier in command[2]
+                                          if type(identifier) is int and identifier > 0)
+                    if kind in {0, 1} and len(command) > 2 and isinstance(command[2], dict):
+                        content = command[2]
+                        if field == "lines":
+                            owners |= self._native_line_auxiliary_owners(content)
+                        owner_id = content.get(owner_field)
+                        if type(owner_id) is int and owner_id > 0:
+                            owner_ids.append(owner_id)
+                        identifier = content.get("refunded_orderline_id") if field == "lines" else None
+                        if type(identifier) is int and identifier > 0:
+                            original_ids.append(identifier)
+                for offset in range(0, len(referenced), MAX_LINES):
+                    records = self.env[model].sudo().browse(referenced[offset:offset + MAX_LINES]).exists()
+                    owners |= records.mapped(owner_field)
+                    if field == "lines":
+                        originals |= records.refunded_orderline_id.order_id
+                owners |= self.env["pos.order"].sudo().browse(owner_ids).exists()
+                originals |= self.env["pos.order.line"].sudo().browse(original_ids).exists().order_id
+        return owners, originals
+
     def acquire_native_mutation(self, orders, values=None):
-        """Acquire before native order, line or tender SQL, then read evidence."""
+        """Acquire every command owner before native order, line or tender SQL."""
         orders = orders.exists()
         if not orders:
             return
-        originals = orders | orders.sudo().lines.refunded_orderline_id.order_id
+        targets = orders
+        new_originals = self.env["pos.order"].sudo().browse()
+        if values:
+            if values.get("lines") is not None and values.get("lines") is not False:
+                for target in targets:
+                    self.preflight_order_lines({**values, "uuid": target.uuid,
+                                                "lines": list(values["lines"])})
+            owners, new_originals = self._native_command_identities(values)
+            orders |= owners
+        originals = orders | orders.sudo().lines.refunded_orderline_id.order_id | new_originals
         sessions = orders.session_id
         identities = {(order.company_id.id, order.uuid) for order in orders}
         if values:
             if values.get("session_id"):
                 sessions |= self.env["pos.session"].browse(values["session_id"]).exists()
             identities.update((values.get("company_id") or order.company_id.id,
-                               values.get("uuid") or order.uuid) for order in orders)
-            for command in values.get("lines") or []:
-                if (isinstance(command, (tuple, list)) and len(command) > 2
-                        and command[0] in {0, 1} and isinstance(command[2], dict)):
-                    identifier = command[2].get("refunded_orderline_id")
-                    if type(identifier) is int and identifier > 0:
-                        originals |= self.env["pos.order.line"].sudo().browse(identifier).exists().order_id
-        self._acquire_native_sets(sessions, identities, originals)
+                               values.get("uuid") or order.uuid) for order in targets)
+        self.acquire_many(sessions, identities, originals)
         orders.invalidate_recordset()
         orders.lines.invalidate_recordset()
         orders.payment_ids.invalidate_recordset()
 
     def acquire_native_creation(self, vals_list):
-        """Choose native identity and acquire before native construction starts."""
+        """Choose native identity and acquire all command owners before INSERT."""
         from uuid import uuid4
 
         defaults = self.env["pos.order"].default_get(["session_id", "company_id"])
         prepared = [dict(values) for values in vals_list]
         sessions = self.env["pos.session"].browse()
+        owners = self.env["pos.order"].sudo().browse()
         originals = self.env["pos.order"].sudo().browse()
         identities = set()
         for values in prepared:
@@ -1289,35 +1368,39 @@ class ReturnAllocation:
                 self.preflight_order_lines({**values, "lines": list(values["lines"])})
             values.setdefault("uuid", str(uuid4()))
             session = self.env["pos.session"].browse(values.get("session_id") or defaults.get("session_id")).exists()
-            if not session:
-                continue
-            sessions |= session
-            identities.add((values.get("company_id") or session.company_id.id, values["uuid"]))
-            # Commands are only identity discovery here. Native ORM and later
-            # allocation validation still check their full contents and access.
-            for command in values.get("lines") or []:
-                if not isinstance(command, (tuple, list)) or not command:
-                    continue
-                if command[0] in {0, 1} and len(command) > 2 and isinstance(command[2], dict):
-                    identifier = command[2].get("refunded_orderline_id")
-                    if type(identifier) is int and identifier > 0:
-                        originals |= self.env["pos.order.line"].sudo().browse(identifier).exists().order_id
-                elif command[0] == 4 and len(command) > 1:
-                    originals |= self.env["pos.order.line"].sudo().browse(command[1]).exists().refunded_orderline_id.order_id
-                elif command[0] == 6 and len(command) > 2:
-                    originals |= self.env["pos.order.line"].sudo().browse(command[2]).exists().refunded_orderline_id.order_id
-        self._acquire_native_sets(sessions, identities, originals)
+            if session:
+                sessions |= session
+                identities.add((values.get("company_id") or session.company_id.id, values["uuid"]))
+            command_owners, command_originals = self._native_command_identities(values)
+            owners |= command_owners
+            originals |= command_originals
+        sessions |= owners.session_id
+        identities.update((owner.company_id.id, owner.uuid) for owner in owners)
+        originals |= owners | owners.lines.refunded_orderline_id.order_id
+        self.acquire_many(sessions, identities, originals)
         return prepared
 
-    def acquire_native_line_mutation(self, orders, original_line_ids):
+    def acquire_native_line_mutation(self, orders, original_line_ids, values=None):
         """Discover a newly introduced original before native line SQL."""
+        if values is not None:
+            for content in values if isinstance(values, list) else [values]:
+                orders |= self._native_line_auxiliary_owners(content)
         originals = (orders | orders.sudo().lines.refunded_orderline_id.order_id
                      | self.env["pos.order.line"].sudo().browse(original_line_ids).exists().order_id)
-        self._acquire_native_sets(orders.session_id,
+        self.acquire_many(orders.session_id,
                                  {(order.company_id.id, order.uuid) for order in orders}, originals)
 
-    def acquire_discovery(self, source):
+    def acquire_discovery(self, source, candidates=None):
         """Serialize financial discovery without requesting native locks later."""
+        if candidates is not None:
+            refunds = [item for item in candidates
+                       if isinstance(item, dict) and item.get("type") == "refund"]
+            # Listing can omit the parent and require an unchanged detail GET.
+            # Such a page conservatively protects the complete source set.
+            if not any(item.get("related_order_id") is None for item in refunds):
+                parents = {item["related_order_id"] for item in refunds
+                           if isinstance(item.get("related_order_id"), str)}
+                source = source.filtered(lambda operation: operation.revolut_order_id in parents)
         return self._acquire_sources_and_refunds(source)
 
     def acquire_payment_observation(self, operation):
