@@ -508,7 +508,19 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
         self.poll_payment()
         self.report_status = "completed"
         later = fields.Datetime.now() + timedelta(seconds=31)
-        with patch("odoo.fields.Datetime.now", return_value=later):
+        operations = self.env["pos.revolut.payment.operation"]
+        original_search = type(operations).search
+
+        def own_scheduled_operation(model, domain, *args, **kwargs):
+            # Owned-cursor fixtures survive installation into the upgrade run.
+            # Keep their older due attempts out of this test's bounded batch.
+            if ("next_reconcile_at", "<=", later) in domain:
+                domain = [*domain, ("id", "=", self.operation_id)]
+            return original_search(model, domain, *args, **kwargs)
+
+        with patch("odoo.fields.Datetime.now", return_value=later), \
+                patch.object(type(operations), "search", autospec=True,
+                             side_effect=own_scheduled_operation):
             self.env.ref("pos_revolut.ir_cron_reconcile_payments").method_direct_trigger()
         verified = self.method.revolut_find_payment(self.order.uuid, self.line_uuid)
         self.assertEqual(verified["state"], "verified")
