@@ -168,6 +168,22 @@ class TestReturnAllocation(CommonPosTest):
             self._rpc_refund_sources(manager)
         self.assertEqual(self.request.call_count, before)
 
+    def test_source_preview_rejects_inconsistent_reimbursement_components(self):
+        self._terminal_sale(tip_minor=0)
+        manager = self._mutation_actor()
+        first = self._reserve_partition(manager, 0.25, 309)
+        # Seed inconsistent historical evidence which normal writes prohibit.
+        self.env.cr.execute(
+            "UPDATE pos_revolut_refund_operation SET base_amount_minor = 308, tip_amount_minor = 1 WHERE id = %s",
+            [first["operation_id"]],
+        )
+        self.env.invalidate_all()
+        self._tip_return(goods_qty=0.75, tip_qty=0, payment_minor=925)
+        before = self.request.call_count
+        with self.assertRaisesRegex(UserError, "components"):
+            self._rpc_refund_sources(manager)
+        self.assertEqual(self.request.call_count, before)
+
     def _multi_return(self, quantity, target, tenders):
         self.payload = self._order_payload(str(uuid4()), str(uuid4()), payment_status="waiting")
         template = self.payload["lines"][0][2]
