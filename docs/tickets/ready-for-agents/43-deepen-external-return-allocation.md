@@ -2,7 +2,7 @@
 
 **Work branch:** `codex/43-deepen-external-return-allocation`
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 

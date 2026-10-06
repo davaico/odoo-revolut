@@ -16,6 +16,8 @@ from psycopg2.errors import DeadlockDetected, SerializationFailure
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
+from .return_allocation import ReturnAllocation
+
 
 OBSERVATION_LEASE_SECONDS = 60
 OBSERVATION_CADENCE_SECONDS = 1
@@ -161,9 +163,7 @@ class PosPaymentMethod(models.Model):
                     operation = env["pos.revolut.payment.operation"].sudo().browse(operation_id)
                     # Preserve financial lock ordering; fence before *all*
                     # applications, including report claims and projection.
-                    operation._lock_order(operation.company_id.id, operation.order_uuid)
-                    cursor.execute("SELECT id FROM pos_revolut_payment_operation WHERE id = %s FOR UPDATE", [operation_id])
-                    operation.invalidate_recordset()
+                    ReturnAllocation(env).acquire_payment_observation(operation)
                     if (operation.observation_token != scope["token"]
                             or not operation.observation_expires_at
                             or operation.observation_expires_at <= observation_now()):

@@ -213,3 +213,28 @@ class TestExternalNativeAssociation(CommonPosTest):
         self.assertEqual(return_session.state, "closed")
         manager_refund.action_prepare_native_return()
         self._assert_no_replayed_effects(before, native, refund)
+
+    def test_failing_batch_leaves_every_binding_and_native_effect_unchanged(self):
+        providers = [self._external("completed", amount=617),
+                     self._external("completed", amount=617, id=str(uuid4()))]
+        native = self._legacy_completed_return(providers)
+        refunds = self._discover(providers).sorted("id")
+        payments = native.payment_ids.sorted("id")
+        allocations = [{"refund_id": refund.id, "payment_id": payment.id}
+                       for refund, payment in zip(refunds, payments)]
+        # A real historical mismatch in the last member must reject the batch,
+        # preserving the valid first reimbursement and all existing native work.
+        self.env.flush_all()
+        self.env.cr.execute("UPDATE pos_payment SET transaction_id = %s WHERE id = %s",
+                            [str(uuid4()), payments[-1].id])
+        payments.invalidate_recordset()
+        before = self._effect_counts()
+        self.request.reset_mock()
+        with self.assertRaisesRegex(UserError, "unrelated, ambiguous"):
+            refunds.with_user(self._mutation_actor()).action_associate_native_return(native.id, allocations)
+        self.assertFalse(refunds.pos_order_id)
+        self.assertFalse(refunds.pos_payment_id)
+        self.assertFalse(payments.revolut_refund_operation_id)
+        self.assertEqual(self._effect_counts(), before)
+        self.assertEqual(native.state, "paid")
+        self.request.assert_not_called()

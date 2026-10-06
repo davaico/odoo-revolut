@@ -1,6 +1,7 @@
 """Manager native-completion RPCs race in independent committed transactions."""
-from threading import Barrier
-from unittest.mock import patch
+import os
+from threading import Barrier, Event
+from unittest.mock import Mock, patch
 from uuid import uuid4
 
 from psycopg2.errors import DeadlockDetected, SerializationFailure
@@ -82,6 +83,9 @@ class TestExternalNativeConcurrency(TransactionCase):
             self.assertEqual(source.pos_order_id, original)
             self.source_id, self.credential_id = source.id, source.credential_id.id
             self.original_id, self.original_line_id = original.id, original.lines.id
+            self.session_id, self.method_id = session.id, method.id
+            self.currency_id = source.currency_id.id
+            self.secret_reference = source.secret_reference
             self.manager_ids = [manager.id for manager in managers]
             source.credential_id.write({"next_refund_discovery_at": "2100-01-01"})
             cursor.commit()
@@ -104,7 +108,7 @@ class TestExternalNativeConcurrency(TransactionCase):
             ]).write({"next_reconcile_at": False})
             cursor.commit()
 
-    def _external_refund(self, minor=1234):
+    def _external_refund(self, minor=1234, state="verified"):
         # Financial evidence is the pre-agreed mocked seam. These races begin
         # after the provider refund has already completed and been imported.
         with self.registry.cursor() as cursor:
@@ -114,7 +118,8 @@ class TestExternalNativeConcurrency(TransactionCase):
                 "origin": "external", "original_operation_id": source.id,
                 "pos_session_id": source.pos_session_id.id,
                 "amount": minor / 100, "amount_minor": minor, "currency_id": source.currency_id.id,
-                "state": "verified", "provider_state": "completed", "verified_at": fields.Datetime.now(),
+                "state": state, "provider_state": "completed" if state == "verified" else state,
+                "verified_at": fields.Datetime.now() if state == "verified" else False,
                 "revolut_order_id": str(uuid4()), "next_reconcile_at": False,
             })
             identity = refund.id
@@ -122,6 +127,9 @@ class TestExternalNativeConcurrency(TransactionCase):
             return identity
 
     def _rpc(self, manager_id, refund_id, method, *args):
+        return self._model_rpc(manager_id, "pos.revolut.refund.operation", method, [[refund_id], *args])
+
+    def _model_rpc(self, manager_id, model, method, args):
         # The browser/server transaction may encounter PostgreSQL's stale
         # snapshot guard. Retry the public call in a fresh transaction, exactly
         # as reconnecting and reopening the recorded workflow would do.
@@ -129,7 +137,7 @@ class TestExternalNativeConcurrency(TransactionCase):
             try:
                 with self.registry.cursor() as cursor:
                     env = api.Environment(cursor, manager_id, self.context)
-                    result = call_kw(env["pos.revolut.refund.operation"], method, [[refund_id], *args], {
+                    result = call_kw(env[model], method, args, {
                         "context": self.context,
                     })
                     cursor.commit()
@@ -142,6 +150,45 @@ class TestExternalNativeConcurrency(TransactionCase):
         return self._rpc(manager_id, refund_id, "action_prepare_native_return", [{
             "original_line_id": self.original_line_id, "quantity": quantity,
         }])
+
+    def _native_draft(self, quantity, minor):
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            original = env["pos.order"].browse(self.original_id)
+            order_uuid, payment_uuid = str(uuid4()), str(uuid4())
+            values = {
+                "name": "Competing native refund", "uuid": order_uuid,
+                "session_id": self.session_id, "state": "draft",
+                "amount_total": -original.currency_id.round(12.34 * quantity),
+                "amount_tax": 0, "amount_paid": 0, "amount_return": 0,
+                "pricelist_id": original.pricelist_id.id,
+                "lines": [Command.create({
+                    "product_id": original.lines.product_id.id, "qty": -quantity,
+                    "price_unit": 12.34, "price_subtotal": -12.34 * quantity,
+                    "price_subtotal_incl": -12.34 * quantity,
+                    "tax_ids": [Command.set([])], "uuid": str(uuid4()),
+                    "refunded_orderline_id": self.original_line_id,
+                })],
+                "payment_ids": [Command.create({
+                    "payment_method_id": self.method_id, "amount": -minor / 100,
+                    "uuid": payment_uuid, "payment_status": "waiting",
+                })],
+            }
+            saved = env["pos.order"].sync_from_ui([values])
+            order = env["pos.order"].browse(next(row["id"] for row in saved["pos.order"]
+                                               if row["uuid"] == order_uuid))
+            snapshot = env["pos.revolut.payment.operation"]._normalize_financial_snapshot(
+                order._revolut_order_values(), native_order=True,
+            )
+            snapshot["amount_total"] = order.amount_total
+            cursor.commit()
+            return order_uuid, payment_uuid, snapshot
+
+    @staticmethod
+    def _response(payload):
+        response = Mock()
+        response.json.return_value = payload
+        return response
 
     def test_two_managers_prepare_one_external_refund_draft_and_payment(self):
         refund_id = self._external_refund()
@@ -239,4 +286,280 @@ class TestExternalNativeConcurrency(TransactionCase):
             refund = env["pos.revolut.refund.operation"].browse(refund_id)
             self.assertEqual((order.picking_ids.ids, order.picking_ids.move_ids.ids,
                               order.payment_ids.ids, refund.native_reconciled_at), evidence)
+        self.request.assert_not_called()
+
+    def test_native_reservation_and_external_association_conserve_last_quantities(self):
+        refund_id = self._external_refund(617)
+        order_uuid, payment_uuid, snapshot = self._native_draft(0.75, 617)
+        barrier = Barrier(2)
+        self.enterContext(patch.dict(os.environ, {self.secret_reference: "test-only"}))
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            source = env["pos.revolut.payment.operation"].browse(self.source_id)
+            provider_order, currency = source.revolut_order_id, source.currency_id.name
+        provider_refund = str(uuid4())
+
+        def http(method, url, **kwargs):
+            if method == "GET" and url.endswith(f"/api/orders/{provider_order}"):
+                return self._response({"id": provider_order, "type": "payment", "state": "completed",
+                                       "amount": 1234, "currency": currency, "refunded_amount": 617})
+            if method == "POST" and url.endswith(f"/api/orders/{provider_order}/refund"):
+                self.assertEqual(kwargs["json"]["amount"], 617)
+                return self._response({"id": provider_refund, "type": "refund", "state": "pending",
+                                       "related_order_id": provider_order, "amount": 617, "currency": currency})
+            raise AssertionError(f"Unexpected Merchant request: {method} {url}")
+
+        def reserve():
+            barrier.wait(timeout=10)
+            try:
+                return self._model_rpc(self.manager_ids[0], "pos.payment.method", "revolut_start_refund", [
+                    [self.method_id], self.session_id, order_uuid, payment_uuid, -6.17,
+                    self.currency_id, snapshot,
+                ])
+            except UserError:
+                return "rejected"
+
+        def associate():
+            barrier.wait(timeout=10)
+            try:
+                return self._prepare(self.manager_ids[1], refund_id, 0.75)
+            except UserError:
+                return "rejected"
+
+        self.request.side_effect = http
+        results = self._run_workers([("native-reservation", reserve), ("external-association", associate)])
+        self.assertEqual(results.count("rejected"), 1)
+        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            refunds = env["pos.revolut.refund.operation"].search([
+                ("original_operation_id", "=", self.source_id), ("state", "!=", "failed"),
+            ])
+            self.assertLessEqual(sum(refunds.mapped("amount_minor")), 1234)
+            allocated = refunds.filtered("order_uuid")
+            self.assertEqual(len(allocated), 1)
+            self.assertEqual(sum(float(line["qty"]) for line in allocated.financial_snapshot["lines"]), -0.75)
+            self.assertEqual(len(posts), int(allocated.origin == "odoo"))
+            self.assertEqual(env["pos.revolut.refund.operation"].browse(refund_id).state, "verified")
+            self.assertFalse(refunds.pos_order_id.picking_ids)
+            self.assertFalse(refunds.pos_order_id.account_move)
+
+    def test_historical_recovery_and_closure_keep_verified_refund_recoverable(self):
+        order_uuid, payment_uuid, snapshot = self._native_draft(1, 1234)
+        snapshot.pop("amount_total")
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            env["pos.order"].search([("uuid", "=", order_uuid)]).unlink()
+            source = env["pos.revolut.payment.operation"].browse(self.source_id)
+            refund = env["pos.revolut.refund.operation"].create({
+                "original_operation_id": source.id, "pos_session_id": self.session_id,
+                "order_uuid": order_uuid, "payment_line_uuid": payment_uuid,
+                "amount": 12.34, "amount_minor": 1234, "currency_id": source.currency_id.id,
+                "state": "verified", "provider_state": "completed", "verified_at": fields.Datetime.now(),
+                "revolut_order_id": str(uuid4()), "financial_snapshot": snapshot,
+                "return_total_minor": 1234, "next_reconcile_at": False,
+            })
+            # A historical orphan represents a deployment predating closure
+            # protection; public closure cannot create this fixture today.
+            env.flush_all()
+            cursor.execute("UPDATE pos_session SET state = 'closed' WHERE id = %s", [self.session_id])
+            env["pos.session"].browse(self.session_id).invalidate_recordset()
+            session = env["pos.session"].create({"config_id": source.pos_config_id.id, "state": "opened"})
+            refund_id, current_session_id = refund.id, session.id
+            cursor.commit()
+        barrier = Barrier(2)
+
+        def recover():
+            barrier.wait(timeout=10)
+            try:
+                return self._rpc(self.manager_ids[0], refund_id, "action_recover_return")
+            except UserError:
+                return "rejected"
+
+        def close():
+            barrier.wait(timeout=10)
+            try:
+                self._model_rpc(self.manager_ids[1], "pos.session", "write", [
+                    [current_session_id], {"state": "closing_control"},
+                ])
+                return "closed"
+            except UserError:
+                return "rejected"
+
+        results = self._run_workers([("native-recovery", recover), ("session-closure", close)])
+        self.assertEqual(results.count("rejected"), 1)
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            refund = env["pos.revolut.refund.operation"].browse(refund_id)
+            session = env["pos.session"].browse(current_session_id)
+            self.assertEqual(refund.state, "verified")
+            self.assertEqual(refund.pos_session_id.id, self.session_id)
+            if refund.pos_order_id:
+                self.assertEqual(session.state, "opened")
+                self.assertEqual(refund.pos_order_id.session_id, session)
+            else:
+                self.assertEqual(session.state, "closing_control")
+                session.write({"state": "opened"})
+                cursor.commit()
+        action = self._rpc(self.manager_ids[0], refund_id, "action_recover_return")
+        self.assertEqual(self._rpc(self.manager_ids[1], refund_id, "action_recover_return"), action)
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            orders = env["pos.order"].search([("uuid", "=", order_uuid)])
+            refund = env["pos.revolut.refund.operation"].browse(refund_id)
+            self.assertEqual(len(orders), 1)
+            self.assertEqual(orders.state, "draft")
+            self.assertEqual(orders.lines.qty, -1)
+            self.assertEqual(refund.pos_payment_id, orders.payment_ids)
+            self.assertEqual(orders.payment_ids.amount, -12.34)
+            self.assertFalse(orders.picking_ids)
+            self.assertFalse(orders.account_move)
+        self.request.assert_not_called()
+
+    def test_discovery_during_reservation_releases_stale_claim_and_dispatches_only_remaining_cents(self):
+        order_uuid, payment_uuid, snapshot = self._native_draft(1, 1234)
+        original_read, discovery_finished = Event(), Event()
+        self.enterContext(patch.dict(os.environ, {self.secret_reference: "test-only"}))
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            source = env["pos.revolut.payment.operation"].browse(self.source_id)
+            provider_order, currency = source.revolut_order_id, source.currency_id.name
+            source.credential_id.write({"next_refund_discovery_at": False})
+            cron_id = env.ref("pos_revolut.ir_cron_reconcile_refunds").id
+            cursor.commit()
+        external_reference, native_reference = str(uuid4()), str(uuid4())
+        candidate = {
+            "id": external_reference, "type": "refund", "state": "completed",
+            "related_order_id": provider_order, "amount": 617, "currency": currency,
+            "created_at": "2026-10-01T12:00:00Z",
+        }
+
+        def http(method, url, **kwargs):
+            if method == "GET" and url.endswith("/api/orders"):
+                # Discovery is already running while the first reservation
+                # commits. Its imported money then invalidates that claim's
+                # provider preflight, before any financial dispatch.
+                self.assertTrue(original_read.wait(10), "Native reservation did not reach provider preflight")
+                return self._response({"orders": [candidate]})
+            if method == "GET" and url.endswith(f"/api/orders/{external_reference}"):
+                return self._response(candidate)
+            if method == "GET" and url.endswith(f"/api/orders/{provider_order}"):
+                original_read.set()
+                self.assertTrue(discovery_finished.wait(10), "External discovery did not finish")
+                return self._response({"id": provider_order, "type": "payment", "state": "completed",
+                                       "amount": 1234, "currency": currency, "refunded_amount": 617})
+            if method == "POST" and url.endswith(f"/api/orders/{provider_order}/refund"):
+                self.assertEqual(kwargs["json"]["amount"], 617)
+                self.assertTrue(kwargs["headers"].get("Idempotency-Key"))
+                return self._response({"id": native_reference, "type": "refund", "state": "pending",
+                                       "related_order_id": provider_order, "amount": 617, "currency": currency})
+            raise AssertionError(f"Unexpected Merchant request: {method} {url}")
+
+        def start(identity, minor):
+            selected_order, selected_payment, selected_snapshot = identity
+            return self._model_rpc(self.manager_ids[0], "pos.payment.method", "revolut_start_refund", [
+                [self.method_id], self.session_id, selected_order, selected_payment,
+                -minor / 100, self.currency_id, selected_snapshot,
+            ])
+
+        def discover():
+            try:
+                return self._model_rpc(SUPERUSER_ID, "ir.cron", "method_direct_trigger", [[cron_id]])
+            finally:
+                discovery_finished.set()
+
+        self.request.side_effect = http
+        results = self._run_workers([
+            ("native-stale-reservation", lambda: start((order_uuid, payment_uuid, snapshot), 1234)),
+            ("external-provider-discovery", discover),
+        ])
+        stale = next(result for result in results if isinstance(result, dict) and "operation_id" in result)
+        self.assertEqual(stale["state"], "failed")
+        self.assertFalse([call for call in self.request.call_args_list if call.args[0] == "POST"])
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            imported = env["pos.revolut.refund.operation"].search([
+                ("original_operation_id", "=", self.source_id), ("origin", "=", "external"),
+            ])
+            self.assertEqual(len(imported), 1)
+            self.assertEqual(imported.revolut_order_id, external_reference)
+            self.assertEqual(imported.amount_minor, 617)
+            self.assertEqual(imported.state, "verified")
+            self.assertFalse(imported.pos_order_id)
+            self.assertFalse(imported.financial_snapshot)
+        remaining = self._native_draft(0.5, 617)
+        started = start(remaining, 617)
+        self.assertEqual(started["state"], "pending")
+        self.assertEqual(start(remaining, 617)["operation_id"], started["operation_id"])
+        posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0].kwargs["json"]["amount"], 617)
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            protected = env["pos.revolut.refund.operation"].search([
+                ("original_operation_id", "=", self.source_id), ("state", "!=", "failed"),
+            ])
+            self.assertEqual(sum(protected.mapped("amount_minor")), 1234)
+            self.assertEqual(set(protected.mapped("origin")), {"external", "odoo"})
+            self.assertFalse(protected.pos_order_id.picking_ids)
+            self.assertFalse(protected.pos_order_id.account_move)
+        exhausted = self._native_draft(0.5, 617)
+        with self.assertRaisesRegex(UserError, "balance"):
+            start(exhausted, 617)
+        self.assertEqual(len([call for call in self.request.call_args_list if call.args[0] == "POST"]), 1)
+
+    def test_pending_status_completion_and_finalization_create_native_effects_once(self):
+        refund_id = self._external_refund(state="pending")
+        order_id = self._prepare(self.manager_ids[0], refund_id)["res_id"]
+        provider_read, validation_finished = Event(), Event()
+        self.enterContext(patch.dict(os.environ, {self.secret_reference: "test-only"}))
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            refund = env["pos.revolut.refund.operation"].browse(refund_id)
+            reference, parent, currency = refund.revolut_order_id, refund.original_operation_id.revolut_order_id, refund.currency_id.name
+
+        def http(method, url, **kwargs):
+            self.assertEqual(method, "GET")
+            self.assertTrue(url.endswith(f"/api/orders/{reference}"))
+            provider_read.set()
+            self.assertTrue(validation_finished.wait(10), "Pending native validation did not return")
+            return self._response({"id": reference, "type": "refund", "state": "completed",
+                                   "related_order_id": parent, "amount": 1234, "currency": currency})
+
+        def finalize():
+            self.assertTrue(provider_read.wait(10))
+            try:
+                with self.assertRaises(UserError):
+                    self._rpc(self.manager_ids[1], refund_id, "action_validate_native_return")
+                with self.registry.cursor() as cursor:
+                    env = api.Environment(cursor, SUPERUSER_ID, self.context)
+                    order = env["pos.order"].browse(order_id)
+                    self.assertEqual(order.state, "draft")
+                    self.assertFalse(order.picking_ids)
+                    self.assertEqual(order.payment_ids.payment_status, "waiting")
+            finally:
+                validation_finished.set()
+
+        self.request.side_effect = http
+        self._run_workers([
+            ("provider-completion", lambda: self._rpc(self.manager_ids[0], refund_id, "action_check_status")),
+            ("pending-finalization", finalize),
+        ])
+        self.request.reset_mock()
+        self.request.side_effect = AssertionError("Resuming issued money must never contact Merchant HTTP")
+        self._rpc(self.manager_ids[0], refund_id, "action_prepare_native_return")
+        self._rpc(self.manager_ids[1], refund_id, "action_validate_native_return")
+        self._rpc(self.manager_ids[0], refund_id, "action_validate_native_return")
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            refund = env["pos.revolut.refund.operation"].browse(refund_id)
+            order = env["pos.order"].browse(order_id)
+            self.assertEqual(refund.state, "verified")
+            self.assertEqual(refund.native_reconciliation_status, "native_completed")
+            self.assertEqual(order.state, "paid")
+            self.assertEqual(len(order.payment_ids), 1)
+            self.assertEqual(order.payment_ids.transaction_id, reference)
+            self.assertEqual(len(order.picking_ids), 1)
+            self.assertEqual(order.picking_ids.state, "done")
+            self.assertEqual(sum(order.picking_ids.move_ids.mapped("quantity")), 1)
         self.request.assert_not_called()

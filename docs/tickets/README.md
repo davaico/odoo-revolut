@@ -103,7 +103,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [40 — Conserve rounding across partial refunds](closed/40-conserve-partial-refund-rounding.md) | `ready-for-agent` at closure | Closed | Conserved 309/925 returns; 508 install / 508 upgrade, native accounting/receipts and actual history upgrades verified |
 | [41 — Complete Revolut-initiated refunds through native Odoo returns](closed/41-complete-external-refund-returns.md) | `ready-for-agent` at closure | Closed | Native returns and financial corrections; 546 install tests, 90 merged checks and real history upgrades verified; full upgrade stopped at owner request |
 | [42 — Deepen native return allocation and recovery](closed/42-deepen-native-return-allocation.md) | `ready-for-agent` at closure | Closed | Shared native decisions and recovery; 552 install / 552 upgrade, 90 compatibility checks and clean Standards/Spec review |
-| [43 — Deepen external return association and unify return locking](ready-for-agents/43-deepen-external-return-allocation.md) | `ready-for-agent` | Open | 42 (closed) |
+| [43 — Deepen external return association and unify return locking](ready-for-agents/43-deepen-external-return-allocation.md) | `ready-for-agent` | Claimed | 42 (closed) |
 
 ## Return allocation deepening — 2026-10-06
 

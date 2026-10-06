@@ -316,9 +316,8 @@ class PosOrder(models.Model):
                     if not order:
                         raise UserError(_('Save the draft online before preparing Revolut payment.'))
                     order._revolut_check_prepare_identity(uuid)
-                    cursor.execute("UPDATE pos_session SET write_date = write_date WHERE id = %s", [order.session_id.id])
-                    env['pos.revolut.payment.operation'].sudo()._lock_order(order.company_id.id,uuid)
-                    order.invalidate_recordset()
+                    from .return_allocation import ReturnAllocation
+                    ReturnAllocation(env).acquire_native_mutation(order)
                     order._revolut_check_prepare_identity(uuid)
                     with _authority_mutation(env):
                         result = order._revolut_prepare_locked(expected_cart_version,tender_plan)
@@ -427,9 +426,8 @@ class PosOrder(models.Model):
                     if not order:
                         raise UserError(_('The cart is unavailable.'))
                     order._revolut_check_prepare_identity(uuid)
-                    cursor.execute("UPDATE pos_session SET write_date = write_date WHERE id = %s", [order.session_id.id])
-                    env['pos.revolut.payment.operation'].sudo()._lock_order(order.company_id.id,uuid)
-                    order.invalidate_recordset()
+                    from .return_allocation import ReturnAllocation
+                    ReturnAllocation(env).acquire_native_mutation(order)
                     order._revolut_check_prepare_identity(uuid)
                     authority = order.revolut_authorization_id.sudo()
                     if not authority or authority.cart_version != cart_version or authority.state != 'approval_required' or authority.expires_at <= fields.Datetime.now() or authority.fingerprint != _digest(order._revolut_authority_contents()):
@@ -603,22 +601,11 @@ class PosSession(models.Model):
 
     def write(self, values):
         if values.get('state') in {'closing_control','closed'}:
+            from .return_allocation import ReturnAllocation
+            all_operations, all_refunds = ReturnAllocation(self.env).acquire_session_closure(self)
             for session in self.sorted('id'):
-                self.env.cr.execute("UPDATE pos_session SET write_date = write_date WHERE id = %s", [session.id])
-                operations = self.env['pos.revolut.payment.operation'].sudo().search([
-                    ('pos_session_id','=',session.id)], order='order_uuid,id')
-                refunds = self.env['pos.revolut.refund.operation'].sudo().search([
-                    ('order_uuid','!=',False), '|',
-                    ('pos_session_id','=',session.id),
-                    ('pos_order_id.session_id','=',session.id)], order='order_uuid,id')
-                # Return allocations share the order locks used by charges.
-                # Keep one stable order even when this session has both kinds.
-                keys = {(record.company_id.id, record.order_uuid) for record in operations}
-                keys.update((record.company_id.id, record.order_uuid) for record in refunds)
-                for company_id, order_uuid in sorted(keys):
-                    self.env['pos.revolut.payment.operation']._lock_order(company_id, order_uuid)
-                operations.invalidate_recordset()
-                refunds.invalidate_recordset()
+                operations = all_operations.filtered(lambda operation: operation.pos_session_id == session)
+                refunds = all_refunds.filtered(lambda refund: refund.pos_session_id == session or refund.pos_order_id.session_id == session)
                 if any((not op.retry_safe and op.state != 'verified') or (op.state == 'verified' and (not op.pos_payment_id or op.pos_order_id.state == 'draft')) for op in operations):
                     raise UserError(_('Reconcile or settle the original Revolut payments before closing this session.'))
                 if any(refund.state != 'failed' and (
