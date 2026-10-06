@@ -190,7 +190,7 @@ export class PaymentRevolut extends PaymentInterface {
                     }
                 },
                 discardRefund: (line) => line.pos_order_id.removePaymentline(line),
-                setVerified: (line, result) => this._setVerified(line, result),
+                setVerified: (line, result, restoration) => this._setVerified(line, result, restoration),
                 showError: (line, state) => this._showResultError(line, state),
                 showPreparationError: (line, reason, message) => this._showPreparationError(reason, message),
             },
@@ -206,12 +206,25 @@ export class PaymentRevolut extends PaymentInterface {
         return this.paymentState.cancel(order, order.getPaymentlineByUuid(uuid));
     }
 
-    async _refreshAuthorizedOrder(order) {
+    async _refreshAuthorizedOrder(order, isCurrent = () => true) {
         if (!Number.isInteger(order.id)) {
             throw new Error(_t("Save this order online before preparing payment."));
         }
         const state = await this.pos.data.call("pos.order", "revolut_checkout_state", [order.id, order.uuid]);
+        if (!isCurrent()) {
+            return;
+        }
         const missing = await this.pos.data.missingRecursive(state.data);
+        if (!isCurrent()) {
+            return;
+        }
+        // Native missingRecursive can return an empty or partial accumulator
+        // when connectivity changes after the checkout RPC has succeeded.
+        if (this.pos.data.network.offline || !missing["pos.order"]?.some(
+            (record) => record.id === order.id && record.uuid === order.uuid
+        )) {
+            throw new Error(_t("Could not load canonical checkout data. Reconnect and check status."));
+        }
         this.pos.models.loadConnectedData(missing);
         order.uiState.revolutAuthority = state.authority;
         return state;
@@ -257,9 +270,12 @@ export class PaymentRevolut extends PaymentInterface {
         }
     }
 
-    async _setVerified(line, result) {
+    async _setVerified(line, result, { isCurrent }) {
         if (result.authorization_id || (isRevolutRefund(line) && Number.isInteger(line.pos_order_id.id))) {
-            await this._refreshAuthorizedOrder(line.pos_order_id);
+            await this._refreshAuthorizedOrder(line.pos_order_id, isCurrent);
+        }
+        if (!isCurrent()) {
+            return;
         }
         line.transaction_id = result.payment_id;
         line.payment_ref_no = result.order_id;
@@ -296,6 +312,13 @@ export class PaymentRevolut extends PaymentInterface {
     }
 
     _showResultError(line, state) {
+        if (state === "checkout_restore_failed") {
+            this.env.services.dialog.add(AlertDialog, {
+                title: _t("Revolut checkout recovery"),
+                body: _t("Revolut verified this payment or refund, but Odoo could not restore the checkout data. Reconnect, then choose Check status to finish this same sale or return. No new charge or refund will be sent."),
+            });
+            return;
+        }
         if (["snapshot_invalid", "authority_required"].includes(state)) {
             const message = line.uiState.revolutRejectionMessage;
             this.env.services.dialog.add(AlertDialog, {
@@ -577,7 +600,13 @@ patch(PaymentScreen.prototype, {
             return super.sendPaymentRequest(...arguments);
         }
         return line.payment_method_id.payment_terminal.paymentState.screenRequest(
-            this.currentOrder, line, () => super.sendPaymentRequest(line), options
+            this.currentOrder, line, async () => {
+                try {
+                    return await super.sendPaymentRequest(line);
+                } finally {
+                    this.pos.paymentTerminalInProgress = false;
+                }
+            }, options
         );
     },
 
@@ -627,6 +656,9 @@ patch(PaymentScreen.prototype, {
 
 patch(PaymentScreenPaymentLines.prototype, {
     revolutPaymentStatus(line) {
+        if (paymentOutcome(line) === "checkout_restore_failed") {
+            return _t("Verified — reconnect and Check status to restore checkout");
+        }
         if (line.uiState.revolutSnapshot?.awaiting_tip_details) {
             return _t("Payment received — awaiting terminal tip details");
         }

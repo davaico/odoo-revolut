@@ -84,8 +84,11 @@ function fixture({ refund = false, call, chooseAllocation = async () => false,
         chooseAllocation,
         setRefundAmount(payment, amount) { payment.amount = -amount; },
         discardRefund(payment) { order.payment_ids = order.payment_ids.filter((item) => item !== payment); },
-        async setVerified(payment, result) {
-            await projectVerified(payment, result);
+        async setVerified(payment, result, restoration) {
+            await projectVerified(payment, result, restoration);
+            if (!restoration.isCurrent()) {
+                return;
+            }
             payment.transaction_id = result.payment_id;
             payment.payment_ref_no = result.order_id;
         },
@@ -265,7 +268,8 @@ test("local verified refund reload restores only a valid server-checked return t
         line.payment_status = "done";
         restorePaymentLine(line);
         assert.equal(order.revolut_payable_target, total === 1003 ? -10.03 : undefined);
-        assert.equal(line.getPaymentStatus(), "done");
+        assert.equal(line.getPaymentStatus(), "retry");
+        assert.equal(orderActions(order).blocksCheckout, true);
     }
 });
 
@@ -593,6 +597,8 @@ for (const [processing, final] of [["declining", "declined"], ["failing", "faile
         assert.deepEqual(errors, [final]);
         assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 1);
     });
+
+
 }
 
 test("valid processing times out and a later check recovers capture without starting again", async () => {
@@ -1706,6 +1712,159 @@ test("verified checkout waits for the canonical gross and tip projection", async
     assert.equal(await request,true);
     assert.equal(line.transaction_id,"captured");
 });
+
+for (const refund of [false, true]) {
+    test(`verified ${refund ? "refund" : "payment"} survives repeated checkout restoration failures and read-only recovery`, async () => {
+        let connected = false;
+        let restorations = 0;
+        const result = { operation_id: 90, state: "verified", payment_id: "paid-90",
+            order_id: "provider-90", authorization_id: refund ? false : 9,
+            return_total_minor: refund ? 1234 : undefined };
+        const { state, order, line, calls, errors } = fixture({
+            refund,
+            call(method) {
+                if (method === (refund ? "revolut_find_refund" : "revolut_find_payment")) {
+                    return result;
+                }
+                assert.fail(`Restoration must not dispatch or poll: ${method}`);
+            },
+            projectVerified: async () => {
+                restorations++;
+                if (!connected) {
+                    throw new Error("canonical checkout connection lost");
+                }
+            },
+        });
+        for (let attempt = 0; attempt < 2; attempt++) {
+            assert.equal(await state.request(order, line, { checkOnly: true }), false);
+            line.handlePaymentResponse(false);
+            assert.equal(line.getPaymentStatus(), "retry");
+            assert.equal(paymentResponseSuccessful(line, true), false);
+            assert.equal(line.uiState.revolutSnapshot, result);
+            assert.equal(line.uiState.revolutOperationId, 90);
+            assert.equal(paymentOutcome(line), "checkout_restore_failed");
+            assert.equal(paymentActions(line).canDelete, false);
+            assert.equal(paymentActions(line).shouldCancelBeforeDelete, false);
+            assert.equal(paymentActions(line).retrySafe, false);
+            assert.equal(orderActions(order).blocksCheckout, true);
+            assert.equal(orderActions(order).blocksAlternativeTender, true);
+        }
+        assert.equal(restorations, 2);
+        assert.deepEqual(errors, ["checkout_restore_failed", "checkout_restore_failed"]);
+        connected = true;
+        const recovered = state.request(order, line, { checkOnly: true });
+        assert.equal(state.request(order, line, { checkOnly: true }), recovered);
+        assert.equal(await recovered, true);
+        line.handlePaymentResponse(true);
+        assert.equal(line.getPaymentStatus(), "done");
+        assert.equal(line.transaction_id, "paid-90");
+        assert.equal(line.payment_ref_no, "provider-90");
+        assert.equal(orderActions(order).blocksCheckout, false);
+        assert.equal(calls.length, 1);
+    });
+}
+
+for (const refund of [false, true]) {
+    test(`verified ${refund ? "refund" : "payment"} bounds hung restoration and ignores its late completion after reload`, async () => {
+        const late = deferred();
+        let restorations = 0;
+        const result = { operation_id: 91, state: "verified", payment_id: "paid-91",
+            order_id: "provider-91", return_total_minor: refund ? 1003 : undefined };
+        const { state, clock, order, line, calls } = fixture({
+            refund,
+            call: () => result,
+            projectVerified: async () => {
+                if (++restorations === 1) {
+                    await late.promise;
+                }
+            },
+        });
+        const first = state.request(order, line, { checkOnly: true });
+        await tick();
+        assert.equal(line.uiState.revolutRestoringCheckout, true);
+        assert.equal(paymentResponseSuccessful(line, true), false);
+        assert.equal(orderActions(order).blocksCheckout, true);
+        clock.advance(60000);
+        assert.equal(await first, false);
+        assert.equal(line.uiState.revolutRestoringCheckout, false);
+        assert.equal(line.getPaymentStatus(), "retry");
+        assert.equal(line.uiState.revolutSnapshot, result);
+        // Native reload merges the server's done status before local recovery.
+        line.setPaymentStatus("done");
+        restorePaymentLine(line);
+        assert.equal(line.getPaymentStatus(), "retry");
+        const reloaded = { ...line, uiState: structuredClone(line.uiState) };
+        order.payment_ids = [reloaded];
+        assert.equal(await state.request(order, reloaded, { checkOnly: true }), true);
+        reloaded.handlePaymentResponse(true);
+        late.resolve();
+        await tick();
+        assert.equal(line.transaction_id, false);
+        assert.equal(line.uiState.revolutCheckoutRestored, false);
+        assert.equal(reloaded.getPaymentStatus(), "done");
+        assert.equal(reloaded.transaction_id, "paid-91");
+        assert.equal(reloaded.payment_ref_no, "provider-91");
+        if (refund) {
+            assert.equal(order.revolut_payable_target, -10.03);
+        }
+        assert.equal(orderActions(order).blocksCheckout, false);
+        assert.equal(calls.length, 1);
+    });
+}
+
+for (const refund of [false, true]) {
+    for (const outcome of ["restored", "failed"]) {
+        test(`native ${refund ? "refund" : "payment"} cancellation shares verified ${outcome} restoration without a second completion`, async () => {
+            const projection = deferred();
+            let restorations = 0;
+            const { state, order, line, calls } = fixture({
+                refund,
+                call: () => ({ operation_id: 92, state: "verified", payment_id: "paid-92", order_id: "provider-92" }),
+                projectVerified: async () => { restorations++; await projection.promise; },
+            });
+            let busy = false;
+            let completions = 0;
+            const invoke = async () => {
+                busy = true;
+                try {
+                    const successful = await state.request(order, line);
+                    line.handlePaymentResponse(successful);
+                    if (successful) {
+                        completions++;
+                    }
+                    return successful;
+                } finally {
+                    busy = false;
+                }
+            };
+            const request = state.screenRequest(order, line, invoke);
+            await tick();
+            const cancellation = state.screenCancel(order, line,
+                () => state.screenRequest(order, line, invoke), () => { busy = false; });
+            await tick();
+            assert.equal(restorations, 1);
+            assert.equal(orderActions(order).blocksCheckout, true);
+            assert.equal(busy, true);
+            if (outcome === "restored") {
+                projection.resolve();
+            } else {
+                projection.reject(new Error("checkout connection lost"));
+            }
+            assert.equal(await request, outcome === "restored");
+            assert.equal(await cancellation, false);
+            assert.equal(completions, outcome === "restored" ? 1 : 0);
+            assert.equal(line.getPaymentStatus(), outcome === "restored" ? "done" : "retry");
+            assert.equal(busy, false);
+            assert.equal(line.uiState.revolutSnapshot.state, "verified");
+            assert.equal(calls.length, 1);
+            if (outcome === "restored") {
+                await state.screenCancel(order, line,
+                    () => state.screenRequest(order, line, invoke), () => { busy = false; });
+                assert.equal(completions, 1, "a queued cancellation after completion must not finish twice");
+            }
+        });
+    }
+}
 
 test("a deferred unresolved status stays guarded until a fresh late capture", async () => {
     let polls = 0;
