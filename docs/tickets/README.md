@@ -102,8 +102,8 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [39 — Honor payment cancellation before dispatch](closed/39-cancel-payment-before-dispatch.md) | `ready-for-agent` at closure | Closed | Cancelled preparation prevents dispatch; 88 lifecycle tests, 5 focused native tests and 493 install/493 upgrade tests verified |
 | [40 — Conserve rounding across partial refunds](closed/40-conserve-partial-refund-rounding.md) | `ready-for-agent` at closure | Closed | Conserved 309/925 returns; 508 install / 508 upgrade, native accounting/receipts and actual history upgrades verified |
 | [41 — Complete Revolut-initiated refunds through native Odoo returns](closed/41-complete-external-refund-returns.md) | `ready-for-agent` at closure | Closed | Native returns and financial corrections; 546 install tests, 90 merged checks and real history upgrades verified; full upgrade stopped at owner request |
-| [42 — Deepen native return allocation and recovery](ready-for-agents/42-deepen-native-return-allocation.md) | `ready-for-agent` | Claimed | None |
-| [43 — Deepen external return association and unify return locking](ready-for-agents/43-deepen-external-return-allocation.md) | `ready-for-agent` | Open | 42 |
+| [42 — Deepen native return allocation and recovery](closed/42-deepen-native-return-allocation.md) | `ready-for-agent` at closure | Closed | Shared native decisions and recovery; 552 install / 552 upgrade, 90 compatibility checks and clean Standards/Spec review |
+| [43 — Deepen external return association and unify return locking](ready-for-agents/43-deepen-external-return-allocation.md) | `ready-for-agent` | Open | 42 (closed) |
 
 ## Return allocation deepening — 2026-10-06
 
@@ -111,9 +111,11 @@ The owner approved a merged two-ticket design: ticket 42 centralizes native
 return monetary decisions and recovery; ticket 43 extends the same ownership
 to external refund association and completes shared locking verification.
 Both were initially published under needs-triage and promoted to
-ready-for-agent at the owner's request. Ticket 42 can start immediately; ticket
-43 remains blocked by 42. Triage does not claim implementation, testing of
-runtime behavior or deployment.
+ready-for-agent at the owner's request. That triage did not claim implementation,
+runtime verification or deployment. Ticket 42 is now closed after shared native
+decisions and recovery passed 552 install / 552 upgrade tests, 90 compatibility
+checks and independent Standards/Spec review. Its local main integration satisfies
+ticket 43's dependency; external association and locking consolidation remain 43.
 Keep native Odoo stock, receipts and accounting workflows and existing Revolut
 communication unchanged. Earlier tickets 13, 40 and 41 remain closed.
 

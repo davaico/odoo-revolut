@@ -84,9 +84,46 @@ violations and one optional duplicated eligibility predicate; Spec reports zero
 findings. The shared native-return qualification predicate resolves that smell,
 while authoritative normalization/checking remains independent of display.
 
-Final compatibility, complete install/upgrade and refreshed review results are
-recorded below when completed. Python compilation and whitespace checks pass; this repo
-has no configured static typechecker. Syntax checks are not financial proof.
+Final runtime is `b717438fd0108eb280b7a870569d2ed24f511216`.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Native allocation/refund/recovery and tax rounding | `scripts/test-addon --test-tags /pos_revolut:TestRevolutTipRefund.test_taxed_partial_returns_preserve_native_tax_and_credit_note_totals,/pos_revolut:TestReturnAllocation,/pos_revolut:TestRevolutRefund,/pos_revolut:TestRevolutRegisterRefund` | 80 passed |
+| Native lost odd-cent completion | `scripts/test-addon --test-tags /pos_revolut:TestRevolutRegisterRefund.test_lost_odd_cent_return_native_checkout_projects_effects_once` | 1 passed, including stock/receipt/posted credit note/replay |
+| External compatibility, concurrent reservations and session closure | `scripts/test-addon --test-tags /pos_revolut:TestExternalRefunds,/pos_revolut:TestExternalNativeAssociation,/pos_revolut:TestExternalNativeReturns,/pos_revolut:TestExternalNativeStock,/pos_revolut:TestExternalNativeConcurrency,/pos_revolut:TestRevolutRefundConcurrency,/pos_revolut:TestRefundSessionClose` | 90 passed |
+| Complete addon install and upgrade | `ODOO_REVOLUT_TEST_PROJECT=odoo-revolut-42-full scripts/test-addon --verify-install-upgrade` | Install: 552 passed; upgrade: 552 passed, zero failures/errors |
+| Payment-state lifecycle | `node --test --test-isolation=none addons/pos_revolut/static/tests/revolut_payment_state.test.mjs` | 88 passed, zero skipped |
+| Host tooling | `python3 -m unittest discover -s tests -v` | 43 run: 40 passed, 3 opt-in PDF runtime checks skipped |
+| Syntax and whitespace | `python3 -m compileall -q addons/pos_revolut`; `git diff --check` | Passed |
+
+Logs in `/tmp/ticket42-native-green2.log`, `/tmp/ticket42-compatibility2.log`,
+`/tmp/ticket42-full.log`, `/tmp/ticket42-node.log` and `/tmp/ticket42-host.log`
+are ephemeral. The full suite covers native browser, PDF/accounting, Restaurant,
+refund/recovery and real PostgreSQL concurrency behavior; the three opt-in host
+PDF skips are separate. This repo has no configured static typechecker.
+Compilation checks syntax, not financial behavior. Old-to-new history runners
+were not repeated because this slice adds no schema, migration or manifest entry;
+historical replay/ambiguous evidence fixtures and the current install/upgrade
+suite exercise the affected behavior.
+
+## Standards
+
+Independent refreshed review of `git diff ca668a9...b717438`: no documented
+standard breaches and no actionable baseline smells. The shared qualification
+predicate resolved the initial optional duplicated-code judgment.
+
+## Spec
+
+Independent refreshed review against ticket 42: no missing requirements, scope
+creep or incorrect implementation identified. The public odd-cent recovery
+workflow and corrected valid concurrency contenders strengthen required coverage.
+
+Review totals: Standards 0; Spec 0; neither axis has an outstanding finding.
 
 No staging deployment, credentials, live device or real money operation is part
 of this ticket. Physical/financial acceptance remains ticket 12.
+
+The full runner exited successfully on 2026-10-06. The final closure commit only
+updates ticket/evidence documentation; runtime remains the reviewed and tested
+`b717438`. Local integration follows the tracker workflow; remote publishing is
+a separate action.
