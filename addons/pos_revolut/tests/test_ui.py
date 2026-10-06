@@ -1268,7 +1268,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
 
     REFUND_ID = "6c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf"
 
-    def _run_full_refund(self, tour, outcome="completed"):
+    def _run_full_refund(self, tour, outcome="completed", *, amount_minor=1234):
         self._configure_revolut_checkout()
         calls = []
         refund_polls = 0
@@ -1283,6 +1283,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                     "operation_mode": "pos", "location_id": self.LOCATION_ID,
                 }]})
             if method == "POST" and url.endswith("/api/orders"):
+                self.assertEqual(kwargs["json"]["amount"], amount_minor)
                 return self._response({"id": self.ORDER_ID})
             if method == "POST" and url.endswith("/payment-intents"):
                 return self._response({"id": self.INTENT_ID, "state": "pending"})
@@ -1294,7 +1295,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
             if method == "GET" and "/api/payments/" in url:
                 return self._response({
                     "id": self.PAYMENT_ID, "order_id": self.ORDER_ID,
-                    "state": "captured", "amount": 1234,
+                    "state": "captured", "amount": amount_minor,
                     "currency": self.main_pos_config.currency_id.name,
                 })
             if method == "POST" and url.endswith("/refund"):
@@ -1303,19 +1304,19 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                     raise requests.ConnectionError("Refund accepted but response lost")
                 return self._response({
                     "id": self.REFUND_ID, "state": "pending", "type": "refund",
-                    "amount": 1234, "currency": self.main_pos_config.currency_id.name,
+                    "amount": amount_minor, "currency": self.main_pos_config.currency_id.name,
                     "related_order_id": self.ORDER_ID,
                 })
             if method == "GET" and url.endswith(f"/orders/{self.ORDER_ID}"):
                 return self._response({
                     "id": self.ORDER_ID, "state": "completed", "type": "payment",
-                    "amount": 1234, "currency": self.main_pos_config.currency_id.name,
+                    "amount": amount_minor, "currency": self.main_pos_config.currency_id.name,
                     "payments": [{"id": self.PAYMENT_ID, "state": "captured"}],
                 })
             if method == "GET" and url.endswith("/api/orders"):
                 return self._response({"orders": [{
                     "id": self.REFUND_ID, "type": "refund", "state": "pending",
-                    "amount": 1234, "currency": self.main_pos_config.currency_id.name,
+                    "amount": amount_minor, "currency": self.main_pos_config.currency_id.name,
                     "related_order_id": self.ORDER_ID,
                     "merchant_order_data": refund_posts[0]["json"]["merchant_order_data"],
                 }]})
@@ -1324,7 +1325,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                 return self._response({
                     "id": self.REFUND_ID, "type": "refund",
                     "state": "pending" if refund_polls < 3 else ("failed" if outcome == "failed" else "completed"),
-                    "amount": 1234, "currency": self.main_pos_config.currency_id.name,
+                    "amount": amount_minor, "currency": self.main_pos_config.currency_id.name,
                     "related_order_id": self.ORDER_ID,
                 })
             raise AssertionError(f"Unexpected Revolut request: {method} {url}")

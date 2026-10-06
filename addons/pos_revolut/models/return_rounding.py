@@ -5,6 +5,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError
+from odoo.tools import float_compare
 
 from .return_allocation import ReturnAllocation
 
@@ -86,6 +87,43 @@ class PosOrder(models.Model):
             # Its advisory target lookup cannot freeze or recurse into locking.
             self._compute_prices()
         return super()._process_saved_order(draft)
+
+    def _refund(self):
+        # Native Odoo selects refundable lines with refunded_qty < qty. Its
+        # signed quantities correctly reverse negative sale adjustments once
+        # selected, but that comparison omits them from the backend action.
+        from .pos_order import _revolut_mutation
+        returns = self.env["pos.order"]
+        with _revolut_mutation(self.env):
+            for original in self:
+                order = super(PosOrder, original)._refund()
+                if original.payment_ids.filtered(lambda payment:
+                        payment.payment_method_id.use_payment_terminal == "revolut"
+                        or payment.revolut_operation_id):
+                    for line in original.lines.filtered(lambda line:
+                            line.qty < 0 and abs(line.refunded_qty) < abs(line.qty)):
+                        lots = self.env["pos.pack.operation.lot"]
+                        for lot in line.pack_lot_ids:
+                            lots |= lot.copy()
+                        returned = line.copy(line._prepare_refund_data(order, lots))
+                        returned._onchange_amount_line_all()
+                    order._compute_prices()
+                    order.config_id.notify_synchronisation(order.session_id.id, 0)
+                returns |= order
+        return returns
+
+    @api.depends("lines.refunded_qty", "lines.qty", "state", "amount_total",
+                 "payment_ids.payment_method_id.use_payment_terminal", "payment_ids.revolut_operation_id")
+    def _compute_has_refundable_lines(self):
+        super()._compute_has_refundable_lines()
+        digits = self.env["decimal.precision"].precision_get("Product Unit")
+        for original in self.filtered(lambda order: order.state in {"paid", "done", "invoiced"} and order.amount_total > 0):
+            if original.payment_ids.filtered(lambda payment:
+                    payment.payment_method_id.use_payment_terminal == "revolut" or payment.revolut_operation_id):
+                original.has_refundable_lines = original.has_refundable_lines or any(
+                    not line.refunded_orderline_id and line.qty < 0
+                    and float_compare(abs(line.qty), abs(line.refunded_qty), precision_digits=digits) > 0
+                    for line in original.lines)
 
     def _prepare_tax_base_line_values(self):
         base_lines = super()._prepare_tax_base_line_values()
