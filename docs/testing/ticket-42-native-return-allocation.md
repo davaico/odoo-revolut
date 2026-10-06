@@ -65,8 +65,27 @@ No existing tests were removed and no private-helper tests were added.
 - Corrected native run: 80 tests passed, including allocation, refund lifecycle,
   register recovery and the taxed partial-return credit-note test.
 
-Final compatibility, complete install/upgrade and review results are recorded
-below when completed. Python compilation and whitespace checks pass; this repo
+The first compatibility run exercised 90 tests; only the partial-reservation
+concurrency fixture failed during native draft saving. Its submitted .501 quantity
+was rounded by Odoo's two-decimal quantity field to .50, while its submitted total
+remained 618 cents. The fixture now uses .50/617 and .51/629, asserts both saved
+quantities and totals remain unchanged, and only then races both reservations.
+This preserves a real competing request rather than an early evidence rejection.
+
+The native lost-draft completion regression passes on the candidate: public
+picker → saved quarter return → reservation → verification → historical lost
+draft → manager recovery → native checkout creates one done .25 stock return
+and one posted balanced 3.09 credit note. Receipt total stays −3.09, repeated
+recovery/checkout retains all native identities, and the .75 remainder is 925
+cents. Recovery/completion issues no provider request.
+
+Initial independent review against `ca668a9`: Standards reports no hard
+violations and one optional duplicated eligibility predicate; Spec reports zero
+findings. The shared native-return qualification predicate resolves that smell,
+while authoritative normalization/checking remains independent of display.
+
+Final compatibility, complete install/upgrade and refreshed review results are
+recorded below when completed. Python compilation and whitespace checks pass; this repo
 has no configured static typechecker. Syntax checks are not financial proof.
 
 No staging deployment, credentials, live device or real money operation is part

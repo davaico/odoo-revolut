@@ -478,6 +478,8 @@ class TestRevolutRegisterRefund(CommonPosTest):
         self.assertEqual(picking.move_ids.quantity, 0.25)
         self.assertEqual(picking.location_id.usage, "customer")
         self.assertEqual(picking.location_dest_id.usage, "internal")
+        credit_note_domain = [("company_id", "=", recovered.company_id.id), ("move_type", "=", "out_refund")]
+        credit_notes_before = self.env["account.move"].search(credit_note_domain)
         invoice = recovered.with_user(manager).with_context(generate_pdf=False).action_pos_order_invoice()
         move = self.env["account.move"].browse(invoice["res_id"])
         self.assertEqual(move.state, "posted")
@@ -490,9 +492,7 @@ class TestRevolutRegisterRefund(CommonPosTest):
         self.assertEqual(repeated["res_id"], recovered.id)
         self.assertEqual(recovered.picking_ids, picking)
         self.assertEqual(recovered.account_move, move)
-        self.assertEqual(self.env["account.move"].search([
-            ("reversed_pos_order_id", "=", recovered.id),
-        ]), move)
+        self.assertEqual(self.env["account.move"].search(credit_note_domain) - credit_notes_before, move)
         self.assertEqual(recovered.payment_ids.ids, payment_ids)
         self.assertEqual(refund.read(proof_fields)[0], proof)
         self.assertEqual(refund.pos_payment_id.revolut_refund_operation_id, refund)
