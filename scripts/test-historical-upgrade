@@ -84,6 +84,13 @@ for fixture in "$seed_fixture" "$verify_fixture"; do
     fi
 done
 
+for dependency in flock setsid; do
+    if ! command -v "$dependency" >/dev/null; then
+        echo "Historical upgrade runner requires $dependency" >&2
+        exit 2
+    fi
+done
+
 # Keep the lock inode between runs. Removing it would let a third invocation
 # acquire a different inode while another process still holds the old one.
 # A shared location also protects runs from different repository worktrees.
@@ -104,26 +111,33 @@ active_command=""
 phase="archive historical addons"
 
 cleanup() {
-    local status=$? cleanup_failed=false
-    trap - EXIT INT TERM ERR
+    local status=$? cleanup_failed=false cleanup_interrupted=0
+    trap - EXIT ERR
+    # Finish teardown before honoring a signal received during cleanup.
+    # Separate sessions protect Docker teardown from process-group signals.
+    trap 'cleanup_interrupted=130; echo "Historical upgrade ($scenario): interrupted during cleanup" >&2' INT
+    trap 'cleanup_interrupted=143; echo "Historical upgrade ($scenario): interrupted during cleanup" >&2' TERM
     if [[ "$native_reports_started" == true ]]; then
-        if ! docker rm --force "$project_name-native-reports" >/dev/null 2>&1; then
+        if ! setsid --wait docker rm --force "$project_name-native-reports" >/dev/null 2>&1; then
             echo "Failed to remove native report process for $project_name" >&2
             cleanup_failed=true
         fi
     fi
     if [[ "$compose_started" == true ]]; then
-        if ! "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1; then
+        if ! setsid --wait "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1; then
             echo "Failed to clean up Compose project $project_name" >&2
             cleanup_failed=true
         fi
     fi
     for directory in "$migration_addons_dir" "$old_tree"; do
-        if [[ -n "$directory" ]] && ! rm -rf -- "$directory"; then
+        if [[ -n "$directory" ]] && ! setsid --wait rm -rf -- "$directory"; then
             echo "Failed to remove historical upgrade directory $directory" >&2
             cleanup_failed=true
         fi
     done
+    if [[ "$status" == 0 && "$cleanup_interrupted" != 0 ]]; then
+        status="$cleanup_interrupted"
+    fi
     if [[ "$status" == 0 && "$cleanup_failed" == true ]]; then
         status=1
     fi

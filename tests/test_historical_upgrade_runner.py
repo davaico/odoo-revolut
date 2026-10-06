@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -93,10 +94,12 @@ with log.open("a") as stream:
     stream.write(json.dumps(row) + "\n")
 if phase == os.environ.get("FAKE_PAUSE_PHASE"):
     Path(os.environ["FAKE_PAUSE_MARKER"]).touch()
-    while True:
-        time.sleep(0.05)
+    while not Path(os.environ["FAKE_PAUSE_RELEASE"]).exists():
+        time.sleep(0.01)
 if phase in os.environ.get("FAKE_FAIL_PHASES", "").split(","):
     sys.exit(37)
+if phase == os.environ.get("FAKE_PAUSE_PHASE"):
+    Path(os.environ["FAKE_PHASE_COMPLETE_MARKER"]).touch()
 if phase == "version":
     print(os.environ.get("FAKE_ODOO_VERSION", "19.0.20260908"), end="")
 '''
@@ -259,15 +262,22 @@ class TestHistoricalUpgradeRunner(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(self.calls(), [])
 
-    def start_paused(self, scenario, phase, project):
+    def start_paused(self, scenario, phase, project, **environment):
         marker = self.root / "paused"
+        marker.unlink(missing_ok=True)
+        release = self.root / "resume"
+        release.unlink(missing_ok=True)
+        completed = self.root / "completed"
+        completed.unlink(missing_ok=True)
         process = subprocess.Popen(
             [str(REPOSITORY_ROOT / "scripts" / f"test-{scenario}-upgrade")],
-            env={**self.env, "FAKE_PAUSE_PHASE": phase, "FAKE_PAUSE_MARKER": str(marker),
+            env={**self.env, **environment, "FAKE_PAUSE_PHASE": phase, "FAKE_PAUSE_MARKER": str(marker),
+                 "FAKE_PAUSE_RELEASE": str(release),
+                 "FAKE_PHASE_COMPLETE_MARKER": str(completed),
                  "ODOO_REVOLUT_TEST_PROJECT": project},
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True,
         )
-        self.addCleanup(self.stop_process, process)
+        self.addCleanup(self.stop_process, process, release)
         deadline = time.monotonic() + 10
         while not marker.exists():
             if process.poll() is not None or time.monotonic() >= deadline:
@@ -276,9 +286,14 @@ class TestHistoricalUpgradeRunner(unittest.TestCase):
         return process
 
     @staticmethod
-    def stop_process(process):
+    def stop_process(process, release=None):
+        if release is not None:
+            release.touch()
         if process.poll() is None:
-            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
         process.communicate(timeout=10)
 
     def test_same_project_is_locked_while_different_project_is_isolated(self):
@@ -299,38 +314,108 @@ class TestHistoricalUpgradeRunner(unittest.TestCase):
         result = self.run_scenario(ODOO_REVOLUT_TEST_PROJECT=project)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def assert_interrupted_run_cleaned_up(self, process, interrupted, *, reports_started,
+                                         during_cleanup=False, expected_exit=None):
+        stdout, stderr = process.communicate(timeout=5)
+        if expected_exit is None:
+            expected_exit = 130 if interrupted == signal.SIGINT else 143
+        self.assertEqual(process.returncode, expected_exit, stderr)
+        diagnostic = "interrupted during cleanup" if during_cleanup else "interrupted during"
+        self.assertIn(diagnostic, stderr)
+        self.assertNotIn("Receipt retirement upgrade preserves", stdout)
+        expected_phases = ["reports-cleanup", "cleanup"] if reports_started else ["cleanup"]
+        self.assertEqual([row["phase"] for row in self.calls()][-len(expected_phases):], expected_phases)
+        self.assert_temporaries_removed(self.calls())
+        if during_cleanup:
+            self.assertTrue((self.root / "completed").exists(), "Docker teardown was interrupted")
+            self.assertNotIn("Failed to", stderr)
+
+    def test_runner_termination_during_cleanup_finishes_and_releases_project(self):
+        for phase in ("reports-cleanup", "cleanup"):
+            for interrupted in (signal.SIGINT, signal.SIGTERM):
+                with self.subTest(phase=phase, interrupted=interrupted):
+                    self.log.unlink(missing_ok=True)
+                    project = f"upgrade-runner-test-{self.root.name}"
+                    process = self.start_paused("receipt-retirement", phase, project)
+                    try:
+                        process.send_signal(interrupted)
+                    finally:
+                        (self.root / "resume").touch()
+                    self.assert_interrupted_run_cleaned_up(process, interrupted,
+                                                          reports_started=True, during_cleanup=True)
+                    result = self.run_scenario("receipt-retirement", ODOO_REVOLUT_TEST_PROJECT=project)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_process_group_termination_during_cleanup_finishes_teardown(self):
+        for phase in ("reports-cleanup", "cleanup"):
+            for interrupted in (signal.SIGINT, signal.SIGTERM):
+                with self.subTest(phase=phase, interrupted=interrupted):
+                    self.log.unlink(missing_ok=True)
+                    project = f"upgrade-runner-test-{self.root.name}"
+                    process = self.start_paused("receipt-retirement", phase, project)
+                    try:
+                        os.killpg(process.pid, interrupted)
+                    finally:
+                        (self.root / "resume").touch()
+                    self.assert_interrupted_run_cleaned_up(process, interrupted,
+                                                          reports_started=True, during_cleanup=True)
+                    result = self.run_scenario("receipt-retirement", ODOO_REVOLUT_TEST_PROJECT=project)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_process_group_signal_during_temporary_removal_finishes_cleanup(self):
+        real_rm = shutil.which("rm")
+        remove = self.bin / "rm"
+        remove.write_text(f"#!{sys.executable}\n" +
+                          "import os, subprocess, sys, time\nfrom pathlib import Path\n" +
+                          "paused = os.environ.get('FAKE_PAUSE_PHASE') == 'delete' and Path(sys.argv[-1]).parent == Path(os.environ['TMPDIR'])\n" +
+                          "if paused:\n" +
+                          "    Path(os.environ['FAKE_PAUSE_MARKER']).touch()\n" +
+                          "    while not Path(os.environ['FAKE_PAUSE_RELEASE']).exists():\n" +
+                          "        time.sleep(0.01)\n" +
+                          f"status = subprocess.call([{real_rm!r}, *sys.argv[1:]])\n" +
+                          "if paused and status == 0:\n" +
+                          "    Path(os.environ['FAKE_PHASE_COMPLETE_MARKER']).touch()\n" +
+                          "sys.exit(status)\n")
+        remove.chmod(0o755)
+        project = f"upgrade-runner-test-{self.root.name}"
+        process = self.start_paused("receipt-retirement", "delete", project)
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        finally:
+            (self.root / "resume").touch()
+        self.assert_interrupted_run_cleaned_up(process, signal.SIGTERM,
+                                              reports_started=True, during_cleanup=True)
+        result = self.run_scenario("receipt-retirement", ODOO_REVOLUT_TEST_PROJECT=project)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_cleanup_signal_preserves_prior_phase_failure(self):
+        project = f"upgrade-runner-test-{self.root.name}"
+        process = self.start_paused("receipt-retirement", "cleanup", project, FAKE_FAIL_PHASES="verify")
+        try:
+            process.send_signal(signal.SIGTERM)
+        finally:
+            (self.root / "resume").touch()
+        self.assert_interrupted_run_cleaned_up(process, signal.SIGTERM, reports_started=True,
+                                              during_cleanup=True, expected_exit=37)
+        result = self.run_scenario("receipt-retirement", ODOO_REVOLUT_TEST_PROJECT=project)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_runner_pid_termination_forwards_to_docker_and_cleans_resources(self):
         for phase, interrupted in (("version", signal.SIGTERM), ("verify", signal.SIGTERM), ("verify", signal.SIGINT)):
             with self.subTest(phase=phase, interrupted=interrupted):
                 self.log.unlink(missing_ok=True)
-                (self.root / "paused").unlink(missing_ok=True)
                 process = self.start_paused("receipt-retirement", phase,
                                             f"upgrade-runner-test-{self.root.name}-{phase}-{interrupted}")
                 process.send_signal(interrupted)
-                stdout, stderr = process.communicate(timeout=5)
-                self.assertEqual(process.returncode, 130 if interrupted == signal.SIGINT else 143, stderr)
-                self.assertIn("interrupted during", stderr)
-                self.assertNotIn("Receipt retirement upgrade preserves", stdout)
-                phases = [row["phase"] for row in self.calls()]
-                self.assertEqual(phases[-2:] if phase == "verify" else phases[-1:],
-                                 ["reports-cleanup", "cleanup"] if phase == "verify" else ["cleanup"])
-                self.assert_temporaries_removed(self.calls())
+                self.assert_interrupted_run_cleaned_up(process, interrupted, reports_started=phase == "verify")
 
     def test_interruptions_remove_overlay_and_report_process(self):
         for phase, interrupted in (("upgrade", signal.SIGTERM), ("verify", signal.SIGTERM), ("verify", signal.SIGINT)):
             with self.subTest(phase=phase, interrupted=interrupted):
                 self.log.unlink(missing_ok=True)
-                (self.root / "paused").unlink(missing_ok=True)
                 process = self.start_paused("receipt-retirement", phase, f"upgrade-runner-test-{self.root.name}")
                 os.killpg(process.pid, interrupted)
-                stdout, stderr = process.communicate(timeout=10)
-                self.assertEqual(process.returncode, 130 if interrupted == signal.SIGINT else 143, stderr)
-                self.assertIn("interrupted during", stderr)
-                phases = [row["phase"] for row in self.calls()]
-                self.assertEqual(phases[-2:] if phase == "verify" else phases[-1:],
-                                 ["reports-cleanup", "cleanup"] if phase == "verify" else ["cleanup"])
-                self.assertNotIn("Receipt retirement upgrade preserves", stdout)
-                self.assert_temporaries_removed(self.calls())
+                self.assert_interrupted_run_cleaned_up(process, interrupted, reports_started=phase == "verify")
 
 
 if __name__ == "__main__":
