@@ -55,6 +55,8 @@ class _RevolutMutation:
     def watch(self, orders):
         if self.validating:
             return
+        orders = orders.filtered(lambda order: order.id not in self.order_ids)
+        ReturnAllocation(self.env).acquire_native_mutation(orders)
         for order in orders.sorted(lambda item: (item.company_id.id, item.uuid or '')):
             if order.id in self.order_ids:
                 continue
@@ -143,6 +145,9 @@ class PosPayment(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         with _revolut_mutation(self.env) as mutation:
+            mutation.watch(self.env["pos.order"].browse([
+                values["pos_order_id"] for values in vals_list if values.get("pos_order_id")
+            ]))
             payments = super().create(vals_list)
             mutation.watch(payments.pos_order_id)
             return payments
@@ -152,7 +157,8 @@ class PosPayment(models.Model):
             return super().write(values)
         self.check_access("write")
         with _revolut_mutation(self.env) as mutation:
-            mutation.watch(self.pos_order_id)
+            target = self.env["pos.order"].browse(values.get("pos_order_id"))
+            mutation.watch(self.pos_order_id | target)
             mutation.watch_payments(self)
             result = super().write(values)
             mutation.watch(self.pos_order_id)
@@ -291,6 +297,7 @@ class PosOrder(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         with _revolut_mutation(self.env) as mutation:
+            vals_list = ReturnAllocation(self.env).acquire_native_creation(vals_list)
             orders = super().create(vals_list)
             mutation.watch(orders)
             return orders
@@ -300,6 +307,8 @@ class PosOrder(models.Model):
             return super().write(values)
         self.check_access("write")
         with _revolut_mutation(self.env) as mutation:
+            if {"uuid", "session_id", "company_id", "lines", "payment_ids"}.intersection(values):
+                ReturnAllocation(self.env).acquire_native_mutation(self, values)
             mutation.watch(self)
             return super().write(values)
 
@@ -414,6 +423,10 @@ class PosOrder(models.Model):
         return operations
 
     def _validate_revolut_settlement(self, order, existing_order):
+        if existing_order:
+            ReturnAllocation(self.env).acquire_native_mutation(existing_order)
+        else:
+            ReturnAllocation(self.env).acquire_native_creation([order])
         session = self.env["pos.session"].browse(order["session_id"]).exists()
         if not session:
             raise UserError(_("The Point of Sale session does not exist."))
@@ -561,6 +574,10 @@ class PosOrder(models.Model):
 
     def _process_order(self, order, existing_order):
         with _revolut_mutation(self.env) as mutation:
+            if existing_order:
+                mutation.watch(existing_order)
+            else:
+                ReturnAllocation(self.env).acquire_native_creation([order])
             effective = self._revolut_effective_order_values(order,existing_order)
             refunds = ReturnAllocation(self.env).validate_settlement(
                 effective, existing_order, self._revolut_payment_values(order, existing_order)
@@ -585,6 +602,13 @@ class PosOrderLine(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         with _revolut_mutation(self.env) as mutation:
+            orders = self.env["pos.order"].browse([
+                values["order_id"] for values in vals_list if values.get("order_id")
+            ])
+            ReturnAllocation(self.env).acquire_native_line_mutation(orders, [
+                values["refunded_orderline_id"] for values in vals_list if values.get("refunded_orderline_id")
+            ], values=vals_list)
+            mutation.watch(orders)
             lines = super().create(vals_list)
             mutation.watch(lines.order_id)
             return lines
@@ -594,7 +618,11 @@ class PosOrderLine(models.Model):
             return super().write(values)
         self.check_access("write")
         with _revolut_mutation(self.env) as mutation:
-            mutation.watch(self.order_id)
+            target = self.env["pos.order"].browse(values.get("order_id"))
+            ReturnAllocation(self.env).acquire_native_line_mutation(self.order_id | target, [
+                values["refunded_orderline_id"]
+            ] if values.get("refunded_orderline_id") else [], values=values)
+            mutation.watch(self.order_id | target)
             mutation.watch_lines(self)
             result = super().write(values)
             mutation.watch(self.order_id)

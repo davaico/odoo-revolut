@@ -14,6 +14,8 @@ from psycopg2.errors import DeadlockDetected, SerializationFailure
 from odoo import api, fields, models
 from odoo.exceptions import UserError
 
+from .return_allocation import ReturnAllocation
+
 
 _logger = logging.getLogger(__name__)
 PAGE_LIMIT = 100
@@ -186,6 +188,11 @@ class RefundDiscovery(models.Model):
 
         self._resolve_discovery_evidence(credential, f"failed-window:{start}:{end}")
 
+        # Provider candidate order is unspecified. Acquire the complete visible
+        # source set before any per-candidate refund locks, rather than holding source
+        # B while later waiting for source A against a native sorted contender.
+        ReturnAllocation(self.env).acquire_discovery(sources, candidates=candidates)
+
         # Process even a full page before splitting. This gives immediate
         # reservations for visible refunds while the rest of the scan resumes.
         for candidate in candidates:
@@ -276,11 +283,13 @@ class RefundDiscovery(models.Model):
             detail = self._validated_discovery_detail(method, authority, candidate, detail=detail)
         except (requests.RequestException, UserError, ValueError):
             detail = None
-        # This is the same source-row serialization boundary used by reserve().
-        self.env.cr.execute(
-            "UPDATE pos_revolut_payment_operation SET write_date = NOW() AT TIME ZONE 'UTC' WHERE id = %s",
-            [source.id],
-        )
+        # Financial discovery uses the compatible source/refund suffix and
+        # never requests native session, identity or sale locks afterward.
+        ReturnAllocation(self.env).acquire_discovery(source)
+        if (amount > source._revolut_paid_minor()
+                or candidate.get("currency") != source.currency_id.name):
+            self._discovery_evidence(credential, reference, "amount_or_currency_mismatch", source, candidate)
+            return
         existing = self.sudo().search([("revolut_order_id", "=", reference)], limit=1)
         # The simplified list may omit an Odoo merchant reference. Consult the
         # authoritative detail before deciding this is an external refund.

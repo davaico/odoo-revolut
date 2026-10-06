@@ -417,12 +417,7 @@ class PosPaymentMethod(models.Model):
                     if not operation or operation.payment_method_id.id != self.id:
                         raise AccessError(_("This refund is not accessible."))
                     operation.with_env(env)._check_revolut_register_access()
-                    env["pos.revolut.payment.operation"]._lock_order(
-                        operation.company_id.id,
-                        operation.original_operation_id.order_uuid if operation.origin == "external" else operation.order_uuid,
-                    )
-                    cursor.execute("SELECT id FROM pos_revolut_refund_operation WHERE id = %s FOR UPDATE", [operation_id])
-                    operation.invalidate_recordset()
+                    ReturnAllocation(env).acquire_refund_status(operation)
                     if authenticated_detail is not None:
                         operation._record_provider_refund_time(authenticated_detail)
                     if operation.state not in {"verified", "failed"}:

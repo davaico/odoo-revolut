@@ -10,6 +10,7 @@ from odoo import _, api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
 from .financial_snapshot import normalize_snapshot
+from .return_allocation import ReturnAllocation
 
 
 _logger = logging.getLogger(__name__)
@@ -345,12 +346,7 @@ class PosRevolutPaymentOperation(models.Model):
         evidence = evidence or {}
         if kind in {"intent", "payment"} and not isinstance(evidence, dict):
             kind, evidence = "unknown", {}
-        self._lock_order(self.company_id.id, self.order_uuid)
-        self.env.cr.execute(
-            "SELECT id FROM pos_revolut_payment_operation WHERE id = %s FOR UPDATE",
-            [self.id],
-        )
-        self.invalidate_recordset()
+        ReturnAllocation(self.env).acquire_payment_observation(self)
 
         if kind.startswith("tip_report_"):
             return self._apply_terminal_tip_observation(kind, evidence)
