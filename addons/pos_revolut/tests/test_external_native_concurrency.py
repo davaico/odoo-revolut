@@ -1,6 +1,7 @@
 """Manager native-completion RPCs race in independent committed transactions."""
 import os
 from threading import Barrier, Event
+from time import monotonic
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
@@ -189,6 +190,28 @@ class TestExternalNativeConcurrency(TransactionCase):
         response = Mock()
         response.json.return_value = payload
         return response
+
+    def _wait_for_session_mutations(self, cursor, count=2):
+        deadline = monotonic() + 10
+        waiting = 0
+        while monotonic() < deadline:
+            cursor.execute("SELECT pg_stat_clear_snapshot()")
+            cursor.execute("""
+                SELECT COUNT(*) FROM pg_stat_activity activity
+                WHERE activity.datname = current_database()
+                  AND activity.wait_event_type = 'Lock'
+                  AND EXISTS (
+                      SELECT 1 FROM pg_locks locks
+                      WHERE locks.pid = activity.pid
+                        AND locks.relation = 'pos_session'::regclass
+                        AND locks.mode = 'RowExclusiveLock'
+                  )
+            """)
+            waiting = cursor.fetchone()[0]
+            if waiting >= count:
+                return
+            Event().wait(0.05)
+        self.assertGreaterEqual(waiting, count, "Public mutations did not share session locking")
 
     def test_two_managers_prepare_one_external_refund_draft_and_payment(self):
         refund_id = self._external_refund()
@@ -436,10 +459,8 @@ class TestExternalNativeConcurrency(TransactionCase):
 
         def http(method, url, **kwargs):
             if method == "GET" and url.endswith("/api/orders"):
-                # Discovery is already running while the first reservation
-                # commits. Its imported money then invalidates that claim's
-                # provider preflight, before any financial dispatch.
-                self.assertTrue(original_read.wait(10), "Native reservation did not reach provider preflight")
+                # The native claim is durable and its GET preflight is still
+                # in flight. Imported money invalidates it before dispatch.
                 return self._response({"orders": [candidate]})
             if method == "GET" and url.endswith(f"/api/orders/{external_reference}"):
                 return self._response(candidate)
@@ -464,6 +485,7 @@ class TestExternalNativeConcurrency(TransactionCase):
 
         def discover():
             try:
+                self.assertTrue(original_read.wait(10), "Native reservation did not reach provider preflight")
                 return self._model_rpc(SUPERUSER_ID, "ir.cron", "method_direct_trigger", [[cron_id]])
             finally:
                 discovery_finished.set()
@@ -481,7 +503,7 @@ class TestExternalNativeConcurrency(TransactionCase):
             imported = env["pos.revolut.refund.operation"].search([
                 ("original_operation_id", "=", self.source_id), ("origin", "=", "external"),
             ])
-            self.assertEqual(len(imported), 1)
+            self.assertEqual(len(imported), 1, (results, self.request.call_args_list))
             self.assertEqual(imported.revolut_order_id, external_reference)
             self.assertEqual(imported.amount_minor, 617)
             self.assertEqual(imported.state, "verified")
@@ -562,4 +584,164 @@ class TestExternalNativeConcurrency(TransactionCase):
             self.assertEqual(len(order.picking_ids), 1)
             self.assertEqual(order.picking_ids.state, "done")
             self.assertEqual(sum(order.picking_ids.move_ids.mapped("quantity")), 1)
+        self.request.assert_not_called()
+
+    def test_status_application_and_finalization_contend_on_session_before_native_effects(self):
+        refund_id = self._external_refund(state="pending")
+        order_id = self._prepare(self.manager_ids[0], refund_id)["res_id"]
+        session_locked, provider_read = Event(), Event()
+        self.enterContext(patch.dict(os.environ, {self.secret_reference: "test-only"}))
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            refund = env["pos.revolut.refund.operation"].browse(refund_id)
+            reference = refund.revolut_order_id
+            parent, currency = refund.original_operation_id.revolut_order_id, refund.currency_id.name
+
+        def http(method, url, **kwargs):
+            self.assertEqual(method, "GET")
+            self.assertTrue(url.endswith(f"/api/orders/{reference}"))
+            provider_read.set()
+            return self._response({"id": reference, "type": "refund", "state": "completed",
+                                   "related_order_id": parent, "amount": 1234, "currency": currency})
+
+        def hold_session():
+            with self.registry.cursor() as cursor:
+                cursor.execute("SELECT id FROM pos_session WHERE id = %s FOR UPDATE", [self.session_id])
+                session_locked.set()
+                # Observe real PostgreSQL waiters, not a substituted module
+                # helper. Both public actions must reach the same session
+                # boundary before either can apply status/native effects.
+                self._wait_for_session_mutations(cursor)
+                cursor.commit()
+            return "released"
+
+        def status():
+            self.assertTrue(session_locked.wait(10))
+            return self._rpc(self.manager_ids[0], refund_id, "action_check_status")
+
+        def finalize():
+            self.assertTrue(session_locked.wait(10))
+            self.assertTrue(provider_read.wait(10))
+            try:
+                return self._rpc(self.manager_ids[1], refund_id, "action_validate_native_return")
+            except UserError:
+                return "pending"
+
+        self.request.side_effect = http
+        self._run_workers([
+            ("session-lock-holder", hold_session), ("authoritative-status-application", status),
+            ("contending-native-finalization", finalize),
+        ])
+        self.request.reset_mock()
+        self.request.side_effect = AssertionError("Native resume must never contact Merchant HTTP")
+        self._rpc(self.manager_ids[0], refund_id, "action_prepare_native_return")
+        self._rpc(self.manager_ids[1], refund_id, "action_validate_native_return")
+        self._rpc(self.manager_ids[0], refund_id, "action_validate_native_return")
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            refund = env["pos.revolut.refund.operation"].browse(refund_id)
+            order = env["pos.order"].browse(order_id)
+            self.assertEqual(refund.state, "verified")
+            self.assertEqual(refund.native_reconciliation_status, "native_completed")
+            self.assertEqual(order.state, "paid")
+            self.assertEqual(len(order.payment_ids), 1)
+            self.assertEqual(order.payment_ids.transaction_id, reference)
+            self.assertEqual(len(order.picking_ids), 1)
+            self.assertEqual(order.picking_ids.state, "done")
+            self.assertEqual(sum(order.picking_ids.move_ids.mapped("quantity")), 1)
+        self.request.assert_not_called()
+
+    def test_parent_commands_transfer_lines_and_payments_across_sessions_without_deadlock(self):
+        for field, model, owner_field in (
+            ("lines", "pos.order.line", "order_id"),
+            ("payment_ids", "pos.payment", "pos_order_id"),
+        ):
+            for kind in ("link", "set"):
+                with self.subTest(field=field, command=kind):
+                    with self.registry.cursor() as cursor:
+                        env = api.Environment(cursor, SUPERUSER_ID, self.context)
+                        original = env["pos.order"].browse(self.original_id)
+                        config = original.config_id if field == "lines" and kind == "set" else env["pos.config"].create({
+                            "name": f"Opposite owner transfer {field} {kind}",
+                            "auto_validate_terminal_payment": True,
+                            "payment_method_ids": [Command.link(self.method_id)],
+                            "revolut_user_ids": [Command.set(self.manager_ids)],
+                        })
+                        # Pinned native line.write reads config fields on its
+                        # entire recordset during SET. Use historical and
+                        # current sessions of the same register for that shape.
+                        second_session = env["pos.session"].create({
+                            "config_id": config.id,
+                            "state": "closed" if field == "lines" and kind == "set" else "opened",
+                        })
+                        session_ids = [self.session_id, second_session.id]
+                        orders = env["pos.order"]
+                        for session_id in session_ids:
+                            session = env["pos.session"].browse(session_id)
+                            orders |= env["pos.order"].create({
+                                "name": f"Ordinary transfer draft {uuid4()}", "uuid": str(uuid4()),
+                                "session_id": session.id, "state": "draft", "amount_total": 12.34,
+                                "amount_tax": 0, "amount_paid": 0, "amount_return": 0,
+                                "pricelist_id": session.config_id.pricelist_id.id,
+                                "lines": [Command.create({
+                                    "product_id": original.lines.product_id.id, "qty": 1,
+                                    "price_unit": 12.34, "price_subtotal": 12.34,
+                                    "price_subtotal_incl": 12.34, "tax_ids": [Command.set([])],
+                                    "uuid": str(uuid4()),
+                                })],
+                                "payment_ids": [Command.create({
+                                    "payment_method_id": self.method_id, "amount": 12.34,
+                                    "payment_status": "waiting", "uuid": str(uuid4()),
+                                })],
+                            })
+                        order_ids = orders.ids
+                        child_ids = [order[field].id for order in orders]
+                        line_ids, payment_ids = orders.lines.ids, orders.payment_ids.ids
+                        cursor.commit()
+                    session_locked = Event()
+
+                    def hold_sessions():
+                        with self.registry.cursor() as cursor:
+                            cursor.execute("SELECT id FROM pos_session WHERE id = ANY(%s) ORDER BY id FOR UPDATE",
+                                           [session_ids])
+                            session_locked.set()
+                            self._wait_for_session_mutations(cursor)
+                            cursor.commit()
+
+                    def transfer(index):
+                        self.assertTrue(session_locked.wait(10))
+                        commands = [Command.link(child_ids[1 - index])] if kind == "link" else [Command.set(child_ids)]
+                        # Repeatable-read conflicts retry with fresh evidence.
+                        # A real acquisition inversion must remain visible as
+                        # DeadlockDetected rather than being swallowed here.
+                        for attempt in range(3):
+                            try:
+                                with self.registry.cursor() as cursor:
+                                    env = api.Environment(cursor, self.manager_ids[index], self.context)
+                                    result = call_kw(env["pos.order"], "write", [[order_ids[index]], {field: commands}],
+                                                     {"context": self.context})
+                                    cursor.commit()
+                                    return result
+                            except SerializationFailure:
+                                if attempt == 2:
+                                    raise
+
+                    self._run_workers([
+                        ("owner-session-holder", hold_sessions),
+                        ("first-parent-transfer", lambda: transfer(0)),
+                        ("opposite-parent-transfer", lambda: transfer(1)),
+                    ])
+                    with self.registry.cursor() as cursor:
+                        env = api.Environment(cursor, SUPERUSER_ID, self.context)
+                        orders = env["pos.order"].browse(order_ids)
+                        records = env[model].browse(child_ids).exists()
+                        self.assertEqual(set(records.ids), set(child_ids))
+                        self.assertEqual(set(orders.lines.ids), set(line_ids))
+                        self.assertEqual(set(orders.payment_ids.ids), set(payment_ids))
+                        self.assertEqual(sum(orders.lines.mapped("qty")), 2)
+                        self.assertEqual(sum(orders.payment_ids.mapped("amount")), 24.68)
+                        self.assertTrue(all(record[owner_field] in orders for record in records))
+                        self.assertEqual(set(orders.mapped("state")), {"draft"})
+                        self.assertFalse(orders.picking_ids)
+                        self.assertFalse(orders.account_move)
         self.request.assert_not_called()

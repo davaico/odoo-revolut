@@ -307,7 +307,7 @@ class PosOrder(models.Model):
             return super().write(values)
         self.check_access("write")
         with _revolut_mutation(self.env) as mutation:
-            if {"uuid", "session_id", "company_id", "lines"}.intersection(values):
+            if {"uuid", "session_id", "company_id", "lines", "payment_ids"}.intersection(values):
                 ReturnAllocation(self.env).acquire_native_mutation(self, values)
             mutation.watch(self)
             return super().write(values)
@@ -607,7 +607,7 @@ class PosOrderLine(models.Model):
             ])
             ReturnAllocation(self.env).acquire_native_line_mutation(orders, [
                 values["refunded_orderline_id"] for values in vals_list if values.get("refunded_orderline_id")
-            ])
+            ], values=vals_list)
             mutation.watch(orders)
             lines = super().create(vals_list)
             mutation.watch(lines.order_id)
@@ -621,7 +621,7 @@ class PosOrderLine(models.Model):
             target = self.env["pos.order"].browse(values.get("order_id"))
             ReturnAllocation(self.env).acquire_native_line_mutation(self.order_id | target, [
                 values["refunded_orderline_id"]
-            ] if values.get("refunded_orderline_id") else [])
+            ] if values.get("refunded_orderline_id") else [], values=values)
             mutation.watch(self.order_id | target)
             mutation.watch_lines(self)
             result = super().write(values)

@@ -63,6 +63,13 @@ class ExternalRefundCompletion(models.Model):
                       "historical_acknowledged_at": self.native_reconciled_at, **values}
         return super(RefundRecord, self.sudo()).write(values)
 
+    def _check_external_native_authority(self):
+        self.ensure_one()
+        self.payment_method_id._check_refund_authority()
+        self._check_revolut_register_access()
+        if self.origin != "external" or not self.original_order_id:
+            raise UserError(_("Select an external refund matched to an original sale."))
+
     def _native_action(self):
         return {"type": "ir.actions.act_window", "res_model": "pos.order",
                 "res_id": self.pos_order_id.id, "view_mode": "form", "target": "current"}
@@ -176,10 +183,7 @@ class ExternalRefundCompletion(models.Model):
 
     def action_validate_native_return(self):
         with self.env.cr.savepoint(), _revolut_mutation(self.env):
-            self.payment_method_id._check_refund_authority()
-            self._check_revolut_register_access()
-            if self.origin != "external" or not self.original_order_id:
-                raise UserError(_("Select an external refund matched to an original sale."))
+            self._check_external_native_authority()
             ReturnAllocation(self.env).acquire_refund_status(self)
             if not self.pos_order_id or self.state != "verified":
                 raise UserError(_("Only a verified external refund with a native return can be validated."))
@@ -258,13 +262,18 @@ class NativeReturnLot(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         with _revolut_mutation(self.env) as mutation:
+            lines = self.env["pos.order.line"].browse([
+                values["pos_order_line_id"] for values in vals_list if values.get("pos_order_line_id")
+            ])
+            mutation.watch(lines.order_id)
             records = super().create(vals_list)
             mutation.watch(records.pos_order_line_id.order_id)
             return records
 
     def write(self, values):
         with _revolut_mutation(self.env) as mutation:
-            mutation.watch(self.pos_order_line_id.order_id)
+            target = self.env["pos.order.line"].browse(values.get("pos_order_line_id"))
+            mutation.watch((self.pos_order_line_id | target).order_id)
             result = super().write(values)
             mutation.watch(self.pos_order_line_id.order_id)
             return result

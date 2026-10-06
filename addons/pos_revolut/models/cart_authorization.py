@@ -632,9 +632,8 @@ class PosCustomAttribute(models.Model):
     def write(self, values):
         from .pos_order import _revolut_mutation
         with _revolut_mutation(self.env) as mutation:
-            mutation.watch(self.pos_order_line_id.order_id)
-            if values.get('pos_order_line_id'):
-                mutation.watch(self.env['pos.order.line'].browse(values['pos_order_line_id']).order_id)
+            target = self.env['pos.order.line'].browse(values.get('pos_order_line_id'))
+            mutation.watch((self.pos_order_line_id | target).order_id)
             return super().write(values)
 
     def unlink(self):
