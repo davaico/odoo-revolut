@@ -278,3 +278,53 @@ class TestExternalNativeStock(CommonPosTest):
         self.assertEqual(native.payment_ids, payment)
         self.assertEqual(refund.native_reconciliation_status, "native_completed")
         self.request.assert_not_called()
+
+    def test_historical_stock_and_credit_note_association_preserves_native_history(self):
+        self._sale(invoiced=True)
+        refund = self._verified_refund()
+        native = self._prepare(refund)
+        refund.action_validate_native_return()
+        self._assert_return_move(native, 1)
+        credit = native.account_move
+        self.assertEqual(credit.state, "posted")
+        self.assertEqual(credit.reversed_entry_id, self.original.account_move)
+        payment = native.payment_ids
+        history = (native.picking_ids.ids, native.picking_ids.move_ids.ids,
+                   credit.ids, credit.line_ids.ids, payment.ids)
+        counts = {model: self.env[model].search_count([]) for model in
+                  ("pos.order", "pos.payment", "stock.move", "account.move", "account.move.line")}
+        # Preserve genuine native stock/accounting work, representing a release
+        # before the addon stored association and per-line allocation evidence.
+        # SQL changes only the absent historical addon metadata, never effects.
+        self.env.flush_all()
+        self.env.cr.execute("""
+            UPDATE pos_revolut_refund_operation
+               SET pos_order_id = NULL, pos_payment_id = NULL, order_uuid = NULL,
+                   payment_line_uuid = NULL, financial_snapshot = NULL,
+                   return_allocation = NULL, return_total_minor = 0,
+                   allocation_explicit = FALSE, base_amount_minor = 0, tip_amount_minor = 0,
+                   native_lot_snapshot = NULL, native_reconciliation_status = 'pending',
+                   native_reconciled_by = NULL, native_reconciled_at = NULL
+             WHERE id = %s
+        """, [refund.id])
+        self.env.cr.execute("UPDATE pos_payment SET revolut_refund_operation_id = NULL WHERE id = %s", [payment.id])
+        self.env.cr.execute("UPDATE pos_order SET revolut_return_allocation = NULL WHERE id = %s", [native.id])
+        refund.invalidate_recordset()
+        payment.invalidate_recordset()
+        native.invalidate_recordset()
+        self.request.reset_mock()
+        for _repeat in range(2):
+            action = refund.action_associate_native_return(native.id, [{
+                "refund_id": refund.id, "payment_id": payment.id,
+            }])
+            self.assertEqual(action["res_id"], native.id)
+            self.assertEqual(refund.native_reconciliation_status, "native_completed")
+            self.assertEqual(refund.pos_payment_id, payment)
+            self.assertEqual((native.picking_ids.ids, native.picking_ids.move_ids.ids,
+                              native.account_move.ids, native.account_move.line_ids.ids,
+                              native.payment_ids.ids), history)
+            self._assert_return_move(native, 1)
+            self.assertEqual(native.account_move.state, "posted")
+            self.assertEqual(native.account_move.amount_total, 12.34)
+            self.assertEqual({model: self.env[model].search_count([]) for model in counts}, counts)
+        self.request.assert_not_called()

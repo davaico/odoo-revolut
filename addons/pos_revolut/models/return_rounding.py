@@ -62,7 +62,10 @@ class PosOrder(models.Model):
             ])
             if self.state in {"paid", "done"} or active:
                 raise UserError(_("The accepted return allocation cannot change."))
-        with _return_projection(self.env):
+        from .pos_order import _revolut_mutation
+        with _return_projection(self.env), _revolut_mutation(self.env) as mutation:
+            # Acquire/read native evidence before clearing its fractional cache.
+            mutation.watch(self)
             # Pinned Monetary._filter_not_equal treats a raw browser subtotal
             # as unchanged when its rounded value matches. Clear that cached
             # fraction so an explicit write persists the accepted cents.
