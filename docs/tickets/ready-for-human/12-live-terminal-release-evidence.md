@@ -8,46 +8,109 @@ Start from the latest reviewed `main` in an isolated worktree. Freeze the final 
 
 **Triage:** ready-for-human
 
-## Current handoff — final release retest, 2026-10-05
+## Current handoff — fresh acceptance campaign, 2026-10-07
 
-The owner wants to return to this ticket and **retest the whole integration
-before release and open-source publication**. Start with the
-[final release checklist](../../testing/ticket-12-final-release-checklist.md),
-which covers preparation, automated acceptance, operator scenarios, refund
-completion and publication readiness. Every final-candidate check starts
-unexecuted; earlier passes remain valid evidence of their dated revisions,
-not automatic passes for the next release.
+The owner requests **a new end-to-end test campaign from scratch**, using a
+separate Odoo register so new sales, returns and evidence are easy to follow.
+Use the [final release checklist](../../testing/ticket-12-final-release-checklist.md)
+as the execution plan. Every scenario starts **NOT RUN for this campaign**;
+previous green results do not waive a fresh check. Preserve all earlier
+chronology, orders, reimbursements and financial history.
 
-Preserve the [release chronology](../../testing/ticket-12-release-evidence.md),
-[operator observations](../../testing/ticket-12-operator-observations.md) and
-[refund-screen rollout](../../testing/refund-screen-clarity.md). Completed
-full/split/two-card checkout, busy-terminal recovery, older returns and the
-restored paid receipt are not undone. Use new explicitly authorized test
-fixtures where a fresh financial test is needed; never replay a completed
-refund or assume an old test budget is still available.
+Implementation tickets 40–46 are closed and merged. The candidate available
+when preparing this campaign is `bfc100b840fd11c2ff761022d741623622600a83`,
+addon `19.0.1.18.1`; this is a source baseline, **not a verified deployed
+revision**. Freeze the actual reviewed candidate and verify staging matches it
+before accepting any live result. Include return-allocation and locking work
+(42–43), payment-observation reinforcement, frontend recovery, the shared
+upgrade runner, unclaimed reservation recovery (44), discounted/rounded
+returns (45), and verified-checkout restoration (46).
 
-The latest recorded staging checkpoint is **19.0.1.15.4**; recheck the actual
-deployed revision when resuming. Return 24 / receipt **260-2-000002** was paid
-at **-£0.02**. External refund 10 was completed and linked to original sale
-**000018**, with no product return reported by the operator. These are dated
-observations, not fixtures to modify automatically. Ticket 40's rounding fix
-is now merged; ticket 41's external native-completion workflow remains open.
-The final combined candidate must include both before accepting those rows.
+### Dedicated register and clean starting point
 
-New mandatory cases cover ticket 41's product return visible in Orders, its
-explicit no-products-returned path, existing-return association, pending and
-reload/concurrency recovery, and **zero new money requests for an already
-issued refund**. Also retest fractional refund rounding, saved-return server
-protection, register permissions, printing, tips and Restaurant.
+Use **Revolut Acceptance — 2026-10-07**, configured for the existing GBP
+terminal-test setup. Record its actual register/session identity and verified
+setup below after creation. Start new scenarios with zero campaign orders and
+refunds and a new session; use zero opening cash only when no float is supplied.
+Filter backend Orders, Sessions and refund evidence by this register/session,
+and record a scenario-to-order/payment/return mapping as each case executes.
+Create new sale fixtures for ordinary refund cases; do not refund an old sale
+again merely to make the new campaign look clean.
 
-Public publication additionally requires ticket 33's private evidence
-preservation/aliasing decision and review of the intended published material
-and history. Ticket 34's remaining native invoice PDF acceptance stays a
-release gate. This ticket remains **open / ready-for-human**; this update
-executes no tests, financial actions, deployments or publication.
+A new register isolates new order/session history, **not** the shared company,
+products, stock, journals, Merchant account or terminal. Preserve the old
+registers and their data. Existing exposure on the shared terminal must be
+checked and reconciled normally; a new register never bypasses it. Use the old
+register only for separately identified read-only historical printing checks;
+use disposable automated fixtures for destructive history/recovery tests.
 
-Earlier checkpoints below are historical. Their instructions to resume only
-untested cases are superseded by the owner's final complete-retest request.
+Prepare and accept retail first. Restaurant, cash-rounding, tips, restricted
+pricing and tracked-stock configurations need their own recorded setup and
+fixtures; use a closed/reconciled session or a separately configured test
+register where required. Do not toggle a running register's financial settings
+or silently skip a feature because the retail setup lacks its prerequisites.
+
+The owner authorizes creating/opening the test register. Actual card charges,
+refunds and externally initiated reimbursements still need a current agreed
+amount/budget and an operator at the terminal. Automated failures and races use
+mocked Merchant calls in disposable Odoo/PostgreSQL. No live charge, refund,
+deployment or publication is implied by this checklist update.
+
+### Campaign setup record
+
+- Register preparation: created and opened; verified setup is recorded below.
+- Deployed revision/device readiness: NOT VERIFIED for this campaign.
+- Scenario execution and financial budget: NOT STARTED / NOT AGREED.
+- Test results: all A/R rows in the checklist start NOT RUN.
+
+### Register setup completed — 2026-10-07
+
+Created **Revolut Acceptance — 2026-10-07** through the normal Odoo interface,
+using the existing GBP register configuration as the starting point. Register
+configuration ID: **3**. Its first session is open with **£0.00 opening cash**
+and a ticket-12 campaign note. The filtered dashboard shows Continue Selling,
+today's opening and no sold-order total. Native POS loaded successfully; its
+order list contains only the automatically created empty £0.00 ongoing ticket,
+not a completed sale. No products were added, payments sent or refunds issued.
+
+Verified configuration:
+
+- Retail register; existing **Davai GBP Terminal Acceptance (GBP)** pricelist
+  and **Point of Sale (copy) (GBP)** order journal.
+- Existing **Revolut - Davai** payment method retained without credential edits.
+- Dedicated **Cash - Acceptance 2026-10-07** method and new **Acceptance Cash
+  GBP** cash journal (GBP; sequence prefix **ACG07**). Odoo rejected reusing the
+  old register's cash method, so a separate one was created; the old cash
+  configuration was not changed. The default generic Card method was removed
+  from the new register to avoid confusing it with the Revolut terminal.
+- Automatic terminal checkout enabled; existing Terminal Acceptance Tests
+  product category retained. Restaurant, tips, cash rounding and restricted
+  pricing are not enabled in this initial retail configuration; prepare and
+  verify their later phases before executing those scenarios.
+- **Administrator** has explicit Revolut register access, granted after the
+  owner's confirmation in this chat. Other users were not granted access.
+- The old two registers and their sessions/orders/refunds remain unchanged.
+  Shared-company stock, journals, terminal and Merchant history are not reset.
+
+The browser is left on the empty POS; a second tab shows the dashboard filtered
+to the new register. Configuration: `/odoo/action-432/3`; POS: `/pos/ui/3` on the
+existing staging host. Record the backend session reference in the restricted
+execution ledger before the first scenario. Local setup screenshots are
+`/tmp/revolut-acceptance-dashboard-2026-10-07.jpg` and
+`/tmp/revolut-acceptance-register-2026-10-07.jpg`; these temporary files are not a
+durable evidence archive.
+
+Setup is complete, not an R01 or release pass: the current deployed revision,
+Merchant/device readiness, negative permission cases, remaining fixtures and
+financial budget still require verification. No runtime code, deployment or
+financial test ran. Documentation checks verified local links, unique A01–A10
+and R01–R24 rows and whitespace; no automated runtime suite was needed for these
+document edits.
+
+Ticket 33 (private preservation and public material/history review) and ticket
+34 (staging native invoice PDF acceptance) remain gates. This ticket stays
+**open / ready-for-human**. Earlier instructions to resume only untested cases
+are historical and superseded by this fresh campaign.
 
 ## Resume checkpoint — 2026-10-01, 13:40 UTC
 
@@ -79,9 +142,11 @@ test evidence and keep new results separate.
 
 - [ ] Freeze the reviewed combined candidate, Odoo/addon versions and release artifact/checksum; record current implementation dependencies, independent review and any unresolved release defects.
 - [ ] Run complete mocked install/upgrade, retail/Restaurant, POS lifecycle, public API boundary, restart/recovery, permission/migration, deployment and exact delivered-artifact acceptance on that candidate. Exercise risky behavior; a passing build or skipped browser test is not acceptance.
-- [ ] Recheck device/account/location, environment, currencies, register permissions and explicitly authorized amounts before any live test. Use supported controlled methods and a dedicated test session.
+- [ ] Create and open the dedicated test register/session, verify zero new campaign orders/refunds, record currency/payment methods/grants and use its filters throughout. Preserve old registers and history; check shared-terminal exposure separately.
+- [ ] Recheck the deployed candidate, device/account/location, environment, currencies, register permissions and explicitly authorized amounts before any live test. Use supported controlled methods and the dedicated test session.
 - [ ] Complete every applicable operator scenario in the final checklist, including full/split/multiple-card checkout, tips, Restaurant, decline/failure/cancellation, timeout/interruption/late success, terminal busy and concurrent cashiers/status checks.
 - [ ] Retest full/partial/mixed-tender refunds, repeated fractional quantities and rounding, persisted draft/payment enforcement, safe recovery and asynchronous finality. Reject missing/mismatched drafts through direct API calls without contacting Revolut.
+- [ ] Exercise tickets 42–46 and the recovery/observation refactors explicitly: whole-batch association rollback, conserved cents and discounts, lost-draft sibling recovery, interruption around dispatch claims, and failed/timed-out/offline checkout restoration after verified sale/refund. Assert identities, effects and dispatch counts.
 - [ ] Accept ticket 41's product-return and no-products-returned workflows, existing-return association and recovery. Verify Orders/return links, receipts, actual configured stock/accounting effects and zero new financial requests for already-issued refunds.
 - [ ] Accept native historical sales receipt and terminal printing, plus an existing native invoice's downloadable/printable PDF (ticket 34). No custom Revolut receipt or automatic invoicing is required.
 - [ ] Reconcile all test charges/refunds, cash and base/tip allocations, active reservations and approved retained amounts against original sources; resolve discrepancies and verify no duplicate movement or unresolved exposure.
@@ -95,14 +160,14 @@ test evidence and keep new results separate.
 These are final release/closure gates, not a prohibition on independent
 preparation. Do not reopen completed implementation tickets just to retest them.
 
-- [41 — Complete Revolut-initiated refunds through native Odoo returns](../ready-for-agents/41-complete-external-refund-returns.md): open implementation; both dispositions and safe native completion must be merged and accepted before final release.
+- [41 — Complete Revolut-initiated refunds through native Odoo returns](../closed/41-complete-external-refund-returns.md) and tickets 42–46 are closed implementation inputs; fresh combined acceptance remains required, not additional implementation closure.
 - [34 — Provision and gate Odoo PDF generation](34-provision-and-gate-odoo-pdf-generation.md): remaining target native invoice PDF/printing acceptance.
 - [33 — Release evidence disclosure/preservation](../needs-info/33-investigate-release-evidence-disclosure.md): open public-publication gate; resolve restricted preservation/mapping and review the selected publication route/material before making anything public.
 - Physical terminal/operator availability, supported controlled failure methods, required native document fixtures and separately authorized financial test amounts.
 
-Completed integration corrections include 02, 11, 16–24, 27–28 and 35–40;
-their historical evidence is retained. Ticket 40 is closed/merged, but its
-rounding fix still needs acceptance with ticket 41 on the final candidate.
+Completed integration corrections include 02, 11, 16–24, 27–28 and 35–46;
+their historical evidence is retained. The final candidate must exercise them
+together, including the latest recovery and discounted/rounded-return fixes.
 The candidate must also contain the reviewed saved-return protection and
 refund discovery/screen corrections. Earlier blocker lists and test counts
 below describe their original dates.
