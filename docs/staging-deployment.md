@@ -29,9 +29,11 @@ existing release before trusting or reporting it.
 
 Before changing code, the deployer:
 
-1. refuses active payments, all active refund dispatches, and pending/unresolved
-   refunds without a safe persisted provider identity; upgrades allow refunds with saved
-   provider UUIDs and internal GET-only discovery evidence;
+1. refuses active/uncertain payment dispatches, all active refund dispatches, and
+   pending/unresolved refunds without a safe persisted provider identity;
+   upgrades allow referenced refunds, internal GET-only discovery evidence,
+   and captured payments with complete persisted authority, report identity
+   and successful dispatch evidence;
 2. verifies the patched-Qt PDF renderer and readable body/header/footer output
    under the running Odoo service identity and renderer environment;
 3. runs the existing encrypted database and filestore backup service;
@@ -53,6 +55,14 @@ operation models must inherit this mixin and define only states that cannot
 change the provider's financial position as terminal. During the first upgrade
 from a revision without the mixin, the deployer uses the known payment-state
 fallback.
+
+Captured payments awaiting reports require valid saved order/intent/payment/report
+UUIDs, positive capture evidence and its timestamp, retry prohibited, an existing
+cart authorization and exactly two completed successful dispatch claims matching
+the saved order and intent. Pending/unresolved local state and captured/completed
+provider state are required. Missing schema or evidence, cancellation, active or
+uncertain dispatch remains blocking. The snapshot also preserves the original
+cart authorization and dispatch records on which this allowance relies.
 
 Pending provider processing alone is not a reason to prevent routine updates.
 The upgrade exception does not clear uncertainty, release refund capacity,

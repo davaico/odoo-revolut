@@ -291,7 +291,10 @@ The successful flow is:
    terminal-payment validation complete a fully paid sale.
 
 After capture, a delayed or unavailable report displays **Payment received —
-awaiting terminal tip details**. Keep the original order and payment line; use
+verifying payment details**. Successful report rows may be **CAPTURED** or
+**COMPLETED**. An explicit zero tip completes the same payment without adding
+a tip line, including when terminal tipping is disabled. This verification
+message is not a request for customer tip selection. Keep the original order and payment line; use
 **Check status** or manager reconciliation. Background reconciliation can
 finish the report later. Do not create another charge. Full refunds include
 the proven tip; partial refunds select base and tip components separately.

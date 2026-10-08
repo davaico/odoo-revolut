@@ -121,7 +121,7 @@ def zero_report_response(env, verb, url):
             stamp = operation.captured_payment_created_at.isoformat() + "Z"
             writer.writerow({"payment_id": operation.revolut_payment_id, "order_id": operation.revolut_order_id,
                              "currency": operation.currency_code, "location_id": operation.location_id,
-                             "type": "PAYMENT", "state": "COMPLETED",
+                             "type": "PAYMENT", "state": "CAPTURED",
                              "amount": str(Decimal(operation.captured_amount_minor) / (Decimal(10) ** operation.currency_id.decimal_places)),
                              "tip_amount": "0.00", "surcharge_amount": "0.00", "refunded_amount": "0.00",
                              "created_date": stamp, "captured_date": stamp})

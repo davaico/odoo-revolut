@@ -660,7 +660,7 @@ patch(PaymentScreenPaymentLines.prototype, {
             return _t("Verified — reconnect and Check status to restore checkout");
         }
         if (line.uiState.revolutSnapshot?.awaiting_tip_details) {
-            return _t("Payment received — awaiting terminal tip details");
+            return _t("Payment received — verifying payment details");
         }
         const outcome = paymentOutcome(line);
         if (isRevolutRefund(line)) {

@@ -11,6 +11,21 @@ from unittest import mock
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+CAPTURED_PAYMENT_SCHEMA = "\n".join(
+    table + "." + column
+    for table, columns in {
+        "pos_revolut_payment_operation": (
+            "id", "state", "provider_state", "amount_minor", "captured_amount_minor",
+            "captured_payment_created_at", "retry_safe", "authorization_id",
+            "revolut_order_id", "revolut_payment_intent_id", "revolut_payment_id", "report_run_id",
+        ),
+        "pos_revolut_payment_dispatch": (
+            "operation_id", "action", "completed_at", "outcome", "provider_reference",
+        ),
+        "pos_revolut_cart_authorization": ("id",),
+    }.items()
+    for column in columns
+)
 
 
 def load_script(name):
@@ -24,17 +39,21 @@ def load_script(name):
 
 class FakeRunner:
     def __init__(self, responses, *, pdf_response="ODOO_PDF_PREFLIGHT_OK\n",
-                 service_response="User=odoo\nMainPID=123\n", financial_responses=()):
+                 service_response="User=odoo\nMainPID=123\n", financial_responses=(),
+                 captured_schema=CAPTURED_PAYMENT_SCHEMA):
         self.pdf_response = pdf_response
         self.service_response = service_response
         self.responses = list(responses)
         self.financial_responses = list(financial_responses)
         self.calls = []
+        self.captured_schema = captured_schema
 
     def run(self, command, **kwargs):
         self.calls.append((command, kwargs))
         if command[0] == "runuser" and command[-1].startswith("SELECT COALESCE(jsonb_agg"):
             response = self.financial_responses.pop(0) if self.financial_responses else "[]"
+        elif command[0] == "runuser" and command[-1].startswith("SELECT table_name || '.' || column_name"):
+            response = self.captured_schema
         elif command[:3] == ["systemctl", "show", "odoo"]:
             response = self.service_response
         elif command[:2] == ["/usr/sbin/runuser", "--preserve-environment"]:
@@ -698,6 +717,7 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
         cases = [
             ("install", "pos_revolut_external_refund_evidence"),
             ("install", "pos_revolut_refund_operation"),
+            ("install", "pos_revolut_payment_operation"),
             ("upgrade", "pos_revolut_future_operation"),
         ]
         for mode, table in cases:
@@ -707,6 +727,33 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
                 runner = FakeRunner([table + "\n", "1\n"])
                 deployment = self._deployment(remote, runner, root, archive, mode=mode)
                 self.assertEqual(deployment._financial_blockers(), [table + "=1"])
+
+    def test_captured_report_upgrade_has_bounded_read_only_guard(self):
+        remote = load_script("deploy-addon-remote")
+        runner = FakeRunner(["pos_revolut_payment_operation\n", "0\n"])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            deployment = self._deployment(remote, runner, root, self._artifact(root))
+            self.assertEqual(deployment._financial_blockers(), [])
+        sql = runner.calls[-1][0][-1]
+        self.assertIn("provider_state IN ('captured', 'completed')", sql)
+        self.assertIn("COALESCE(retry_safe, FALSE) IS FALSE", sql)
+        self.assertIn("pos_revolut_payment_dispatch", sql)
+        self.assertIn("pos_revolut_cart_authorization", sql)
+        self.assertIn("NOT COALESCE", sql)
+        self.assertNotIn("UPDATE", sql)
+
+    def test_missing_captured_payment_or_dispatch_schema_keeps_original_guard(self):
+        remote = load_script("deploy-addon-remote")
+        for missing in CAPTURED_PAYMENT_SCHEMA.splitlines():
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                runner = FakeRunner(["pos_revolut_payment_operation\n", "1\n"],
+                                    captured_schema=CAPTURED_PAYMENT_SCHEMA.replace(missing, ""))
+                deployment = self._deployment(remote, runner, root, self._artifact(root))
+                self.assertEqual(deployment._financial_blockers(), ["pos_revolut_payment_operation=1"])
+                self.assertEqual(runner.calls[-1][0][-1],
+                                 'SELECT count(*) FROM "pos_revolut_payment_operation" operation WHERE deployment_blocking')
 
     def test_successful_upgrade_installs_release_then_restarts_and_checks_health(self):
         remote = load_script("deploy-addon-remote")
@@ -803,14 +850,66 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             commands.index(update), commands.index(["systemctl", "start", "odoo"])
         )
 
-    def _pending_upgrade_runner(self, before, after):
+    def _pending_upgrade_runner(self, before, after, table="pos_revolut_refund_operation"):
         return FakeRunner([
-            "pos_revolut_refund_operation\n", "0\n", "", "",
-            "pos_revolut_refund_operation\n", "0\n",
+            table + "\n", "0\n", "", "",
+            table + "\n", "0\n",
             "pos_restaurant|installed\n", "",
             "pos_revolut|installed\npos_restaurant|installed\n", "",
             "active\n", "",
         ], financial_responses=[json.dumps(before), json.dumps(after)])
+
+    def test_captured_upgrade_preserves_authority_dispatch_and_reservations(self):
+        remote = load_script("deploy-addon-remote")
+        payment = {"id": 40, "state": "unresolved", "provider_state": "captured",
+                   "amount_minor": 1, "captured_amount_minor": 1, "retry_safe": False,
+                   "authorization_id": 6, "report_run_id": "original-report",
+                   "deployment_blocking": True, "blocking_order_key": "original-order",
+                   "blocking_terminal_key": "original-terminal"}
+        authority = {"id": 6, "state": "prepared", "canonical": {"base": 1},
+                     "tenders": [{"operation": 40}], "projection_revision": 0}
+        dispatch = {"id": 10, "operation_id": 40, "action": "create_order",
+                    "outcome": "succeeded", "provider_reference": "original-provider-order"}
+        runner = self._pending_upgrade_runner([], [], "pos_revolut_payment_operation")
+        runner.financial_responses = [json.dumps([row]) for row in
+                                      (payment, authority, dispatch, payment, authority, dispatch)]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._target_configuration(root)
+            result = self._deployment(remote, runner, root, self._artifact(root)).execute()
+            saved = next((root / "var/backups/odoo-revolut-deploy").glob("*/financial-state.json"))
+            self.assertEqual(json.loads(saved.read_text()), {
+                "pos_revolut_payment_operation": [payment],
+                "pos_revolut_cart_authorization": [authority],
+                "pos_revolut_payment_dispatch": [dispatch],
+            })
+            self.assertIn("Financial state preserved", result)
+
+    def test_changed_captured_authority_or_dispatch_keeps_odoo_stopped(self):
+        remote = load_script("deploy-addon-remote")
+        payment = {"id": 40, "state": "unresolved", "captured_amount_minor": 1,
+                   "deployment_blocking": True, "blocking_terminal_key": "reserved"}
+        authority = {"id": 6, "canonical": {"base": 1}, "projection_revision": 0}
+        dispatch = {"id": 10, "outcome": "succeeded", "provider_reference": "original-ref"}
+        cases = [
+            (dict(payment, captured_amount_minor=0), authority, dispatch),
+            (dict(payment, deployment_blocking=False), authority, dispatch),
+            (dict(payment, blocking_terminal_key=None), authority, dispatch),
+            (payment, dict(authority, canonical={}), dispatch),
+            (payment, dict(authority, projection_revision=1), dispatch),
+            (payment, authority, dict(dispatch, outcome="unresolved")),
+            (payment, authority, dict(dispatch, provider_reference="replacement-ref")),
+        ]
+        for after in cases:
+            with self.subTest(after=after), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self._target_configuration(root)
+                runner = self._pending_upgrade_runner([], [], "pos_revolut_payment_operation")
+                runner.financial_responses = [json.dumps([row]) for row in
+                                              (payment, authority, dispatch, *after)]
+                with self.assertRaisesRegex(remote.DeploymentError, "Financial records changed during upgrade"):
+                    self._deployment(remote, runner, root, self._artifact(root)).execute()
+                self.assertNotIn(["systemctl", "start", "odoo"], [call[0] for call in runner.calls])
 
     def test_pending_refund_upgrade_preserves_private_financial_snapshot(self):
         remote = load_script("deploy-addon-remote")

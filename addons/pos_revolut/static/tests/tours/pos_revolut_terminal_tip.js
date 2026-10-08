@@ -32,7 +32,7 @@ registry.category("web_tour.tours").add("pos_revolut_terminal_tip_report_reload"
         PaymentScreen.clickPaymentMethod("Revolut"),
         {
             content: "Captured gross waits for separately authenticated terminal tip details",
-            trigger: ".payment-screen .electronic_status:contains('Payment received'):contains('awaiting terminal tip details')",
+            trigger: ".payment-screen .electronic_status:contains('Payment received'):contains('verifying payment details')",
             run() { assertWaiting(); },
         },
         { trigger: ".modal:contains('Communication with Revolut was interrupted')" },

@@ -20,13 +20,31 @@ internal evidence. No additional menu, ACL or data cleanup is required.
 
 | Existing state during upgrade | Deployment result |
 | --- | --- |
-| Active/uncertain payment | Refuse, as before |
+| Active/uncertain payment without complete captured-report recovery evidence | Refuse, as before |
+| Captured pending/unresolved payment with complete persisted authority, provider/report identity and successful dispatch evidence | Permit with preservation checks |
 | Refund dispatching, with or without a provider reference | Refuse |
 | Pending/unresolved refund with missing or malformed provider UUID | Refuse |
 | Pending/unresolved refund with a persisted provider UUID | Permit with preservation checks |
 | Internal GET-only discovery evidence, including an unidentified refund | Permit with preservation checks; retain its financial restrictions |
 | Completed/failed refund | Permit, as before |
 | Unrecognized financial operation model | Retain its existing guard |
+
+A captured payment awaiting report verification may also survive an upgrade.
+This allowance requires pending/unresolved local state, captured/completed
+provider state, positive captured money at least the requested base, a capture
+timestamp, retry prohibited, an existing cart authorization, valid persisted
+order/intent/payment/report UUIDs, and exactly two completed successful dispatch
+claims matching the order and intent. Missing current schema, malformed/null
+capture/reference fields, active or uncertain dispatch claims and cancellation dispatches remain
+blocked. The allowance neither verifies the payment nor assumes a zero tip;
+reconciliation after restart must validate the actual report. Native Odoo stores
+an unset `retry_safe` Boolean as SQL NULL and reads it as false; both NULL and
+false keep retries prohibited, while true blocks this allowance.
+
+Cart authorizations and payment dispatch claims are included in the private
+preservation snapshot whenever this schema-supported allowance is available.
+Their original stored values must survive the offline upgrade unchanged, along
+with the existing payment/refund/evidence records.
 
 Install mode keeps the previous conservative guard. Upgrade mode does not
 change any stored `deployment_blocking` flag; discovery evidence continues

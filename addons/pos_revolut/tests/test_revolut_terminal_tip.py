@@ -366,6 +366,30 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
         self.assertFalse(self.order.lines.filtered(lambda line: line.product_id == self.tip_product))
         self.assertEqual(self.financial_post_count(), 2)
 
+    def test_captured_zero_tip_report_recovers_existing_payment_without_recharge(self):
+        self.gross_minor, self.tip_minor = 10000, 0
+        self.start_payment()
+        self.report_status = "completed"
+        self.csv_content = self.report_csv([self.report_row(state="PROCESSING")])
+        unresolved = self.poll_payment()
+        self.assertEqual(unresolved["state"], "unresolved")
+        self.assertTrue(unresolved["awaiting_tip_details"])
+        self.assertFalse(unresolved["retry_safe"])
+
+        self.csv_content = self.report_csv([self.report_row(state="CAPTURED")])
+        recovered = self.poll_payment()
+        self.assertEqual(recovered["state"], "verified")
+        self.assertEqual(recovered["operation_id"], unresolved["operation_id"])
+        self.assertEqual(recovered["gross_amount_minor"], 10000)
+        self.assertEqual(recovered["terminal_tip_minor"], 0)
+        self.assertFalse(recovered["awaiting_tip_details"])
+        self.order.invalidate_recordset()
+        self.assertEqual(self.order.amount_total, 100)
+        self.assertEqual(self.order.payment_ids.amount, 100)
+        self.assertFalse(self.order.lines.filtered(lambda line: line.product_id == self.tip_product))
+        self.assertEqual(self.financial_post_count(), 2)
+        self.assertEqual(self.report_post_count, 1)
+
     def test_invalid_report_never_verifies_or_releases_captured_reservation(self):
         self.start_payment()
         self.report_status = "completed"
@@ -396,7 +420,9 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
         self.start_payment()
         self.report_status = "completed"
         for rows in ([self.report_row(), self.report_row()],
-                     [self.report_row(), self.report_row(payment_id=str(uuid4()), amount="3.00")]):
+                     [self.report_row(), self.report_row(payment_id=str(uuid4()), amount="3.00")],
+                     [self.report_row(), self.report_row(payment_id=str(uuid4()), state="CAPTURED", amount="3.00")],
+                     [self.report_row(state="CAPTURED"), self.report_row(state="CAPTURED")]):
             with self.subTest(rows=rows):
                 self.csv_content = self.report_csv(rows)
                 result = self.poll_payment()
