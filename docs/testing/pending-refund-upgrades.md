@@ -115,3 +115,20 @@ intermediate fixture failure), `pending-upgrade-guard-historical.log` (final
 successful historical path), and `pending-upgrade-all-tooling-final.log`.
 These logs are not permanent private preservation. Staging deployment and all
 fresh live acceptance results are recorded separately in the guided retest.
+
+## Captured-report follow-up — 2026-10-08
+
+The captured-report upgrade allowance passed 44 deployment unit tests and the
+actual PostgreSQL/Odoo guard harness. Tests first reproduced the original
+capture blocker and the native SQL-NULL Boolean mismatch. The final fixture
+creates `retry_safe` without a value and verifies SQL NULL/native False; true
+remains blocking. Unsafe/null capture identities and incomplete/uncertain
+dispatches remain refused. An actual offline upgrade preserves the captured
+operation, authorizations, dispatch claims, refunds and evidence, including
+blocking flags and reservations. Authority/dispatch corruption prevents
+service restart. A SELECT-only staging preflight accepts the real captured
+case; no live ledger normalization or provider request was performed.
+
+The frozen correction and exact-artifact validation are recorded in the
+[T12 release evidence](ticket-12-release-evidence.md). Deployment and live
+recovery remain pending and must not be inferred from mocked test results.

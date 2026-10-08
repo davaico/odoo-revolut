@@ -1259,3 +1259,41 @@ SQL predicate required explicit false and still blocked this real operation.
 The guard is being corrected to match native Boolean semantics (NULL/false
 means retries prohibited; true remains blocked), with a regression using the
 actual unset value. No staging financial value was normalized or rewritten.
+
+The native-Boolean guard correction is complete. Its default-NULL regression
+failed before the change, then **44 deployment unit tests** and the actual
+disposable PostgreSQL/Odoo upgrade harness passed, exit 0. Unsafe or missing
+capture/reference/dispatch evidence still blocks deployment; retry-safe true
+is blocked, while native false/NULL remains protected from replay. Original
+authorization, dispatch, operation, refund and evidence values survive the
+offline module update. A new SELECT-only staging preflight returned **no
+blockers** without rewriting any live financial state. Final independent Spec
+review of the frozen commit found no remaining issues.
+
+The frozen candidate is **e3e78976f6d6a20cdecbcd33cb70db1f766b1c33**, local
+branch **codex/fix-captured-report**, addon **19.0.1.18.2**. Exact single-addon
+archive SHA256: **428fa60a033b420b50eb5e51ed8563f976e0bdb28645d3f2b3e60fb37de9368a**.
+Both runbook artifact checks passed, exit 0, using the production extractor:
+
+- Retail installation: **0 failures, 0 errors, 16 tests**.
+- Legacy migration from **30492a67020acdfe34d7f560a9cf6d7fb20f6430**: retail
+  and Restaurant installation/bridge-retirement paths and repeat upgrades each
+  completed with **0 failures, 0 errors, 16 tests** (four upgrade test runs).
+
+Commands: `scripts/test-delivered-addon --revision
+e3e78976f6d6a20cdecbcd33cb70db1f766b1c33 --scenario retail` and the same
+revision with `--scenario migration --migration-from
+30492a67020acdfe34d7f560a9cf6d7fb20f6430`. Unique disposable projects were
+`t12-captured-artifact-retail` and `t12-captured-artifact-migration`; all
+provider HTTP was blocked and the scripts removed only their test resources.
+Local logs: `/tmp/t12-captured-artifact-{retail,migration}.log`,
+`/tmp/t12-captured-report-{red,green}.log`, and
+`/tmp/t12-captured-guard-null-{red,sql-red,unit-green,sql-green}.log`. These
+are working logs, not permanent private release-evidence storage.
+
+**Not deployed:** staging remains on **b13c5be7952b40f2f42a79098daaf043f6651154**,
+addon **19.0.1.18.1**. Maintenance authorization is being requested for the
+backup, preservation-checked offline upgrade and brief POS service restart.
+Live recovery of the existing captured order is still unverified. Keep the
+existing payment; no replacement charge, Force done, cancellation or refund
+was performed. **£0.01 captured, £0.24 remaining**; R01/R02 and T12 remain open.
