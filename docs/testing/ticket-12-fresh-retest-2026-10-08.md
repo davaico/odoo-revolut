@@ -465,3 +465,29 @@ For every subcase retain: candidate and deployed source, setup, expected and
 actual amount/state, Odoo/native/provider outcomes, dispatch counts where
 observable, private reference mapping, and **PASS / FAIL / BLOCKED / NOT
 REPRODUCIBLE / NOT RUN**. Do not collapse partial cases into a whole-row pass.
+
+## Captured zero-tip report correction deployed — 2026-10-08
+
+The current staging addon is **19.0.1.18.2**, exact source/tooling revision
+**e3e78976f6d6a20cdecbcd33cb70db1f766b1c33**. This supersedes the earlier
+deployment identity without changing the attribution of previous tests. The
+owner-authorized standard upgrade preserved **1,178 financial, authority and
+dispatch records** before restarting Odoo. Independent verification matched
+all **109 addon files** to the tested archive and confirmed installed version
+and service/HTTP health. See [release evidence](ticket-12-release-evidence.md)
+for the regression, exact-artifact and preservation checks.
+
+The current campaign has **£0.01 already captured** with explicit provider
+report tip **£0.00**, leaving **£0.24** of the gross new-charge cap. The parser
+now accepts CAPTURED as well as COMPLETED report rows. The operator confirmed
+physical terminal tipping is disabled; cashier Tips remains disabled too.
+Verification wording is **Payment received — verifying payment details**.
+
+Manual testing is paused at the owner's request. The original captured attempt
+remains unresolved/Draft pending recovery after the upgrade; do not use a new
+charge, Force done, cancellation or refund to finish this case. On resumption,
+recover the existing order/payment through its existing status path and record
+the actual native completion. Granted-test-user checkout and R01/R02 remain
+unverified; the capture shown was under Administrator. T12 and the private
+evidence/native-PDF/printing gates remain open. Other registers and history
+were not retired or deleted.

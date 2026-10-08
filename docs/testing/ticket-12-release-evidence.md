@@ -1297,3 +1297,31 @@ backup, preservation-checked offline upgrade and brief POS service restart.
 Live recovery of the existing captured order is still unverified. Keep the
 existing payment; no replacement charge, Force done, cancellation or refund
 was performed. **£0.01 captured, £0.24 remaining**; R01/R02 and T12 remain open.
+
+The owner explicitly authorized deployment and asked to resume manual testing
+afterward. The standard upgrade completed successfully at **2026-10-08
+14:07 UTC**, exit 0, deploying **e3e78976f6d6a20cdecbcd33cb70db1f766b1c33**,
+addon **19.0.1.18.2**, from the reviewed local branch. The encrypted database
+and filestore backup workflow, private configuration snapshot, stopped-service
+financial preflight and offline module update all succeeded. The deployer
+verified **1,178 original stored financial/authorization/dispatch records**
+unchanged before restart. This supersedes the preceding not-deployed checkpoint.
+
+An independent read-only check compared **all 109 addon source files** with
+the tested frozen artifact, confirmed the exact immutable release target,
+root-only preservation snapshot permissions, active Odoo service and healthy
+local login endpoint. A separate ORM read confirmed POS Revolut **installed
+19.0.1.18.2**, standard Restaurant installed, the original **£0.01 capture**
+still unresolved with native order Draft and retry prohibited, its report
+reference present, cashier Tips still false and the terminal-tip product
+mapping preserved. No provider call was made by these checks.
+
+Manual testing is paused at the owner's request. **Live recovery has not been
+performed**: keep the original captured checkout and payment line, and resume
+through its existing status/recovery path rather than creating a new charge.
+The deployment did not fabricate tip evidence, force completion, cancel or
+refund the capture. **£0.24 remains** of the gross campaign card-charge budget.
+R01/R02 remain incomplete; T12, T33 and T34 remain open. Private backup and
+snapshot locations are retained in the local private checkpoint. Working logs:
+`/tmp/t12-captured-staging-deploy.log`; exact-artifact and guard test logs are
+listed above. No push or pull request was created.
