@@ -569,3 +569,17 @@ passes. Remaining gross card budget is still £0.21. Next prepare R03's
 Cash/card split fixture: one product at quantity two, total £0.02, planned
 Cash £0.01 and Revolut £0.01. Stop at Payment before selecting a tender;
 confirm both allocations through the guided steps before card dispatch.
+
+The operator completed that split fixture and reported success. Receipt and
+read-only native/operation checks agree: Paid £0.02, exactly £0.01 Cash and
+£0.01 verified Revolut, explicit £0.00 tip. Gross card captures are now £0.05,
+remaining cap £0.20. The operator now requests complete scenario instructions,
+without checkpoints before selecting a payment method; use complete instructions
+once the amounts and supported workflow are established.
+
+The live two-card subcase has an amount-entry gap: Revolut inherits native
+automatic dispatch on payment-method selection. The automated two-card tour
+programmatically prepares its partial first line; ordinary UI support is not
+established. Leave this live subcase blocked rather than dispatching the full
+balance or treating automation as cashier acceptance. Next check current
+native receipt reprinting without another charge or refund.

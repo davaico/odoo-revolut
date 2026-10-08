@@ -1574,3 +1574,30 @@ mapping remains private; no provider call or financial action was needed.
 Gross captures remain £0.04 and budget remaining £0.21. The next R03 fixture
 is a £0.02 cart with £0.01 Cash and £0.01 Revolut, initially prepared at
 Payment without dispatch. No amount is reserved until dispatch/uncertainty.
+
+## Cash/Revolut split checkout — 2026-10-08
+
+The operator reported **"all good"** after the complete £0.02 split-payment
+instructions and supplied a Payment Successful receipt: quantity two test
+products, total **£0.02**, dedicated Cash **£0.01** and Revolut **£0.01**, served
+by the test cashier. Read-only ORM confirms native Paid/total/paid £0.02,
+exactly two native tenders with those shares, and one verified Revolut operation
+with requested/captured/gross **1 GBP minor**, explicit zero tip, report/evidence
+and retry prohibited. No provider requests or financial writes were made by
+the agent. Private log: `/tmp/t12-split-readback.log`. Gross campaign card
+captures now total **£0.05**, leaving **£0.20**; refunds do not replenish that cap.
+Record this individual split as operator-reported success with receipt/native
+tender agreement; intermediate unpaid-screen persistence was not separately
+captured, and the complete R03 row remains partial.
+
+Preparation for the two-card live subcase found that pinned Odoo's
+`PaymentScreen.addNewPaymentLine` immediately sends a terminal request when
+`payment_terminal.fastPayments` is true. PaymentRevolut inherits the native
+true default. The existing multiple-card automated tour constructs the first
+partial line programmatically before entering its amount and sending; that
+does not demonstrate an ordinary cashier UI path. Do not instruct the operator
+to select Revolut and then edit a first allocation: the full remaining amount
+would already be dispatched. The live two-card case remains blocked on an
+amount-entry workflow, without weakening backend verification or improvising
+financial requests. No production change was made during this investigation.
+Next exercise current native receipt reprinting; wider campaign gates stay open.
