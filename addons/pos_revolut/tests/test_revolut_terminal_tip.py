@@ -390,6 +390,51 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
         self.assertEqual(self.financial_post_count(), 2)
         self.assertEqual(self.report_post_count, 1)
 
+    def test_utc_annotated_report_dates_recover_zero_tip_without_recharge(self):
+        self.gross_minor, self.tip_minor = 10000, 0
+        self.created_at = "2026-10-01T10:00:00.769Z"
+        self.start_payment()
+        self.assertTrue(self.poll_payment()["awaiting_tip_details"])
+        original_run = self.active_run_id
+        self.report_status = "completed"
+        created = "2026-10-01T10:00:00.769Z[UTC]"
+        captured = "2026-10-01T10:00:10.900Z[UTC]"
+        self.csv_content = self.report_csv([self.report_row(
+            state="CAPTURED", created_date=created, captured_date=captured,
+        )])
+        verified = self.poll_payment()
+        self.assertEqual(verified["state"], "verified")
+        self.assertEqual(verified["gross_amount_minor"], 10000)
+        self.assertEqual(verified["terminal_tip_minor"], 0)
+        self.assertFalse(verified["awaiting_tip_details"])
+        self.assertEqual(self.active_run_id, original_run)
+        self.assertEqual(self.financial_post_count(), 2)
+        self.assertEqual(self.report_post_count, 1)
+        self.order.invalidate_recordset()
+        self.assertEqual(self.order.amount_total, 100)
+        self.assertEqual(self.order.payment_ids.amount, 100)
+        self.assertFalse(self.order.lines.filtered(lambda line: line.product_id == self.tip_product))
+        operation = self.env["pos.revolut.payment.operation"].browse(self.operation_id)
+        operation.invalidate_recordset()
+        self.assertEqual(operation.terminal_tip_evidence["created_date"], created)
+        self.assertEqual(operation.terminal_tip_evidence["captured_date"], captured)
+
+    def test_numeric_utc_annotation_verifies_nonzero_tip(self):
+        self.start_payment()
+        self.report_status = "completed"
+        self.csv_content = self.report_csv([self.report_row(
+            created_date="2026-10-01T10:00:00+00:00[UTC]",
+            captured_date="2026-10-01T10:00:10+00:00[UTC]",
+        )])
+        verified = self.poll_payment()
+        self.assertEqual(verified["state"], "verified")
+        self.assertEqual(verified["gross_amount_minor"], 10300)
+        self.assertEqual(verified["terminal_tip_minor"], 300)
+        self.assertEqual(self.financial_post_count(), 2)
+        self.order.invalidate_recordset()
+        self.assertEqual(self.order.amount_total, 103)
+        self.assertEqual(self.order.payment_ids.amount, 103)
+
     def test_invalid_report_never_verifies_or_releases_captured_reservation(self):
         self.start_payment()
         self.report_status = "completed"
@@ -401,6 +446,12 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
             {"surcharge_amount": "0.01"}, {"refunded_amount": "0.01"},
             {"created_date": "2026-10-01T11:00:00Z"},
             {"captured_date": "2026-10-01T09:59:00Z"},
+            {"created_date": "2026-10-01T10:00:00Z[Europe/Paris]"},
+            {"created_date": "2026-10-01T10:00:00+01:00[UTC]"},
+            {"created_date": "2026-10-01T10:00:00[UTC]"},
+            {"created_date": "2026-10-01T10:00:00Z[UTC][UTC]"},
+            {"created_date": "2026-10-01T11:00:00Z[UTC]"},
+            {"captured_date": "2026-10-01T09:59:00Z[UTC]"},
             {"amount": "0" * 25},
         ]
         for wrong in cases:

@@ -37,6 +37,9 @@ REPORT_DECIMAL = re.compile(r"[0-9]{1,16}(?:\.[0-9]{1,6})?\Z")
 def _utc_datetime(value):
     if not isinstance(value, str) or not 20 <= len(value) <= 40:
         raise ValueError("missing payment creation timestamp")
+    # UTC payments-report timestamps may include the provider's zone annotation.
+    if value.endswith("[UTC]"):
+        value = value[:-5]
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
         raise ValueError("payment timestamp must be UTC")
