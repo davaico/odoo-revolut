@@ -24,15 +24,18 @@ def load_script(name):
 
 class FakeRunner:
     def __init__(self, responses, *, pdf_response="ODOO_PDF_PREFLIGHT_OK\n",
-                 service_response="User=odoo\nMainPID=123\n"):
+                 service_response="User=odoo\nMainPID=123\n", financial_responses=()):
         self.pdf_response = pdf_response
         self.service_response = service_response
         self.responses = list(responses)
+        self.financial_responses = list(financial_responses)
         self.calls = []
 
     def run(self, command, **kwargs):
         self.calls.append((command, kwargs))
-        if command[:3] == ["systemctl", "show", "odoo"]:
+        if command[0] == "runuser" and command[-1].startswith("SELECT COALESCE(jsonb_agg"):
+            response = self.financial_responses.pop(0) if self.financial_responses else "[]"
+        elif command[:3] == ["systemctl", "show", "odoo"]:
             response = self.service_response
         elif command[:2] == ["/usr/sbin/runuser", "--preserve-environment"]:
             response = self.pdf_response
@@ -639,7 +642,7 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             any(command[:3] == ["systemctl", "stop", "odoo"] for command in commands)
         )
 
-    def test_pending_refund_blocks_deployment_before_backup(self):
+    def test_refund_without_provider_reference_blocks_deployment_before_backup(self):
         remote = load_script("deploy-addon-remote")
         runner = FakeRunner([
             "pos_revolut_payment_operation\npos_revolut_refund_operation\n",
@@ -675,7 +678,7 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             for call in runner.calls
         ))
 
-    def test_unresolved_external_refund_evidence_blocks_deployment(self):
+    def test_unresolved_external_evidence_does_not_prevent_guarded_upgrade(self):
         remote = load_script("deploy-addon-remote")
         runner = FakeRunner(["pos_revolut_external_refund_evidence\n", "1\n"])
         with tempfile.TemporaryDirectory() as directory:
@@ -688,9 +691,22 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
                 database="revolut_staging", customer="revolut",
                 environment="staging", mode="upgrade",
             )
-            self.assertEqual(deployment._financial_blockers(), [
-                "pos_revolut_external_refund_evidence=1",
-            ])
+            self.assertEqual(deployment._financial_blockers(), [])
+
+    def test_install_and_unknown_models_keep_conservative_financial_guards(self):
+        remote = load_script("deploy-addon-remote")
+        cases = [
+            ("install", "pos_revolut_external_refund_evidence"),
+            ("install", "pos_revolut_refund_operation"),
+            ("upgrade", "pos_revolut_future_operation"),
+        ]
+        for mode, table in cases:
+            with self.subTest(mode=mode, table=table), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                archive = self._artifact(root)
+                runner = FakeRunner([table + "\n", "1\n"])
+                deployment = self._deployment(remote, runner, root, archive, mode=mode)
+                self.assertEqual(deployment._financial_blockers(), [table + "=1"])
 
     def test_successful_upgrade_installs_release_then_restarts_and_checks_health(self):
         remote = load_script("deploy-addon-remote")
@@ -786,6 +802,80 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
         self.assertLess(
             commands.index(update), commands.index(["systemctl", "start", "odoo"])
         )
+
+    def _pending_upgrade_runner(self, before, after):
+        return FakeRunner([
+            "pos_revolut_refund_operation\n", "0\n", "", "",
+            "pos_revolut_refund_operation\n", "0\n",
+            "pos_restaurant|installed\n", "",
+            "pos_revolut|installed\npos_restaurant|installed\n", "",
+            "active\n", "",
+        ], financial_responses=[json.dumps(before), json.dumps(after)])
+
+    def test_pending_refund_upgrade_preserves_private_financial_snapshot(self):
+        remote = load_script("deploy-addon-remote")
+        row = {"id": 7, "state": "pending", "revolut_order_id": "a" * 8 + "-1111-4111-8111-" + "b" * 12,
+               "original_operation_id": 3, "amount_minor": 1, "idempotency_key": "original-key",
+               "return_allocation": {"line": 1}, "deployment_blocking": True,
+               "previous_operation_id": 2, "retry_safe": False,
+               "report_run_history": ["original-run"], "financial_correction_move_id": 4,
+               "native_reconciliation_status": "native_draft", "native_lot_snapshot": {"lot": 5}}
+        runner = self._pending_upgrade_runner([row], [dict(row, new_schema_default=False)])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = self._artifact(root)
+            self._target_configuration(root)
+            report = self._deployment(remote, runner, root, archive).execute()
+            snapshots = list((root / "var/backups/odoo-revolut-deploy").glob("*/financial-state.json"))
+            self.assertEqual(len(snapshots), 1)
+            self.assertEqual(snapshots[0].stat().st_mode & 0o777, 0o600)
+            self.assertEqual(json.loads(snapshots[0].read_text()), {"pos_revolut_refund_operation": [row]})
+            self.assertIn("Financial state preserved", report)
+        self.assertIn(["systemctl", "start", "odoo"], [call[0] for call in runner.calls])
+
+    def test_changed_or_lost_refund_ledger_keeps_odoo_stopped(self):
+        remote = load_script("deploy-addon-remote")
+        row = {"id": 7, "state": "pending", "revolut_order_id": "original-refund",
+               "original_operation_id": 3, "amount_minor": 1, "idempotency_key": "original-key",
+               "return_allocation": {"line": 1}, "deployment_blocking": True,
+               "previous_operation_id": 2, "retry_safe": False,
+               "report_run_history": ["original-run"], "financial_correction_move_id": 4,
+               "native_reconciliation_status": "native_draft", "native_lot_snapshot": {"lot": 5}}
+        changes = [[], [dict(row, state="verified")], [dict(row, amount_minor=2)],
+                   [dict(row, revolut_order_id="replacement-refund")],
+                   [dict(row, idempotency_key="replacement-key")],
+                   [dict(row, return_allocation={"line": 2})],
+                   [dict(row, deployment_blocking=False)], [row, dict(row, id=8)],
+                   [dict(row, previous_operation_id=None)], [dict(row, retry_safe=True)],
+                   [dict(row, report_run_history=[])], [dict(row, financial_correction_move_id=None)],
+                   [dict(row, native_reconciliation_status="native_completed")],
+                   [dict(row, native_lot_snapshot={})]]
+        for after in changes:
+            with self.subTest(after=after), tempfile.TemporaryDirectory() as directory:
+                runner = self._pending_upgrade_runner([row], after)
+                root = Path(directory)
+                archive = self._artifact(root)
+                self._target_configuration(root)
+                with self.assertRaisesRegex(remote.DeploymentError, "Financial records changed"):
+                    self._deployment(remote, runner, root, archive).execute()
+                commands = [call[0] for call in runner.calls]
+                self.assertIn(["systemctl", "stop", "odoo"], commands)
+                self.assertNotIn(["systemctl", "start", "odoo"], commands)
+
+    def test_financial_snapshot_detects_sub_float_precision_amount_change(self):
+        remote = load_script("deploy-addon-remote")
+        runner = self._pending_upgrade_runner([], [])
+        runner.financial_responses = [
+            '[{"id":7,"amount":0.010000000000000000001}]',
+            '[{"id":7,"amount":0.010000000000000000002}]',
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = self._artifact(root)
+            self._target_configuration(root)
+            with self.assertRaisesRegex(remote.DeploymentError, "Financial records changed"):
+                self._deployment(remote, runner, root, archive).execute()
+        self.assertNotIn(["systemctl", "start", "odoo"], [call[0] for call in runner.calls])
 
     def test_final_preflight_race_leaves_odoo_stopped_without_updating(self):
         remote = load_script("deploy-addon-remote")
