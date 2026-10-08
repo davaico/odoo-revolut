@@ -562,3 +562,10 @@ case; do not promote it to a whole-campaign pass. Gross captured spend is now
 **£0.04**, remaining budget **£0.21**. Next refresh the cashier browser and
 reopen the latest sale from POS Orders to verify persistence. No provider
 request or financial action was made by the agent during this read-back.
+
+The subsequent cashier screenshot confirms the latest £0.01 sale remains
+**Paid** in POS Orders after the requested refresh: this persistence check
+passes. Remaining gross card budget is still £0.21. Next prepare R03's
+Cash/card split fixture: one product at quantity two, total £0.02, planned
+Cash £0.01 and Revolut £0.01. Stop at Payment before selecting a tender;
+confirm both allocations through the guided steps before card dispatch.

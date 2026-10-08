@@ -1565,3 +1565,12 @@ Next verify this sale remains Paid after a cashier-browser refresh and reopening
 it from POS Orders. This specific reported success supersedes the preceding
 not-retested status; reload persistence for this sale and the wider R01/R02,
 T12, T33 and T34 acceptance gates remain open.
+
+The next operator screenshot, supplied after the requested cashier-browser
+refresh, shows the latest £0.01 sale selected in **Orders / Paid**, still
+**Paid**, alongside the four earlier paid Cash/card sales. Post-refresh
+persistence for the latest cashier sale is **PASS**. Screenshot/reference
+mapping remains private; no provider call or financial action was needed.
+Gross captures remain £0.04 and budget remaining £0.21. The next R03 fixture
+is a £0.02 cart with £0.01 Cash and £0.01 Revolut, initially prepared at
+Payment without dispatch. No amount is reserved until dispatch/uncertainty.
