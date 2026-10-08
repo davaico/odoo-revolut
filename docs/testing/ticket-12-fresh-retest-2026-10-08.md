@@ -202,6 +202,40 @@ Log: `build/ticket12-2026-10-08/staging-upgrade.log`. The guard refused before
 backup, service stop, release activation or database upgrade; no bypass or
 financial request was attempted.
 
+### Merchant-wide page investigation — 2026-10-08
+
+The operator reported that the page contains too many records that are not
+theirs and requested removal. Aggregate read-only checks confirmed 1,028
+unresolved evidence records: 980 `unrelated_source`, 47
+`outside_integration_location`, and one `conflicting_original_authority`.
+Only the last record blocks deployment. The tested candidate already retires
+the Merchant-wide menu, action, views and user read permission through its
+`19.0.1.16.1` migration, preserving internal evidence and financial flags.
+
+The blocker's reported parent matches one verified, paid historical Odoo sale.
+Its frozen company/environment/secret-reference tuple matches the discovery
+authority, but the legacy payment operation has no credential binding.
+Two independent read-only provider probes each made exactly three GETs:
+original order, underlying payment, and existing refund. Identity, original
+parent, currency, one-penny amount, captured/completed original payment and
+reported refunded amount all match. Both probes report the existing refund
+as **processing**, so the completed-refund assertion correctly fails.
+Neither probe bound credentials, imported a refund, cleared evidence, or
+committed any database change. No new financial request was sent.
+
+Local redacted working logs: `blocker-provider-read.log` and
+`blocker-provider-read-current.log` under `build/ticket12-2026-10-08/`.
+No full provider references or secrets were printed. This historical pending
+refund is not new campaign expenditure and cannot be erased to unblock rollout.
+
+A reversible native configuration change was prepared to archive only the
+Merchant-wide menu and deactivate only its POS-manager read ACL, preserving
+all evidence and blockers. Automatic approval review rejected execution
+because the request did not explicitly authorize this shared permission
+change. **The change was not executed**; explicit owner approval is pending.
+Staging remains `19.0.1.15.4`, live R01–R24 remain NOT RUN, and the campaign
+card budget remains unused.
+
 Begin only after reviewing the automated results. Verify the deployed source
 and checksum match the tested candidate using the [staging runbook](../staging-deployment.md).
 If they differ, record the difference and complete the authorized upgrade and
