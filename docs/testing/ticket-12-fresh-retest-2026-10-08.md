@@ -25,7 +25,7 @@ to exceed the cap or to waive that scenario.
 
 ## Candidate and automated checkpoint
 
-- Final frozen candidate: `693937ee3b7a78991a33cc714e0d47a4c70c3663`.
+- Original automated candidate: `693937ee3b7a78991a33cc714e0d47a4c70c3663`; the deployment-policy follow-up below supersedes its deployment identity.
 - Full-suite baseline: `8adc68f255e4ea1830831f571e22f5b3f41875e4` (current `main` at campaign start).
 - Addon: `19.0.1.18.1`; pinned Odoo: `19.0.20260908`.
 - Final single-addon Git archive SHA-256: `8c06d9653970add7d3c1adc8235249df7d8587e7504c70e2793e6cb31ae45102`.
@@ -232,9 +232,48 @@ A reversible native configuration change was prepared to archive only the
 Merchant-wide menu and deactivate only its POS-manager read ACL, preserving
 all evidence and blockers. Automatic approval review rejected execution
 because the request did not explicitly authorize this shared permission
-change. **The change was not executed**; explicit owner approval is pending.
+change. **The change was not executed**. The owner subsequently requested use
+of the newest version's existing page retirement, without extra manual UI or
+access changes; the proposed manual change is withdrawn.
 Staging remains `19.0.1.15.4`, live R01–R24 remain NOT RUN, and the campaign
 card budget remains unused.
+
+### Deployment policy follow-up — 2026-10-08
+
+The owner requires updates to remain possible while refunds are pending.
+[Pending-refund upgrade support](pending-refund-upgrades.md) is implemented and
+independently reviewed at `b13c5be7952b40f2f42a79098daaf043f6651154`.
+Addon version remains `19.0.1.18.1`; every addon file is unchanged from the
+original automated candidate above. New single-addon archive SHA-256:
+`eacf4de4be3a50459e012404215defe40f8815de5e8d2ab5baa2c971019f3ba2`.
+
+The deployment tool permits referenced pending/unresolved refunds and internal
+GET-only discovery evidence during upgrades. Active payments, all active refund
+dispatches and missing/malformed refund identities remain guarded. After stopping
+Odoo, it privately snapshots every stored financial operation/evidence value
+except ordinary write bookkeeping, upgrades offline, and verifies preservation
+before restarting. No stored blocker, reservation or credential binding is cleared.
+The existing addon migration removes the broad page without additional cleanup.
+
+- Full Python tooling: 61 tests run, 58 passes, three unchanged local PDF skips
+  covered by the earlier supported-runtime probes. Financial corruption,
+  native completion evidence and exact decimal comparisons are exercised.
+- Genuine staging-version upgrade: PASS, exit 0, from `bcb0204…` to the exact
+  frozen `b13c5be…` archive. Pending/unresolved Odoo/external refunds and
+  unresolved evidence remain unchanged; public recovery makes one mocked GET,
+  repeated polling is cached and no POST is sent.
+- Frozen packaged retail: PASS, 16 tests, zero failures/errors, exit 0.
+- Frozen packaged legacy retail/Restaurant migration: PASS, four groups of 16
+  tests, zero failures/errors, exit 0.
+- No remaining independent Standards or Spec findings. Both initial preservation
+  findings were fixed by replacing the partial allowlist with all stored columns.
+
+Logs in `build/ticket12-2026-10-08/`: `pending-upgrade-all-tooling-final.log`,
+`pending-upgrade-guard-frozen.log`, `pending-upgrade-artifact-retail.log`, and
+`pending-upgrade-artifact-migration.log`. Original broad addon/lifecycle results
+carry forward on exact source equality; no new 597-test run is claimed here.
+All affected checks passed. The owner-authorized staging rollout is the next
+step. No new campaign charge or refund has been sent.
 
 Begin only after reviewing the automated results. Verify the deployed source
 and checksum match the tested candidate using the [staging runbook](../staging-deployment.md).
