@@ -14,8 +14,12 @@ The [2026-10-08 guided retest and automated checkpoint](../../testing/ticket-12-
 began execution on `8adc68f255e4ea1830831f571e22f5b3f41875e4` and refroze candidate
 `693937ee3b7a78991a33cc714e0d47a4c70c3663` after a test-only restart-verifier
 correction. It records fresh and carried-forward results and supplies the
-operator sequence. Deployed-source
-verification and all live R01–R24 cases remain unverified for this campaign;
+operator sequence. The later reviewed deployment-tooling candidate
+`b13c5be7952b40f2f42a79098daaf043f6651154` permits safe pending-refund upgrades
+and was deployed/source-verified on 2026-10-08, preserving all 1,080 financial
+ledger records. The existing addon migration removed the broad Merchant-wide
+evidence page; no separate manual UI/access change occurred.
+All live R01–R24 cases remain unverified for this campaign;
 the dedicated-register setup below remains the preparation record.
 
 The owner requests **a new end-to-end test campaign from scratch**, using a
@@ -67,11 +71,14 @@ deployment or publication is implied by this checklist update.
 ### Campaign setup record
 
 - Register preparation: created and opened; verified setup is recorded below.
-- Deployed revision/device readiness: NOT VERIFIED for this campaign.
+- Deployed revision: `b13c5be7952b40f2f42a79098daaf043f6651154`, verified
+  against the tested archive on 2026-10-08; physical device readiness remains
+  NOT VERIFIED for this campaign.
 - Live scenario execution: NOT STARTED. On 2026-10-08 the owner approved a
   maximum £0.25 campaign budget and permitted retained charges. The guided
   retest treats this as aggregate gross card charges, with no budget recycling
-  after refunds; terminal-operator availability remains unconfirmed.
+  after refunds. The operator replied ready on 2026-10-08; no new campaign
+  charge/refund has occurred.
 - Automated A01–A10 acceptance passed on 2026-10-08 with the candidate and
   carried-forward source-equivalence evidence recorded in the guided retest.
   All live R rows remain NOT RUN.

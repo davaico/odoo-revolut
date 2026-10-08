@@ -77,13 +77,15 @@ git diff --exit-code 8adc68f255e4ea1830831f571e22f5b3f41875e4 \
   ':(exclude)addons/pos_revolut/tests/restart_verify.py'
 ```
 
-Result-bearing documentation is committed after testing; the frozen addon
-candidate and its archive remain the identities above.
+Result-bearing documentation is committed after testing. The original addon
+candidate above retains its evidence; the later deployment-tooling candidate
+and archive are recorded in the follow-up below.
 
 Automated acceptance A01–A10 is complete with this provenance. Standards and
 Spec review found no remaining findings. All live R01–R24 results remain NOT
-RUN, deployed-source/device readiness is unverified, and tickets 33/34 retain
-their separate release gates. No live charge, refund or deployment occurred.
+RUN, device readiness remains unverified, and tickets 33/34 retain their
+separate release gates. The later staging update/source verification is recorded
+below; no new campaign charge or refund occurred.
 
 Automated Merchant calls are mocked. The disposable runtime uses an internal
 network and verifies its unmocked-Merchant-HTTP blocker. A successful build,
@@ -185,11 +187,12 @@ After the operator reported readiness, read-only SSH and PostgreSQL checks found
   campaign charge. Full provider references remain on the server.
 - Dedicated campaign register `3`: one open session and zero orders.
 
-First inspect **Point of Sale → Revolut Refund Discovery Evidence**, keeping
-the **Needs Investigation** filter. Review the blocking record against its
-original Merchant/payment authority before any guarded upgrade. Do not manually
-clear its blocker or initiate a replacement refund. No deployment, provider
-request, charge or refund was performed by this preflight. R01–R24 remain
+The initial preflight called for inspecting **Point of Sale → Revolut Refund
+Discovery Evidence** with **Needs Investigation** selected. That page is now
+retired by the later upgrade below; this historical instruction is superseded.
+The record's financial protection must not be manually cleared or replaced
+with another refund. No deployment, provider request, charge or refund was
+performed by this initial preflight. R01–R24 remain
 NOT RUN; the £0.25 campaign card budget remains unused.
 
 The owner then requested the newest version. `git fetch origin` confirmed
@@ -272,8 +275,26 @@ Logs in `build/ticket12-2026-10-08/`: `pending-upgrade-all-tooling-final.log`,
 `pending-upgrade-guard-frozen.log`, `pending-upgrade-artifact-retail.log`, and
 `pending-upgrade-artifact-migration.log`. Original broad addon/lifecycle results
 carry forward on exact source equality; no new 597-test run is claimed here.
-All affected checks passed. The owner-authorized staging rollout is the next
-step. No new campaign charge or refund has been sent.
+All affected checks passed. The owner-authorized staging rollout succeeded
+at 10:16 UTC on 2026-10-08, exit 0, deploying the exact revision and archive
+above. Odoo is active on addon `19.0.1.18.1`; the deployment reports
+**Financial state preserved: 1,080 records**. Configuration and private
+`0600` root-owned ledger snapshot:
+`/var/backups/odoo-revolut-deploy/20261008T101648Z-b13c5be7952b/`.
+No ledger record was deleted, force-completed or rebound to a credential.
+
+Read-only post-upgrade checks confirm all seven retired page/menu/action/view/
+ACL/rule registrations are absent and the ordinary Administrator account is
+denied direct read access to the internal Merchant-wide evidence model.
+There are still 1,034 internal evidence records, including the one protected
+legacy blocker; its flag is retained and no longer prevents this safe update.
+The register still has one open session and zero orders. Logs:
+`pending-upgrade-staging.log` and `pending-upgrade-staging-verification.log`.
+
+No additional manual UI or permission change was performed. Fresh physical
+device, access/reload/Cash and all R01–R24 operator checks remain NOT RUN.
+Return to the POS Dashboard and reload before continuing the dedicated
+register. No new campaign charge or refund has been sent; £0.25 remains unused.
 
 Begin only after reviewing the automated results. Verify the deployed source
 and checksum match the tested candidate using the [staging runbook](../staging-deployment.md).

@@ -22,13 +22,23 @@ retail tests and four packaged migration groups of 16 tests. Commands returned
 zero for the accepted runs; the original stale-assertion failure remains in the
 guide's chronology. Independent Standards/Spec review accepted the correction.
 
-All live R01–R24 cases and current deployed-source verification remain NOT RUN
-or unverified. Earlier results and financial history below are preserved;
+The later [pending-refund deployment follow-up](ticket-12-fresh-retest-2026-10-08.md#deployment-policy-follow-up--2026-10-08)
+refroze reviewed candidate `b13c5be7952b40f2f42a79098daaf043f6651154` without
+changing addon files. Its full tooling suite passed 58 of 61 tests locally with
+the same three PDF skips covered by the earlier supported runtime. Its frozen
+archive passed retail (16), legacy migration (four groups of 16), and the actual
+staging-version upgrade with referenced pending/unresolved refunds, exact
+stored-ledger preservation and one mocked GET/no-POST recovery.
+The guarded staging update/source verification succeeded on 2026-10-08,
+preserving 1,080 ledger records and removing the existing broad-page
+registrations and read permission through the standard migration.
+
+All live R01–R24 cases remain NOT RUN. Earlier results and financial history below are preserved;
 dated instructions to resume only remaining cases are superseded for this new
 campaign. The owner approved a £0.25 maximum on 2026-10-08 and allowed charges
 to remain unrefunded; apply the conservative aggregate-gross interpretation
-recorded in the guide. No live action ran, and operator availability remains
-unconfirmed. Native PDF
+recorded in the guide. The operator replied ready; no new campaign card charge
+or refund ran. Native PDF
 acceptance (34), private preservation/publication review (33), reconciliation
 and the owner's final release decision remain open.
 
