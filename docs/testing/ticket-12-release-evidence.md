@@ -1423,3 +1423,40 @@ Private screenshot/reference mapping is retained in the local checkpoint.
 Next manual check: reload POS and reopen the completed sale from Orders.
 Campaign gross spend remains **£0.01**, budget remaining **£0.24**. Wider
 R01/R02, T12, T33 and T34 gates remain open.
+
+The operator's post-refresh POS Orders screenshot shows the existing Revolut
+sale **Paid, £0.01**, alongside the earlier Cash sale **Paid, £0.01**.
+Completed-sale persistence after reload is observed. The ongoing tab does not
+establish another completed sale. Screenshot/reference mapping remains private.
+Next: prepare a £0.01 checkout under the granted **test gary** user, stop at
+the payment screen to establish its user, cart and existing-line state before
+any dispatch. No new charge is reported; gross budget remains **£0.24**.
+
+The granted test-user browser subsequently shows the existing £0.01 Revolut
+line progressing from cart review/no request sent to **Waiting for card**.
+The operator has initiated this attempt; terminal amount, capture and native
+completion are not yet observed. Reserve **£0.01** for this pending attempt:
+previously captured £0.01 plus reserved £0.01 leaves **£0.23 unallocated**
+within the £0.25 gross campaign cap. Do not treat this as another paid sale.
+Next: compare terminal £0.01 GBP, pay once, and observe automatic receipt
+without manual validation/Force done. Physical terminal tipping is disabled.
+
+The cashier attempt then showed a communication-interrupted dialog and the
+older **awaiting terminal tip details** wording. Read-only inspection at that
+point found capture **1 GBP minor**, no report reference/evidence yet and a
+Draft native order. The operator subsequently supplied **Payment Successful
+£0.01** and a Revolut native receipt. Independent read-back confirms the
+current cashier operation **verified**, gross/captured **£0.01**, tip **£0.00**,
+report/evidence present, native order **Paid**, exactly **one £0.01 payment**,
+cashier user **7**, and retry prohibited. An earlier attempt linked to the same
+order is failed, capture zero, retry-safe; it is not another paid sale.
+
+Verification completed after the initial capture; the exact cause of the
+interruption and whether final completion followed a manual status click are
+not established. Cashier success/recovery is observed; clean uninterrupted
+automatic checkout remains unproven. The cashier browser's old wording
+suggests older loaded POS assets, not proof of a backend regression. Next:
+refresh this browser to load the deployed assets and clarify manual-versus-
+automatic completion before another charge. No source change or provider call
+was made by these checks. Campaign gross captures now total **£0.02**, leaving
+**£0.23**; no refund was performed. T12/T33/T34 remain open.
