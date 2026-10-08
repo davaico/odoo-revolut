@@ -583,3 +583,14 @@ programmatically prepares its partial first line; ordinary UI support is not
 established. Leave this live subcase blocked rather than dispatching the full
 balance or treating automation as cashier acceptance. Next check current
 native receipt reprinting without another charge or refund.
+
+The current split-sale browser print preview renders the expected £0.02 total
+and £0.01/£0.01 tenders with Save as PDF selected; operator reports it works.
+Saved-file and physical-print completion were not supplied. The long Revolut
+reference appears clipped/scrollable in the printable receipt, leaving full
+reference readability open. R16/T34 are partial, not complete.
+
+Next run the R06 cancellation-before-card subcase with a new £0.01 request:
+wait for Waiting for card, present no card, cancel through Odoo and observe
+definitive cancellation/unpaid order plus terminal idle. No new request has
+yet been initiated; captures £0.05 and remaining budget £0.20 are unchanged.

@@ -1601,3 +1601,22 @@ would already be dispatched. The live two-card case remains blocked on an
 amount-entry workflow, without weakening backend verification or improvising
 financial requests. No production change was made during this investigation.
 Next exercise current native receipt reprinting; wider campaign gates stay open.
+
+## Current receipt print preview — 2026-10-08
+
+The operator reported **"works fine"** and supplied the browser print dialog
+for the split-sale receipt, with **Save as PDF** selected. Preview shows
+quantity two, total **£0.02**, Revolut **£0.01** and Cash **£0.01**, on one page.
+Current native receipt preview/tender rendering is observed. The long Revolut
+reference appears clipped with a horizontal scrollbar in the printable receipt;
+full-reference readability is not a pass. The screenshot precedes the Save
+action and does not prove a saved PDF or physical print. Historical receipt,
+native invoice PDF and terminal-history printing remain untested; R16/T34
+remain open. No provider request or financial action was made by the agent.
+Private screenshot/reference mapping is retained in the checkpoint.
+
+Next R06 subcase: a new £0.01 request, cancelled from Odoo while Waiting for
+card, without presenting a card. Expected outcome is definitive cancellation,
+unpaid order and idle terminal. Record any uncertainty against the budget until
+resolved; do not infer cancellation from a closed dialog. Current captures
+remain £0.05, gross budget remaining £0.20; the next request has not yet run.
