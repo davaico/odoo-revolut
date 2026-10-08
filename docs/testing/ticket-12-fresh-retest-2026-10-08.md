@@ -551,3 +551,14 @@ To retest: hard-refresh the granted cashier browser, prepare a new one-product
 prepared state before dispatch; then observe whether receipt completion
 happens without manual recovery. This physical gate remains unverified on
 19.0.1.18.4. T12/T33/T34 and wider campaign rows remain open.
+
+The operator's next granted-cashier £0.01 checkout on **19.0.1.18.4** was
+reported to work fine after instructions to await the automatic receipt.
+The supplied native receipt and independent read-back confirm a new
+verified/Paid sale, one £0.01 payment, explicit £0.00 tip and preserved
+automatic-validation settings. Exact elapsed time was not supplied. Record
+operator-reported success for this individual zero-tip automatic-checkout
+case; do not promote it to a whole-campaign pass. Gross captured spend is now
+**£0.04**, remaining budget **£0.21**. Next refresh the cashier browser and
+reopen the latest sale from POS Orders to verify persistence. No provider
+request or financial action was made by the agent during this read-back.

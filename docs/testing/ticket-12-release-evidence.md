@@ -1541,3 +1541,27 @@ a refreshed granted-cashier £0.01 checkout, initially stopping at Payment
 before selecting Revolut. Physical uninterrupted automatic completion has
 not yet been retested on this release. R01/R02, T12, T33 and T34 remain open.
 No push or pull request was created.
+
+## Granted-cashier automatic checkout retest — 2026-10-08
+
+On **19.0.1.18.4**, the operator followed the next £0.01 checkout instructions
+to wait for a receipt without Check status, Force done or manual Validate,
+then reported **"It worked fine"** and supplied the native Payment Successful
+receipt. It shows the test cashier, one test product, total/tender **£0.01**,
+Revolut payment and no tip line. Record this as **operator-reported automatic
+checkout success for this zero-tip case**; exact elapsed time was not supplied.
+
+Independent read-only ORM verification confirms the new operation verified,
+gross/captured **1 GBP minor**, explicit tip **0**, report/tip evidence present,
+retry prohibited, native order Paid and exactly **one £0.01 payment** under
+the granted cashier. Automatic validation remains enabled, cashier Tips
+disabled, and the three earlier card sales still Paid. Verification sent
+**zero provider requests**. Log:
+`/tmp/t12-window-automatic-retest-readback.log`; screenshot/reference mapping
+is private. Campaign captured total is now **£0.04**, leaving **£0.21** from
+the gross cap. No agent charge, cancellation or refund was sent.
+
+Next verify this sale remains Paid after a cashier-browser refresh and reopening
+it from POS Orders. This specific reported success supersedes the preceding
+not-retested status; reload persistence for this sale and the wider R01/R02,
+T12, T33 and T34 acceptance gates remain open.
