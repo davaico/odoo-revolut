@@ -192,6 +192,16 @@ clear its blocker or initiate a replacement refund. No deployment, provider
 request, charge or refund was performed by this preflight. R01–R24 remain
 NOT RUN; the £0.25 campaign card budget remains unused.
 
+The owner then requested the newest version. `git fetch origin` confirmed
+upstream `main` remains `8adc68f…`; the reviewed local candidate `693937ee…`
+contains the same production code plus the accepted restart-verifier correction.
+The guarded upgrade used that exact candidate with reviewed ref `main` and
+returned exit 1 at the initial financial preflight:
+`A financial operation blocks deployment: pos_revolut_external_refund_evidence=1`.
+Log: `build/ticket12-2026-10-08/staging-upgrade.log`. The guard refused before
+backup, service stop, release activation or database upgrade; no bypass or
+financial request was attempted.
+
 Begin only after reviewing the automated results. Verify the deployed source
 and checksum match the tested candidate using the [staging runbook](../staging-deployment.md).
 If they differ, record the difference and complete the authorized upgrade and
