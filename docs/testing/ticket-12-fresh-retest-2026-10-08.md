@@ -519,3 +519,35 @@ Draft/receipt-pending checkpoint is superseded. Verify reload by reopening
 this completed sale from POS Orders. Granted-user and fresh uninterrupted
 automatic checkout still require their own evidence; the remaining ongoing
 tab is not proof of another charge. The gross campaign budget remains £0.24.
+
+## Immediate report-window correction deployed — 2026-10-08
+
+The current staging release is **19.0.1.18.4**, source/tooling revision
+**50f851f99580e7ff484163c1b6e72a1f69e33059**. The first report request could
+end 60 seconds after payment creation, placing the endpoint in the future.
+One explicitly authorized nonfinancial probe confirmed that Revolut rejects
+a future report end. The fix caps that end at current server time, preserving
+actual captured-payment verification and explicit tip evidence. Report
+generation can still be asynchronous.
+
+Public regression tests passed **27 cases**. Exact-artifact fresh-install
+acceptance passed **16 cases**; repeated legacy retail and Restaurant upgrades
+passed **16 + 16 cases each** when run alone. The initial concurrent upgrade
+run had browser startup/checkout timeouts under observed host memory pressure;
+retain that failed result alongside the passing run. See
+[release evidence](ticket-12-release-evidence.md) for provenance.
+
+The standard authorized deployment preserved **1,187 records**. Independent
+checks confirmed all **109 source files**, installed version and service/HTTP
+health. All three card sales remain verified/Paid with one £0.01 payment each,
+explicit £0.00 tips, and preserved cashier grant, tip mapping and automatic
+validation. Campaign captures total **£0.03**, leaving **£0.22**. These checks
+sent no provider requests, charges or refunds.
+
+The latest cashier sale required **OK, then Check status** after about a
+minute, so uninterrupted automatic checkout failed on the previous release.
+To retest: hard-refresh the granted cashier browser, prepare a new one-product
+£0.01 order, and stop at Payment before selecting Revolut. Confirm the
+prepared state before dispatch; then observe whether receipt completion
+happens without manual recovery. This physical gate remains unverified on
+19.0.1.18.4. T12/T33/T34 and wider campaign rows remain open.

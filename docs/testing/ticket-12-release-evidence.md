@@ -1506,3 +1506,38 @@ HTTP in these tests was mocked and the Merchant network guard was active.
 Exact artifact checkout and repeated legacy retail/Restaurant upgrades precede
 the narrow follow-up deployment under the owner's existing rollout
 authorization. Physical automatic checkout is still a manual acceptance gate.
+
+The frozen candidate is **50f851f99580e7ff484163c1b6e72a1f69e33059**,
+addon **19.0.1.18.4**, archive SHA256
+**093a692fd0ca21440d7ed94a6dc4627266c59798737fa656c1782e7b403bf766**.
+Fresh-install artifact acceptance passed **16 tests**, exit 0. The initial
+concurrent migration run exited 1 with Chrome debugger startup and Restaurant
+checkout timeouts. Host memory/swap pressure was observed; it is a plausible
+infrastructure cause, not a proved addon diagnosis. Its failed log is retained
+at `/tmp/t12-window-artifact-migration.log`. Running the identical artifact's
+migration command alone then passed legacy retail **16 + 16** and Restaurant
+**16 + 16** tests, zero failures/errors, exit 0, without source or test changes.
+Passing logs: `/tmp/t12-window-artifact-retail.log` and
+`/tmp/t12-window-artifact-migration-solo.log`. Automated Merchant calls remained
+mocked/blocked. These results supersede the runtime-checks-pending checkpoint.
+
+The owner-authorized standard backup, offline upgrade and restart completed
+at **2026-10-08 15:09 UTC**, exit 0. The deployer compared and preserved all
+**1,187 financial/authority/dispatch records** unchanged before restart.
+Independent verification matched all **109 addon source files** to the frozen
+archive, checked the immutable release, service/login health and private
+snapshot permissions. A separate read-only ORM check confirmed installed
+**19.0.1.18.4**, all three card orders verified and Paid, each with exactly one
+native £0.01 payment and explicit £0.00 tip. Cashier Tips remains disabled;
+terminal-tip mapping, cashier register grant and automatic terminal validation
+remain preserved. These verification checks made **zero provider requests**.
+Logs: `/tmp/t12-window-staging-deploy.log`,
+`/tmp/t12-window-verify-deployed.log`, `/tmp/t12-window-verify-state.log`.
+Private backup/reference paths remain in the private checkpoint.
+
+Campaign gross captures remain **£0.03**, with **£0.22 remaining**. No new
+charge, cancellation or refund was sent by the agent. The next manual gate is
+a refreshed granted-cashier £0.01 checkout, initially stopping at Payment
+before selecting Revolut. Physical uninterrupted automatic completion has
+not yet been retested on this release. R01/R02, T12, T33 and T34 remain open.
+No push or pull request was created.
