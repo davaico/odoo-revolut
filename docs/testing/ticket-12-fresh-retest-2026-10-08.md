@@ -594,3 +594,21 @@ Next run the R06 cancellation-before-card subcase with a new £0.01 request:
 wait for Waiting for card, present no card, cancel through Odoo and observe
 definitive cancellation/unpaid order plus terminal idle. No new request has
 yet been initiated; captures £0.05 and remaining budget £0.20 are unchanged.
+
+## Cancellation retest after deployment — 2026-10-08
+
+The first R06 attempt required dismissing an unresolved warning and clicking
+Cancel again. Saved evidence established definitive cancellation with zero
+capture; the first-click behavior was not a pass. The deferred-observation
+frontend defect is now fixed and deployed as **19.0.1.18.5**, exact revision
+**28a98d7ba1505a4bae85d254d582ad14b2bbbd2a**. All 116 frontend tests, four
+targeted Odoo tests, 16 exact-artifact fresh-install tests and 64 legacy upgrade
+tests passed. Deployment preserved 1,205 financial records; independent source,
+installed-version and service checks passed. See the release evidence for the
+archive checksum, test logs and deployment record.
+
+Hard-refresh the granted cashier's POS, then resume the cancellation-before-card
+subcase. Confirm one-click cancellation, unpaid order and terminal idle before
+marking it passed. No rollout charge/refund occurred; gross captured spend
+remains £0.05 against the £0.25 campaign cap. Wider R06 subcases and other release
+gates remain open.

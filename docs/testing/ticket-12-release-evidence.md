@@ -1695,3 +1695,39 @@ The source fix has not been deployed. R06 remains partial until the updated
 assets are deployed and the operator confirms one-click cancellation, unpaid
 order and idle terminal. Other ticket-12 release gates remain open; no live
 payment, refund or provider request was made during this investigation.
+
+## Cancellation fix deployed — 2026-10-08
+
+The owner explicitly requested deployment before resuming manual testing.
+Candidate **28a98d7ba1505a4bae85d254d582ad14b2bbbd2a**, addon
+**19.0.1.18.5**, passed separate Standards and Spec reviews with no blocking
+findings. The existing foreground-payment deadline can still expire during a
+later cancellation wait; this predates the fix and does not release payment
+guards. The reviewed ref for this narrow rollout is `codex/fix-captured-report`.
+
+Exact archive SHA256:
+**4e21e7e05e0e3c02921b974b8360fce4965f4c8fefdb136c758449ee69d96a21**.
+`scripts/test-delivered-addon` passed fresh retail acceptance (**16 tests**)
+and sequential legacy migration from
+`30492a67020acdfe34d7f560a9cf6d7fb20f6430`: retail **16 + 16**, Restaurant
+**16 + 16**, all zero failures/errors, exit 0. Both scenarios used the exact
+committed archive and the production extractor; Merchant HTTP was mocked and
+guarded. Logs: `/tmp/t12-cancel-artifact-retail.log` and
+`/tmp/t12-cancel-artifact-migration.log`.
+
+The standard guarded backup, offline upgrade and restart completed successfully
+on **2026-10-08**, independently verified at **15:54 UTC**. The deployer
+preserved all **1,205 financial/authority/dispatch records** unchanged before
+restart. Independent verification matched all **109 addon source files**,
+installed version **19.0.1.18.5**, immutable release, active Odoo service,
+successful local login HTTP response and private snapshot permissions.
+Release: `/opt/odoo-releases/revolut/staging/28a98d7ba1505a4bae85d254d582ad14b2bbbd2a/pos_revolut`.
+Configuration backup:
+`/var/backups/odoo-revolut-deploy/20261008T155345Z-28a98d7ba150`.
+Logs: `/tmp/t12-cancel-staging-deploy.log` and
+`/tmp/t12-cancel-verify-deployed.log`.
+
+This supersedes the preceding not-deployed checkpoint. Hard-refresh the
+granted cashier's POS before resuming R06. One-click cancellation, unpaid order
+and terminal idle remain a live acceptance gate; deployment is not a scenario
+pass. No charge, cancellation or refund was sent by the agent during rollout.
