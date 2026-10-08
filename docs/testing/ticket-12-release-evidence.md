@@ -1620,3 +1620,78 @@ card, without presenting a card. Expected outcome is definitive cancellation,
 unpaid order and idle terminal. Record any uncertainty against the budget until
 resolved; do not infer cancellation from a closed dialog. Current captures
 remain £0.05, gross budget remaining £0.20; the next request has not yet run.
+
+
+## Cancellation warning and second Cancel — 2026-10-08
+
+During the Waiting-for-card cancellation subcase on 19.0.1.18.4, the operator
+reported an unresolved-result dialog, dismissed it with OK, then clicked Cancel
+again and observed cancellation. This correction supersedes the initial report
+of using Check status for this case. The first-click flow is not a clean pass.
+
+Read-only saved-state verification confirms definitive provider/local Cancelled,
+retry safe, captured/gross zero, and a native Draft order under the granted
+cashier. One cancellation dispatch claim exists; its acknowledgement was
+uncertain, but later authoritative observation established cancellation. The
+Draft still has a saved £0.01 payment line/amount_paid, so neither that field nor
+the presence of a line proves a Paid order. Terminal idle and browser line
+cleanup have not been separately confirmed. Gross campaign captures remain
+£0.05 and remaining gross cap £0.20. The agent sent no provider request or
+financial mutation. Private log: `/tmp/t12-cancel-dispatch-readback.log`.
+
+The targeted service interval records fast cached cancellation responses amid
+active polling, with no access-denied error. A later cancellation observation
+logs interruption before definitive cancellation. Exact first-response JSON
+was not captured, so the initial race remains an inference from timing.
+
+A deterministic mocked reproduction through the production public screenCancel
+path fails: `node /tmp/t12-cancel-observation-repro.mjs` reports one failure,
+expected no error versus actual `pending`, when the server returns a Pending
+snapshot with observation_deferred/in_progress. PaymentRevolut has no Pending
+error text and therefore displays its unresolved-result fallback. This proves
+a frontend defect for deferred cancellation and matches the reported warning;
+it does not prove an access failure or the exact uncaptured live response.
+No production fix or deployment was made in this diagnostic step. R06 remains
+partial with the first-click defect and wider failure/race subcases open.
+
+## Deferred cancellation frontend fix — 2026-10-08
+
+Reproduced the preceding diagnostic against the current source: the public
+`screenCancel` path immediately reported `pending` as an error when the cancel
+RPC returned `observation_deferred: true`. The UI falls back to its unresolved
+warning for that error. The regression failed before the fix (107 other
+frontend tests passed). This confirms the deferred-response defect; the exact
+original live response remains unavailable, and no permission failure has been
+established.
+
+The local fix keeps the same Cancel action pending through deferred snapshots,
+checking the existing cancellation RPC at the normal one-second cadence within
+the original 60-second cancellation deadline. Server observation ownership and
+one-time provider cancellation dispatch remain authoritative. Verified payment
+or retry-safe final evidence ends the wait; a fresh unresolved response,
+transport failure or timeout still warns and protects the original attempt.
+Concurrent foreground polling shares the cancellation and final evidence.
+
+`node addons/pos_revolut/static/tests/revolut_payment_state.test.mjs` passes
+**116 tests**, including nine new cancellation cases: the exact popup
+reproduction, concurrent polls returning cancellation or capture, deferred
+responses followed by cancellation/capture/fresh uncertainty/processing, lost
+communication, and the bounded timeout. The existing ordinary-purchase
+deferred-observation regression still passes. The original temporary
+reproduction also passes. These are mocked frontend results, not physical
+terminal acceptance.
+
+The disposable Docker run with project `t12-cancel-race-check` passed **4 Odoo
+tests, 0 failures/errors**, with Merchant HTTP mocked and guarded:
+`TestRevolutVerifiedCheckout.test_pending_cancellation_preserves_unpaid_order`,
+`TestRevolutVerifiedCheckout.test_cancel_racing_with_capture_preserves_successful_payment`,
+`TestRevolutPaymentObservation.test_four_cashier_tabs_cron_and_cancel_share_held_observation`,
+and `TestRevolutPaymentObservation.test_cancel_rate_limit_defers_recovery_without_replaying_post`.
+The first two execute browser tours; the server cases exercise shared observation
+ownership and prevention of provider POST replay. Local log:
+`/tmp/t12-cancel-odoo-tests.log`. `git diff --check` passes.
+
+The source fix has not been deployed. R06 remains partial until the updated
+assets are deployed and the operator confirms one-click cancellation, unpaid
+order and idle terminal. Other ticket-12 release gates remain open; no live
+payment, refund or provider request was made during this investigation.
