@@ -3,7 +3,7 @@ import csv
 import io
 import json
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -555,6 +555,38 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
         file_call = next(call for call in self.request.call_args_list if urlsplit(call.args[1]).path.endswith("/file"))
         self.assertEqual(urlsplit(file_call.args[1]).path, f"/api/report-runs/{self.active_run_id}/file")
         self.assertFalse(file_call.kwargs["allow_redirects"])
+
+    def test_new_capture_verifies_without_requesting_a_future_report_window(self):
+        now = fields.Datetime.now()
+        created = now - timedelta(seconds=2)
+        self.created_at = created.isoformat() + "Z"
+        self.gross_minor, self.tip_minor = 10000, 0
+        self.report_status = "completed"
+        self.csv_content = self.report_csv([self.report_row(
+            state="CAPTURED", captured_date=now.isoformat() + "Z[UTC]",
+        )])
+        provider = self.provider_response
+
+        def reject_future_report(method, url, **kwargs):
+            if method == "POST" and urlsplit(url).path == "/api/report-runs":
+                end = datetime.fromisoformat(kwargs["json"]["filter"]["to"].removesuffix("Z"))
+                if end > now:
+                    response = Mock(status_code=400)
+                    raise requests.HTTPError("Report end cannot be in the future", response=response)
+            return provider(method, url, **kwargs)
+
+        self.request.side_effect = reject_future_report
+        self.start_payment()
+        with patch("odoo.fields.Datetime.now", return_value=now):
+            verified = self.poll_payment()
+        self.assertEqual(verified["state"], "verified")
+        self.assertEqual(verified["gross_amount_minor"], 10000)
+        self.assertEqual(verified["terminal_tip_minor"], 0)
+        self.assertEqual(self.financial_post_count(), 2)
+        self.assertEqual(self.report_post_count, 1)
+        report_call = next(call for call in self.request.call_args_list
+                           if call.args[0] == "POST" and urlsplit(call.args[1]).path == "/api/report-runs")
+        self.assertEqual(report_call.kwargs["json"]["filter"]["to"], now.isoformat() + "Z")
 
     def test_lost_report_creation_response_never_replays_financial_dispatch(self):
         self.start_payment()

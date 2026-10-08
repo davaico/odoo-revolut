@@ -172,10 +172,12 @@ class PosPaymentMethod(models.Model):
         created = fields.Datetime.to_datetime(operation["payment_created_at"])
         if not created:
             raise ValueError("missing authenticated payment creation time")
+        # Revolut rejects a future report end during immediate capture polling.
+        end = min(created + timedelta(seconds=60), fields.Datetime.now())
         return {
             "type": "payments_report", "format": "csv",
             "filter": {"from": (created - timedelta(seconds=60)).isoformat() + "Z",
-                       "to": (created + timedelta(seconds=60)).isoformat() + "Z"},
+                       "to": end.isoformat() + "Z"},
             "options": {"timezone": "UTC", "columns": list(REPORT_COLUMNS)},
         }
 
