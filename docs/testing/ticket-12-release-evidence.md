@@ -1374,3 +1374,38 @@ without financial replay. Working logs are `/tmp/t12-utc-report-red.log`,
 calls were mocked and Merchant HTTP was blocked. Exact-artifact checks precede
 the follow-up deployment under the owner's existing payment-fix rollout
 authorization; no additional card charge is authorized or planned.
+
+The follow-up artifact is frozen at **ef85719a16317ae114cc85d53d998e9711385f32**,
+addon **19.0.1.18.3**, archive SHA256
+**bef11fe92da7750fbd87431a1bb33d281b373c6600e1dd8ba13331b640c058c6**.
+Exact-archive retail validation passed **16 tests**; legacy retail and
+Restaurant upgrades each passed **16 tests on each of two runs**. Both
+artifact commands exited 0 with no failures/errors and mocked/blocked
+Merchant HTTP. Logs: `/tmp/t12-utc-artifact-{retail,migration}.log`.
+
+Under the owner's existing deployment authorization, the standard backup,
+stopped-service preflight, offline update and restart completed successfully
+at **2026-10-08 14:28 UTC**, exit 0. The deployer verified all **1,178 original
+financial/authority/dispatch records** preserved unchanged before restart.
+Independent verification matched all **109 addon source files** to the frozen
+artifact and confirmed the immutable release target, active service, healthy
+login endpoint and private preservation snapshot permissions. This supersedes
+the preceding candidate/not-deployed status. Deployment log:
+`/tmp/t12-utc-staging-deploy.log`; private backup paths remain in the private
+checkpoint.
+
+A guarded call through the existing public status API then returned
+**verified**, with **£0.01 captured and verified gross, £0.00 terminal tip**,
+persisted tip evidence, retry prohibited and exactly **one native £0.01
+payment**. The public call issued **zero provider GETs and zero POSTs**:
+verification had already been persisted before that call, which returned
+the existing verified result. This establishes persisted recovery, not which
+browser/background observation completed it. Native order remains **Draft**.
+An independent read-back confirmed persisted verified state, original annotated
+creation/capture strings, disabled cashier Tips and the preserved terminal-tip
+product mapping.
+Operator receipt/automatic checkout is still unverified. The next manual
+action is **Check status on the existing checkout 1002**. No replacement
+charge, Force done, cancellation or refund was performed. **£0.24 remains**;
+R01/R02, granted-user checkout, T12, T33 and T34 remain incomplete. No push or
+pull request was created.

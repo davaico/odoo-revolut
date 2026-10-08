@@ -491,3 +491,23 @@ the actual native completion. Granted-test-user checkout and R01/R02 remain
 unverified; the capture shown was under Administrator. T12 and the private
 evidence/native-PDF/printing gates remain open. Other registers and history
 were not retired or deleted.
+
+## UTC report correction and existing-payment recovery — 2026-10-08
+
+Staging now runs **19.0.1.18.3**, exact source/tooling revision
+**ef85719a16317ae114cc85d53d998e9711385f32**. The follow-up accepts the
+provider's exact trailing `[UTC]` timestamp annotation while retaining the
+explicit UTC, identity, amount and unique-row checks. Original report strings
+remain in provenance. Exact-artifact retail and repeated legacy retail/
+Restaurant upgrade tests passed. The authorized deployment preserved **1,178
+records**; independent verification matched **109 source files** and confirmed
+service/HTTP health. See the release evidence for complete test provenance.
+
+The existing capture is now **verified: £0.01 gross, £0.00 tip**, retry
+prohibited, with exactly **one native £0.01 payment** and native order still
+**Draft**. A guarded public status call returned this already persisted result
+with no provider GET or POST. Receipt/automatic checkout remains unverified.
+Click **Check status** on the existing checkout **1002**, then record whether
+it reaches Payment Successful and the receipt. Retain the original line and
+attempt; no new charge is needed. **£0.24 remains** of the gross campaign cap.
+Granted-user checkout and the wider T12/T33/T34 gates remain open.
