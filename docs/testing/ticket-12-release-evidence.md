@@ -1409,3 +1409,17 @@ action is **Check status on the existing checkout 1002**. No replacement
 charge, Force done, cancellation or refund was performed. **£0.24 remains**;
 R01/R02, granted-user checkout, T12, T33 and T34 remain incomplete. No push or
 pull request was created.
+
+The operator subsequently supplied a native **Payment Successful £0.01**
+receipt for the existing capture, served by **Administrator**, with one test
+product, total **£0.01**, Revolut tender **£0.01** and no tip line. A separate
+read-only ORM check confirmed operation verified, captured/gross **1 GBP
+minor**, terminal tip **0**, native order **Paid**, total/paid **£0.01**, exactly
+**one payment**, and retry prohibited. This supersedes the Draft/receipt-pending
+checkpoint. Existing-payment status recovery and native completion are
+observed; fresh uninterrupted automatic checkout and granted-user checkout
+remain unverified. The other ongoing tab does not establish a second sale.
+Private screenshot/reference mapping is retained in the local checkpoint.
+Next manual check: reload POS and reopen the completed sale from Orders.
+Campaign gross spend remains **£0.01**, budget remaining **£0.24**. Wider
+R01/R02, T12, T33 and T34 gates remain open.

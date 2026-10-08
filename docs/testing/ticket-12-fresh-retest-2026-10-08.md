@@ -511,3 +511,11 @@ Click **Check status** on the existing checkout **1002**, then record whether
 it reaches Payment Successful and the receipt. Retain the original line and
 attempt; no new charge is needed. **£0.24 remains** of the gross campaign cap.
 Granted-user checkout and the wider T12/T33/T34 gates remain open.
+
+The operator has now shown **Payment Successful** and the native **£0.01
+Revolut receipt** under Administrator. Independent read-back confirms the
+existing order is **Paid**, with one £0.01 payment and £0.00 tip. The earlier
+Draft/receipt-pending checkpoint is superseded. Verify reload by reopening
+this completed sale from POS Orders. Granted-user and fresh uninterrupted
+automatic checkout still require their own evidence; the remaining ongoing
+tab is not proof of another charge. The gross campaign budget remains £0.24.
