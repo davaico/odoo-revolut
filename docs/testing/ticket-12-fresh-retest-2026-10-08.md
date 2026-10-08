@@ -12,8 +12,8 @@ On 2026-10-08 the owner approved a maximum **£0.25** budget and said not all
 tests need to be refunded. Treat this conservatively as the aggregate gross
 card-charge cap for the new campaign, not a per-test amount or a net amount
 after refunds. Refunds do not replenish the cap. No new campaign card charge
-has been made in this session; operator-at-terminal availability remains
-unconfirmed.
+has been made in this session. The operator replied “I'm ready” on 2026-10-08
+after being asked whether they were at the terminal with staging open.
 
 Prefer £0.01 card allocations where the configured fixture supports them.
 Plan larger partial/rounding/tip fixtures within the remaining cap before
@@ -169,6 +169,28 @@ scripts/test-delivered-addon \
 ```
 
 ## 2. Verify staging and the register before using the terminal
+
+### Read-only staging preflight — 2026-10-08
+
+After the operator reported readiness, read-only SSH and PostgreSQL checks found:
+
+- Odoo is active on `19.0.20260908`.
+- Active release: `bcb02045931633436bbd419cce0f79722937bc7f`, addon
+  `19.0.1.15.4`. This differs from the tested candidate `693937ee…`, addon
+  `19.0.1.18.1`; deployment/source acceptance is **BLOCKED**.
+- Payment and refund operation deployment blockers: zero each.
+- External-refund evidence deployment blockers: one, unresolved, GBP amount
+  minor units `1`, reason `conflicting_original_authority`, with no original
+  operation associated. The reported penny is historical evidence, not a new
+  campaign charge. Full provider references remain on the server.
+- Dedicated campaign register `3`: one open session and zero orders.
+
+First inspect **Point of Sale → Revolut Refund Discovery Evidence**, keeping
+the **Needs Investigation** filter. Review the blocking record against its
+original Merchant/payment authority before any guarded upgrade. Do not manually
+clear its blocker or initiate a replacement refund. No deployment, provider
+request, charge or refund was performed by this preflight. R01–R24 remain
+NOT RUN; the £0.25 campaign card budget remains unused.
 
 Begin only after reviewing the automated results. Verify the deployed source
 and checksum match the tested candidate using the [staging runbook](../staging-deployment.md).
