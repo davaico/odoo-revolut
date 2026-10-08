@@ -428,7 +428,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         writer.writerow({
             "payment_id": self.PAYMENT_ID, "order_id": self.ORDER_ID,
             "currency": currency, "location_id": self.LOCATION_ID,
-            "type": "PAYMENT", "state": "COMPLETED", "amount": f"{gross:.2f}",
+            "type": "PAYMENT", "state": "CAPTURED", "amount": f"{gross:.2f}",
             "tip_amount": f"{tip:.2f}", "surcharge_amount": "", "refunded_amount": "0.00",
             "created_date": created, "captured_date": "2026-10-01T10:00:10Z",
         })

@@ -30,6 +30,7 @@ REPORT_COLUMNS = (
 REPORT_MAX_BYTES = 262144
 REPORT_MAX_ROWS = 1000
 REPORT_MAX_CELL = 128
+REPORT_SUCCESS_STATES = {"CAPTURED", "COMPLETED"}
 REPORT_DECIMAL = re.compile(r"[0-9]{1,16}(?:\.[0-9]{1,6})?\Z")
 
 
@@ -219,7 +220,7 @@ class PosPaymentMethod(models.Model):
             record = dict(zip(headers, row))
             if record["payment_id"] == operation["payment_id"]:
                 candidates.append(record)
-            if record["order_id"] == operation["order_id"] and record["type"] == "PAYMENT" and record["state"] == "COMPLETED":
+            if record["order_id"] == operation["order_id"] and record["type"] == "PAYMENT" and record["state"] in REPORT_SUCCESS_STATES:
                 related_successful.append(record)
         if not candidates:
             if related_successful:
@@ -228,7 +229,7 @@ class PosPaymentMethod(models.Model):
         if len(candidates) != 1 or len(related_successful) != 1:
             raise ValueError("ambiguous report payment evidence")
         row = candidates[0]
-        if (row["type"] != "PAYMENT" or row["state"] != "COMPLETED"
+        if (row["type"] != "PAYMENT" or row["state"] not in REPORT_SUCCESS_STATES
                 or row["order_id"] != operation["order_id"]
                 or row["currency"] != operation["currency_code"]
                 or row["location_id"] != operation["location_id"]):
