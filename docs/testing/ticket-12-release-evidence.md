@@ -1460,3 +1460,49 @@ refresh this browser to load the deployed assets and clarify manual-versus-
 automatic completion before another charge. No source change or provider call
 was made by these checks. Campaign gross captures now total **£0.02**, leaving
 **£0.23**; no refund was performed. T12/T33/T34 remain open.
+
+## Immediate report-window rejection — 2026-10-08
+
+A fresh £0.01 checkout under the granted cashier showed the updated verification
+wording, a communication-interrupted dialog, then a receipt after about a
+minute. The owner explicitly confirmed **OK, then Check status** was required.
+This is a failure of uninterrupted automatic checkout, not a clean R02 pass.
+Read-only evidence confirms this additional operation is verified with gross/
+captured £0.01, explicit £0.00 tip, native order Paid and exactly one £0.01
+payment. Gross campaign captures now total **£0.03**, leaving **£0.22**.
+No refund or replacement financial dispatch was performed by the agent.
+
+The exact failing interval's server log has a quick interrupted observation,
+then repeated status checks before final verification. The provider report
+reference was eventually stored without retiring another report. Inspection
+identified a report end of authenticated payment creation plus 60 seconds,
+which lies in the future during immediate capture polling. Automatic approval
+review initially rejected a nonfinancial POST probe; it did not run. The owner
+then explicitly authorized **one** authenticated report-generation POST to
+`https://merchant.revolut.com/api/report-runs`, covering now minus 60 seconds
+to now plus 60 seconds, with no content download or financial request. That
+single probe returned **HTTP 400**, with a future-time rejection in its
+response. No report content, credentials or provider identifiers were exposed.
+No second provider probe was sent.
+
+The public prepare/start/poll regression reproduced **unresolved/interrupted**
+instead of verified when the mocked provider rejects that future end: **one
+failure, zero errors**, exit 1. An initial fixture used Odoo's storage datetime
+parser for an ISO HTTP field; it was corrected before the meaningful red run.
+Candidate **19.0.1.18.4** clamps the report end to the earlier of creation plus
+60 seconds and current server time, retaining the existing lower bound and
+all payment/report identity, finality, amount, explicit-zero and duplicate
+checks. Recent reports can now be requested without an inherently invalid
+future endpoint; report generation can still be asynchronous. Final Spec
+review found no issues. Runtime checks are in progress; this candidate has
+not been deployed. Logs: `/tmp/t12-report-window-{red,green}.log`.
+
+The candidate's full public terminal-tip/report class passed **27 tests, zero
+failures/errors**, exit 0. This includes the immediate-capture future-window
+regression, historical bounded report paths, nonzero and explicit-zero tips,
+invalid/ambiguous evidence, report loss/regeneration and refund integration.
+Both final Standards and Spec reviews found no actionable findings. Provider
+HTTP in these tests was mocked and the Merchant network guard was active.
+Exact artifact checkout and repeated legacy retail/Restaurant upgrades precede
+the narrow follow-up deployment under the owner's existing rollout
+authorization. Physical automatic checkout is still a manual acceptance gate.
