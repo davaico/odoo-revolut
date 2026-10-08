@@ -292,7 +292,9 @@ The successful flow is:
 
 After capture, a delayed or unavailable report displays **Payment received —
 verifying payment details**. Successful report rows may be **CAPTURED** or
-**COMPLETED**. An explicit zero tip completes the same payment without adding
+**COMPLETED**. UTC report timestamps may include the exact trailing `[UTC]`
+annotation; an explicit UTC offset is still required, and the original report
+values remain in the stored evidence. An explicit zero tip completes the same payment without adding
 a tip line, including when terminal tipping is disabled. This verification
 message is not a request for customer tip selection. Keep the original order and payment line; use
 **Check status** or manager reconciliation. Background reconciliation can

@@ -118,7 +118,7 @@ def zero_report_response(env, verb, url):
                        "amount", "tip_amount", "surcharge_amount", "refunded_amount", "created_date", "captured_date"]
             writer = csv.DictWriter(output, fieldnames=columns)
             writer.writeheader()
-            stamp = operation.captured_payment_created_at.isoformat() + "Z"
+            stamp = operation.captured_payment_created_at.isoformat() + "Z[UTC]"
             writer.writerow({"payment_id": operation.revolut_payment_id, "order_id": operation.revolut_order_id,
                              "currency": operation.currency_code, "location_id": operation.location_id,
                              "type": "PAYMENT", "state": "CAPTURED",

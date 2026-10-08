@@ -1325,3 +1325,52 @@ R01/R02 remain incomplete; T12, T33 and T34 remain open. Private backup and
 snapshot locations are retained in the local private checkpoint. Working logs:
 `/tmp/t12-captured-staging-deploy.log`; exact-artifact and guard test logs are
 listed above. No push or pull request was created.
+
+After deployment of **19.0.1.18.2**, the owner resumed recovery and clicked
+**Check status**. The supplied screenshot still shows ticket **1002** under
+Administrator, **Payment received — verifying payment details**, remaining
+**£0.01** and disabled validation. A read-only server check confirms the
+original captured operation remains unresolved with native order Draft. The
+new wording establishes that the updated POS assets loaded; it does not
+establish successful payment verification. No new card charge was reported.
+
+GET-only reads of the existing completed report and pushed order reproduced
+a second compatibility error in the deployed validator: the actual CSV
+creation and capture timestamps include **`Z[UTC]`**. The helper converts Z
+to its numeric offset, but Python then rejects the retained zone annotation.
+An isolated in-memory correction of that exact annotation made the full
+existing report pass every remaining payment/order/currency/location,
+unique-row, creation/capture identity, gross, surcharge, refund and explicit
+zero-tip check: **£0.01 gross, £0.00 tip**. No parsed evidence or financial
+state was saved. A subsequent read-only diagnostic used the exact repository
+candidate timestamp function on those original values and again passed the
+remaining full-report validator. Raw report rows and transaction identifiers
+remained on the server; credentials were neither printed nor exposed to POS.
+
+The public polling regression for the observed fractional `Z[UTC]` format
+failed before the parser change: **1 failure, 0 errors, 1 test**, unresolved
+rather than verified. The candidate **19.0.1.18.3** removes only an exact
+trailing `[UTC]`, retaining explicit timezone and zero-offset requirements.
+The tests also cover numeric UTC annotations, nonzero tips, naive/unknown/
+non-UTC/duplicate annotations, creation identity and capture ordering. Native
+checkout/reload browser fixtures now use the observed annotation. Stored
+evidence retains the original annotated timestamp strings. Independent
+Standards and Spec reviews found no remaining issues. Narrow runtime checks
+are in progress; the candidate is not deployed and live recovery remains
+unverified. **£0.24 remains** of the gross campaign card-charge budget.
+
+The timestamp correction's focused runtime validation is complete. The initial
+29-case run passed the other **28 cases**, including three genuine Chrome
+automatic checkout, reload recovery and base/tip refund tours. Its new UTC
+regression reached verified checkout but errored in a test-only provenance
+assertion because that record was cached before the public API committed its
+observation. Refreshing that test record fixed the assertion; rerunning the
+single regression passed **1 test, 0 failures, 0 errors**, exit 0. No parser
+change was required after that run. Original annotated creation/capture strings
+remain stored in provenance, and the original report run/operation is reused
+without financial replay. Working logs are `/tmp/t12-utc-report-red.log`,
+`/tmp/t12-utc-report-green.log` (retained intermediate test-cache error) and
+`/tmp/t12-utc-report-provenance.log` (final narrow pass). All automated provider
+calls were mocked and Merchant HTTP was blocked. Exact-artifact checks precede
+the follow-up deployment under the owner's existing payment-fix rollout
+authorization; no additional card charge is authorized or planned.

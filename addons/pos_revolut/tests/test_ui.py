@@ -430,7 +430,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
             "currency": currency, "location_id": self.LOCATION_ID,
             "type": "PAYMENT", "state": "CAPTURED", "amount": f"{gross:.2f}",
             "tip_amount": f"{tip:.2f}", "surcharge_amount": "", "refunded_amount": "0.00",
-            "created_date": created, "captured_date": "2026-10-01T10:00:10Z",
+            "created_date": created + "[UTC]", "captured_date": "2026-10-01T10:00:10Z[UTC]",
         })
         report_csv = output.getvalue().encode()
 
