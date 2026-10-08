@@ -1,5 +1,37 @@
 # Ticket 12 — Release evidence and terminal acceptance handoff
 
+## Fresh campaign checkpoint — 2026-10-08
+
+The owner requested a complete fresh campaign on 2026-10-07. Execution now
+began on `8adc68f255e4ea1830831f571e22f5b3f41875e4` and refroze candidate
+`693937ee3b7a78991a33cc714e0d47a4c70c3663` after correcting only the dedicated
+restart verifier's freshness assertion. Production logic and normal suites
+are unchanged; the guide explains carried-forward evidence and affected retests.
+The campaign uses addon
+`19.0.1.18.1`, pinned Odoo `19.0.20260908`, and the dedicated register prepared
+on 2026-10-07. The [guided retest](ticket-12-fresh-retest-2026-10-08.md) records
+the artifact checksum, fresh automated results, logs and complete operator
+sequence alongside the [acceptance matrix](ticket-12-final-release-checklist.md).
+
+Automated A01–A10 acceptance is complete: 597 install and 597 upgrade tests
+reported on the unchanged production baseline, 107 lifecycle tests, 54 local
+tooling passes plus the three PDF skips covered in the seven-test Odoo PDF
+profile, 46 employee-enabled checks, deployment guards and all seven historical
+upgrades. The final candidate passed three-process restart recovery, 16 packaged
+retail tests and four packaged migration groups of 16 tests. Commands returned
+zero for the accepted runs; the original stale-assertion failure remains in the
+guide's chronology. Independent Standards/Spec review accepted the correction.
+
+All live R01–R24 cases and current deployed-source verification remain NOT RUN
+or unverified. Earlier results and financial history below are preserved;
+dated instructions to resume only remaining cases are superseded for this new
+campaign. The owner approved a £0.25 maximum on 2026-10-08 and allowed charges
+to remain unrefunded; apply the conservative aggregate-gross interpretation
+recorded in the guide. No live action ran, and operator availability remains
+unconfirmed. Native PDF
+acceptance (34), private preservation/publication review (33), reconciliation
+and the owner's final release decision remain open.
+
 **Final release retest requested — 2026-10-05.** Resume from the
 [final release and open-source checklist](ticket-12-final-release-checklist.md).
 The owner now requests a complete retest on the final combined candidate,

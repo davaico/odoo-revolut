@@ -5,7 +5,11 @@ integration from scratch on a dedicated register, including implementation
 through tickets 42–46. This supersedes the 2026-10-05 preparation scope without
 erasing its historical evidence. Parent: [ticket 12](../tickets/ready-for-human/12-live-terminal-release-evidence.md).
 
-All checks below start **NOT RUN for this campaign and frozen candidate**.
+All checks started **NOT RUN for this campaign**. Automated A01–A10 acceptance
+completed on 2026-10-08; live R01–R24 remain NOT RUN. The
+[guided retest](ticket-12-fresh-retest-2026-10-08.md) records the frozen final
+candidate, commands, counts, logs and the exact source-equivalence basis for
+carried-forward broader results after a test-only restart-verifier correction.
 Earlier [release evidence](ticket-12-release-evidence.md),
 [operator observations](ticket-12-operator-observations.md) and
 [refund-screen verification](refund-screen-clarity.md) retain their original
@@ -38,16 +42,16 @@ Record commands, exact source, counts, skipped checks and log locations.
 
 | ID | Required verification | Final result |
 | --- | --- | --- |
-| A01 | Full addon fresh installation and upgrade on pinned Odoo; native retail and Restaurant browser tours actually execute. Check consolidated-addon migration and preservation of older operation records. | NOT RUN |
-| A02 | POS lifecycle, decline/failure/cancellation (including cancellation before dispatch), timeout/reload/late success, busy-terminal recovery, status coalescing and restart recovery. Assert intended dispatch counts and original identity reuse. | NOT RUN |
-| A03 | Public server/API settlement, bounded snapshot/allocation processing and credential/company/register authority. Missing/mismatched saved return or payment line, unauthorized access and excess/invalid allocations reject before Merchant HTTP. Credentials are absent from POS payloads/browser logs. | NOT RUN |
-| A04 | Native full/partial/mixed/multiple-tender returns; ticket 40 rounding and reservation/recovery/history regressions; ticket 41 goods/no-goods/existing-return/pending/concurrent-manager regressions with actual native stock/accounting output and zero new financial POSTs for issued refunds. | NOT RUN |
-| A05 | Deployment preflight/financial/PDF guards, migration checks and exact packaged-artifact retail and upgrade acceptance. Failure leaves the active release and financial records intact. Inspect the delivered artifact, not only the checkout. | NOT RUN |
-| A06 | Tickets 42–43: nonmutating source/display previews; saved native reservation/freezing; lost-draft recovery including sibling identity, session rollover, uncertain siblings and reconstruction rollback; atomic external association batches and deterministic locking. Use independent PostgreSQL transactions for reservation/discovery/association, finalization/status and recovery/closure races; assert conserved quantities/cents and exactly-once effects. | NOT RUN |
-| A07 | Ticket 44: terminate the original worker before financial dispatch claim, then recover/cancel through the cashier flow; race a delayed worker and simultaneous recovery. Claims with ambiguous outcomes stay protected. Test before/after order and intent claims, no replay, terminal release and session closure. | NOT RUN |
-| A08 | Ticket 45: independently reproduce negative-price/negative-quantity adjustments and global rounding with tiny positive lines; full/partial/reordered returns, zero-value adjustment reversals, mixed tenders, tips and earlier frozen claims. Check source selection through native stock/accounting and external association; original history stays unchanged. | NOT RUN |
-| A09 | Ticket 46 and frontend recovery: rejected/timed-out/offline canonical loading after verified sale AND refund; double clicks, late responses, cancellation, reload and partial tenders. Verified evidence stays locked until restoration; native busy flag clears, Check status is read-only, no premature checkout/duplicate receipt/new dispatch. | NOT RUN |
-| A10 | Observation and runner regressions: competing tabs plus cron, expired lease holder, held report, phase budgets and Retry-After; credential recheck and no repeated cancellation POST. Execute all seven historical upgrade scenarios and shared-runner failure/signal/cleanup/project-lock tests, retaining scenario-specific history assertions. | NOT RUN |
+| A01 | Full addon fresh installation and upgrade on pinned Odoo; native retail and Restaurant browser tours actually execute. Check consolidated-addon migration and preservation of older operation records. | PASS — 2026-10-08; provenance in guided retest |
+| A02 | POS lifecycle, decline/failure/cancellation (including cancellation before dispatch), timeout/reload/late success, busy-terminal recovery, status coalescing and restart recovery. Assert intended dispatch counts and original identity reuse. | PASS — 2026-10-08; provenance in guided retest |
+| A03 | Public server/API settlement, bounded snapshot/allocation processing and credential/company/register authority. Missing/mismatched saved return or payment line, unauthorized access and excess/invalid allocations reject before Merchant HTTP. Credentials are absent from POS payloads/browser logs. | PASS — 2026-10-08; provenance in guided retest |
+| A04 | Native full/partial/mixed/multiple-tender returns; ticket 40 rounding and reservation/recovery/history regressions; ticket 41 goods/no-goods/existing-return/pending/concurrent-manager regressions with actual native stock/accounting output and zero new financial POSTs for issued refunds. | PASS — 2026-10-08; provenance in guided retest |
+| A05 | Deployment preflight/financial/PDF guards, migration checks and exact packaged-artifact retail and upgrade acceptance. Failure leaves the active release and financial records intact. Inspect the delivered artifact, not only the checkout. | PASS — 2026-10-08; provenance in guided retest |
+| A06 | Tickets 42–43: nonmutating source/display previews; saved native reservation/freezing; lost-draft recovery including sibling identity, session rollover, uncertain siblings and reconstruction rollback; atomic external association batches and deterministic locking. Use independent PostgreSQL transactions for reservation/discovery/association, finalization/status and recovery/closure races; assert conserved quantities/cents and exactly-once effects. | PASS — 2026-10-08; provenance in guided retest |
+| A07 | Ticket 44: terminate the original worker before financial dispatch claim, then recover/cancel through the cashier flow; race a delayed worker and simultaneous recovery. Claims with ambiguous outcomes stay protected. Test before/after order and intent claims, no replay, terminal release and session closure. | PASS — 2026-10-08; provenance in guided retest |
+| A08 | Ticket 45: independently reproduce negative-price/negative-quantity adjustments and global rounding with tiny positive lines; full/partial/reordered returns, zero-value adjustment reversals, mixed tenders, tips and earlier frozen claims. Check source selection through native stock/accounting and external association; original history stays unchanged. | PASS — 2026-10-08; provenance in guided retest |
+| A09 | Ticket 46 and frontend recovery: rejected/timed-out/offline canonical loading after verified sale AND refund; double clicks, late responses, cancellation, reload and partial tenders. Verified evidence stays locked until restoration; native busy flag clears, Check status is read-only, no premature checkout/duplicate receipt/new dispatch. | PASS — 2026-10-08; provenance in guided retest |
+| A10 | Observation and runner regressions: competing tabs plus cron, expired lease holder, held report, phase budgets and Retry-After; credential recheck and no repeated cancellation POST. Execute all seven historical upgrade scenarios and shared-runner failure/signal/cleanup/project-lock tests, retaining scenario-specific history assertions. | PASS — 2026-10-08; provenance in guided retest |
 
 Existing entry points include `scripts/test-addon --verify-install-upgrade`,
 the Node suite at `addons/pos_revolut/static/tests/revolut_payment_state.test.mjs`,
@@ -164,7 +168,7 @@ public copies must follow ticket 33. Earlier local temporary screenshot/log path
 are not proof of durable preservation. New test outcomes must remain traceable
 without copying secrets or raw customer/card data into this checklist.
 
-**Fresh-campaign planning is updated; scenario execution is not started.**
-Register setup is recorded separately in ticket 12. This document does not
-claim payment/refund tests, deployment, publication, historical redaction or
-closure of other tickets.
+**Automated acceptance completed on 2026-10-08; live scenarios remain NOT RUN.**
+The dated guided retest records actual automated results. Register setup is
+recorded separately in ticket 12. No live payment/refund tests, deployment,
+publication, historical redaction or closure of other tickets is claimed.
