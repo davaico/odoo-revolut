@@ -33,6 +33,7 @@
                 <label class="form-label" for="revolut-refund-tip">Terminal tip refund amount</label>
                 <input id="revolut-refund-tip" class="revolut-refund-tip form-control" type="number" min="0"
                     t-att-step="1 / 10 ** props.decimalPlaces" t-att-value="state.tipAmount" t-on-input="updateTip"/>
+                <small class="text-muted">Remaining on this return: <t t-esc="defaultTip(selectedSource)"/> <t t-esc="props.currencySymbol"/></small>
             </div>
             <div t-if="state.error" class="alert alert-danger mt-2" role="alert" t-esc="state.error"/>
             <t t-set-slot="footer">
