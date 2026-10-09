@@ -76,7 +76,7 @@ run acceptance. Remaining closure gates:
 
 - [33 — Evidence preservation/publication review](../needs-info/33-investigate-release-evidence-disclosure.md):
   permanent restricted archive/custodian/mapping and actual publication material/history.
-- [34 — Native invoice PDF acceptance](34-provision-and-gate-odoo-pdf-generation.md).
+- [34 — Native invoice PDF acceptance](../closed/34-provision-and-gate-odoo-pdf-generation.md): closed 2026-10-09; native PDF inspected and repeat downloads confirmed, with physical printing skipped by owner. Ticket 12's other historical/session/physical checks remain independent.
 - Physical operator/terminal, supported controlled-failure methods and suitable
   Restaurant, rounding, permissions, historical document and external-refund fixtures.
 
