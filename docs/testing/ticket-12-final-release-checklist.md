@@ -6,7 +6,8 @@ through tickets 42–46. This supersedes the 2026-10-05 preparation scope withou
 erasing its historical evidence. Parent: [ticket 12](../tickets/ready-for-human/12-live-terminal-release-evidence.md).
 
 All checks started **NOT RUN for this campaign**. Automated A01–A10 acceptance
-completed on 2026-10-08; live R01–R24 remain NOT RUN. The
+completed on 2026-10-08; live checks now have a mixture of PARTIAL, PENDING
+and NOT RUN results, as detailed below. The
 [guided retest](ticket-12-fresh-retest-2026-10-08.md) records the frozen final
 candidate, commands, counts, logs and the exact source-equivalence basis for
 carried-forward broader results after a test-only restart-verifier correction.
@@ -168,7 +169,8 @@ public copies must follow ticket 33. Earlier local temporary screenshot/log path
 are not proof of durable preservation. New test outcomes must remain traceable
 without copying secrets or raw customer/card data into this checklist.
 
-**Automated acceptance completed on 2026-10-08; live scenarios remain NOT RUN.**
-The dated guided retest records actual automated results. Register setup is
-recorded separately in ticket 12. No live payment/refund tests, deployment,
-publication, historical redaction or closure of other tickets is claimed.
+**Automated acceptance completed on 2026-10-08; live acceptance remains incomplete.**
+The table and dated guided retest record subsequent operator observations and
+staging deployments. PARTIAL or PENDING does not mean the entire scenario
+passed. Publication, historical redaction and closure of other tickets are
+not claimed.
