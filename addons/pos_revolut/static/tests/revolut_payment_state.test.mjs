@@ -2021,3 +2021,78 @@ for (const outcome of ["cancelled", "verified", "unresolved", "processing", "off
             JSON.stringify([[7], 46, "order-1", "line-1"])), "only reconcile the original attempt");
     });
 }
+
+for (const refund of [false, true]) {
+    test(`native draft sync preserves ${refund ? "pending refund" : "cancelled payment"} recovery actions`, async () => {
+        const { state, order, line, calls } = fixture({ refund });
+        line.uiState.revolutStarted = true;
+        line.uiState.revolutSnapshot = { operation_id: 51,
+            state: refund ? "pending" : "cancelled", retry_safe: !refund };
+        line.uiState.revolutOperationId = 51;
+        // sync_from_ui can return the waiting status serialized before recovery.
+        line.payment_status = "waiting";
+        state.afterSync(order, line);
+        assert.equal(line.getPaymentStatus(), "retry");
+        assert.equal(paymentOutcome(line), refund ? "pending" : "cancelled");
+        assert.equal(line.uiState.revolutOperationId, 51);
+        assert.deepEqual(calls, []);
+    });
+}
+
+test("native sync during polling does not abandon the request and its completion restores recovery", async () => {
+    const response = deferred();
+    const { state, order, line, calls } = fixture({ call(method) {
+        if (method === "revolut_start_payment") return { operation_id: 52, state: "pending" };
+        if (method === "revolut_poll_payment") return response.promise;
+    } });
+    const request = state.request(order, line);
+    await tick();
+    line.payment_status = "waiting";
+    state.afterSync(order, line);
+    assert.equal(line.uiState.revolutStarted, true);
+    state.clock.advance(1000);
+    await tick();
+    response.resolve({ operation_id: 52, state: "cancelled", retry_safe: true });
+    assert.equal(await request, false);
+    assert.equal(line.getPaymentStatus(), "retry");
+    assert.equal(paymentOutcome(line), "cancelled");
+    assert.equal(calls.filter(({method}) => method === "revolut_start_payment").length, 1);
+});
+
+test("revoked register discovery explains access without saving or dispatching a payment", async () => {
+    let prepared = false;
+    const { state, order, line, calls, errors } = fixture({
+        preparePayment: async () => { prepared = true; },
+        call(method) {
+            if (method === "revolut_find_payment") {
+                throw { data: { name: "odoo.exceptions.AccessError", message: "Ask an administrator to grant your backend user Revolut access to this register." } };
+            }
+        },
+    });
+    assert.equal(await state.request(order, line), false);
+    assert.equal(prepared, false);
+    assert.equal(paymentOutcome(line), "register_access_denied");
+    assert.deepEqual(errors, ["register_access_denied"]);
+    assert.deepEqual(calls[0].args, [[7], "order-1", "line-1", 8]);
+    assert.equal(calls.length, 1);
+});
+
+test("access revoked during preparation remains an access explanation", async () => {
+    const { state, order, line, errors } = fixture({ preparePayment: async () => {
+        throw { data: { name: "odoo.exceptions.AccessError", message: "Register access revoked" } };
+    } });
+    assert.equal(await state.request(order, line), false);
+    assert.equal(paymentOutcome(line), "register_access_denied");
+    assert.deepEqual(errors, ["register_access_denied"]);
+    assert.equal(line.uiState.revolutUndispatched, true);
+});
+
+test("native draft sync preserves restored verified completion", () => {
+    const { state, order, line } = fixture();
+    line.uiState.revolutSnapshot = { operation_id: 61, state: "verified" };
+    line.uiState.revolutCheckoutRestored = true;
+    line.payment_status = "waiting";
+    state.afterSync(order, line);
+    assert.equal(line.getPaymentStatus(), "done");
+    assert.equal(paymentResponseSuccessful(line, true), true);
+});

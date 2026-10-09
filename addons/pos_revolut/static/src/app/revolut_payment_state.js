@@ -156,6 +156,18 @@ export class RevolutPaymentState {
         this.lines = new Map();
     }
 
+    afterSync(order, line) {
+        const owner = this.owner(order, line);
+        // A draft response can carry the waiting status serialized before the
+        // latest provider observation. Idle recovery uses surviving evidence.
+        if (!owner.request && !owner.cancellation && !owner.screenRequest) {
+            restorePaymentLine(line);
+            if (paymentResponseSuccessful(line, true)) {
+                line.setPaymentStatus("done");
+            }
+        }
+    }
+
     async restore(order, line) {
         restorePaymentLine(line);
         if (!isRevolutRefund(line) || order.state !== "draft" ||
@@ -286,6 +298,7 @@ export class RevolutPaymentState {
         const request = this.waitForResult(owner, checkOnly || owner.checkOnly).finally(() => {
             if (owner.request === request) {
                 owner.request = null;
+                owner.line.setPaymentStatus(paymentResponseSuccessful(owner.line, true) ? "done" : "retry");
             }
         });
         owner.request = request;
@@ -325,7 +338,7 @@ export class RevolutPaymentState {
             if (!result?.operation_id) {
                 result = await this.clock.before(this.adapter.call(
                     refund ? "revolut_find_refund" : "revolut_find_payment",
-                    [[this.methodId], order.uuid, line.uuid]
+                    [[this.methodId], order.uuid, line.uuid, ...(!refund ? [this.sessionId] : [])]
                 ), deadline);
                 discovered = Boolean(result);
             }
@@ -456,10 +469,12 @@ export class RevolutPaymentState {
                             line.uiState.revolutStarted = false;
                             line.uiState.revolutUndispatched = true;
                         }
-                        line.uiState.revolutStartRejected = "authority_required";
-                        line.uiState.revolutLocalOutcome = "authority_required";
+                        const outcome = error?.data?.name === "odoo.exceptions.AccessError"
+                            ? "register_access_denied" : "authority_required";
+                        line.uiState.revolutStartRejected = outcome;
+                        line.uiState.revolutLocalOutcome = outcome;
                         line.uiState.revolutRejectionMessage = error?.data?.message || error.message;
-                        this.showError(line, "authority_required");
+                        this.showError(line, outcome);
                         return false;
                     }
                     // Saving and authorizing a draft is still preparation.
@@ -566,6 +581,12 @@ export class RevolutPaymentState {
         } catch (error) {
             if (line.uiState.revolutSnapshot?.state === "verified") {
                 return await this.setVerified(line);
+            }
+            if (error?.data?.name === "odoo.exceptions.AccessError") {
+                line.uiState.revolutLocalOutcome = "register_access_denied";
+                line.uiState.revolutRejectionMessage = error.data.message;
+                this.showError(line, "register_access_denied");
+                return false;
             }
             const failure = error instanceof ForegroundTimeout ? "timed_out" : "interrupted";
             const outcome = !financialStartMayHaveOccurred(line) && line.uiState.revolutUndispatched
