@@ -137,10 +137,13 @@ not native product-return or accounting completion. Inspect current evidence and
 any existing native work before R13/R14; never issue those refunds again. Full
 historical mappings remain in Git history/restricted server evidence.
 
-Ticket 33's durable restricted evidence preservation/publication review and
-[ticket 34](../tickets/ready-for-human/34-provision-and-gate-odoo-pdf-generation.md)'s
-native invoice PDF acceptance remain open. Ignored build logs and temporary
-screenshots are working copies, not a completed permanent archive.
+Ticket 33's durable restricted evidence preservation/publication review remains
+open. [Ticket 34](../tickets/closed/34-provision-and-gate-odoo-pdf-generation.md)'s
+native invoice PDF acceptance closed on October 9 after actual PDF inspection
+and operator-confirmed repeat downloads; physical printing was skipped by the
+owner and the original session remains In Progress. Ticket 12's other historical,
+session and physical printing checks remain separate. Ignored build logs and
+temporary screenshots are working copies, not a completed permanent archive.
 
 ## Maintaining this handoff
 

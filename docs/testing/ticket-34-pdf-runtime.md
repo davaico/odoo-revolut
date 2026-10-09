@@ -145,7 +145,7 @@ Local `/tmp` artifacts are temporary; this committed record preserves findings
 and hashes. These tests and visual inspection establish readable PDF output,
 not physical printer success.
 
-## Remaining staging acceptance
+## Original staging handoff — superseded by October 9 closure
 
 Staging acceptance requires separately authorized infrastructure access and
 current satisfaction of the financial, host-identity and reviewed-artifact
@@ -187,3 +187,42 @@ Final independent review: Standards 0 remaining findings (worst: none);
 Spec 0 remaining findings (worst: none), including final `dad0e151...b3b734a`
 and the open human handoff. Both initial findings and their fixes remain
 recorded above rather than being represented as an initially clean review.
+
+## Final native staging acceptance — 2026-10-09
+
+[Ticket 34](../tickets/closed/34-provision-and-gate-odoo-pdf-generation.md)
+records the completed operator-guided acceptance, including the explicit scope
+exception authorizing one native invoice on an existing historical staging sale.
+Ticket 36 superseded the standalone Revolut document requirement; the original
+custom-report evidence above remains historical, not native invoice evidence.
+
+The operator supplied hostname `odoo-revolut-staging`, active addon release
+`d232c57b797b898aef57d5139290f11699d4678c`, Odoo `19.0.20260908`, wkhtmltox
+`1:0.12.6.1-3.jammy` and service start 2026-10-09 13:28:21 UTC. The previously
+guided hosting repair used reviewed implementation
+`1f2aa0287f919a95a2268705f639ba616c8c8788` on `feat/revolut-staging`,
+installer SHA256 `5aacb036f84a885756bd7f8cf47019a71db7afb0db5c9aecec61ba5a832b57a2`.
+No new repair, restart or rollout occurred during this final check.
+
+An initial read-only query found no posted customer invoices linked to POS
+orders. The owner then authorized creating one invoice through Odoo's normal
+customer/invoicing flow. Historical sale `Davai GBP Terminal Test - 000015`
+(October 1; source `261-2-000015`) now links native invoice `INV/2026/00001`,
+Posted/Paid, GBP 0.01 total and GBP 0.00 due. Its payment is the original Cash
+tender. Original session `Davai GBP Terminal Test/00005` remains In Progress;
+no closed-session staging result is claimed.
+
+The attached `/home/gary/Downloads/INV_2026_00001.pdf` is 35,463 bytes,
+one-page A4, Creator/Producer Odoo, SHA256
+`71e812a1b7c0703e780dd852e0c9e73f5dae930a4e74494e1385ed5a12ac60ea`.
+Poppler extraction and complete-page raster inspection confirmed matching
+invoice/sale references, product, GBP total, zero due and readable header/footer
+without clipping. The operator confirms repeat downloads work using Download
+after page reload. Reload does not itself trigger downloading. Physical printing
+was skipped at the owner's explicit request. No new charge/refund or additional
+invoice was requested during retrieval.
+
+Ticket 34 is closed. Actual staging PDF rendering and repeat retrieval are
+accepted; ticket 12's other historical, session and physical-printer release
+checks remain separate. Closure verification is documentation/link validation
+and the actual PDF inspection above, not a newly rerun automated runtime suite.

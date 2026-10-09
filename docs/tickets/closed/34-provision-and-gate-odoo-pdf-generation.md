@@ -8,7 +8,7 @@
 
 Create the integration work branch in `odoo-revolut`. In the VM repository, `odoo-hosting`, work on `feat/revolut-staging`; reuse it if it exists or create it if absent. Do not substitute a differently named hosting branch or require matching names across repositories. Inspect existing branch and worktree state first, incorporate reviewed upstream changes, and preserve other work. Do not reset an existing branch.
 
-**State:** open
+**State:** closed
 
 **Triage:** ready-for-human
 
@@ -37,7 +37,7 @@ Ticket 25 delivered Odoo-generated card transaction receipts, not accounting inv
 - [x] Test preflight rejection and success, including executable-not-found, execution/compatibility failure and rendering failure. Assert that rejection leaves the running service, active release and financial records unchanged. Use disposable report data and temporary output, not live credentials or Merchant calls, for rendering checks.
 - [x] Render and inspect the actual historical payment and completed-refund receipt PDFs in isolated tests using stored verified evidence and mocked/blocked provider access. Cover repeat downloads and a closed original POS session; confirm no new payment/refund, provider request, evidence change or session reopening occurs.
 - [x] Document the server prerequisite, provisioning/repair procedure, preflight diagnostics, any necessary controlled Odoo restart, and the manual receipt download/print check. Explain that installing software on the cashier's computer is not the fix and that an accounting invoice is a different document.
-- [ ] After separately authorized staging repair or rollout and satisfaction of applicable safety gates, use an existing historical invoiced POS order to download its native Odoo accounting invoice and verify its reference, amount/currency and printable PDF output. Do not create an invoice or a live financial transaction solely to satisfy this check; if no suitable invoiced order exists, record the missing fixture as a blocker. Record the exact deployed revisions, renderer build and result without secrets. If staging is blocked, preserve the blocker and distinguish local completion from unexecuted staging acceptance.
+- [x] After separately authorized staging repair or rollout and satisfaction of applicable safety gates, use a historical POS order to download its native Odoo accounting invoice twice and verify its reference, amount/currency and printable PDF output. Prefer an existing invoice. On 2026-10-09, after a read-only check found none, the owner explicitly authorized creating one native invoice for an existing completed staging sale through Odoo's normal customer/invoicing flow. This exception does not authorize a new charge/refund, automatic invoicing or invoice backfill. Record the selected sale, original session state, created invoice reference, exact deployed revisions, renderer build and result without secrets. If staging is blocked, preserve the blocker and distinguish local completion from unexecuted staging acceptance.
 
 ## Blocked by
 
@@ -49,7 +49,7 @@ Staging inspection, package installation, service restart and deployment require
 
 ## Out of scope
 
-No new terminal charge or refund for testing, forced verification of pending operations, credential changes, accounting invoice creation, automatic email, public receipt sharing, remote terminal printing, broad PDF-engine replacement or unrelated hosting refactor.
+No new terminal charge or refund for testing, forced verification of pending operations, credential changes, accounting invoice creation beyond the single owner-authorized staging invoice above, automatic email, public receipt sharing, remote terminal printing, broad PDF-engine replacement or unrelated hosting refactor.
 
 ## Working agreement
 
@@ -100,3 +100,85 @@ preflight remains unchanged and all seven real renderer cases pass in the pinned
 image. Historical custom-report evidence above remains accurate for its date.
 The unchecked staging criterion still uses an existing native invoiced order;
 this ticket stays open / ready-for-human. No staging repair or rollout occurred.
+
+### Operator staging inspection — 2026-10-09
+
+At 15:03:19 UTC, the owner supplied output from the guided read-only check on
+`odoo-revolut-staging`. The active addon symlink resolves to release
+`d232c57b797b898aef57d5139290f11699d4678c`; installed packages are Odoo
+`19.0.20260908` and wkhtmltox `1:0.12.6.1-3.jammy`. Odoo is active, with
+`ExecMainStartTimestamp` 2026-10-09 13:28:21 UTC, after the previously reported
+October 2 renderer repair. This is operator-supplied evidence, not an additional
+agent inspection, renderer probe or restart.
+
+The read-only query joining POS orders to posted customer invoices returned
+zero rows. No suitable existing invoiced POS fixture is available for the final
+native invoice PDF download/print check. That check remains blocked and
+unchecked; ticket 34 remains open / ready-for-human. No invoice, charge or
+refund was created for this check, and no service change was requested. The
+package and service output does not establish actual native invoice rendering
+or current financial safety-gate status. Use an existing qualifying invoice
+when one becomes available; any alternative acceptance requires an explicit
+owner scope decision.
+
+### Owner-authorized invoice fixture — 2026-10-09
+
+The owner subsequently instructed: "Okay, let's create an invoice. You will
+guide me through the last test, and then we will close ticket 34". This revises
+the missing-fixture restriction for one native invoice on an existing completed
+staging POS sale. Use Odoo's normal customer and invoicing flow, record invoice
+creation separately from repeated retrieval, and prefer a historical sale with
+a closed original session. No new payment/refund or service change is required
+by this instruction. Creation and download/print acceptance remain unexecuted
+at this entry; the final checkbox and open state are unchanged.
+
+### Native invoice created and downloaded — 2026-10-09
+
+The owner supplied screenshots of historical paid sale
+`Davai GBP Terminal Test - 000015` (October 1, session
+`Davai GBP Terminal Test/00005`) and the native invoice created from it:
+`INV/2026/00001`, Posted/Paid, GBP 0.01 total and GBP 0.00 due. The invoice
+records the original Cash tender; this is native PDF-runtime acceptance, not
+evidence of a new Revolut payment or refund. The owner requested skipping
+physical printing; no physical-printer result is claimed.
+
+The owner attached `/home/gary/Downloads/INV_2026_00001.pdf`. Agent inspection
+confirmed a nonempty 35,463-byte, one-page A4 PDF (Creator/Producer Odoo), with
+SHA256 `71e812a1b7c0703e780dd852e0c9e73f5dae930a4e74494e1385ed5a12ac60ea`.
+Poppler text extraction and visual inspection of the rasterized complete page
+confirmed the invoice reference, original sale reference/source `261-2-000015`,
+product, GBP 0.01 total, GBP 0.00 due, readable header and page footer without
+clipping. Native invoice PDF download/rendering is now established on staging.
+Repeat download after page reload and the original session's current state
+still need operator confirmation; the ticket remains open.
+
+### Final staging acceptance and closure — 2026-10-09
+
+The owner confirms repeat downloads work through the native Download button,
+including after reloading the Odoo page. Reload itself does not trigger a new
+download or reinstall anything. The submitted PDF and complete-page inspection
+above establish readable native invoice output with matching sale reference,
+amount/currency and page footer; no missing-renderer error was reported in the
+final flow. Physical printing was explicitly skipped at the owner's request.
+
+The final screenshots show the original sale now Posted with its Invoice link,
+and original session `Davai GBP Terminal Test/00005` still In Progress. No
+session closure or reopening is claimed or required for this PDF-runtime
+closure; closed-session behavior remains covered by ticket 36's disposable
+tests and ticket 12's separate historical document/session release acceptance.
+
+Accepted target provenance: operator-reported staging release
+`d232c57b797b898aef57d5139290f11699d4678c`, Odoo `19.0.20260908`, wkhtmltox
+`1:0.12.6.1-3.jammy`, active service started 2026-10-09 13:28:21 UTC. Hosting
+repair provenance is the reviewed `feat/revolut-staging` implementation
+`1f2aa0287f919a95a2268705f639ba616c8c8788`, whose installer SHA256 is
+`5aacb036f84a885756bd7f8cf47019a71db7afb0db5c9aecec61ba5a832b57a2`,
+transferred during the earlier guided repair. No new package install, restart,
+deployment or Merchant command was performed during final acceptance. The
+single native invoice creation is recorded separately from subsequent
+retrieval; no additional invoice or new charge/refund was requested.
+
+The missing invoice fixture is resolved by the explicitly authorized invoice.
+Ticket 34 is closed with native staging PDF acceptance complete. Ticket 12's
+remaining physical/historical release checks and other financial/session
+blockers are independent and are not passed by this closure.
