@@ -176,6 +176,82 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
         return sum(call.args[0] == "POST" and urlsplit(call.args[1]).path != "/api/report-runs"
                    for call in self.request.call_args_list)
 
+    def test_tipped_authorisation_keeps_polling_until_capture_and_report(self):
+        self.start_payment()
+        payment_state = "authorised"
+
+        def response(method, url, **kwargs):
+            result = self.provider_response(method, url, **kwargs)
+            if urlsplit(url).path == f"/api/payments/{self.provider_payment_id}":
+                result.json.return_value["state"] = payment_state
+            return result
+
+        self.request.side_effect = response
+        for payment_state in (
+            "pending", "authentication_challenge", "authentication_verified",
+            "authorisation_started", "authorisation_passed", "authorised", "capture_started",
+            "declining", "cancelling", "failing",
+        ):
+            with self.subTest(state=payment_state):
+                waiting = self.poll_payment()
+                self.assertEqual(waiting["state"], "pending")
+                self.assertFalse(waiting["retry_safe"])
+                self.assertFalse(waiting["captured_amount_minor"])
+                self.assertEqual(self.report_post_count, 0)
+                self.order.invalidate_recordset()
+                self.assertEqual(self.order.amount_total, 100)
+                self.assertEqual(self.order.state, "draft")
+
+        payment_state = "captured"
+        self.assertTrue(self.poll_payment()["awaiting_tip_details"])
+        self.report_status = "completed"
+        verified = self.poll_payment()
+        self.assertEqual(verified["state"], "verified")
+        self.assertEqual(verified["gross_amount_minor"], 10300)
+        self.assertEqual(verified["terminal_tip_minor"], 300)
+        self.assertEqual(self.financial_post_count(), 2)
+
+    def test_tipped_processing_preserves_identity_amount_and_state_guards(self):
+        self.start_payment()
+        wrong_payment = {}
+
+        def response(method, url, **kwargs):
+            result = self.provider_response(method, url, **kwargs)
+            if urlsplit(url).path == f"/api/payments/{self.provider_payment_id}":
+                result.json.return_value.update({"state": "authorised", **wrong_payment})
+            return result
+
+        self.request.side_effect = response
+        for wrong_payment in (
+            {"id": str(uuid4())}, {"order_id": str(uuid4())}, {"currency": "INVALID"},
+            {"amount": 9999}, {"amount": True}, {"amount": "10300"}, {"amount": 2147483648},
+            {"state": "undocumented"},
+        ):
+            with self.subTest(wrong=wrong_payment):
+                result = self.poll_payment()
+                self.assertEqual(result["state"], "unresolved")
+                self.assertFalse(result["retry_safe"])
+                self.assertFalse(result["captured_amount_minor"])
+                self.assertEqual(self.report_post_count, 0)
+        self.assertEqual(self.financial_post_count(), 2)
+
+    def test_tipped_processing_cannot_override_existing_capture(self):
+        self.start_payment()
+        self.assertTrue(self.poll_payment()["awaiting_tip_details"])
+
+        def response(method, url, **kwargs):
+            result = self.provider_response(method, url, **kwargs)
+            if urlsplit(url).path == f"/api/payments/{self.provider_payment_id}":
+                result.json.return_value["state"] = "authorised"
+            return result
+
+        self.request.side_effect = response
+        result = self.poll_payment()
+        self.assertEqual(result["state"], "unresolved")
+        self.assertEqual(result["captured_amount_minor"], 10300)
+        self.assertFalse(result["retry_safe"])
+        self.assertEqual(self.financial_post_count(), 2)
+
     def test_capture_waits_for_report_then_projects_tip_once(self):
         self.start_payment()
         waiting = self.poll_payment()
