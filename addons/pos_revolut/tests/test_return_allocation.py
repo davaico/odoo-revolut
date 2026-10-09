@@ -150,6 +150,28 @@ class TestReturnAllocation(CommonPosTest):
         self._complete_rounding_partition(manager, 925, 309)
         self.assertEqual(refund.amount_minor, 309)
 
+    def test_paid_order_receipt_load_survives_exhausted_unallocated_return(self):
+        self._terminal_sale(tip_minor=0)
+        manager = self._mutation_actor()
+        stale = self.original._refund()
+        self._tip_return(goods_qty=1, tip_qty=0, payment_minor=1234)
+        self._complete_rounding_partition(manager, 1234, 0)
+        self.env.invalidate_all()
+        # Native history reads prefetch derived fields across related orders,
+        # including abandoned return drafts whose entitlement is now exhausted.
+        rows = (self.original | stale).with_user(manager).read([
+            "amount_total", "revolut_payable_target", "revolut_has_authority_exposure",
+        ])
+        returned = next(row for row in rows if row["id"] == stale.id)
+        self.assertEqual(returned["amount_total"], -12.34)
+        self.assertEqual(returned["revolut_payable_target"], -12.34)
+        data = self._rpc_refund(manager, "pos.order", "read_pos_data_uuid", [self.original.uuid])
+        original = next(row for row in data["pos.order"] if row["uuid"] == self.original.uuid)
+        self.assertEqual(original["amount_total"], 12.34)
+        self._tip_return(goods_qty=1, tip_qty=0, payment_minor=1234)
+        with self.assertRaisesRegex(UserError, "quantity"):
+            self._rpc_refund_sources(manager)
+
     def test_ambiguous_historical_multi_line_target_blocks_new_dispatch(self):
         self._terminal_sale(tip_minor=200)
         manager = self._mutation_actor()

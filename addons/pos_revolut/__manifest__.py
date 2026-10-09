@@ -1,6 +1,6 @@
 {
     "name": "POS Revolut",
-    "version": "19.0.1.18.10",
+    "version": "19.0.1.18.11",
     "category": "Sales/Point of Sale",
     "summary": "Configure a Revolut payment terminal for Point of Sale",
     "author": "Davai",
@@ -21,6 +21,7 @@
         "point_of_sale._assets_pos": [
             "pos_revolut/static/src/app/**/*.js",
             "pos_revolut/static/src/app/**/*.xml",
+            "pos_revolut/static/src/app/**/*.scss",
         ],
         "web.assets_tests": ["pos_revolut/static/tests/tours/**/*.js"],
     },

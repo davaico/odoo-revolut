@@ -207,6 +207,15 @@ class NativeExternalReturn(models.Model):
     revolut_external_refund_ids = fields.One2many("pos.revolut.refund.operation", "pos_order_id",
         domain=[("origin", "=", "external")], readonly=True, groups="point_of_sale.group_pos_manager")
 
+    @api.depends("name", "pos_reference", "state")
+    @api.depends_context("revolut_return_display")
+    def _compute_display_name(self):
+        super()._compute_display_name()
+        if self.env.context.get("revolut_return_display"):
+            for order in self:
+                if order.state == "draft" and order.name == "/" and order.pos_reference:
+                    order.display_name = order.pos_reference
+
     @api.model
     def _load_pos_data_fields(self, config):
         # Native POS requests an explicit field list, including new addon
