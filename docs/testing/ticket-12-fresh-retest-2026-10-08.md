@@ -612,3 +612,105 @@ subcase. Confirm one-click cancellation, unpaid order and terminal idle before
 marking it passed. No rollout charge/refund occurred; gross captured spend
 remains £0.05 against the £0.25 campaign cap. Wider R06 subcases and other release
 gates remain open.
+
+The operator subsequently confirms the cancellation retest cancelled in both
+Odoo and the terminal on **19.0.1.18.5**. This is operator-confirmed UI/device
+evidence; fresh backend and unpaid-order verification remain outstanding.
+Next run terminal-origin cancellation on a £0.01 request without presenting a
+card, and verify that Odoo observes the result automatically. R06 stays partial.
+
+The operator now confirms terminal-origin cancellation also worked and Odoo
+detected it automatically. Both cancellation directions have operator-reported
+UI/device success; exact timing and fresh backend/unpaid-order verification
+remain open. Next run R07's £0.01 no-card foreground-timeout scenario, then
+cancel the outstanding terminal request and reconcile the original line with
+Check status. This next scenario has not run; do not mark broader R06/R07
+acceptance from these cancellation observations.
+
+On **2026-10-09**, the operator supplied screenshots confirming the R07
+60-second local waiting-limit warning, unresolved line with Check status, and
+subsequent Payment cancelled/Retry after cancellation and status recovery.
+£0.01 remains due and Validate is disabled. The terminal remaining active at
+the local timeout matches the current implementation: timeout does not send
+automatic cancellation. This UI recovery subcase is observed; backend identity
+and dispatch verification plus the wider R07 subcases remain open.
+
+The operator also saw the terminal tip menu and selected No thanks before the
+timeout, reporting tipping now enabled in checkout. This confirms prompt/no-tip
+interaction only; it is not completed-payment or tip reconciliation evidence.
+R05 and R07 are partial. No new charge/refund is reported in this no-card case.
+
+The subsequent guided reload scenario produced screenshots of the same displayed
+checkout with Payment unresolved/Check status, then Payment cancelled/Retry
+after operator cancellation. £0.01 remains due and Validate disabled. Record
+the observed recovery UI; backend operation identity and dispatch counts remain
+unverified. Next proposed test is one £0.01 no-tip card payment after the local
+timeout, recovered through Check status on the original line. That charge has
+not yet occurred and does not yet change the recorded campaign spend.
+
+The operator then reports the late-payment test succeeded. The screenshot
+shows Payment Successful and a native £0.01 Revolut sale receipt under
+Administrator. Count this £0.01 charge: gross campaign spend **£0.06**, remaining
+cap **£0.19**, pending final backend reconciliation. No tip line is displayed;
+explicit zero-tip report evidence and single original-operation/capture checks
+remain unverified. Next refresh and reopen this completed sale in Orders to
+verify persistence without another payment or refund. R07 remains partial.
+
+Subsequent screenshots confirm the latest sale remains Paid £0.01 and its
+reopened receipt preview has the correct total/Revolut tender. The long provider
+reference is clipped with a scrollbar; the R16 print-layout issue remains open.
+
+The next full-refund attempt is blocked in allocation by historical external
+refund authority evidence. Read-only staging checks confirm the new sale is
+verified/Paid with no refund operation; a separate September 30 original has no
+approved credential binding and its evidence blocks this Merchant scope. The
+exact company/environment/reference tuple matches the existing authority.
+See the release evidence for the narrow proposed administrator attestation and
+normal reconciliation. Approval for that historical credential authorization
+is pending; no binding, evidence clearance or refund was performed. Preserve
+the existing return, and keep R09 blocked. Campaign spend is unchanged.
+
+The owner approved that repair. Fresh provider identity checks now show the
+historical refund completed; the single legacy payment was attested through
+the supported administrator action and normal discovery imported the existing
+refund, resolving its blocker. Independent read-back confirms zero blockers
+for the new sale and zero refunds against it. Two rolled-back shell attempts
+and one successful attempt used ten GETs total, zero financial requests.
+The historical refund still requires its own native disposition. R09 can
+resume on the existing £0.01 return by cancelling the stale allocation dialog
+and selecting Revolut again. No new campaign refund has been sent.
+
+The refreshed allocation now shows £0.01 remaining. Following confirmation,
+operator screenshots show Refund in process, −£0.01 remaining and disabled
+Validate in Odoo; the corresponding Revolut dashboard refund row shows
+Processing for −£0.01. R09 is pending, not passed or failed. The owner chose
+to retain the completion safeguard and continue other checks. Next run R11
+pending-return reload, using the existing refund only. This recovery check
+has not yet run. Gross campaign spend remains £0.06, cap remaining £0.19;
+refunds do not replenish the gross-charge cap.
+
+Following the guided pending-return reload step on 2026-10-09, the operator
+supplied a screenshot displaying the same return and refund reference,
+−£0.01 remaining, Refund in process and disabled Validate. The screenshot
+supports displayed identity continuity; it does not independently establish
+that a reload occurred or prove backend single-dispatch behavior. R11 is
+partial and R09 remains pending. Next proposed independent case is R05:
+a new £0.01 base sale with a £0.01 terminal tip, £0.02 gross within the
+remaining approved cap. This payment has not run; recorded gross spend stays
+£0.06 and remaining cap £0.19. Preserve the pending return.
+
+The tipped sale succeeded only after an unresolved popup and manual Check
+status. Receipt and read-only backend confirm £0.01 base + £0.01 tip = £0.02,
+one order/intent dispatch pair and native Paid. Gross spend is £0.08, remaining
+cap £0.17. R05 stays partial: automatic checkout failed this live case. A
+separate pre-capture tipped-amount validation bug reproduces the warning in
+mocked public-RPC tests; see release evidence for diagnosis and its limits.
+A scoped local fix is under verification, not deployed. Existing £0.01 refund
+remains pending/processing. Do not repeat either financial operation.
+
+Local tipped-processing fix verification completed: 30 tip backend tests,
+three distinct browser scenarios and 116 frontend tests passed across the
+recorded runs. A test-only report-poll-count assertion was corrected and its
+affected browser scenarios rerun successfully. Independent review has no
+remaining blocking findings. Not deployed; physical automatic-checkout retest
+remains required. Existing captured sale and pending refund need no replay.
