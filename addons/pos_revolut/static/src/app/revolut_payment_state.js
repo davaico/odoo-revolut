@@ -668,10 +668,28 @@ export class RevolutPaymentState {
                 }
                 this.remember(line, result);
             }
-            this.remember(line, await this.clock.before(
-                this.operationCall("revolut_cancel_payment", order, line), deadline
-            ));
-            const result = line.uiState.revolutSnapshot;
+            let result;
+            while (true) {
+                if (this.clock.now() >= deadline) {
+                    throw new ForegroundTimeout();
+                }
+                this.remember(line, await this.clock.before(
+                    this.operationCall("revolut_cancel_payment", order, line), deadline
+                ));
+                result = line.uiState.revolutSnapshot;
+                if (result.state === "verified" || result.retry_safe === true ||
+                    result.observation_deferred !== true) {
+                    break;
+                }
+                // A concurrent observer or server cadence can defer Cancel
+                // before it acts. Keep this click pending; the server owns
+                // the one-time cancellation dispatch and its reconciliation.
+                await this.clock.before(this.clock.wait(POLL_INTERVAL_MS), deadline);
+                result = line.uiState.revolutSnapshot;
+                if (result.state === "verified" || result.retry_safe === true) {
+                    break;
+                }
+            }
             if (result.state === "verified") {
                 if (await this.setVerified(line)) {
                     line.setPaymentStatus("done");

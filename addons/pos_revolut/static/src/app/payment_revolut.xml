@@ -44,7 +44,7 @@
     <t t-name="pos_revolut.PaymentScreenPaymentLines" t-inherit="point_of_sale.PaymentScreenPaymentLines" t-inherit-mode="extension">
         <xpath expr="//t[@t-elif=&quot;line.payment_status == 'waitingCard'&quot;]//div[hasclass('electronic_status')]" position="replace">
             <div class="electronic_status">
-                <t t-if="line.payment_method_id.use_payment_terminal === 'revolut' and line.uiState.revolutSnapshot?.awaiting_tip_details">Payment received — awaiting terminal tip details</t>
+                <t t-if="line.payment_method_id.use_payment_terminal === 'revolut' and line.uiState.revolutSnapshot?.awaiting_tip_details">Payment received — verifying payment details</t>
                 <t t-elif="this.props.isRefundOrder">Refund in process</t>
                 <t t-else="">Waiting for card</t>
             </div>

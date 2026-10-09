@@ -30,12 +30,16 @@ REPORT_COLUMNS = (
 REPORT_MAX_BYTES = 262144
 REPORT_MAX_ROWS = 1000
 REPORT_MAX_CELL = 128
+REPORT_SUCCESS_STATES = {"CAPTURED", "COMPLETED"}
 REPORT_DECIMAL = re.compile(r"[0-9]{1,16}(?:\.[0-9]{1,6})?\Z")
 
 
 def _utc_datetime(value):
     if not isinstance(value, str) or not 20 <= len(value) <= 40:
         raise ValueError("missing payment creation timestamp")
+    # UTC payments-report timestamps may include the provider's zone annotation.
+    if value.endswith("[UTC]"):
+        value = value[:-5]
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if parsed.tzinfo is None or parsed.utcoffset() != timedelta(0):
         raise ValueError("payment timestamp must be UTC")
@@ -168,10 +172,12 @@ class PosPaymentMethod(models.Model):
         created = fields.Datetime.to_datetime(operation["payment_created_at"])
         if not created:
             raise ValueError("missing authenticated payment creation time")
+        # Revolut rejects a future report end during immediate capture polling.
+        end = min(created + timedelta(seconds=60), fields.Datetime.now())
         return {
             "type": "payments_report", "format": "csv",
             "filter": {"from": (created - timedelta(seconds=60)).isoformat() + "Z",
-                       "to": (created + timedelta(seconds=60)).isoformat() + "Z"},
+                       "to": end.isoformat() + "Z"},
             "options": {"timezone": "UTC", "columns": list(REPORT_COLUMNS)},
         }
 
@@ -219,7 +225,7 @@ class PosPaymentMethod(models.Model):
             record = dict(zip(headers, row))
             if record["payment_id"] == operation["payment_id"]:
                 candidates.append(record)
-            if record["order_id"] == operation["order_id"] and record["type"] == "PAYMENT" and record["state"] == "COMPLETED":
+            if record["order_id"] == operation["order_id"] and record["type"] == "PAYMENT" and record["state"] in REPORT_SUCCESS_STATES:
                 related_successful.append(record)
         if not candidates:
             if related_successful:
@@ -228,7 +234,7 @@ class PosPaymentMethod(models.Model):
         if len(candidates) != 1 or len(related_successful) != 1:
             raise ValueError("ambiguous report payment evidence")
         row = candidates[0]
-        if (row["type"] != "PAYMENT" or row["state"] != "COMPLETED"
+        if (row["type"] != "PAYMENT" or row["state"] not in REPORT_SUCCESS_STATES
                 or row["order_id"] != operation["order_id"]
                 or row["currency"] != operation["currency_code"]
                 or row["location_id"] != operation["location_id"]):

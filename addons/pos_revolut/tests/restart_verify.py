@@ -69,7 +69,11 @@ for fixture in history:
             False, False, authority.id, authority.cart_version, authority.tender_revision,
         )
         repeated = method.revolut_poll_payment(operation.id, fixture['order_uuid'], fixture['line_uuid'])
-        assert replay == repeated == verified, (replay, repeated, verified)
+        # The observing caller is fresh; replay and final polling reuse the
+        # same durable evidence without another provider observation.
+        assert verified['observation_fresh'] is True, verified
+        cached = dict(verified, observation_fresh=False)
+        assert replay == repeated == cached, (replay, repeated, verified)
         assert authority.projection_revision == projection_revision
         assert len(provider.call_args_list) == 5 and all(call.args[0] == 'GET' for call in provider.call_args_list)
         assert env['pos.revolut.payment.dispatch'].search_count([('operation_id', '=', operation.id)]) == 2

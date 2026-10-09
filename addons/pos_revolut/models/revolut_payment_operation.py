@@ -15,6 +15,11 @@ from .return_allocation import ReturnAllocation
 
 _logger = logging.getLogger(__name__)
 _TIP_EVIDENCE_CURSOR = ContextVar("revolut_tip_evidence_cursor", default=None)
+_PAYMENT_PENDING_STATES = (
+    "pending", "authentication_challenge", "authentication_verified",
+    "authorisation_started", "authorisation_passed", "authorised", "capture_started",
+    "declining", "cancelling", "failing",
+)
 
 
 @contextmanager
@@ -454,11 +459,17 @@ class PosRevolutPaymentOperation(models.Model):
         elif kind == "payment":
             payment = evidence
             terminal_capture = bool(self.authorization_id and payment.get("state") in {"captured", "completed"})
+            # A terminal-selected tip can already be in the authorised gross
+            # before capture. Keep observing it without projecting the excess
+            # as a tip or accepting it as payment of the base balance.
+            terminal_amount = terminal_capture or bool(
+                self.authorization_id and payment.get("state") in _PAYMENT_PENDING_STATES
+            )
             if (not self.revolut_payment_id
                     or payment.get("id") != self.revolut_payment_id
                     or payment.get("order_id") != self.revolut_order_id
                     or type(payment.get("amount")) is not int
-                    or (payment.get("amount") < self.amount_minor if terminal_capture else payment.get("amount") != self.amount_minor)
+                    or (payment.get("amount") < self.amount_minor if terminal_amount else payment.get("amount") != self.amount_minor)
                     or payment.get("amount") > 2147483647
                     or (self.captured_amount_minor and payment.get("amount") != self.captured_amount_minor)
                     or (self.captured_amount_minor and not terminal_capture)
@@ -483,10 +494,7 @@ class PosRevolutPaymentOperation(models.Model):
                                   "verified_at": fields.Datetime.now()}
                 elif state in {"declined", "failed", "cancelled"}:
                     values = {"state": state, "provider_state": state}
-                elif state in {"pending", "authentication_challenge",
-                               "authentication_verified", "authorisation_started",
-                               "authorisation_passed", "authorised", "capture_started",
-                               "declining", "cancelling", "failing"}:
+                elif state in _PAYMENT_PENDING_STATES:
                     # Documented non-final payment states only extend observation;
                     # matching identity, integer amount and currency above remain required.
                     values = {"state": "pending", "provider_state": state}
