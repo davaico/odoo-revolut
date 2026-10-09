@@ -72,7 +72,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [09 — Issue partial refunds across original payment allocations](closed/09-partial-allocated-refunds.md) | `ready-for-agent` at closure | Closed | 07 (closed), 08 (closed) |
 | [10 — Install and upgrade a reviewed revision on staging](closed/10-staging-install-upgrade.md) | `ready-for-human` at closure | Closed | 03 (closed) |
 | [11 — Verify the complete addon on the target Odoo version](closed/11-target-version-acceptance.md) | `ready-for-agent` at closure | Closed | 06, 09, 10 |
-| [12 — Retest the complete integration before release and open-source publication](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | Fresh dedicated-register campaign through 46; exact candidate/artifact and device acceptance, 34 native PDF, 33 publication gate; history preserved |
+| [12 — Retest the complete integration before release and open-source publication](ready-for-human/12-live-terminal-release-evidence.md) | `ready-for-human` | Open | Manual testing in progress: .18.9 deployed; concurrent product/tip refunds submitted, three refunds pending; current handoff in ticket; 34 PDF and 33 publication gates open |
 | [13 — Deepen Return allocation](closed/13-deepen-return-allocation.md) | `ready-for-agent` at closure | Closed | None |
 | [14 — Deepen POS payment state](closed/14-deepen-pos-payment-state.md) | `ready-for-agent` at closure | Closed | None |
 | [15 — Deepen payment outcome application](closed/15-deepen-payment-outcome-application.md) | `ready-for-agent` at closure | Closed | None |

@@ -208,7 +208,7 @@ allocations (refunds 5 and 6, payments 26 and 27). The Administrator's explicit
 register 2 grant remains present. Standard `pos_restaurant` is installed, but
 GBP register 2 remains in retail mode; the retired bridge is absent.
 No new financial POST, native Validate or physical terminal retest was issued
-during this correction. [The current ticket handoff](ticket-12-release-evidence.md#shared-merchant-discovery-rollout--2026-10-05)
+during this correction. [The historical October 5 rollout record](https://github.com/davaico/odoo-revolut/blob/170190d3ab12b04da2ee7a157b5be31bb1d31e88/docs/testing/ticket-12-release-evidence.md#shared-merchant-discovery-rollout--2026-10-05)
 records the remaining human acceptance work.
 
 | Live verification | Evidence |
