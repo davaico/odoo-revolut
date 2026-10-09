@@ -768,3 +768,50 @@ is pending/processing at £0.01 base, £0.00 tip, £0.01 total. The earlier full
 sales; neither is recorded as completed. R10 is pending. Gross card spend stays
 £0.10 with £0.15 remaining. The owner requested deployment of the template-only
 tip-remaining hint as version 19.0.1.18.7; both existing refunds must survive.
+
+## Tip-only allocation and pending-refund rejection — 2026-10-09
+
+The operator's tip-only return screenshot confirms £0.00 base / £0.01 terminal
+tip and the deployed £0.01 remaining-tip hint. The whole-return amount under
+the base field is misleading for this case; the owner requested its removal,
+while retaining the terminal-tip hint.
+
+After confirmation, Odoo displayed Refund failed. Read-only local evidence
+shows two rejected tip-only attempts with `original_ineligible` and no provider
+refund reference. Both existing full/product refunds remain pending/processing.
+One authenticated GET of the tipped original confirms matching identity and
+currency, completed original, two minor units paid and one minor unit in
+`refunded_amount`; locally verified refunds total zero and the pending product
+refund totals one. The start path rejects this mismatch before its refund POST.
+No financial requests or record repairs were performed during diagnosis.
+
+The owner explicitly requires multiple refunds against the same paid original
+while earlier refunds are processing. The fix retains capacity reservations for
+all active refunds. When the provider aggregate exceeds the locally verified
+refund total, it authenticates the previously referenced pending refunds and
+checks their identity, original relationship, amount, currency and state. Only
+an exact sum matching the aggregate permits the next POST. These reads do not
+mark earlier refunds completed or release their reservations. Missing or
+unexplained evidence still prevents dispatch; request replay remains prohibited.
+The misleading base-field hint is removed while the tip hint is retained.
+These changes are local and not yet deployed.
+
+R05 tip-only allocation display is observed; tip-only dispatch/completion is
+not passed. R09 and R10 remain pending. Gross card spend remains £0.10 and the
+approved remaining charge cap remains £0.15.
+
+Validation: the new actual pending-base/tip-only regression went red with
+`failed/original_ineligible` before the fix. The revised tip-refund/concurrency
+suite plus the existing repeated partial-refund test passed all 27 tests.
+The final two focused scenarios also passed: three pending refunds sharing one
+original, and a mixed verified/pending baseline before the next refund. Coverage
+includes exact component/gross limits, same-line replay, malformed or unrelated
+prior evidence, missing references, lookup timeout, unexplained aggregate and
+provider completion during the observation without granting local finality.
+The existing frontend lifecycle suite passed all 116 tests. XML parsing and
+`git diff --check` passed. Independent review found no blocking issue. No live
+refund was submitted, replayed or marked completed during this work.
+
+Release candidate **19.0.1.18.9** is prepared on merged PR #69, preserving
+its independent fix that keeps terminals available during API refunds. The
+owner authorized PR, merge and staging deployment after combined validation.

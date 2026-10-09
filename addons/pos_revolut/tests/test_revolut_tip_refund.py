@@ -408,6 +408,149 @@ class TestRevolutTipRefund(CommonPosTest):
             self._start_allocated(1334, 100)
         self.request.assert_not_called()
 
+    def test_tip_only_refund_can_follow_processing_base_refund(self):
+        self._terminal_sale(base_minor=1, tip_minor=1)
+        self._tip_return(tip_qty=0)
+        self.request.side_effect = [
+            self._response(id=self.source.revolut_order_id, state="completed", amount=2,
+                           currency=self.session.currency_id.name, refunded_amount=0),
+            self._refund_response("processing", amount=1),
+        ]
+        first = self._start_allocated(1, 0)
+        first_refund_id = self.refund_id
+        self.assertEqual(first["state"], "pending")
+        self._tip_return(goods_qty=0)
+        second_refund_id = self.refund_id
+        self.refund_id = first_refund_id
+        prior_detail = self._refund_response("processing", amount=1)
+        self.refund_id = second_refund_id
+        self.request.reset_mock()
+        self.request.side_effect = [
+            self._response(id=self.source.revolut_order_id, state="completed", amount=2,
+                           currency=self.session.currency_id.name, refunded_amount=1),
+            prior_detail,
+            self._refund_response("processing", amount=1),
+        ]
+        second = self._start_allocated(0, 1)
+        self.assertEqual(second["state"], "pending", second)
+        self.assertEqual((second["base_amount_minor"], second["tip_amount_minor"]), (0, 1))
+        self.assertEqual([call.args[0] for call in self.request.call_args_list], ["GET", "GET", "POST"])
+        self.assertTrue(self.request.call_args_list[1].args[1].endswith("/" + first_refund_id))
+        self.assertEqual(self.request.call_args_list[2].kwargs["json"]["amount"], 1)
+        refunds = self.env["pos.revolut.refund.operation"].sudo().browse([first["operation_id"], second["operation_id"]])
+        self.assertEqual(refunds.mapped("state"), ["pending", "pending"])
+        self.assertEqual(refunds.mapped("original_operation_id"), self.source)
+        self.assertEqual(sum(refunds.mapped("amount_minor")), 2)
+        self.request.reset_mock()
+        self.assertEqual(self._start_allocated(0, 1)["operation_id"], second["operation_id"])
+        self.request.assert_not_called()
+        remaining = self._rpc_refund_sources(self._mutation_actor())[0]
+        self.assertEqual((remaining["remaining_base_minor"], remaining["remaining_tip_minor"]), (0, 0))
+
+    def test_three_processing_refunds_share_one_original_without_exceeding_components(self):
+        self._three_refunds()
+
+    def test_verified_and_pending_refunds_are_counted_once_before_next_refund(self):
+        self._three_refunds(verify_first=True)
+
+    def _three_refunds(self, verify_first=False):
+        from odoo.exceptions import UserError
+
+        self._terminal_sale(base_minor=2, tip_minor=1)
+        issued = {}
+
+        def http(method, url, **kwargs):
+            if method == "POST":
+                detail = dict(id=self.refund_id, type="refund", state="processing",
+                              related_order_id=self.source.revolut_order_id,
+                              amount=kwargs["json"]["amount"], currency=self.session.currency_id.name)
+                issued[self.refund_id] = detail
+                return self._response(**detail)
+            if url.endswith("/" + self.source.revolut_order_id):
+                return self._response(id=self.source.revolut_order_id, state="completed", amount=3,
+                                      currency=self.session.currency_id.name,
+                                      refunded_amount=sum(row["amount"] for row in issued.values()))
+            return self._response(**issued[url.rsplit("/", 1)[-1]])
+
+        self.request.side_effect = http
+        operations = []
+        for goods, tip, base_minor, tip_minor in ((0.5, 0, 1, 0), (0.5, 0, 1, 0), (0, 1, 0, 1)):
+            self._tip_return(goods_qty=goods, tip_qty=tip)
+            result = self._start_allocated(base_minor, tip_minor)
+            self.assertEqual(result["state"], "pending", result)
+            operations.append(result["operation_id"])
+            if verify_first and len(operations) == 2:
+                first_reference = next(iter(issued))
+                issued[first_reference]["state"] = "completed"
+                verified = self.revolut_method.revolut_poll_refund(operations[0])
+                self.assertEqual(verified["state"], "verified")
+        refunds = self.env["pos.revolut.refund.operation"].sudo().browse(operations)
+        refunds.invalidate_recordset()
+        self.assertEqual(refunds.mapped("state"), ["verified" if verify_first else "pending", "pending", "pending"])
+        self.assertEqual(refunds.mapped("original_operation_id"), self.source)
+        self.assertEqual(sum(refunds.mapped("base_amount_minor")), 2)
+        self.assertEqual(sum(refunds.mapped("tip_amount_minor")), 1)
+        self.assertEqual([call.args[0] for call in self.request.call_args_list].count("POST"), 3)
+        self.request.reset_mock()
+        self._tip_return(goods_qty=0)
+        with self.assertRaises(UserError):
+            self._start_allocated(0, 1)
+        self.request.assert_not_called()
+
+    def test_pending_refund_aggregate_requires_exact_authenticated_prior_evidence(self):
+        import requests
+
+        cases = [
+            ("wrong reference", {"id": str(uuid4())}),
+            ("wrong parent", {"related_order_id": str(uuid4())}),
+            ("wrong type", {"type": "payment"}),
+            ("wrong amount", {"amount": 2}),
+            ("wrong currency", {"currency": "EUR"}),
+            ("unknown state", {"state": "unexpected"}),
+            ("failed prior", {"state": "failed"}),
+            ("cancelled prior", {"state": "cancelled"}),
+            ("unexplained aggregate", {}),
+            ("missing reference", {}),
+            ("lookup timeout", {}),
+            ("prior completed during lookup", {"state": "completed"}),
+        ]
+        for name, changes in cases:
+            with self.subTest(case=name):
+                self._terminal_sale(base_minor=1, tip_minor=1)
+                self._tip_return(tip_qty=0)
+                self.request.side_effect = [
+                    self._response(id=self.source.revolut_order_id, state="completed", amount=2,
+                                   currency=self.session.currency_id.name, refunded_amount=0),
+                    requests.Timeout() if name == "missing reference" else self._refund_response("processing", amount=1),
+                ]
+                first = self._start_allocated(1, 0)
+                prior_id = self.refund_id
+                self._tip_return(goods_qty=0)
+                self.request.reset_mock()
+                detail = dict(id=prior_id, type="refund", state="processing",
+                              related_order_id=self.source.revolut_order_id,
+                              amount=1, currency=self.session.currency_id.name)
+                detail.update(changes)
+                self.request.side_effect = [
+                    self._response(id=self.source.revolut_order_id, state="completed", amount=2,
+                                   currency=self.session.currency_id.name,
+                                   refunded_amount=2 if name == "unexplained aggregate" else 1),
+                    requests.Timeout() if name == "lookup timeout" else self._response(**detail),
+                    self._refund_response("processing", amount=1),
+                ]
+                result = self._start_allocated(0, 1)
+                posts = [call for call in self.request.call_args_list if call.args[0] == "POST"]
+                if name == "prior completed during lookup":
+                    self.assertEqual(result["state"], "pending")
+                    self.assertEqual(len(posts), 1)
+                    # An observation used for aggregate accounting grants no
+                    # refund finality or native checkout completion.
+                    prior = self.env["pos.revolut.refund.operation"].sudo().browse(first["operation_id"])
+                    self.assertEqual(prior.state, "pending")
+                else:
+                    self.assertIn(result["state"], {"failed", "unresolved"}, result)
+                    self.assertFalse(posts)
+
     def test_provider_original_gross_mismatch_prevents_financial_refund_post(self):
         self._terminal_sale()
         self._tip_return()
