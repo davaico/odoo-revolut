@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Exercise the deployment preflight SQL against disposable Odoo 19 records."""
 
+import argparse
+import os
 import importlib.machinery
 import importlib.util
 import subprocess
@@ -55,6 +57,8 @@ pending = payment_model.create(dict(
 settled = payment_model.create(dict(
     common, order_uuid='22222222-2222-4222-8222-222222222222',
     payment_line_uuid='22222222-2222-4222-8222-222222222223', state='verified',
+    revolut_order_id='22222222-2222-4222-8222-222222222224',
+    revolut_payment_id='22222222-2222-4222-8222-222222222225',
 ))
 refund = env['pos.revolut.refund.operation'].create({
     'original_operation_id': settled.id,
@@ -86,11 +90,22 @@ env.cr.commit()
 print('DEPLOYMENT_GUARD_PAYMENT_SETTLED', flush=True)
 """
 
-SETTLE_REFUND = """
+REFERENCE_REFUND = """
 refund = env['pos.revolut.refund.operation'].search([
     ('order_uuid', '=', '33333333-3333-4333-8333-333333333333'),
 ], limit=1)
 assert refund and refund.state == 'pending'
+refund.write({'revolut_order_id': '33333333-3333-4333-8333-333333333335'})
+assert refund.deployment_blocking  # Financial uncertainty remains protected.
+env.cr.commit()
+print('DEPLOYMENT_GUARD_REFUND_REFERENCE_SAVED', flush=True)
+"""
+
+SETTLE_REFUND = """
+refund = env['pos.revolut.refund.operation'].search([
+    ('order_uuid', '=', '33333333-3333-4333-8333-333333333333'),
+], limit=1)
+assert refund and refund.state in {'pending', 'unresolved'}
 refund.write({'state': 'verified'})
 assert not refund.deployment_blocking
 env.cr.commit()
@@ -115,10 +130,131 @@ assert external.deployment_blocking
 env.cr.commit()
 """
 
+SEED_CAPTURED_PAYMENT = """
+from odoo import fields
+from odoo.addons.pos_revolut.models.cart_authorization import _authority_mutation
+from odoo.addons.pos_revolut.models.revolut_payment_operation import _tip_evidence_write
+
+source = env['pos.revolut.payment.operation'].search([
+    ('order_uuid', '=', '22222222-2222-4222-8222-222222222222'),
+], limit=1)
+tip = env['product.product'].create({'name': 'Guard fixture tip', 'list_price': 0})
+with _authority_mutation(env):
+    authority = env['pos.revolut.cart.authorization'].create({
+        'company_id': source.company_id.id, 'session_id': source.pos_session_id.id,
+        'config_id': source.pos_config_id.id, 'currency_id': source.currency_id.id,
+        'order_uuid': '66666666-6666-4666-8666-666666666666', 'cart_version': 1,
+        'base_total_minor': 1234, 'payable_minor': 1234, 'tip_product_id': tip.id,
+        'canonical': {'fixture': True}, 'native_contents': {'fixture': True},
+        'fingerprint': 'fixture', 'projected_snapshot': {'fixture': True},
+        'state': 'prepared', 'expires_at': fields.Datetime.now(), 'rounding': {'fixture': True},
+    })
+captured = env['pos.revolut.payment.operation'].create({
+    'payment_method_id': source.payment_method_id.id, 'company_id': source.company_id.id,
+    'pos_config_id': source.pos_config_id.id, 'pos_session_id': source.pos_session_id.id,
+    'amount': source.amount, 'amount_minor': source.amount_minor,
+    'currency_id': source.currency_id.id, 'currency_code': source.currency_code,
+    'environment': source.environment, 'location_id': source.location_id,
+    'terminal_id': source.terminal_id, 'fulfilment_type': source.fulfilment_type,
+    'secret_reference': source.secret_reference,
+    'state': 'unresolved', 'provider_state': 'captured', 'authorization_id': authority.id,
+    'order_uuid': authority.order_uuid, 'payment_line_uuid': '66666666-6666-4666-8666-666666666667',
+    'revolut_order_id': '66666666-6666-4666-8666-666666666668',
+    'revolut_payment_intent_id': '66666666-6666-4666-8666-666666666669',
+    'revolut_payment_id': '66666666-6666-4666-8666-666666666670',
+})
+with _tip_evidence_write(env):
+    captured.write({'captured_amount_minor': 1234,
+                    'captured_payment_created_at': fields.Datetime.now(),
+                    'report_run_id': '66666666-6666-4666-8666-666666666671'})
+for action, reference in [('create_order', captured.revolut_order_id),
+                          ('create_intent', captured.revolut_payment_intent_id)]:
+    env['pos.revolut.payment.dispatch'].create({
+        'operation_id': captured.id, 'action': action, 'completed_at': fields.Datetime.now(),
+        'outcome': 'succeeded', 'provider_reference': reference,
+    })
+assert captured.deployment_blocking and not captured.retry_safe
+env.flush_all()
+env.cr.execute('SELECT retry_safe FROM pos_revolut_payment_operation WHERE id = %s', [captured.id])
+assert env.cr.fetchone() == (None,)  # Omitted Boolean is SQL NULL, native ORM False.
+env.cr.commit()
+print('DEPLOYMENT_GUARD_CAPTURED_REPORT_SEED_OK', flush=True)
+"""
+
 SETTLE_EXTERNAL = """
 env['pos.revolut.refund.operation'].search([('origin', '=', 'external')]).write({'state': 'verified'})
 env['pos.revolut.external.refund.evidence'].search([]).write({'resolved': True})
 env.cr.commit()
+"""
+
+
+REFUND_DISPATCHING = """
+refund = env['pos.revolut.refund.operation'].search([('origin', '=', 'odoo')], limit=1)
+refund.write({'state': 'dispatching'})
+env.cr.commit()
+"""
+
+REFUND_UNRESOLVED = """
+refund = env['pos.revolut.refund.operation'].search([('origin', '=', 'odoo')], limit=1)
+refund.write({'state': 'unresolved'})
+env.cr.commit()
+"""
+
+SEED_MALFORMED_REFUND = """
+source = env['pos.revolut.payment.operation'].search([
+    ('order_uuid', '=', '22222222-2222-4222-8222-222222222222'),
+], limit=1)
+env['pos.revolut.refund.operation'].create({
+    'original_operation_id': source.id, 'pos_session_id': source.pos_session_id.id,
+    'order_uuid': '55555555-5555-4555-8555-555555555555',
+    'payment_line_uuid': '55555555-5555-4555-8555-555555555556',
+    'amount': 0.01, 'amount_minor': 1, 'return_total_minor': 1,
+    'currency_id': source.currency_id.id, 'financial_snapshot': {'lines': []},
+    'revolut_order_id': 'invalid-provider-reference', 'state': 'pending',
+})
+env.cr.commit()
+"""
+
+FAIL_MALFORMED_REFUND = """
+env['pos.revolut.refund.operation'].search([
+    ('revolut_order_id', '=', 'invalid-provider-reference'),
+]).write({'state': 'failed'})
+env.cr.commit()
+"""
+
+POLL_AFTER_UPGRADE = """
+import json
+import os
+from unittest.mock import patch
+from requests import Response
+
+refund = env['pos.revolut.refund.operation'].search([('origin', '=', 'external')], limit=1)
+assert refund and refund.state == 'pending'
+reference, source, count = refund.revolut_order_id, refund.original_operation_id, env['pos.revolut.refund.operation'].search_count([])
+observed = []
+def provider(method, url, **kwargs):
+    assert method == 'GET' and url.endswith('/api/orders/' + reference), (method, url)
+    observed.append(method)
+    response = Response()
+    response.status_code = 200
+    response._content = json.dumps({
+        'id': reference, 'type': 'refund', 'state': 'completed',
+        'related_order_id': source.revolut_order_id, 'amount': refund.amount_minor,
+        'currency': refund.currency_id.name,
+        'created_at': '2026-10-07T00:00:00.000Z',
+    }).encode()
+    return response
+with patch.dict(os.environ, {'ODOO_REVOLUT_SECRET_TEST_TERMINAL': 'mock-only'}), patch(
+    'odoo.addons.pos_revolut.models.pos_payment_method.requests.request', side_effect=provider,
+):
+    result = refund.payment_method_id.revolut_poll_refund(refund.id)
+    repeated = refund.payment_method_id.revolut_poll_refund(refund.id)
+assert result == repeated and result['state'] == 'verified'
+assert observed == ['GET'], observed
+refund.invalidate_recordset()
+assert refund.revolut_order_id == reference and refund.original_operation_id == source
+assert env['pos.revolut.refund.operation'].search_count([]) == count
+print('DEPLOYMENT_PENDING_REFUND_RECOVERED: one GET, no POST, original identity', flush=True)
 """
 
 
@@ -147,7 +283,7 @@ class DockerPsqlRunner:
             "--no-align",
         ], command
         return subprocess.run(
-            [*COMPOSE, "exec", "-T", "db", "psql", "--username", "odoo",
+            [*COMPOSE, "exec", "-T", "db", "psql", "--quiet", "--username", "odoo",
              "--dbname", DATABASE, *command[7:]],
             check=True, text=True, **kwargs,
         )
@@ -167,7 +303,82 @@ def deployment():
     )
 
 
+def check_captured_payment_guard(guard):
+    """Evaluate production SQL against a captured fixture; never change a host DB."""
+    before = guard._financial_snapshot()
+    captured = next(row for row in before['pos_revolut_payment_operation']
+                    if row['order_uuid'] == '66666666-6666-4666-8666-666666666666')
+    assert captured['deployment_blocking'] and not captured['retry_safe']
+    assert guard._financial_blockers() == []
+    guard._verify_financial_snapshot(before)
+    guard.mode = 'install'
+    assert 'pos_revolut_payment_operation=1' in guard._financial_blockers()
+    guard.mode = 'upgrade'
+    changes = [
+        "state = 'pending', provider_state = 'completed'",
+        "captured_amount_minor = amount_minor + 1",
+        "retry_safe = FALSE",
+        "retry_safe = NULL",
+    ]
+    failures = [
+        "state = 'created'", "state = 'dispatching_order'", "state = 'order_created'",
+        "state = 'dispatching_intent'", "provider_state = 'pending'", "provider_state = NULL",
+        "retry_safe = TRUE", "captured_amount_minor = 0",
+        "captured_amount_minor = amount_minor - 1", "captured_amount_minor = NULL",
+        "amount_minor = 0", "amount_minor = NULL", "captured_payment_created_at = NULL",
+        "authorization_id = NULL", "revolut_order_id = 'bad'",
+        "revolut_payment_intent_id = 'bad'", "revolut_payment_id = 'bad'", "report_run_id = 'bad'",
+        "revolut_order_id = NULL", "revolut_payment_intent_id = NULL",
+        "revolut_payment_id = NULL", "report_run_id = NULL",
+    ]
+    # Transaction rollback avoids inventing persistent financial corrections,
+    # while exercising the actual PostgreSQL predicate on malformed fixture rows.
+    for change in changes + failures:
+        sql = f"UPDATE pos_revolut_payment_operation SET {change} WHERE id = {captured['id']};"
+        transaction = ("BEGIN; ALTER TABLE pos_revolut_payment_operation DISABLE TRIGGER ALL; "
+                       "ALTER TABLE pos_revolut_payment_operation ALTER COLUMN amount_minor DROP NOT NULL; ")
+        constraints = guard._psql(
+            "SELECT conname FROM pg_constraint WHERE conrelid = 'pos_revolut_payment_operation'::regclass AND contype = 'c'",
+            "Guard fixture constraints",
+        ).splitlines()
+        transaction += " ".join(f'ALTER TABLE pos_revolut_payment_operation DROP CONSTRAINT "{name}";' for name in constraints)
+        # NOT NULL is part of model schema, so NULL mutations target nullable fields only.
+        transaction += sql
+        original = guard._psql
+        guard._psql = lambda query, step: original(transaction + query + '; ROLLBACK;', step)
+        try:
+            expected = [] if change in changes else ['pos_revolut_payment_operation=1']
+            assert guard._financial_blockers() == expected, change
+        finally:
+            guard._psql = original
+    for change in ("completed_at = NULL", "outcome = NULL", "outcome = 'unresolved'",
+                   "provider_reference = 'bad'", "action = 'cancel_intent'", "action = NULL"):
+        transaction = (
+            "BEGIN; ALTER TABLE pos_revolut_payment_dispatch ALTER COLUMN action DROP NOT NULL; "
+            "UPDATE pos_revolut_payment_dispatch SET " + change
+            + f" WHERE operation_id = {captured['id']} AND action = 'create_order'; "
+        )
+        original = guard._psql
+        guard._psql = lambda query, step: original(transaction + query + '; ROLLBACK;', step)
+        try:
+            assert guard._financial_blockers() == ['pos_revolut_payment_operation=1'], change
+        finally:
+            guard._psql = original
+    guard._financial_blockers()
+    guard._verify_financial_snapshot(before)
+    print('DEPLOYMENT_CAPTURED_REPORT_GUARD_OK: captured-only upgrade, unsafe/null/dispatch cases blocked, unchanged ledger', flush=True)
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--legacy-addons-dir", type=Path)
+    args = parser.parse_args()
+    candidate_addons = os.environ.get("ODOO_REVOLUT_ADDONS_DIR", str(ROOT / "addons"))
+    if args.legacy_addons_dir:
+        legacy = args.legacy_addons_dir.resolve()
+        if not (legacy / "pos_revolut/__manifest__.py").is_file():
+            parser.error("Legacy addon directory must contain pos_revolut")
+        os.environ["ODOO_REVOLUT_ADDONS_DIR"] = str(legacy)
     run("down", "--volumes", "--remove-orphans")
     try:
         run("build", "odoo")
@@ -184,15 +395,36 @@ def main():
         ]
         shell(SETTLE_PAYMENT)
         assert guard._financial_blockers() == ["pos_revolut_refund_operation=1"]
-        shell(SETTLE_REFUND)
+        shell(REFERENCE_REFUND)
         assert guard._financial_blockers() == []
+        shell(REFUND_DISPATCHING)
+        assert guard._financial_blockers() == ["pos_revolut_refund_operation=1"]
+        shell(REFUND_UNRESOLVED)
+        assert guard._financial_blockers() == []
+        shell(SEED_MALFORMED_REFUND)
+        assert guard._financial_blockers() == ["pos_revolut_refund_operation=1"]
+        shell(FAIL_MALFORMED_REFUND)
+        assert guard._financial_blockers() == []
+        shell(SEED_CAPTURED_PAYMENT)
+        assert guard._financial_blockers() == []
+        check_captured_payment_guard(guard)
         shell(SEED_EXTERNAL)
-        assert guard._financial_blockers() == [
-            "pos_revolut_external_refund_evidence=1", "pos_revolut_refund_operation=1",
-        ]
+        assert guard._financial_blockers() == []
+        before = guard._financial_snapshot()
+        assert any(row['state'] == 'pending' for row in before['pos_revolut_refund_operation'])
+        assert any(row['deployment_blocking'] for row in before['pos_revolut_external_refund_evidence'])
+        os.environ["ODOO_REVOLUT_ADDONS_DIR"] = candidate_addons
+        run("run", "--rm", "odoo", "--database", DATABASE,
+            "--update", "pos_revolut", "--stop-after-init", "--no-http", "--workers", "0",
+            "--max-cron-threads", "0", "--log-level", "warn")
+        guard._verify_financial_snapshot(before)
+        assert guard._financial_blockers() == []
+        print("DEPLOYMENT_PENDING_UPGRADE_PRESERVED: states, references, amounts, reservations, evidence", flush=True)
+        shell(POLL_AFTER_UPGRADE)
+        shell(SETTLE_REFUND)
         shell(SETTLE_EXTERNAL)
         assert guard._financial_blockers() == []
-        print("Deployment guard passed against payments, Odoo/external refunds and discovery evidence")
+        print("Deployment guard passed: active dispatch blocked; referenced refunds/evidence preserved through upgrade")
     finally:
         run("down", "--volumes", "--remove-orphans")
 

@@ -29,7 +29,11 @@ existing release before trusting or reporting it.
 
 Before changing code, the deployer:
 
-1. refuses active or uncertain Revolut financial operations;
+1. refuses active/uncertain payment dispatches, all active refund dispatches, and
+   pending/unresolved refunds without a safe persisted provider identity;
+   upgrades allow referenced refunds, internal GET-only discovery evidence,
+   and captured payments with complete persisted authority, report identity
+   and successful dispatch evidence;
 2. verifies the patched-Qt PDF renderer and readable body/header/footer output
    under the running Odoo service identity and renderer environment;
 3. runs the existing encrypted database and filestore backup service;
@@ -37,8 +41,11 @@ Before changing code, the deployer:
    `/etc/odoo-revolut` secret directory into a root-only local configuration
    snapshot, recording the previously active release targets;
 5. stops Odoo, which quiesces checkout and every payment/refund dispatch;
-6. repeats the financial-operation check after Odoo is fully stopped; and
-7. leaves Odoo stopped if that final check, extraction, module update, or any
+6. repeats the financial-operation check after Odoo is fully stopped;
+7. saves every stored operation/evidence value except incidental ORM write
+   bookkeeping in a root-only `financial-state.json` beside the configuration
+   backup, then verifies those values after the offline module upgrade; and
+8. leaves Odoo stopped if that final check, financial preservation, extraction, module update, or any
    earlier stopped-service step fails.
 
 Financial operation models participate through the shared
@@ -49,6 +56,23 @@ change the provider's financial position as terminal. During the first upgrade
 from a revision without the mixin, the deployer uses the known payment-state
 fallback.
 
+Captured payments awaiting reports require valid saved order/intent/payment/report
+UUIDs, positive capture evidence and its timestamp, retry prohibited, an existing
+cart authorization and exactly two completed successful dispatch claims matching
+the saved order and intent. Pending/unresolved local state and captured/completed
+provider state are required. Missing schema or evidence, cancellation, active or
+uncertain dispatch remains blocking. The snapshot also preserves the original
+cart authorization and dispatch records on which this allowance relies.
+
+Pending provider processing alone is not a reason to prevent routine updates.
+The upgrade exception does not clear uncertainty, release refund capacity,
+change provider references, authorize a retry, or issue a replacement refund.
+Active refund dispatches and pending/unresolved refunds with missing or
+malformed provider identities remain blocked. First installations retain the
+conservative financial check. Unknown future financial operation models retain
+their existing guard behavior. See the [pending-refund upgrade
+checks](testing/pending-refund-upgrades.md).
+
 The offline install/update always uses `--stop-after-init --no-http
 --workers=0`. It installs or upgrades `pos_revolut`, including Odoo’s standard
 Restaurant dependency and the integrated Restaurant payment guards. Retail
@@ -57,7 +81,10 @@ module-state checks succeed. When upgrading from releases before `19.0.1.15.0`, 
 retires the asset-only Revolut Restaurant bridge and removes its Apps record,
 without moving or deleting financial records. Deployment verifies that the
 standard Restaurant addon is installed and the old bridge is absent before removing its old symlink. The deployer
-then verifies the systemd service and the local `/web/login` endpoint. A failed
+first compares all pre-existing ledger rows, values, states, reservation and
+audit references with the stopped-service snapshot. New schema defaults may be
+added; existing evidence may not change. It then verifies the systemd service
+and the local `/web/login` endpoint. A failed
 health check is reported as a deployment failure, although the service may
 already be running and must be inspected.
 
@@ -178,6 +205,13 @@ After it succeeds, an operator performs this staging-only check:
 Record the operator, UTC time, revision, cash order reference, result, and any
 follow-up. Real virtual- or physical-terminal charges belong to Ticket 12, not
 this deployment check.
+
+For an upgrade with pending refunds, confirm the deployment reports
+`Financial state preserved` and retain the root-only snapshot location in the
+private change record. Reconciliation resumes against the original provider
+references through GET-only polling. A pending refund remains pending until a
+final provider outcome is verified; the update does not complete its POS
+return or make its reserved amount available again.
 
 Continue with the [ticket 12 evidence and operator
 checklist](testing/ticket-12-release-evidence.md) after this smoke check. Compare

@@ -1,5 +1,47 @@
 # Ticket 12 — Release evidence and terminal acceptance handoff
 
+## Fresh campaign checkpoint — 2026-10-08
+
+The owner requested a complete fresh campaign on 2026-10-07. Execution now
+began on `8adc68f255e4ea1830831f571e22f5b3f41875e4` and refroze candidate
+`693937ee3b7a78991a33cc714e0d47a4c70c3663` after correcting only the dedicated
+restart verifier's freshness assertion. Production logic and normal suites
+are unchanged; the guide explains carried-forward evidence and affected retests.
+The campaign uses addon
+`19.0.1.18.1`, pinned Odoo `19.0.20260908`, and the dedicated register prepared
+on 2026-10-07. The [guided retest](ticket-12-fresh-retest-2026-10-08.md) records
+the artifact checksum, fresh automated results, logs and complete operator
+sequence alongside the [acceptance matrix](ticket-12-final-release-checklist.md).
+
+Automated A01–A10 acceptance is complete: 597 install and 597 upgrade tests
+reported on the unchanged production baseline, 107 lifecycle tests, 54 local
+tooling passes plus the three PDF skips covered in the seven-test Odoo PDF
+profile, 46 employee-enabled checks, deployment guards and all seven historical
+upgrades. The final candidate passed three-process restart recovery, 16 packaged
+retail tests and four packaged migration groups of 16 tests. Commands returned
+zero for the accepted runs; the original stale-assertion failure remains in the
+guide's chronology. Independent Standards/Spec review accepted the correction.
+
+The later [pending-refund deployment follow-up](ticket-12-fresh-retest-2026-10-08.md#deployment-policy-follow-up--2026-10-08)
+refroze reviewed candidate `b13c5be7952b40f2f42a79098daaf043f6651154` without
+changing addon files. Its full tooling suite passed 58 of 61 tests locally with
+the same three PDF skips covered by the earlier supported runtime. Its frozen
+archive passed retail (16), legacy migration (four groups of 16), and the actual
+staging-version upgrade with referenced pending/unresolved refunds, exact
+stored-ledger preservation and one mocked GET/no-POST recovery.
+The guarded staging update/source verification succeeded on 2026-10-08,
+preserving 1,080 ledger records and removing the existing broad-page
+registrations and read permission through the standard migration.
+
+All live R01–R24 cases remain NOT RUN. Earlier results and financial history below are preserved;
+dated instructions to resume only remaining cases are superseded for this new
+campaign. The owner approved a £0.25 maximum on 2026-10-08 and allowed charges
+to remain unrefunded; apply the conservative aggregate-gross interpretation
+recorded in the guide. The operator replied ready; no new campaign card charge
+or refund ran. Native PDF
+acceptance (34), private preservation/publication review (33), reconciliation
+and the owner's final release decision remain open.
+
 **Final release retest requested — 2026-10-05.** Resume from the
 [final release and open-source checklist](ticket-12-final-release-checklist.md).
 The owner now requests a complete retest on the final combined candidate,
@@ -899,3 +941,1085 @@ combined-runtime/device acceptance. Preserve completed full/split/two-card,
 busy-terminal and older-return evidence. Ticket 12 remains open / ready-for-human.
 Manager-confirmed native completion of external refunds is separately specified
 in ticket 41; this screen change does not claim to implement that workflow.
+
+## Fresh campaign R01 partial operator observations — 2026-10-08
+
+During the guided continuation for **Revolut Acceptance — 2026-10-07**, the
+operator confirmed the POS displays pounds / GBP. The displayed £0.01 was a
+single article added to the basket, not evidence of a completed payment. After
+being asked to remove that article and restore the empty starting basket, the
+operator reported that the basket is clean.
+
+The operator's settings screenshot shows **Revolut - Davai** and
+**Cash - Acceptance 2026-10-07** selected, with **Automatically validate order**
+checked. Cash rounding, tips and one-click payment are unchecked. The selected
+register label starts with **Revolut Acceptance**; its full name is truncated
+in the screenshot. This records the displayed settings, not a save or a
+terminal payment outcome.
+
+The operator also reported an empty ongoing order labelled **1001**. A backend
+Sessions screenshot filtered to the full **Revolut Acceptance — 2026-10-07**
+name shows exactly one session, opened by Administrator, with an in-progress
+status, no closing date and a starting balance of 0.00. Together with the GBP
+observation, this records £0.00 opening cash. The full session identifier is
+truncated; it has not yet been retained in the private ledger. This list does
+not establish an absence of campaign orders or payment attempts.
+
+The subsequent backend Orders screenshot shows **No orders found** with a
+custom **Point of Sale = Revolut Acceptance** filter. The register name is
+truncated in the chip, following the instruction to select the dedicated
+2026-10-07 register. No additional status filter is visible. This records an
+empty register-filtered native order list; it does not establish an absence
+of Revolut payment attempts. The earlier empty result filtered by **Order Ref**
+was not accepted as this check.
+
+After the requested browser reload, the operator reported normal loading. The
+supplied POS screenshot shows the same visible order label **1001**, an empty
+basket, the **Terminal Acceptance Tests** category and **Revolut GBP Test
+Product**. No loading or error message is visible. This accepts the observed
+empty-order reload subcase; the underlying session identifier has not been
+independently read back after reload. The current user's successful POS load
+does not establish access behavior for other backend users.
+
+The operator reports that only Administrator is available, but a second
+browser can be opened. The separately granted colleague and ungranted-user
+access subcases are **BLOCKED — no distinct backend-user fixture available**.
+A second browser authenticated as Administrator cannot establish either
+subcase. No user or register grant was created or changed. The extra browser
+may support later same-user concurrency checks.
+
+The operator subsequently created a distinct test account and supplied its
+logged-in **My account** customer-portal screenshot. This supersedes the
+reported absence of any second login, but does not establish Internal User,
+POS permissions or a register grant. The separate-user access subcases remain
+unexecuted while that setup is inspected. The account login is kept out of
+this public evidence document. Physical terminal readiness has not yet been
+answered in this continuation.
+
+During internal test-user setup, the operator reported that the previously
+used login already belonged to another user and selected a different login.
+The supplied user form shows **Role = User** and **Point of Sale = User**,
+then an **Invalid Operation** dialog: Odoo could not contact the outgoing mail
+server. The triggering action and whether the new user was persisted have not
+yet been confirmed. This is a test-account setup interruption, not evidence of
+a Revolut/register-access failure. Continue by checking the saved Users list;
+no invitation retry, mail configuration change or application fix is recorded.
+
+The subsequent Users list and existing test-account form confirm that the
+original test login exists as an **External User**, with **Point of Sale = No**.
+It is not yet the internal POS-user fixture required to distinguish missing
+register permission from lack of backend/POS access. The displayed alternative
+login creation is not accepted as saved setup evidence. The guide will reuse
+the identified test account after inspecting its supported account actions;
+no conversion, direct password change or register grant has yet been observed.
+
+The operator then reported completing the direct **Change Password** step and
+supplied another logged-in test-account portal screenshot. The wording refers
+to setting an email, so password-change completion is an operator report rather
+than independently verified authentication evidence. The account is visibly
+signed in; mail delivery is not needed for the next permissions setup step.
+It still requires internal POS permissions before register-specific access can
+be exercised. No email-server repair or register-access outcome is claimed.
+
+The account's **Groups (1)** screenshot confirms exactly one membership,
+**Role / Portal**. The previously suggested **Extra Rights** section was absent
+from the supplied user-form view; no membership edit was performed. Continue
+with developer-mode controls for the existing test account, keeping its
+dedicated-register grant absent until the negative access case is exercised.
+
+After activating browser developer mode, the operator supplied the **Extra
+Rights** controls showing **Role / Portal** checked and **Role / User**,
+**Role / Administrator** and **Role / Public** unchecked. The guide instructed
+unchecking Portal, checking User and saving with Administrator/Public left
+unchecked. The operator confirmed **saved**. This records the reported
+internal-user conversion; POS User permission, saved-role readback and fresh
+test-user backend login still need verification. No dedicated-register grant
+or register-access test has yet been recorded.
+
+After the instruction to set **Point of Sale = User** and save while leaving
+the dedicated-register grant unchanged, the operator reported that everything
+works. This is treated as successful test-account setup by operator report,
+not as a PASS for either granted or ungranted register access. The actual
+register-open/rejection outcome remains to be exercised in a fresh login.
+
+Following instructions to use the separate test-user browser, the operator
+reported reaching POS and then entering the campaign register. This records
+the reported native POS access outcome. Opening POS alone does not exercise
+the Revolut backend-user grant guard; the saved register grant list and a
+guarded interactive action still need verification. The operator requested
+two or three guidance steps per turn for the remaining manual work.
+
+At the owner's request to automate preparation, the connected Administrator
+browser was inspected. The saved test account showed **Role = User**, **Point
+of Sale = User**, Portal unchecked and Administrator unchecked. The campaign
+register's **Revolut backend users** list contained only Administrator. No
+permissions were changed. The native dashboard showed the campaign's Oct 07
+session with opening cash **£0.00**.
+
+The guide resumed that register in the Administrator browser, observed the
+empty ongoing ticket, added exactly one **Revolut GBP Test Product** and
+verified a **£0.01** total. The native payment screen was opened and left with
+both dedicated Cash and Revolut methods available, **no payment method
+selected**, and no validation or terminal dispatch performed. This prepares
+the next Cash subcase; it is not a completed sale or access-guard result.
+A checkout screenshot was retained locally under `/tmp` for operator review,
+not as permanent private evidence storage. The second browser's test-user
+session was not accessible through the connected browser and was not changed.
+
+The operator then supplied the native **Payment Successful** receipt for the
+prepared order: one test product, total **£0.01**, paid entirely with **Cash -
+Acceptance 2026-10-07**, served by Administrator, and the campaign register
+named on the receipt. A separate backend browser verified the saved order in
+**Paid** state, quantity one, total and total paid **£0.01**. Its Payments tab
+contained one dedicated Cash payment for **£0.01**, with difference **£0.00**.
+The dashboard also showed one campaign order and **£0.01** sold. Record **£0.01
+cash collected**; no campaign card budget was consumed by this Cash sale.
+
+The operator has not yet reported whether the physical terminal stayed idle.
+The native reconciliation view was inspected, but its action has a restricted
+state domain, so it does not establish absence of all campaign payment
+operations. No full operation-history or provider reconciliation is claimed.
+The guide prepared the next ongoing Administrator ticket with one test
+product totaling **£0.01** and left it on the payment screen with no method
+selected, no validation and no terminal dispatch. Raw native order/session
+references were retained in a temporary private checkpoint under `/tmp`.
+
+The operator subsequently confirmed that the terminal stayed idle during the
+Cash sale and is online and idle now. This completes the reported physical
+idle observation for the Cash subcase. The next planned manual action is the
+ungranted test-user Revolut checkout denial using a **£0.01** cart. Expected
+behavior is rejection before terminal contact. If unexpected contact or an
+uncertain attempt occurs, reserve **£0.01** against the gross campaign cap
+until reconciled; do not repeat or present a card to manufacture an outcome.
+No negative-case attempt has yet been reported.
+
+The operator supplied the ungranted-user checkout result for a **£0.01** cart:
+**Revolut cart needs correction**, followed by an AccessError reporting no
+**create** access to **Point of Sale Payments (`pos.payment`)**. The dialog
+explicitly stated that no payment request was sent from the line. This
+records an observed checkout rejection, but not the expected actionable
+register-grant message. Physical terminal-idle confirmation for this action
+and complete operation-history verification remain outstanding.
+
+Read-only follow-up confirmed that the user's live native **pos.payment user**
+ACL has read/write/create/delete enabled for **Point of Sale / User**, matching
+the CSV in the pinned local Odoo image. The live role remains POS User. Thus
+no missing base model create permission was established by these observations;
+the cause of the reported access failure has not been reproduced in an
+agent-runnable runtime loop and is not claimed resolved. No generic ACL,
+record rule, account role or deployed code was changed.
+
+The guide opened the campaign's register-access form and searched for the
+existing test account in the grant selector. Only Administrator remains in
+the saved list; the test-user option is displayed but not selected or saved.
+The exact proposed change is adding that user to this register's **Revolut
+backend users** for the subsequent granted-user case. It awaits the required
+browser-control confirmation for expanding payment-system access.
+
+The operator answered **yes** to confirming terminal idle and approving the
+specific test-user campaign grant. The guide added the existing test account
+to the campaign register's **Revolut backend users**, saved normally and
+reloaded the form. The persisted list contains Administrator and the test
+account. No other account role, generic ACL or record rule was changed. A
+local screenshot retains the saved grant readback. The granted-user checkout
+has not yet been exercised; this configuration change does not establish
+that the earlier access error is resolved. Allocate **£0.01** for the next
+granted-user terminal attempt, reserving it if dispatched or uncertain until
+its definitive outcome is verified. No financial action was performed by
+the guide while applying the grant.
+
+After the saved grant, the operator supplied another **£0.01** checkout
+error: **Configure a valid terminal tip product before Revolut payment**.
+The dialog again states that no payment request was sent. This is a
+preparation configuration guard, not a customer tip-selection prompt. Source
+inspection confirms that the guard uses the configured native tip product
+without an Administrator bypass, and preparation checks its ability to
+represent a one-minor-unit contribution before dispatch. The owner requires
+tip selection only on the physical terminal, with cashier Tips disabled.
+
+The campaign native settings form had **Tips disabled**. Temporarily revealing
+its Tip Product field showed no product selected. The guide selected the
+existing **[TIPS] Tips**, restored Tips to disabled before saving, then reloaded
+and revealed the field again. The mapping was still empty: this attempted
+configuration did not resolve the checkout blocker. The pinned native Odoo
+settings compute explicitly clears its tip-product value when cashier Tips
+is disabled. The inspection toggle was discarded and cashier Tips remains
+disabled. No integration source, deployment, product taxes, financial order
+or provider state was changed. A supported way to preserve the terminal tip
+mapping with cashier Tips off remains necessary; no payment retry was made
+by the guide.
+
+A subsequent authorized setup correction used the existing staging Odoo ORM,
+without an addon upgrade or raw SQL. A read-only shell confirmed campaign
+config **3** had no tip product and cashier Tips was false; the existing native
+**[TIPS] Tips** product was active, company-neutral and untaxed. Before the
+change, the deployed `_revolut_terminal_tip_values(1, preparing=True)` on the
+campaign's paid GBP Cash order reproduced the exact missing-tip-product error.
+The guide wrote only `tip_product_id` to that existing product, kept
+`iface_tipproduct` false, and ran the same calculation successfully: its
+native tax-inclusive tip amount was **£0.01**. The transaction was committed,
+and a separate Odoo shell independently verified both persisted settings.
+This establishes resolution of the missing-product calculation guard; a
+successful user checkout or terminal dispatch is still unverified. No order,
+payment, product-tax or credential fields were changed, and neither probe
+called the provider. Future standard POS settings saves can clear this
+mapping while cashier Tips is off; that UI limitation remains outstanding.
+
+R01 remains **in progress**, not PASS. The Cash sale and reported terminal
+idle observation are complete, and the test-user grant is saved. Complete
+campaign payment-attempt history, the expected ungranted-user message and
+successful granted-user checkout remain unverified; the terminal-tip mapping
+has been corrected and awaits the operator retry. No new campaign card charge or refund
+has been reported; the carried-forward aggregate gross card-charge
+authorization remains £0.25, including terminal tips. These observations do
+not establish fresh provider reconciliation.
+
+After the terminal-tip mapping correction and instructions to resume the
+existing test-user checkout once, the operator reported **0.01** displayed
+on the terminal. This records operator-observed terminal contact with the
+expected campaign base amount, not successful capture, final card status or
+order validation. Reserve **£0.01** against the **£0.25** gross campaign cap
+while this request is pending; **£0.24** remains unreserved. The next guided
+action is to choose no tip for this baseline sale and pay once, then observe
+the terminal and native Odoo completion.
+
+The operator corrected an earlier report of Payment Successful: their card
+was debited, but the supplied POS screenshot shows **Payment received —
+awaiting terminal tip details**, disabled validation, Administrator selected
+and ongoing ticket **1002** (with **2001** also present). It does not prove
+a successful granted-test-user sale. No terminal tip prompt appeared.
+
+A server-only read found the campaign operation had **£0.01 captured**,
+remained unresolved, and its native order remained **Draft** with tip evidence
+unverified. Read-only GETs of its existing report run, report file and pushed
+order found a completed report. Running the deployed report validator against
+those existing responses reproduced **ambiguous report payment evidence**.
+A focused probe established exactly one matching payment row and one matching
+order row: type **PAYMENT**, state **CAPTURED**, currency **GBP**, gross
+**0.01**, explicit tip **0.00**, matching order and location. The validator
+counts successful report rows only when state is **COMPLETED**, so it counts
+zero successful rows for this captured payment and rejects the evidence.
+This is a reproduced report-state compatibility bug; no code or payment
+state was patched, no evidence was fabricated, and no financial POST was
+performed. Raw report rows, credentials and transaction identifiers stayed
+on the server. Record **£0.01 new card charge** by operator debit and captured
+server evidence, leaving **£0.24** of the gross campaign cap. Native completion
+and tip-report verification remain blocked, so this is not R01/R02 PASS.
+
+The terminal-tip prompt remains a separate unexplained device observation.
+The addon dispatch payload inspected contains amount and terminal ID, without
+a tipping enable/disable field. Official Revolut terminal documentation places
+tipping enable/disable and percentage configuration in **More > Settings >
+Checkout**. Its current device setting has not yet been inspected by the
+operator. Keep the captured order/payment line; no Force done, re-charge,
+cancellation or refund has been instructed for recovery.
+
+The owner subsequently inspected the physical terminal and confirmed **Tipping
+is disabled**. This explains the absent terminal prompt. Odoo must accept the
+authenticated explicit-zero report and complete the captured sale; it must not
+wait for a customer tip selection. Disabling native cashier Tips alone is not
+provider evidence, so verification remains based on the report's actual amounts.
+
+A scoped source correction accepts **CAPTURED** and **COMPLETED** report payment
+rows as successful, retaining the exact payment/order/currency/location,
+unique-row, amount, surcharge, refund and explicit-tip checks. The waiting text
+now says **Payment received — verifying payment details**. It does not request
+a tip or add a cashier tip prompt. Addon candidate version is **19.0.1.18.2**;
+this correction is not yet deployed.
+
+The public prepare/start/poll regression failed against the old parser
+(`unresolved` rather than `verified`), then passed with the correction. The
+focused disposable Odoo run completed with **0 failures, 0 errors, 27 tests**,
+including genuine Chrome automatic checkout, report recovery after reload and
+base-plus-tip refund tours. Explicit-zero CAPTURED recovery reuses the same
+operation and report run without a replacement charge; duplicate CAPTURED or
+additional successful payment rows remain rejected. COMPLETED remains covered
+by the existing backend fixtures. All provider calls were mocked and external
+Merchant HTTP was blocked. Independent Standards and Spec source reviews found
+no remaining issues. These automated checks do not establish live recovery.
+
+A read-only staging inspection confirmed the captured campaign attempt has
+positive server capture evidence, a capture timestamp, retry prohibited, an
+existing cart authorization, valid persisted order/intent/payment/report UUIDs,
+and exactly two completed successful dispatch claims whose references match
+the saved order and intent. No cancellation dispatch exists. The current
+deployment guard nevertheless blocks every unresolved payment. A narrow
+upgrade-only allowance is being tested for this captured, fully referenced
+case, retaining stopped-service preservation of every existing financial
+value. Live recovery remains pending; no Force done, financial retry, refund,
+provider POST or financial-state correction was performed. **£0.24 remains**
+of the authorized gross card-charge budget.
+
+The deployment regression initially passed **44 unit tests** and an actual
+disposable PostgreSQL/Odoo upgrade, preserving the original operation, refund,
+evidence, cart-authority and dispatch values. A SELECT-only candidate preflight
+on staging then exposed a fixture gap: native Odoo stored the captured attempt's
+unset `retry_safe` Boolean as SQL NULL, which the ORM reads as false. The first
+SQL predicate required explicit false and still blocked this real operation.
+The guard is being corrected to match native Boolean semantics (NULL/false
+means retries prohibited; true remains blocked), with a regression using the
+actual unset value. No staging financial value was normalized or rewritten.
+
+The native-Boolean guard correction is complete. Its default-NULL regression
+failed before the change, then **44 deployment unit tests** and the actual
+disposable PostgreSQL/Odoo upgrade harness passed, exit 0. Unsafe or missing
+capture/reference/dispatch evidence still blocks deployment; retry-safe true
+is blocked, while native false/NULL remains protected from replay. Original
+authorization, dispatch, operation, refund and evidence values survive the
+offline module update. A new SELECT-only staging preflight returned **no
+blockers** without rewriting any live financial state. Final independent Spec
+review of the frozen commit found no remaining issues.
+
+The frozen candidate is **e3e78976f6d6a20cdecbcd33cb70db1f766b1c33**, local
+branch **codex/fix-captured-report**, addon **19.0.1.18.2**. Exact single-addon
+archive SHA256: **428fa60a033b420b50eb5e51ed8563f976e0bdb28645d3f2b3e60fb37de9368a**.
+Both runbook artifact checks passed, exit 0, using the production extractor:
+
+- Retail installation: **0 failures, 0 errors, 16 tests**.
+- Legacy migration from **30492a67020acdfe34d7f560a9cf6d7fb20f6430**: retail
+  and Restaurant installation/bridge-retirement paths and repeat upgrades each
+  completed with **0 failures, 0 errors, 16 tests** (four upgrade test runs).
+
+Commands: `scripts/test-delivered-addon --revision
+e3e78976f6d6a20cdecbcd33cb70db1f766b1c33 --scenario retail` and the same
+revision with `--scenario migration --migration-from
+30492a67020acdfe34d7f560a9cf6d7fb20f6430`. Unique disposable projects were
+`t12-captured-artifact-retail` and `t12-captured-artifact-migration`; all
+provider HTTP was blocked and the scripts removed only their test resources.
+Local logs: `/tmp/t12-captured-artifact-{retail,migration}.log`,
+`/tmp/t12-captured-report-{red,green}.log`, and
+`/tmp/t12-captured-guard-null-{red,sql-red,unit-green,sql-green}.log`. These
+are working logs, not permanent private release-evidence storage.
+
+**Not deployed:** staging remains on **b13c5be7952b40f2f42a79098daaf043f6651154**,
+addon **19.0.1.18.1**. Maintenance authorization is being requested for the
+backup, preservation-checked offline upgrade and brief POS service restart.
+Live recovery of the existing captured order is still unverified. Keep the
+existing payment; no replacement charge, Force done, cancellation or refund
+was performed. **£0.01 captured, £0.24 remaining**; R01/R02 and T12 remain open.
+
+The owner explicitly authorized deployment and asked to resume manual testing
+afterward. The standard upgrade completed successfully at **2026-10-08
+14:07 UTC**, exit 0, deploying **e3e78976f6d6a20cdecbcd33cb70db1f766b1c33**,
+addon **19.0.1.18.2**, from the reviewed local branch. The encrypted database
+and filestore backup workflow, private configuration snapshot, stopped-service
+financial preflight and offline module update all succeeded. The deployer
+verified **1,178 original stored financial/authorization/dispatch records**
+unchanged before restart. This supersedes the preceding not-deployed checkpoint.
+
+An independent read-only check compared **all 109 addon source files** with
+the tested frozen artifact, confirmed the exact immutable release target,
+root-only preservation snapshot permissions, active Odoo service and healthy
+local login endpoint. A separate ORM read confirmed POS Revolut **installed
+19.0.1.18.2**, standard Restaurant installed, the original **£0.01 capture**
+still unresolved with native order Draft and retry prohibited, its report
+reference present, cashier Tips still false and the terminal-tip product
+mapping preserved. No provider call was made by these checks.
+
+Manual testing is paused at the owner's request. **Live recovery has not been
+performed**: keep the original captured checkout and payment line, and resume
+through its existing status/recovery path rather than creating a new charge.
+The deployment did not fabricate tip evidence, force completion, cancel or
+refund the capture. **£0.24 remains** of the gross campaign card-charge budget.
+R01/R02 remain incomplete; T12, T33 and T34 remain open. Private backup and
+snapshot locations are retained in the local private checkpoint. Working logs:
+`/tmp/t12-captured-staging-deploy.log`; exact-artifact and guard test logs are
+listed above. No push or pull request was created.
+
+After deployment of **19.0.1.18.2**, the owner resumed recovery and clicked
+**Check status**. The supplied screenshot still shows ticket **1002** under
+Administrator, **Payment received — verifying payment details**, remaining
+**£0.01** and disabled validation. A read-only server check confirms the
+original captured operation remains unresolved with native order Draft. The
+new wording establishes that the updated POS assets loaded; it does not
+establish successful payment verification. No new card charge was reported.
+
+GET-only reads of the existing completed report and pushed order reproduced
+a second compatibility error in the deployed validator: the actual CSV
+creation and capture timestamps include **`Z[UTC]`**. The helper converts Z
+to its numeric offset, but Python then rejects the retained zone annotation.
+An isolated in-memory correction of that exact annotation made the full
+existing report pass every remaining payment/order/currency/location,
+unique-row, creation/capture identity, gross, surcharge, refund and explicit
+zero-tip check: **£0.01 gross, £0.00 tip**. No parsed evidence or financial
+state was saved. A subsequent read-only diagnostic used the exact repository
+candidate timestamp function on those original values and again passed the
+remaining full-report validator. Raw report rows and transaction identifiers
+remained on the server; credentials were neither printed nor exposed to POS.
+
+The public polling regression for the observed fractional `Z[UTC]` format
+failed before the parser change: **1 failure, 0 errors, 1 test**, unresolved
+rather than verified. The candidate **19.0.1.18.3** removes only an exact
+trailing `[UTC]`, retaining explicit timezone and zero-offset requirements.
+The tests also cover numeric UTC annotations, nonzero tips, naive/unknown/
+non-UTC/duplicate annotations, creation identity and capture ordering. Native
+checkout/reload browser fixtures now use the observed annotation. Stored
+evidence retains the original annotated timestamp strings. Independent
+Standards and Spec reviews found no remaining issues. Narrow runtime checks
+are in progress; the candidate is not deployed and live recovery remains
+unverified. **£0.24 remains** of the gross campaign card-charge budget.
+
+The timestamp correction's focused runtime validation is complete. The initial
+29-case run passed the other **28 cases**, including three genuine Chrome
+automatic checkout, reload recovery and base/tip refund tours. Its new UTC
+regression reached verified checkout but errored in a test-only provenance
+assertion because that record was cached before the public API committed its
+observation. Refreshing that test record fixed the assertion; rerunning the
+single regression passed **1 test, 0 failures, 0 errors**, exit 0. No parser
+change was required after that run. Original annotated creation/capture strings
+remain stored in provenance, and the original report run/operation is reused
+without financial replay. Working logs are `/tmp/t12-utc-report-red.log`,
+`/tmp/t12-utc-report-green.log` (retained intermediate test-cache error) and
+`/tmp/t12-utc-report-provenance.log` (final narrow pass). All automated provider
+calls were mocked and Merchant HTTP was blocked. Exact-artifact checks precede
+the follow-up deployment under the owner's existing payment-fix rollout
+authorization; no additional card charge is authorized or planned.
+
+The follow-up artifact is frozen at **ef85719a16317ae114cc85d53d998e9711385f32**,
+addon **19.0.1.18.3**, archive SHA256
+**bef11fe92da7750fbd87431a1bb33d281b373c6600e1dd8ba13331b640c058c6**.
+Exact-archive retail validation passed **16 tests**; legacy retail and
+Restaurant upgrades each passed **16 tests on each of two runs**. Both
+artifact commands exited 0 with no failures/errors and mocked/blocked
+Merchant HTTP. Logs: `/tmp/t12-utc-artifact-{retail,migration}.log`.
+
+Under the owner's existing deployment authorization, the standard backup,
+stopped-service preflight, offline update and restart completed successfully
+at **2026-10-08 14:28 UTC**, exit 0. The deployer verified all **1,178 original
+financial/authority/dispatch records** preserved unchanged before restart.
+Independent verification matched all **109 addon source files** to the frozen
+artifact and confirmed the immutable release target, active service, healthy
+login endpoint and private preservation snapshot permissions. This supersedes
+the preceding candidate/not-deployed status. Deployment log:
+`/tmp/t12-utc-staging-deploy.log`; private backup paths remain in the private
+checkpoint.
+
+A guarded call through the existing public status API then returned
+**verified**, with **£0.01 captured and verified gross, £0.00 terminal tip**,
+persisted tip evidence, retry prohibited and exactly **one native £0.01
+payment**. The public call issued **zero provider GETs and zero POSTs**:
+verification had already been persisted before that call, which returned
+the existing verified result. This establishes persisted recovery, not which
+browser/background observation completed it. Native order remains **Draft**.
+An independent read-back confirmed persisted verified state, original annotated
+creation/capture strings, disabled cashier Tips and the preserved terminal-tip
+product mapping.
+Operator receipt/automatic checkout is still unverified. The next manual
+action is **Check status on the existing checkout 1002**. No replacement
+charge, Force done, cancellation or refund was performed. **£0.24 remains**;
+R01/R02, granted-user checkout, T12, T33 and T34 remain incomplete. No push or
+pull request was created.
+
+The operator subsequently supplied a native **Payment Successful £0.01**
+receipt for the existing capture, served by **Administrator**, with one test
+product, total **£0.01**, Revolut tender **£0.01** and no tip line. A separate
+read-only ORM check confirmed operation verified, captured/gross **1 GBP
+minor**, terminal tip **0**, native order **Paid**, total/paid **£0.01**, exactly
+**one payment**, and retry prohibited. This supersedes the Draft/receipt-pending
+checkpoint. Existing-payment status recovery and native completion are
+observed; fresh uninterrupted automatic checkout and granted-user checkout
+remain unverified. The other ongoing tab does not establish a second sale.
+Private screenshot/reference mapping is retained in the local checkpoint.
+Next manual check: reload POS and reopen the completed sale from Orders.
+Campaign gross spend remains **£0.01**, budget remaining **£0.24**. Wider
+R01/R02, T12, T33 and T34 gates remain open.
+
+The operator's post-refresh POS Orders screenshot shows the existing Revolut
+sale **Paid, £0.01**, alongside the earlier Cash sale **Paid, £0.01**.
+Completed-sale persistence after reload is observed. The ongoing tab does not
+establish another completed sale. Screenshot/reference mapping remains private.
+Next: prepare a £0.01 checkout under the granted **test gary** user, stop at
+the payment screen to establish its user, cart and existing-line state before
+any dispatch. No new charge is reported; gross budget remains **£0.24**.
+
+The granted test-user browser subsequently shows the existing £0.01 Revolut
+line progressing from cart review/no request sent to **Waiting for card**.
+The operator has initiated this attempt; terminal amount, capture and native
+completion are not yet observed. Reserve **£0.01** for this pending attempt:
+previously captured £0.01 plus reserved £0.01 leaves **£0.23 unallocated**
+within the £0.25 gross campaign cap. Do not treat this as another paid sale.
+Next: compare terminal £0.01 GBP, pay once, and observe automatic receipt
+without manual validation/Force done. Physical terminal tipping is disabled.
+
+The cashier attempt then showed a communication-interrupted dialog and the
+older **awaiting terminal tip details** wording. Read-only inspection at that
+point found capture **1 GBP minor**, no report reference/evidence yet and a
+Draft native order. The operator subsequently supplied **Payment Successful
+£0.01** and a Revolut native receipt. Independent read-back confirms the
+current cashier operation **verified**, gross/captured **£0.01**, tip **£0.00**,
+report/evidence present, native order **Paid**, exactly **one £0.01 payment**,
+cashier user **7**, and retry prohibited. An earlier attempt linked to the same
+order is failed, capture zero, retry-safe; it is not another paid sale.
+
+Verification completed after the initial capture; the exact cause of the
+interruption and whether final completion followed a manual status click are
+not established. Cashier success/recovery is observed; clean uninterrupted
+automatic checkout remains unproven. The cashier browser's old wording
+suggests older loaded POS assets, not proof of a backend regression. Next:
+refresh this browser to load the deployed assets and clarify manual-versus-
+automatic completion before another charge. No source change or provider call
+was made by these checks. Campaign gross captures now total **£0.02**, leaving
+**£0.23**; no refund was performed. T12/T33/T34 remain open.
+
+## Immediate report-window rejection — 2026-10-08
+
+A fresh £0.01 checkout under the granted cashier showed the updated verification
+wording, a communication-interrupted dialog, then a receipt after about a
+minute. The owner explicitly confirmed **OK, then Check status** was required.
+This is a failure of uninterrupted automatic checkout, not a clean R02 pass.
+Read-only evidence confirms this additional operation is verified with gross/
+captured £0.01, explicit £0.00 tip, native order Paid and exactly one £0.01
+payment. Gross campaign captures now total **£0.03**, leaving **£0.22**.
+No refund or replacement financial dispatch was performed by the agent.
+
+The exact failing interval's server log has a quick interrupted observation,
+then repeated status checks before final verification. The provider report
+reference was eventually stored without retiring another report. Inspection
+identified a report end of authenticated payment creation plus 60 seconds,
+which lies in the future during immediate capture polling. Automatic approval
+review initially rejected a nonfinancial POST probe; it did not run. The owner
+then explicitly authorized **one** authenticated report-generation POST to
+`https://merchant.revolut.com/api/report-runs`, covering now minus 60 seconds
+to now plus 60 seconds, with no content download or financial request. That
+single probe returned **HTTP 400**, with a future-time rejection in its
+response. No report content, credentials or provider identifiers were exposed.
+No second provider probe was sent.
+
+The public prepare/start/poll regression reproduced **unresolved/interrupted**
+instead of verified when the mocked provider rejects that future end: **one
+failure, zero errors**, exit 1. An initial fixture used Odoo's storage datetime
+parser for an ISO HTTP field; it was corrected before the meaningful red run.
+Candidate **19.0.1.18.4** clamps the report end to the earlier of creation plus
+60 seconds and current server time, retaining the existing lower bound and
+all payment/report identity, finality, amount, explicit-zero and duplicate
+checks. Recent reports can now be requested without an inherently invalid
+future endpoint; report generation can still be asynchronous. Final Spec
+review found no issues. Runtime checks are in progress; this candidate has
+not been deployed. Logs: `/tmp/t12-report-window-{red,green}.log`.
+
+The candidate's full public terminal-tip/report class passed **27 tests, zero
+failures/errors**, exit 0. This includes the immediate-capture future-window
+regression, historical bounded report paths, nonzero and explicit-zero tips,
+invalid/ambiguous evidence, report loss/regeneration and refund integration.
+Both final Standards and Spec reviews found no actionable findings. Provider
+HTTP in these tests was mocked and the Merchant network guard was active.
+Exact artifact checkout and repeated legacy retail/Restaurant upgrades precede
+the narrow follow-up deployment under the owner's existing rollout
+authorization. Physical automatic checkout is still a manual acceptance gate.
+
+The frozen candidate is **50f851f99580e7ff484163c1b6e72a1f69e33059**,
+addon **19.0.1.18.4**, archive SHA256
+**093a692fd0ca21440d7ed94a6dc4627266c59798737fa656c1782e7b403bf766**.
+Fresh-install artifact acceptance passed **16 tests**, exit 0. The initial
+concurrent migration run exited 1 with Chrome debugger startup and Restaurant
+checkout timeouts. Host memory/swap pressure was observed; it is a plausible
+infrastructure cause, not a proved addon diagnosis. Its failed log is retained
+at `/tmp/t12-window-artifact-migration.log`. Running the identical artifact's
+migration command alone then passed legacy retail **16 + 16** and Restaurant
+**16 + 16** tests, zero failures/errors, exit 0, without source or test changes.
+Passing logs: `/tmp/t12-window-artifact-retail.log` and
+`/tmp/t12-window-artifact-migration-solo.log`. Automated Merchant calls remained
+mocked/blocked. These results supersede the runtime-checks-pending checkpoint.
+
+The owner-authorized standard backup, offline upgrade and restart completed
+at **2026-10-08 15:09 UTC**, exit 0. The deployer compared and preserved all
+**1,187 financial/authority/dispatch records** unchanged before restart.
+Independent verification matched all **109 addon source files** to the frozen
+archive, checked the immutable release, service/login health and private
+snapshot permissions. A separate read-only ORM check confirmed installed
+**19.0.1.18.4**, all three card orders verified and Paid, each with exactly one
+native £0.01 payment and explicit £0.00 tip. Cashier Tips remains disabled;
+terminal-tip mapping, cashier register grant and automatic terminal validation
+remain preserved. These verification checks made **zero provider requests**.
+Logs: `/tmp/t12-window-staging-deploy.log`,
+`/tmp/t12-window-verify-deployed.log`, `/tmp/t12-window-verify-state.log`.
+Private backup/reference paths remain in the private checkpoint.
+
+Campaign gross captures remain **£0.03**, with **£0.22 remaining**. No new
+charge, cancellation or refund was sent by the agent. The next manual gate is
+a refreshed granted-cashier £0.01 checkout, initially stopping at Payment
+before selecting Revolut. Physical uninterrupted automatic completion has
+not yet been retested on this release. R01/R02, T12, T33 and T34 remain open.
+No push or pull request was created.
+
+## Granted-cashier automatic checkout retest — 2026-10-08
+
+On **19.0.1.18.4**, the operator followed the next £0.01 checkout instructions
+to wait for a receipt without Check status, Force done or manual Validate,
+then reported **"It worked fine"** and supplied the native Payment Successful
+receipt. It shows the test cashier, one test product, total/tender **£0.01**,
+Revolut payment and no tip line. Record this as **operator-reported automatic
+checkout success for this zero-tip case**; exact elapsed time was not supplied.
+
+Independent read-only ORM verification confirms the new operation verified,
+gross/captured **1 GBP minor**, explicit tip **0**, report/tip evidence present,
+retry prohibited, native order Paid and exactly **one £0.01 payment** under
+the granted cashier. Automatic validation remains enabled, cashier Tips
+disabled, and the three earlier card sales still Paid. Verification sent
+**zero provider requests**. Log:
+`/tmp/t12-window-automatic-retest-readback.log`; screenshot/reference mapping
+is private. Campaign captured total is now **£0.04**, leaving **£0.21** from
+the gross cap. No agent charge, cancellation or refund was sent.
+
+Next verify this sale remains Paid after a cashier-browser refresh and reopening
+it from POS Orders. This specific reported success supersedes the preceding
+not-retested status; reload persistence for this sale and the wider R01/R02,
+T12, T33 and T34 acceptance gates remain open.
+
+The next operator screenshot, supplied after the requested cashier-browser
+refresh, shows the latest £0.01 sale selected in **Orders / Paid**, still
+**Paid**, alongside the four earlier paid Cash/card sales. Post-refresh
+persistence for the latest cashier sale is **PASS**. Screenshot/reference
+mapping remains private; no provider call or financial action was needed.
+Gross captures remain £0.04 and budget remaining £0.21. The next R03 fixture
+is a £0.02 cart with £0.01 Cash and £0.01 Revolut, initially prepared at
+Payment without dispatch. No amount is reserved until dispatch/uncertainty.
+
+## Cash/Revolut split checkout — 2026-10-08
+
+The operator reported **"all good"** after the complete £0.02 split-payment
+instructions and supplied a Payment Successful receipt: quantity two test
+products, total **£0.02**, dedicated Cash **£0.01** and Revolut **£0.01**, served
+by the test cashier. Read-only ORM confirms native Paid/total/paid £0.02,
+exactly two native tenders with those shares, and one verified Revolut operation
+with requested/captured/gross **1 GBP minor**, explicit zero tip, report/evidence
+and retry prohibited. No provider requests or financial writes were made by
+the agent. Private log: `/tmp/t12-split-readback.log`. Gross campaign card
+captures now total **£0.05**, leaving **£0.20**; refunds do not replenish that cap.
+Record this individual split as operator-reported success with receipt/native
+tender agreement; intermediate unpaid-screen persistence was not separately
+captured, and the complete R03 row remains partial.
+
+Preparation for the two-card live subcase found that pinned Odoo's
+`PaymentScreen.addNewPaymentLine` immediately sends a terminal request when
+`payment_terminal.fastPayments` is true. PaymentRevolut inherits the native
+true default. The existing multiple-card automated tour constructs the first
+partial line programmatically before entering its amount and sending; that
+does not demonstrate an ordinary cashier UI path. Do not instruct the operator
+to select Revolut and then edit a first allocation: the full remaining amount
+would already be dispatched. The live two-card case remains blocked on an
+amount-entry workflow, without weakening backend verification or improvising
+financial requests. No production change was made during this investigation.
+Next exercise current native receipt reprinting; wider campaign gates stay open.
+
+## Current receipt print preview — 2026-10-08
+
+The operator reported **"works fine"** and supplied the browser print dialog
+for the split-sale receipt, with **Save as PDF** selected. Preview shows
+quantity two, total **£0.02**, Revolut **£0.01** and Cash **£0.01**, on one page.
+Current native receipt preview/tender rendering is observed. The long Revolut
+reference appears clipped with a horizontal scrollbar in the printable receipt;
+full-reference readability is not a pass. The screenshot precedes the Save
+action and does not prove a saved PDF or physical print. Historical receipt,
+native invoice PDF and terminal-history printing remain untested; R16/T34
+remain open. No provider request or financial action was made by the agent.
+Private screenshot/reference mapping is retained in the checkpoint.
+
+Next R06 subcase: a new £0.01 request, cancelled from Odoo while Waiting for
+card, without presenting a card. Expected outcome is definitive cancellation,
+unpaid order and idle terminal. Record any uncertainty against the budget until
+resolved; do not infer cancellation from a closed dialog. Current captures
+remain £0.05, gross budget remaining £0.20; the next request has not yet run.
+
+
+## Cancellation warning and second Cancel — 2026-10-08
+
+During the Waiting-for-card cancellation subcase on 19.0.1.18.4, the operator
+reported an unresolved-result dialog, dismissed it with OK, then clicked Cancel
+again and observed cancellation. This correction supersedes the initial report
+of using Check status for this case. The first-click flow is not a clean pass.
+
+Read-only saved-state verification confirms definitive provider/local Cancelled,
+retry safe, captured/gross zero, and a native Draft order under the granted
+cashier. One cancellation dispatch claim exists; its acknowledgement was
+uncertain, but later authoritative observation established cancellation. The
+Draft still has a saved £0.01 payment line/amount_paid, so neither that field nor
+the presence of a line proves a Paid order. Terminal idle and browser line
+cleanup have not been separately confirmed. Gross campaign captures remain
+£0.05 and remaining gross cap £0.20. The agent sent no provider request or
+financial mutation. Private log: `/tmp/t12-cancel-dispatch-readback.log`.
+
+The targeted service interval records fast cached cancellation responses amid
+active polling, with no access-denied error. A later cancellation observation
+logs interruption before definitive cancellation. Exact first-response JSON
+was not captured, so the initial race remains an inference from timing.
+
+A deterministic mocked reproduction through the production public screenCancel
+path fails: `node /tmp/t12-cancel-observation-repro.mjs` reports one failure,
+expected no error versus actual `pending`, when the server returns a Pending
+snapshot with observation_deferred/in_progress. PaymentRevolut has no Pending
+error text and therefore displays its unresolved-result fallback. This proves
+a frontend defect for deferred cancellation and matches the reported warning;
+it does not prove an access failure or the exact uncaptured live response.
+No production fix or deployment was made in this diagnostic step. R06 remains
+partial with the first-click defect and wider failure/race subcases open.
+
+## Deferred cancellation frontend fix — 2026-10-08
+
+Reproduced the preceding diagnostic against the current source: the public
+`screenCancel` path immediately reported `pending` as an error when the cancel
+RPC returned `observation_deferred: true`. The UI falls back to its unresolved
+warning for that error. The regression failed before the fix (107 other
+frontend tests passed). This confirms the deferred-response defect; the exact
+original live response remains unavailable, and no permission failure has been
+established.
+
+The local fix keeps the same Cancel action pending through deferred snapshots,
+checking the existing cancellation RPC at the normal one-second cadence within
+the original 60-second cancellation deadline. Server observation ownership and
+one-time provider cancellation dispatch remain authoritative. Verified payment
+or retry-safe final evidence ends the wait; a fresh unresolved response,
+transport failure or timeout still warns and protects the original attempt.
+Concurrent foreground polling shares the cancellation and final evidence.
+
+`node addons/pos_revolut/static/tests/revolut_payment_state.test.mjs` passes
+**116 tests**, including nine new cancellation cases: the exact popup
+reproduction, concurrent polls returning cancellation or capture, deferred
+responses followed by cancellation/capture/fresh uncertainty/processing, lost
+communication, and the bounded timeout. The existing ordinary-purchase
+deferred-observation regression still passes. The original temporary
+reproduction also passes. These are mocked frontend results, not physical
+terminal acceptance.
+
+The disposable Docker run with project `t12-cancel-race-check` passed **4 Odoo
+tests, 0 failures/errors**, with Merchant HTTP mocked and guarded:
+`TestRevolutVerifiedCheckout.test_pending_cancellation_preserves_unpaid_order`,
+`TestRevolutVerifiedCheckout.test_cancel_racing_with_capture_preserves_successful_payment`,
+`TestRevolutPaymentObservation.test_four_cashier_tabs_cron_and_cancel_share_held_observation`,
+and `TestRevolutPaymentObservation.test_cancel_rate_limit_defers_recovery_without_replaying_post`.
+The first two execute browser tours; the server cases exercise shared observation
+ownership and prevention of provider POST replay. Local log:
+`/tmp/t12-cancel-odoo-tests.log`. `git diff --check` passes.
+
+The source fix has not been deployed. R06 remains partial until the updated
+assets are deployed and the operator confirms one-click cancellation, unpaid
+order and idle terminal. Other ticket-12 release gates remain open; no live
+payment, refund or provider request was made during this investigation.
+
+## Cancellation fix deployed — 2026-10-08
+
+The owner explicitly requested deployment before resuming manual testing.
+Candidate **28a98d7ba1505a4bae85d254d582ad14b2bbbd2a**, addon
+**19.0.1.18.5**, passed separate Standards and Spec reviews with no blocking
+findings. The existing foreground-payment deadline can still expire during a
+later cancellation wait; this predates the fix and does not release payment
+guards. The reviewed ref for this narrow rollout is `codex/fix-captured-report`.
+
+Exact archive SHA256:
+**4e21e7e05e0e3c02921b974b8360fce4965f4c8fefdb136c758449ee69d96a21**.
+`scripts/test-delivered-addon` passed fresh retail acceptance (**16 tests**)
+and sequential legacy migration from
+`30492a67020acdfe34d7f560a9cf6d7fb20f6430`: retail **16 + 16**, Restaurant
+**16 + 16**, all zero failures/errors, exit 0. Both scenarios used the exact
+committed archive and the production extractor; Merchant HTTP was mocked and
+guarded. Logs: `/tmp/t12-cancel-artifact-retail.log` and
+`/tmp/t12-cancel-artifact-migration.log`.
+
+The standard guarded backup, offline upgrade and restart completed successfully
+on **2026-10-08**, independently verified at **15:54 UTC**. The deployer
+preserved all **1,205 financial/authority/dispatch records** unchanged before
+restart. Independent verification matched all **109 addon source files**,
+installed version **19.0.1.18.5**, immutable release, active Odoo service,
+successful local login HTTP response and private snapshot permissions.
+Release: `/opt/odoo-releases/revolut/staging/28a98d7ba1505a4bae85d254d582ad14b2bbbd2a/pos_revolut`.
+Configuration backup:
+`/var/backups/odoo-revolut-deploy/20261008T155345Z-28a98d7ba150`.
+Logs: `/tmp/t12-cancel-staging-deploy.log` and
+`/tmp/t12-cancel-verify-deployed.log`.
+
+This supersedes the preceding not-deployed checkpoint. Hard-refresh the
+granted cashier's POS before resuming R06. One-click cancellation, unpaid order
+and terminal idle remain a live acceptance gate; deployment is not a scenario
+pass. No charge, cancellation or refund was sent by the agent during rollout.
+
+## Operator cancellation retest result — 2026-10-08
+
+After deployment of **19.0.1.18.5**, the operator reports: "it cancelled on
+odoo and on the terminal". Record the displayed Odoo/device cancellation as
+operator-confirmed. No new backend observation or unpaid-order verification
+was performed for this retest, so this is not complete R06 acceptance.
+
+Next exercise terminal-origin cancellation: confirm the current order is
+unpaid and the terminal idle, send a £0.01 request, present no card, cancel
+using the terminal control, and observe whether Odoo detects cancellation
+without its own Cancel or Check status action. Expected: cancelled payment,
+unpaid order, no successful receipt, and terminal idle. Stop and report any
+uncertainty without sending another request. The next subcase has not run.
+
+## Terminal-origin cancellation observed — 2026-10-08
+
+The operator reports the terminal-origin cancellation worked and Odoo detected
+it automatically on **19.0.1.18.5**. Record this UI/device subcase as
+operator-confirmed; elapsed time and fresh backend/unpaid-order evidence were
+not supplied. This supersedes the preceding next-subcase-not-run checkpoint.
+R06 remains partial for its other subcases and evidence gaps.
+
+Next is R07's foreground timeout and same-attempt recovery: start a £0.01
+request without presenting a card, leave it untouched through the 60-second
+Odoo waiting limit, note the displayed outcome, then cancel on the terminal
+if still active and use Check status on the original Odoo line. Expected:
+timeout preserves uncertainty and blocks checkout; authoritative cancellation
+then leaves the order unpaid without a replacement payment. If the terminal
+cancels automatically before Odoo times out, record that instead; it does not
+prove the local-timeout subcase. No R07 result is yet claimed.
+
+## Foreground timeout and cancellation recovery — 2026-10-09
+
+The operator reports waiting 60 seconds without paying, receiving Odoo's
+waiting-limit warning while the terminal remained active, then cancelling and
+using Check status. Three supplied screenshots show the unresolved timeout
+dialog, the protected payment line with Check status, and then Payment
+cancelled with Retry. The displayed £0.01 remains due and Validate is disabled.
+This establishes the observed timeout/cancellation-recovery UI subcase; no
+fresh backend identity, dispatch-count or ledger verification was performed.
+Reload, interruption and late-success subcases remain open, so R07 is partial.
+
+The current implementation bounds foreground waiting at 60 seconds and marks
+the attempt timed out; it does not automatically dispatch terminal cancellation.
+An active terminal after this local deadline is therefore expected. A timeout
+cannot establish that payment failed or that retry is safe. The operator's
+cancellation followed by Check status is the intended recovery in this case.
+
+The operator also reports the terminal displayed a tip menu and accepted
+No thanks before the wait, with tipping now enabled in the checkout menu.
+Record terminal tip-prompt/no-tip selection as observed, without inferring
+which server configuration changed. No successful tipped/no-tip payment,
+report reconciliation or tip refund is established by this cancelled request.
+R05 remains partial. No source change, deployment or live provider action was
+performed by the agent for this evidence update.
+
+## Reload followed by cancellation — 2026-10-09
+
+In response to the guided pending-payment reload scenario, the operator supplied
+two screenshots and reported cancelling between them. The first shows checkout
+2005 with a £0.01 Revolut line, Payment unresolved and Check status; the second
+shows Payment cancelled, the cancellation dialog and Retry. Both retain £0.01
+due and disabled Validate. This matches the expected reload/cancellation UI
+recovery sequence. The screenshots do not independently establish the reload
+event, exact button sequence, persisted operation identity or dispatch counts;
+those backend checks remain open. No successful payment is claimed.
+
+Next proposed R07 subcase: a £0.01 no-tip payment completed on the still-active
+terminal after Odoo's foreground timeout, followed by Check status on the same
+line. This is one actual card charge within the existing campaign cap, not
+another cancellation test. It has not run; do not count it as captured spend.
+
+## Late payment recovered to receipt — 2026-10-09
+
+The operator reports success after the instructed £0.01 payment on the active
+terminal following Odoo's foreground timeout and Check status recovery. The
+supplied screenshot shows Payment Successful £0.01 and a native POS receipt
+with one £0.01 test product, £0.01 total, £0.01 Revolut tender and a Revolut
+payment reference. The receipt identifies Administrator as the serving user;
+this is not fresh granted-cashier acceptance. No tip line is displayed.
+
+Record late-success recovery as operator-confirmed with visible receipt
+evidence. Fresh backend verification of original operation identity, single
+capture/native payment and explicit zero-tip report evidence remains open.
+Conservatively count the reported charge against the campaign cap: gross
+spend **£0.06**, remaining **£0.19** of £0.25, subject to final reconciliation.
+No refund or additional provider action was performed by the agent.
+
+Next confirm persistence by refreshing Odoo, reopening this latest completed
+sale from Orders and checking Paid, £0.01 total and its existing receipt.
+This next check needs no new payment or refund.
+
+## Completed sale visible after requested reload — 2026-10-09
+
+In response to the reload/persistence check, the operator supplied the POS
+Orders screen showing the latest sale selected, Paid, total £0.01, and one
+test-product unit. This confirms the visible paid-order result in the guided
+reload sequence. The Print Receipt control is available, but the reopened
+receipt has not yet been shown. Next select Print Receipt and check the
+existing £0.01 total and Revolut tender without issuing a refund or new charge.
+Recorded campaign spend remains £0.06, remaining cap £0.19; backend financial
+reconciliation remains outstanding.
+
+## Reopened late-payment receipt preview — 2026-10-09
+
+The operator supplied the browser Print Receipt preview for the selected latest
+sale. It shows the original receipt, one test-product unit, £0.01 total and
+£0.01 Revolut tender, with Save as PDF selected. This completes the observed
+receipt-reopening step after the guided reload. Neither a saved PDF nor a
+physical print was supplied.
+
+The Revolut reference is visibly clipped and has a horizontal scrollbar in the
+print preview, repeating the earlier R16 print-layout issue. Correct totals and
+receipt recovery do not establish full reference readability. Keep this issue
+open. No new payment/refund occurred; gross campaign spend remains £0.06 and
+remaining gross cap £0.19, pending final reconciliation.
+
+## Full-refund attempt blocked by historical authority — 2026-10-09
+
+The operator opened the £0.01 full-return allocation dialog for the latest
+campaign sale. Its source was disabled, remaining capacity displayed zero,
+and the message required manager investigation of external refund evidence.
+Read-only staging SQL confirmed the new payment is verified/captured £0.01,
+its native sale is Paid £0.01, and no refund operation exists for this source.
+The displayed zero is therefore a blocked entitlement, not proof of a prior
+refund of this new sale.
+
+The sole matching blocker is the previously investigated historical
+`conflicting_original_authority` evidence created October 7. Its reported
+parent matches a verified September 30 integration payment with no credential
+binding. Company, environment and frozen secret-reference tuple match the
+existing Merchant authority. No credential value was read or printed. Earlier
+independent provider GETs and their limitations are recorded in the October 8
+Merchant-wide page investigation; this investigation made no new provider call.
+
+Production `_compute_external_refund_review` intentionally blocks each source
+sharing this credential when unresolved evidence has no original-operation
+binding. Existing regression
+`test_discovery_scope_known_original_overrides_foreign_location` explicitly
+preserves the block for an unbound historical original. This is a known
+authority-reconciliation prerequisite, not evidence that the new refund was
+dispatched or that the cashier lacks ordinary refund access.
+
+Proposed repair is narrowly scoped administrator attestation of that single
+historical payment using `action_revolut_authorize_legacy_credential`, followed
+by normal authenticated discovery/reconciliation of the existing refund. The
+installation guide requires independent account/company review and explicit
+administrator attestation. Do not delete the evidence, force capacity, treat
+the historical refund as completed without fresh evidence, or issue a new
+refund to clear it. Stored credential authorization has not been changed;
+owner approval for that historical authorization is pending. Preserve the
+current return. R09 is blocked pending this prerequisite.
+
+No addon edit or runtime test was needed for this diagnosis; the actual saved
+blocking query was exercised read-only. Documentation whitespace checks pass.
+
+## Approved historical authority repair — 2026-10-09
+
+The owner approved the single historical credential attestation and existing
+refund reconciliation, and asked why earlier refunds worked. Git history dates
+the explicit company/Merchant binding to October 1 (`5033eb7`) and external
+refund discovery to October 2 (`01279b9`); the blocking evidence was created
+October 7 for an unbound September 30 payment. Admin login does not implicitly
+attest historical payment authority. This is an incomplete historical migration
+exposed by discovery, with account-wide blocking and an unhelpfully generic
+cashier message; it is not a demonstrated role-permission regression.
+
+Fresh authenticated GETs verified the original order/payment identity, final
+payment state, amount/currency and the historical refund's exact parent and
+amount/currency. Revolut now reports that refund **completed**, superseding
+the October 8 processing observation. The approved administrator action bound
+only the reviewed historical payment to the exact existing authority. Normal
+`_discover_refund` reconciliation imported the already-issued external refund
+as verified and resolved its evidence. No manual capacity override or evidence
+deletion occurred.
+
+Two initial shell attempts rolled back completely because of an incorrect
+discovery-call keyword, after three provider GETs each. The corrected attempt
+made four GETs, including normal discovery's fresh detail verification, and
+committed successfully. A request guard rejected every provider method except
+GET and restricted reads to the three relevant resources. Across all attempts:
+**10 GETs, zero provider financial requests**. No secrets or raw provider
+responses were printed.
+
+Independent SELECT-only read-back confirmed the historical binding, resolved
+nonblocking evidence, one verified external historical refund, zero blockers
+applicable to the new campaign sale, and **zero refunds of that new sale**.
+The historical refund's native reconciliation remains outstanding; importing
+financial evidence does not create or validate its product return. Preserve
+that separate R13/R14 disposition task.
+
+R09 can resume on the existing £0.01 return by closing the stale allocation
+dialog and selecting Revolut again. No fresh campaign refund is yet claimed.
+Gross campaign spend remains £0.06, cap remaining £0.19. No addon source change
+or deployment was required. Verification exercised real provider identity
+checks and committed-state read-back; this was not a mocked runtime test.
+
+## Full refund pending; reload recovery next — 2026-10-09
+
+After the historical repair, the operator screenshot shows the current sale
+selectable with £0.01 remaining, base refund £0.01 and tip refund £0.00.
+Following allocation confirmation, Odoo displays Refund in process with a
+refund reference, remaining −£0.01 and Validate disabled. The operator also
+provided the Revolut Orders view showing the corresponding −£0.01 refund
+as Processing. This records a pending refund; it does not establish final
+completion, single-dispatch backend proof or a validated native return.
+
+The owner elected to keep validation blocked until authoritative completion
+and continue testing. R09 remains pending. Next proposed R11 subcase: reload
+the saved pending return, recover the existing refund/status, and verify that
+no new allocation or refund is needed. That subcase has not run. Do not use
+Force done, replace the refund or close the protected session. Gross campaign
+spend remains £0.06 against the £0.25 cap, with £0.19 remaining; refunds do
+not replenish it. No code or deployment changed in this update.
+
+Following the guided pending-return reload step on 2026-10-09, the operator
+supplied a screenshot displaying the same return and refund reference,
+−£0.01 remaining, Refund in process and disabled Validate. The screenshot
+supports displayed identity continuity; it does not independently establish
+that a reload occurred or prove backend single-dispatch behavior. R11 is
+partial and R09 remains pending. Next proposed independent case is R05:
+a new £0.01 base sale with a £0.01 terminal tip, £0.02 gross within the
+remaining approved cap. This payment has not run; recorded gross spend stays
+£0.06 and remaining cap £0.19. Preserve the pending return.
+
+## Tipped payment warning investigation — 2026-10-09
+
+The operator reports a successful terminal payment followed by the generic
+unresolved popup, then OK and Check status leading to the native receipt.
+Receipt shows £0.01 product plus £0.01 Tips, total/Revolut tender £0.02.
+Read-only staging checks confirm captured/gross two minor units, one minor
+unit terminal tip, verified operation, native Paid total/paid £0.02 and one
+successful create-order / create-intent dispatch pair. The earlier campaign
+refund remains saved pending/processing for one minor unit. Gross campaign
+spend is now **£0.08**, leaving **£0.17** of the £0.25 gross-charge cap.
+
+The active server log records `unknown` at 08:15:06 UTC, about 27 seconds after
+this payment began, followed by status recovery and verification at 08:15:35.
+This is a fresh backend validation rejection, distinct from the previously
+fixed cancellation/status-overlap UI case and from a local 60-second timeout.
+No raw provider payload was retained, so the exact historical rejected field
+cannot be established from these logs.
+
+A separate, matching tipped-payment defect was reproduced: an authorized
+terminal payment with tip-inclusive gross in `authorised` or `capture_started`
+was classified unresolved because the amount validator allowed excess over
+the base only after capture. The focused public-RPC regression failed for both
+states before the fix. A fast probe of the actual observation method reproduced
+base=1/gross=2 becoming unresolved; after the local fix it remains pending.
+The fix allows documented intermediate states to retain exposure and continue
+polling with tip-inclusive gross. Capture and authenticated tip-report evidence
+are still required before verification and native tip projection; identity,
+currency, integer/bounds, insufficient amount and prior-capture guards remain.
+
+Reproduction command: `ODOO_REVOLUT_TEST_PROJECT=t12-tip-pending-red
+scripts/test-addon --test-tags
+'/pos_revolut:TestRevolutTerminalTip.test_tipped_authorisation_keeps_polling_until_capture_and_report'`.
+Result: two failing subcases, zero errors, one test. Local log:
+`/tmp/t12-tip-pending-red.log` (temporary diagnostic artifact, not a durable
+publication evidence archive). Live cause remains consistent with this
+reproduction, not conclusively proven. R05 automatic checkout is not passed.
+The local change is not yet deployed.
+
+The provider guidance also identifies authorised/capture-started as states
+to keep polling, with final success determined from the actual payment:
+[Revolut terminal integration guide](https://developer.revolut.com/docs/guides/merchant/accept-payments/in-person-payments/terminal/push-payments).
+This supports the state handling; it does not establish the missing historical
+response payload.
+
+Independent scoped review found no remaining production correctness or safety
+issues. It caught a browser fixture assertion intended only for the separate
+report-reload scenario; that assertion and the processing fixture were corrected.
+The first verification run executed 32 tests: all 30 terminal-tip backend tests
+and the ordinary checkout browser case passed; the new tipped browser flow
+reached the receipt, then failed only on that obsolete report-poll-count
+assertion. Its corrected rerun and the existing report-reload browser case are
+being verified separately. Frontend suite: 116 passed, zero failed/skipped.
+
+Final browser verification passed: `ODOO_REVOLUT_TEST_PROJECT=t12-tip-browser-final
+scripts/test-addon --test-tags
+'/pos_revolut:TestRevolutVerifiedCheckout.test_tipped_processing_payment_completes_without_manual_status,/pos_revolut:TestRevolutVerifiedCheckout.test_terminal_tip_waits_for_report_and_recovers_after_reload'`.
+Result: **2 tests, zero failures/errors**, with actual Chrome tours and mocked
+provider HTTP. Together with the preceding run, verification covers 30 tip
+backend tests and three distinct browser scenarios (ordinary automatic
+checkout, tipped intermediate states without manual recovery, and report
+interruption/reload), plus 116 frontend tests. Temporary logs are
+`/tmp/t12-tip-pending-green.log`, `/tmp/t12-tip-browser-final.log` and
+`/tmp/t12-tip-frontend.log`. Whitespace check passes; the throwaway fast probe
+was removed. No production instrumentation or live financial request was
+added. The runtime fix remains local, not deployed; live confirmation is
+still required before marking the tipped automatic-checkout subcase passed.

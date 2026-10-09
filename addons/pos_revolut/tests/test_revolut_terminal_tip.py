@@ -3,7 +3,7 @@ import csv
 import io
 import json
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -175,6 +175,82 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
     def financial_post_count(self):
         return sum(call.args[0] == "POST" and urlsplit(call.args[1]).path != "/api/report-runs"
                    for call in self.request.call_args_list)
+
+    def test_tipped_authorisation_keeps_polling_until_capture_and_report(self):
+        self.start_payment()
+        payment_state = "authorised"
+
+        def response(method, url, **kwargs):
+            result = self.provider_response(method, url, **kwargs)
+            if urlsplit(url).path == f"/api/payments/{self.provider_payment_id}":
+                result.json.return_value["state"] = payment_state
+            return result
+
+        self.request.side_effect = response
+        for payment_state in (
+            "pending", "authentication_challenge", "authentication_verified",
+            "authorisation_started", "authorisation_passed", "authorised", "capture_started",
+            "declining", "cancelling", "failing",
+        ):
+            with self.subTest(state=payment_state):
+                waiting = self.poll_payment()
+                self.assertEqual(waiting["state"], "pending")
+                self.assertFalse(waiting["retry_safe"])
+                self.assertFalse(waiting["captured_amount_minor"])
+                self.assertEqual(self.report_post_count, 0)
+                self.order.invalidate_recordset()
+                self.assertEqual(self.order.amount_total, 100)
+                self.assertEqual(self.order.state, "draft")
+
+        payment_state = "captured"
+        self.assertTrue(self.poll_payment()["awaiting_tip_details"])
+        self.report_status = "completed"
+        verified = self.poll_payment()
+        self.assertEqual(verified["state"], "verified")
+        self.assertEqual(verified["gross_amount_minor"], 10300)
+        self.assertEqual(verified["terminal_tip_minor"], 300)
+        self.assertEqual(self.financial_post_count(), 2)
+
+    def test_tipped_processing_preserves_identity_amount_and_state_guards(self):
+        self.start_payment()
+        wrong_payment = {}
+
+        def response(method, url, **kwargs):
+            result = self.provider_response(method, url, **kwargs)
+            if urlsplit(url).path == f"/api/payments/{self.provider_payment_id}":
+                result.json.return_value.update({"state": "authorised", **wrong_payment})
+            return result
+
+        self.request.side_effect = response
+        for wrong_payment in (
+            {"id": str(uuid4())}, {"order_id": str(uuid4())}, {"currency": "INVALID"},
+            {"amount": 9999}, {"amount": True}, {"amount": "10300"}, {"amount": 2147483648},
+            {"state": "undocumented"},
+        ):
+            with self.subTest(wrong=wrong_payment):
+                result = self.poll_payment()
+                self.assertEqual(result["state"], "unresolved")
+                self.assertFalse(result["retry_safe"])
+                self.assertFalse(result["captured_amount_minor"])
+                self.assertEqual(self.report_post_count, 0)
+        self.assertEqual(self.financial_post_count(), 2)
+
+    def test_tipped_processing_cannot_override_existing_capture(self):
+        self.start_payment()
+        self.assertTrue(self.poll_payment()["awaiting_tip_details"])
+
+        def response(method, url, **kwargs):
+            result = self.provider_response(method, url, **kwargs)
+            if urlsplit(url).path == f"/api/payments/{self.provider_payment_id}":
+                result.json.return_value["state"] = "authorised"
+            return result
+
+        self.request.side_effect = response
+        result = self.poll_payment()
+        self.assertEqual(result["state"], "unresolved")
+        self.assertEqual(result["captured_amount_minor"], 10300)
+        self.assertFalse(result["retry_safe"])
+        self.assertEqual(self.financial_post_count(), 2)
 
     def test_capture_waits_for_report_then_projects_tip_once(self):
         self.start_payment()
@@ -366,6 +442,75 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
         self.assertFalse(self.order.lines.filtered(lambda line: line.product_id == self.tip_product))
         self.assertEqual(self.financial_post_count(), 2)
 
+    def test_captured_zero_tip_report_recovers_existing_payment_without_recharge(self):
+        self.gross_minor, self.tip_minor = 10000, 0
+        self.start_payment()
+        self.report_status = "completed"
+        self.csv_content = self.report_csv([self.report_row(state="PROCESSING")])
+        unresolved = self.poll_payment()
+        self.assertEqual(unresolved["state"], "unresolved")
+        self.assertTrue(unresolved["awaiting_tip_details"])
+        self.assertFalse(unresolved["retry_safe"])
+
+        self.csv_content = self.report_csv([self.report_row(state="CAPTURED")])
+        recovered = self.poll_payment()
+        self.assertEqual(recovered["state"], "verified")
+        self.assertEqual(recovered["operation_id"], unresolved["operation_id"])
+        self.assertEqual(recovered["gross_amount_minor"], 10000)
+        self.assertEqual(recovered["terminal_tip_minor"], 0)
+        self.assertFalse(recovered["awaiting_tip_details"])
+        self.order.invalidate_recordset()
+        self.assertEqual(self.order.amount_total, 100)
+        self.assertEqual(self.order.payment_ids.amount, 100)
+        self.assertFalse(self.order.lines.filtered(lambda line: line.product_id == self.tip_product))
+        self.assertEqual(self.financial_post_count(), 2)
+        self.assertEqual(self.report_post_count, 1)
+
+    def test_utc_annotated_report_dates_recover_zero_tip_without_recharge(self):
+        self.gross_minor, self.tip_minor = 10000, 0
+        self.created_at = "2026-10-01T10:00:00.769Z"
+        self.start_payment()
+        self.assertTrue(self.poll_payment()["awaiting_tip_details"])
+        original_run = self.active_run_id
+        self.report_status = "completed"
+        created = "2026-10-01T10:00:00.769Z[UTC]"
+        captured = "2026-10-01T10:00:10.900Z[UTC]"
+        self.csv_content = self.report_csv([self.report_row(
+            state="CAPTURED", created_date=created, captured_date=captured,
+        )])
+        verified = self.poll_payment()
+        self.assertEqual(verified["state"], "verified")
+        self.assertEqual(verified["gross_amount_minor"], 10000)
+        self.assertEqual(verified["terminal_tip_minor"], 0)
+        self.assertFalse(verified["awaiting_tip_details"])
+        self.assertEqual(self.active_run_id, original_run)
+        self.assertEqual(self.financial_post_count(), 2)
+        self.assertEqual(self.report_post_count, 1)
+        self.order.invalidate_recordset()
+        self.assertEqual(self.order.amount_total, 100)
+        self.assertEqual(self.order.payment_ids.amount, 100)
+        self.assertFalse(self.order.lines.filtered(lambda line: line.product_id == self.tip_product))
+        operation = self.env["pos.revolut.payment.operation"].browse(self.operation_id)
+        operation.invalidate_recordset()
+        self.assertEqual(operation.terminal_tip_evidence["created_date"], created)
+        self.assertEqual(operation.terminal_tip_evidence["captured_date"], captured)
+
+    def test_numeric_utc_annotation_verifies_nonzero_tip(self):
+        self.start_payment()
+        self.report_status = "completed"
+        self.csv_content = self.report_csv([self.report_row(
+            created_date="2026-10-01T10:00:00+00:00[UTC]",
+            captured_date="2026-10-01T10:00:10+00:00[UTC]",
+        )])
+        verified = self.poll_payment()
+        self.assertEqual(verified["state"], "verified")
+        self.assertEqual(verified["gross_amount_minor"], 10300)
+        self.assertEqual(verified["terminal_tip_minor"], 300)
+        self.assertEqual(self.financial_post_count(), 2)
+        self.order.invalidate_recordset()
+        self.assertEqual(self.order.amount_total, 103)
+        self.assertEqual(self.order.payment_ids.amount, 103)
+
     def test_invalid_report_never_verifies_or_releases_captured_reservation(self):
         self.start_payment()
         self.report_status = "completed"
@@ -377,6 +522,12 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
             {"surcharge_amount": "0.01"}, {"refunded_amount": "0.01"},
             {"created_date": "2026-10-01T11:00:00Z"},
             {"captured_date": "2026-10-01T09:59:00Z"},
+            {"created_date": "2026-10-01T10:00:00Z[Europe/Paris]"},
+            {"created_date": "2026-10-01T10:00:00+01:00[UTC]"},
+            {"created_date": "2026-10-01T10:00:00[UTC]"},
+            {"created_date": "2026-10-01T10:00:00Z[UTC][UTC]"},
+            {"created_date": "2026-10-01T11:00:00Z[UTC]"},
+            {"captured_date": "2026-10-01T09:59:00Z[UTC]"},
             {"amount": "0" * 25},
         ]
         for wrong in cases:
@@ -396,7 +547,9 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
         self.start_payment()
         self.report_status = "completed"
         for rows in ([self.report_row(), self.report_row()],
-                     [self.report_row(), self.report_row(payment_id=str(uuid4()), amount="3.00")]):
+                     [self.report_row(), self.report_row(payment_id=str(uuid4()), amount="3.00")],
+                     [self.report_row(), self.report_row(payment_id=str(uuid4()), state="CAPTURED", amount="3.00")],
+                     [self.report_row(state="CAPTURED"), self.report_row(state="CAPTURED")]):
             with self.subTest(rows=rows):
                 self.csv_content = self.report_csv(rows)
                 result = self.poll_payment()
@@ -478,6 +631,38 @@ class TestRevolutTerminalTip(TerminalTipFixtures, CommonPosTest):
         file_call = next(call for call in self.request.call_args_list if urlsplit(call.args[1]).path.endswith("/file"))
         self.assertEqual(urlsplit(file_call.args[1]).path, f"/api/report-runs/{self.active_run_id}/file")
         self.assertFalse(file_call.kwargs["allow_redirects"])
+
+    def test_new_capture_verifies_without_requesting_a_future_report_window(self):
+        now = fields.Datetime.now()
+        created = now - timedelta(seconds=2)
+        self.created_at = created.isoformat() + "Z"
+        self.gross_minor, self.tip_minor = 10000, 0
+        self.report_status = "completed"
+        self.csv_content = self.report_csv([self.report_row(
+            state="CAPTURED", captured_date=now.isoformat() + "Z[UTC]",
+        )])
+        provider = self.provider_response
+
+        def reject_future_report(method, url, **kwargs):
+            if method == "POST" and urlsplit(url).path == "/api/report-runs":
+                end = datetime.fromisoformat(kwargs["json"]["filter"]["to"].removesuffix("Z"))
+                if end > now:
+                    response = Mock(status_code=400)
+                    raise requests.HTTPError("Report end cannot be in the future", response=response)
+            return provider(method, url, **kwargs)
+
+        self.request.side_effect = reject_future_report
+        self.start_payment()
+        with patch("odoo.fields.Datetime.now", return_value=now):
+            verified = self.poll_payment()
+        self.assertEqual(verified["state"], "verified")
+        self.assertEqual(verified["gross_amount_minor"], 10000)
+        self.assertEqual(verified["terminal_tip_minor"], 0)
+        self.assertEqual(self.financial_post_count(), 2)
+        self.assertEqual(self.report_post_count, 1)
+        report_call = next(call for call in self.request.call_args_list
+                           if call.args[0] == "POST" and urlsplit(call.args[1]).path == "/api/report-runs")
+        self.assertEqual(report_call.kwargs["json"]["filter"]["to"], now.isoformat() + "Z")
 
     def test_lost_report_creation_response_never_replays_financial_dispatch(self):
         self.start_payment()

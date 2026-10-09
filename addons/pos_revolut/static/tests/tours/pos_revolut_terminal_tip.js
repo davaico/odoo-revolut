@@ -10,6 +10,21 @@ import { registry } from "@web/core/registry";
 const IDENTITY_KEY = "revolutTerminalTipIdentity";
 const PAYMENT_ID = "2c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf";
 
+registry.category("web_tour.tours").add("pos_revolut_tipped_processing_checkout", {
+    steps: () => [
+        Chrome.startPoS(),
+        ProductScreen.addOrderline("Desk Pad"),
+        ProductScreen.clickPayButton(),
+        PaymentScreen.clickPaymentMethod("Revolut"),
+        // No dialog acknowledgement, manual Check status or Validate step:
+        // a warning during authorisation prevents this tour reaching receipt.
+        ReceiptScreen.isShown(),
+        ReceiptScreen.paymentLineContains("Revolut", "14.34"),
+        { trigger: ".receipt-screen .receipt-total:contains('14.34')" },
+        { trigger: `.receipt-screen .pos-payment-terminal-receipt:contains('${PAYMENT_ID}')` },
+    ].flat(),
+});
+
 function assertWaiting() {
     const order = window.posmodel.getOrder();
     const line = order.payment_ids.find((payment) => payment.payment_method_id.use_payment_terminal === "revolut");
@@ -32,7 +47,7 @@ registry.category("web_tour.tours").add("pos_revolut_terminal_tip_report_reload"
         PaymentScreen.clickPaymentMethod("Revolut"),
         {
             content: "Captured gross waits for separately authenticated terminal tip details",
-            trigger: ".payment-screen .electronic_status:contains('Payment received'):contains('awaiting terminal tip details')",
+            trigger: ".payment-screen .electronic_status:contains('Payment received'):contains('verifying payment details')",
             run() { assertWaiting(); },
         },
         { trigger: ".modal:contains('Communication with Revolut was interrupted')" },

@@ -1902,3 +1902,122 @@ test("a deferred unresolved status stays guarded until a fresh late capture", as
     assert.equal(polls, 2);
     assert.equal(calls.some(({ method }) => method === "revolut_start_payment"), false);
 });
+
+test("one Cancel waits through a deferred observation without the unresolved warning", async () => {
+    let cancellations = 0;
+    const { state, clock, order, line, calls, errors } = fixture({
+        call(method) {
+            assert.equal(method, "revolut_cancel_payment");
+            cancellations++;
+            return cancellations === 1
+                ? { operation_id: 46, state: "pending", provider_state: "pending", retry_safe: false,
+                    observation_deferred: true, observation_in_progress: true, next_check_seconds: 1 }
+                : { operation_id: 46, state: "cancelled", provider_state: "cancelled", retry_safe: true };
+        },
+    });
+    state.remember(line, { operation_id: 46, state: "pending", provider_state: "pending", retry_safe: false });
+    const cancellation = state.screenCancel(order, line, async () => {}, () => {});
+    await tick();
+    assert.deepEqual(errors, [], "an observation owned by polling must not become an unresolved-payment warning");
+    assert.equal(line.getPaymentStatus(), "waitingCancel");
+    assert.equal(paymentActions(line).canDelete, false);
+    clock.advance(1000);
+    assert.equal(await cancellation, true, "one click must complete cancellation after the observation is available");
+    assert.equal(cancellations, 2);
+    assert.deepEqual(errors, ["cancelled"]);
+    assert.equal(line.getPaymentStatus(), "retry");
+    assert.equal(calls.some(({ method }) => method === "revolut_start_payment"), false);
+});
+
+for (const finalState of ["cancelled", "verified"]) {
+    test(`Cancel shares an active poll's late ${finalState} result without another cancellation RPC`, async () => {
+        const poll = deferred();
+        const { state, clock, order, line, calls, errors } = fixture({
+            call(method) {
+                if (method === "revolut_start_payment") {
+                    return { operation_id: 46, state: "pending" };
+                }
+                if (method === "revolut_poll_payment") {
+                    return poll.promise;
+                }
+                if (method === "revolut_cancel_payment") {
+                    return { operation_id: 46, state: "unresolved", observation_deferred: true,
+                        observation_in_progress: true, retry_safe: false };
+                }
+                return false;
+            },
+        });
+        const screen = state.screenRequest(order, line, async () => {
+            const successful = await state.request(order, line);
+            line.handlePaymentResponse(successful);
+            return successful;
+        });
+        await tick();
+        clock.advance(1000);
+        await tick();
+        let completions = 0;
+        let idle = 0;
+        const cancellation = state.screenCancel(order, line,
+            async () => { completions++; }, () => { idle++; });
+        const shared = state.cancel(order, line);
+        assert.equal(state.cancel(order, line), shared);
+        await tick();
+        assert.equal(line.getPaymentStatus(), "waitingCancel");
+        assert.deepEqual(errors, []);
+        assert.equal(paymentActions(line).canDelete, false);
+        poll.resolve({ operation_id: 46, state: finalState, retry_safe: finalState === "cancelled",
+            payment_id: finalState === "verified" ? "pay-46" : false, order_id: "rev-46" });
+        await tick();
+        clock.advance(1000);
+        assert.equal(await cancellation, finalState === "cancelled");
+        assert.equal(await screen, finalState === "verified");
+        assert.equal(line.getPaymentStatus(), finalState === "verified" ? "done" : "retry");
+        assert.deepEqual(errors, finalState === "verified" ? [] : ["cancelled"]);
+        assert.equal(completions, 0, "the active screen request owns completion");
+        assert.equal(idle, finalState === "cancelled" ? 1 : 0);
+        assert.equal(calls.filter(({ method }) => method === "revolut_cancel_payment").length, 1);
+        assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 1);
+    });
+}
+
+for (const outcome of ["cancelled", "verified", "unresolved", "processing", "offline", "timeout"]) {
+    test(`deferred Cancel handles ${outcome} without releasing uncertain payment guards`, async () => {
+        let cancellations = 0;
+        const { state, clock, order, line, calls, errors } = fixture({
+            call(method) {
+                assert.equal(method, "revolut_cancel_payment");
+                cancellations++;
+                if (cancellations === 1 || outcome === "timeout") {
+                    return { operation_id: 46, state: "unresolved", observation_deferred: true,
+                        retry_safe: false };
+                }
+                if (outcome === "offline") {
+                    throw new Error("connection lost");
+                }
+                return { operation_id: 46, state: outcome === "processing" ? "pending" : outcome,
+                    provider_state: outcome, retry_safe: outcome === "cancelled",
+                    observation_deferred: false, payment_id: "pay-46", order_id: "rev-46" };
+            },
+        });
+        state.remember(line, { operation_id: 46, state: "pending", retry_safe: false });
+        let completions = 0;
+        const cancellation = state.screenCancel(order, line,
+            async () => { completions++; }, () => {});
+        await tick();
+        assert.deepEqual(errors, []);
+        assert.equal(line.getPaymentStatus(), "waitingCancel");
+        assert.equal(paymentActions(line).canDelete, false);
+        assert.equal(orderActions(order).blocksAlternativeTender, true);
+        clock.advance(outcome === "timeout" ? 60000 : 1000);
+        assert.equal(await cancellation, outcome === "cancelled");
+        assert.equal(completions, outcome === "verified" ? 1 : 0);
+        assert.equal(paymentActions(line).canDelete, outcome === "cancelled");
+        assert.equal(orderActions(order).blocksCheckout, !["verified", "cancelled"].includes(outcome));
+        assert.deepEqual(errors, outcome === "verified" ? [] : [
+            outcome === "timeout" ? "timed_out" : outcome === "offline" ? "interrupted" : outcome,
+        ]);
+        assert.equal(cancellations, outcome === "timeout" ? 1 : 2);
+        assert.ok(calls.every(({ args }) => JSON.stringify(args) ===
+            JSON.stringify([[7], 46, "order-1", "line-1"])), "only reconcile the original attempt");
+    });
+}

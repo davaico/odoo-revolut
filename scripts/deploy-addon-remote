@@ -14,6 +14,7 @@ import sys
 import tarfile
 import tempfile
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 
 
@@ -23,7 +24,6 @@ class DeploymentError(RuntimeError):
 
 ADDONS = ("pos_revolut",)
 LEGACY_ADDON = "pos_revolut_restaurant"
-
 
 # No database, HTTP, provider credentials, or saved transaction data are used.
 PDF_PROBE = r"""
@@ -130,6 +130,7 @@ class RemoteDeployment:
         self.customer = customer
         self.environment = environment
         self.mode = mode
+        self.financial_tables = []
 
     def _rooted(self, path):
         return self.root / Path(path).relative_to("/")
@@ -184,6 +185,7 @@ ORDER BY table_name
             "Financial preflight discovery",
         ).splitlines()
         tables = [table.strip() for table in tables if table.strip()]
+        self.financial_tables = list(tables)
         blockers = []
         for table in tables:
             if (not re.fullmatch(r"pos_revolut_[a-z0-9_]+_operation", table)
@@ -191,8 +193,30 @@ ORDER BY table_name
                 raise DeploymentError(
                     "Financial preflight returned an unsafe table name."
                 )
+            if self.mode == "upgrade" and table == "pos_revolut_external_refund_evidence":
+                # Discovery is GET-only. Keep its refund-capacity protections,
+                # but do not require the whole Merchant account to settle.
+                continue
+            condition = "deployment_blocking"
+            if self.mode == "upgrade" and table == "pos_revolut_payment_operation":
+                captured = self._captured_report_upgrade_condition()
+                if captured:
+                    condition += captured
+                    # The allowance relies on persisted authority/dispatch
+                    # evidence, so preserve those records during the upgrade too.
+                    self.financial_tables.extend([
+                        "pos_revolut_cart_authorization", "pos_revolut_payment_dispatch",
+                    ])
+            if self.mode == "upgrade" and table == "pos_revolut_refund_operation":
+                # A saved provider refund can resume GET-only reconciliation.
+                # Missing identities and active dispatches still require review.
+                condition += """
+ AND NOT (state IN ('pending', 'unresolved')
+          AND COALESCE(revolut_order_id, '') ~*
+              '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+"""
             count = self._psql(
-                f'SELECT count(*) FROM "{table}" WHERE deployment_blocking',
+                f'SELECT count(*) FROM "{table}" operation WHERE {condition}',
                 "Financial preflight",
             ).strip()
             if not count.isdigit():
@@ -206,6 +230,7 @@ ORDER BY table_name
                 "Legacy financial preflight discovery",
             ).strip()
             if legacy_table:
+                self.financial_tables = [legacy_table]
                 count = self._psql(
                     """
 SELECT count(*)
@@ -224,6 +249,103 @@ WHERE state IN (
                 if int(count):
                     blockers.append(f"pos_revolut_payment_operation={count}")
         return blockers
+
+    def _captured_report_upgrade_condition(self):
+        required = {
+            "pos_revolut_payment_operation": {
+                "id", "state", "provider_state", "amount_minor", "captured_amount_minor",
+                "captured_payment_created_at", "retry_safe", "authorization_id",
+                "revolut_order_id", "revolut_payment_intent_id", "revolut_payment_id", "report_run_id",
+            },
+            "pos_revolut_payment_dispatch": {
+                "operation_id", "action", "completed_at", "outcome", "provider_reference",
+            },
+            "pos_revolut_cart_authorization": {"id"},
+        }
+        columns = set(self._psql(
+            """SELECT table_name || '.' || column_name
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name IN ('pos_revolut_payment_operation',
+                     'pos_revolut_payment_dispatch', 'pos_revolut_cart_authorization')""",
+            "Captured payment upgrade schema discovery",
+        ).splitlines())
+        if any(table + "." + column not in columns
+               for table, names in required.items() for column in names):
+            return ""
+        # Only report reconciliation remains after these persisted successful
+        # dispatches and capture. Do not release reservations or assume zero tip.
+        # Odoo's optional Boolean stores omitted retry_safe as SQL NULL (False).
+        uuid = "'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'"
+        return f"""
+ AND NOT COALESCE((state IN ('pending', 'unresolved')
+          AND provider_state IN ('captured', 'completed')
+          AND COALESCE(retry_safe, FALSE) IS FALSE
+          AND amount_minor > 0
+          AND captured_amount_minor > 0
+          AND captured_amount_minor >= amount_minor
+          AND captured_payment_created_at IS NOT NULL
+          AND revolut_order_id ~* {uuid}
+          AND revolut_payment_intent_id ~* {uuid}
+          AND revolut_payment_id ~* {uuid}
+          AND report_run_id ~* {uuid}
+          AND EXISTS (SELECT 1 FROM pos_revolut_cart_authorization authority
+                      WHERE authority.id = operation.authorization_id)
+          AND (SELECT count(*) FROM pos_revolut_payment_dispatch dispatch
+               WHERE dispatch.operation_id = operation.id) = 2
+          AND EXISTS (SELECT 1 FROM pos_revolut_payment_dispatch dispatch
+                      WHERE dispatch.operation_id = operation.id AND dispatch.action = 'create_order')
+          AND EXISTS (SELECT 1 FROM pos_revolut_payment_dispatch dispatch
+                      WHERE dispatch.operation_id = operation.id AND dispatch.action = 'create_intent')
+          AND NOT EXISTS (
+              SELECT 1 FROM pos_revolut_payment_dispatch dispatch
+              WHERE dispatch.operation_id = operation.id
+                AND NOT COALESCE((dispatch.completed_at IS NOT NULL
+                    AND dispatch.outcome = 'succeeded'
+                    AND ((dispatch.action = 'create_order'
+                          AND dispatch.provider_reference = operation.revolut_order_id)
+                         OR (dispatch.action = 'create_intent'
+                             AND dispatch.provider_reference = operation.revolut_payment_intent_id))), FALSE)
+          )), FALSE)
+"""
+
+    def _financial_snapshot(self):
+        snapshot = {}
+        # Preserve every stored value, including legacy evidence and dispatch
+        # protection. Only incidental ORM write bookkeeping may change.
+        for table in self.financial_tables:
+            value = self._psql(
+                f"""SELECT COALESCE(jsonb_agg(
+    to_jsonb(operation) - ARRAY['write_date', 'write_uid'] ORDER BY operation.id
+), '[]'::jsonb) FROM "{table}" operation""",
+                "Financial preservation snapshot",
+            )
+            try:
+                rows = json.loads(value, parse_float=Decimal)
+                if not isinstance(rows, list) or any(
+                    not isinstance(row, dict) or type(row.get("id")) is not int
+                    for row in rows
+                ):
+                    raise ValueError()
+            except (ValueError, TypeError) as error:
+                raise DeploymentError("Invalid financial preservation snapshot.") from error
+            snapshot[table] = rows
+        return snapshot
+
+    def _verify_financial_snapshot(self, before):
+        after = self._financial_snapshot()
+        for table, previous in before.items():
+            current = {row["id"]: row for row in after[table]}
+            # New schema defaults are allowed; every pre-existing value and
+            # row identity must remain intact, including unresolved evidence.
+            preserved = len(current) == len(previous) and all(
+                row["id"] in current
+                and all(key in current[row["id"]] and current[row["id"]][key] == value
+                        for key, value in row.items())
+                for row in previous
+            )
+            if not preserved:
+                raise DeploymentError(f"Financial records changed during upgrade: {table}; Odoo remains stopped.")
 
     def _run(self, command, step, **kwargs):
         return run_checked(self.runner, command, step, **kwargs)
@@ -626,9 +748,17 @@ WHERE state IN (
                 "A financial operation blocks deployment after checkout quiescence: "
                 + ", ".join(blockers)
             )
+        financial_state = self._financial_snapshot()
+        try:
+            financial_path = backup / "financial-state.json"
+            financial_path.write_text(json.dumps(financial_state, sort_keys=True, default=str) + "\n")
+            financial_path.chmod(0o600)
+        except OSError as error:
+            raise DeploymentError("Financial preservation backup failed; Odoo remains stopped.") from error
         release = self._extract_release()
         self._activate_release(release)
         self._update_module()
+        self._verify_financial_snapshot(financial_state)
         self._run(
             ["systemctl", "start", "odoo"],
             "Odoo service restart",
@@ -640,6 +770,7 @@ WHERE state IN (
             f"Release: /opt/odoo-releases/{self.customer}/{self.environment}/"
             f"{self.revision}/pos_revolut\n"
             f"Configuration backup: /{backup.relative_to(self.root)}\n"
+            f"Financial state preserved: {sum(len(rows) for rows in financial_state.values())} records\n"
         )
 
 

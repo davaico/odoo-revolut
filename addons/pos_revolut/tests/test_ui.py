@@ -401,10 +401,13 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
     def test_terminal_tip_waits_for_report_and_recovers_after_reload(self):
         self._run_terminal_tip_checkout()
 
+    def test_tipped_processing_payment_completes_without_manual_status(self):
+        self._run_terminal_tip_checkout(processing=True)
+
     def test_unsaved_global_rounded_return_refunds_base_and_tip_exactly(self):
         self._run_terminal_tip_checkout(refund=True)
 
-    def _run_terminal_tip_checkout(self, *, refund=False):
+    def _run_terminal_tip_checkout(self, *, refund=False, processing=False):
         revolut_method = self._configure_revolut_checkout()
         base_minor, tip_minor, gross_minor = (1000, 3, 1003) if refund else (1234, 200, 1434)
         gross, tip = gross_minor / 100, tip_minor / 100
@@ -421,6 +424,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         currency = self.main_pos_config.currency_id.name
         created = TerminalTipFixtures.created_at
         report_polls = 0
+        payment_polls = 0
         calls = []
         output = io.StringIO(newline="")
         writer = csv.DictWriter(output, fieldnames=TerminalTipFixtures.columns)
@@ -428,9 +432,9 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         writer.writerow({
             "payment_id": self.PAYMENT_ID, "order_id": self.ORDER_ID,
             "currency": currency, "location_id": self.LOCATION_ID,
-            "type": "PAYMENT", "state": "COMPLETED", "amount": f"{gross:.2f}",
+            "type": "PAYMENT", "state": "CAPTURED", "amount": f"{gross:.2f}",
             "tip_amount": f"{tip:.2f}", "surcharge_amount": "", "refunded_amount": "0.00",
-            "created_date": created, "captured_date": "2026-10-01T10:00:10Z",
+            "created_date": created + "[UTC]", "captured_date": "2026-10-01T10:00:10Z[UTC]",
         })
         report_csv = output.getvalue().encode()
 
@@ -442,7 +446,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
             return result
 
         def request(method, url, **kwargs):
-            nonlocal report_polls
+            nonlocal report_polls, payment_polls
             calls.append((method, url, kwargs))
             if method == "GET" and url.endswith("/api/terminals"):
                 return response({"terminals": [{
@@ -462,15 +466,19 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                     "state": "completed", "payment_id": self.PAYMENT_ID,
                 })
             if method == "GET" and url.endswith(f"/api/payments/{self.PAYMENT_ID}"):
+                payment_polls += 1
+                state = ("authorised", "capture_started", "captured")[min(payment_polls - 1, 2)] if processing else "captured"
                 return response({
                     "id": self.PAYMENT_ID, "order_id": self.ORDER_ID,
                     "amount": gross_minor, "currency": currency,
-                    "state": "captured", "created_at": created,
+                    "state": state, "created_at": created,
                 })
             if method == "POST" and url.endswith("/api/report-runs"):
-                return response({"report_run_id": run_id, "status": "completed" if refund else "processing"})
+                return response({"report_run_id": run_id, "status": "completed" if refund or processing else "processing"})
             if method == "GET" and url.endswith(f"/api/report-runs/{run_id}"):
                 report_polls += 1
+                if processing:
+                    return response({"report_run_id": run_id, "status": "completed"})
                 if report_polls == 3:
                     # Lose report transport after two processing observations;
                     # the native POS must retain the captured operation on reload.
@@ -498,10 +506,13 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
                    side_effect=request):
             self.start_pos_tour("pos_revolut_global_rounded_tip_return" if refund
+                                else "pos_revolut_tipped_processing_checkout" if processing
                                 else "pos_revolut_terminal_tip_report_reload",
                                 login="pos_admin" if refund else "pos_user")
 
         self.env.invalidate_all()
+        if processing:
+            self.assertEqual(payment_polls, 3)
         operation = self.env["pos.revolut.payment.operation"].search([
             ("payment_method_id", "=", revolut_method.id),
         ])
@@ -520,7 +531,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.assertEqual(tips.price_subtotal_incl, tip)
         self.assertEqual(operation.pos_payment_id.amount, gross)
         self.assertEqual(operation.authorization_id.projection_revision, 1)
-        if not refund:
+        if not refund and not processing:
             self.assertGreaterEqual(report_polls, 4)
         financial_posts = [call for call in calls if call[0] == "POST" and "/api/report-runs" not in call[1]]
         self.assertEqual(len(financial_posts), 3 if refund else 2)

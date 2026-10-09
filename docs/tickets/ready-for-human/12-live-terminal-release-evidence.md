@@ -10,6 +10,18 @@ Start from the latest reviewed `main` in an isolated worktree. Freeze the final 
 
 ## Current handoff — fresh acceptance campaign, 2026-10-07
 
+The [2026-10-08 guided retest and automated checkpoint](../../testing/ticket-12-fresh-retest-2026-10-08.md)
+began execution on `8adc68f255e4ea1830831f571e22f5b3f41875e4` and refroze candidate
+`693937ee3b7a78991a33cc714e0d47a4c70c3663` after a test-only restart-verifier
+correction. It records fresh and carried-forward results and supplies the
+operator sequence. The later reviewed deployment-tooling candidate
+`b13c5be7952b40f2f42a79098daaf043f6651154` permits safe pending-refund upgrades
+and was deployed/source-verified on 2026-10-08, preserving all 1,080 financial
+ledger records. The existing addon migration removed the broad Merchant-wide
+evidence page; no separate manual UI/access change occurred.
+All live R01–R24 cases remain unverified for this campaign;
+the dedicated-register setup below remains the preparation record.
+
 The owner requests **a new end-to-end test campaign from scratch**, using a
 separate Odoo register so new sales, returns and evidence are easy to follow.
 Use the [final release checklist](../../testing/ticket-12-final-release-checklist.md)
@@ -59,9 +71,17 @@ deployment or publication is implied by this checklist update.
 ### Campaign setup record
 
 - Register preparation: created and opened; verified setup is recorded below.
-- Deployed revision/device readiness: NOT VERIFIED for this campaign.
-- Scenario execution and financial budget: NOT STARTED / NOT AGREED.
-- Test results: all A/R rows in the checklist start NOT RUN.
+- Deployed revision: `b13c5be7952b40f2f42a79098daaf043f6651154`, verified
+  against the tested archive on 2026-10-08; physical device readiness remains
+  NOT VERIFIED for this campaign.
+- Live scenario execution: NOT STARTED. On 2026-10-08 the owner approved a
+  maximum £0.25 campaign budget and permitted retained charges. The guided
+  retest treats this as aggregate gross card charges, with no budget recycling
+  after refunds. The operator replied ready on 2026-10-08; no new campaign
+  charge/refund has occurred.
+- Automated A01–A10 acceptance passed on 2026-10-08 with the candidate and
+  carried-forward source-equivalence evidence recorded in the guided retest.
+  All live R rows remain NOT RUN.
 
 ### Register setup completed — 2026-10-07
 
@@ -140,8 +160,8 @@ test evidence and keep new results separate.
 
 ## Acceptance criteria
 
-- [ ] Freeze the reviewed combined candidate, Odoo/addon versions and release artifact/checksum; record current implementation dependencies, independent review and any unresolved release defects.
-- [ ] Run complete mocked install/upgrade, retail/Restaurant, POS lifecycle, public API boundary, restart/recovery, permission/migration, deployment and exact delivered-artifact acceptance on that candidate. Exercise risky behavior; a passing build or skipped browser test is not acceptance.
+- [x] Freeze the reviewed combined candidate, Odoo/addon versions and release artifact/checksum; record current implementation dependencies, independent review and any unresolved release defects. See the 2026-10-08 guided retest, including its test-only correction and explained evidence carry-forward.
+- [x] Run complete mocked install/upgrade, retail/Restaurant, POS lifecycle, public API boundary, restart/recovery, permission/migration, deployment and exact delivered-artifact acceptance on that candidate. Exercise risky behavior; a passing build or skipped browser test is not acceptance. Complete on 2026-10-08; affected restart/artifact checks ran on the final frozen candidate, with unchanged-code broader results carried forward explicitly.
 - [ ] Create and open the dedicated test register/session, verify zero new campaign orders/refunds, record currency/payment methods/grants and use its filters throughout. Preserve old registers and history; check shared-terminal exposure separately.
 - [ ] Recheck the deployed candidate, device/account/location, environment, currencies, register permissions and explicitly authorized amounts before any live test. Use supported controlled methods and the dedicated test session.
 - [ ] Complete every applicable operator scenario in the final checklist, including full/split/multiple-card checkout, tips, Restaurant, decline/failure/cancellation, timeout/interruption/late success, terminal busy and concurrent cashiers/status checks.
