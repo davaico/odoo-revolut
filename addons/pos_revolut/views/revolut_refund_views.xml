@@ -7,11 +7,11 @@
             <list create="0" edit="0" delete="0" decoration-danger="state == 'failed'" decoration-warning="state in ('dispatching', 'pending', 'unresolved')">
                 <field name="create_date" string="Recorded On"/>
                 <field name="original_order_id"/>
-                <field name="pos_order_id" string="Odoo Return"/>
+                <field name="display_return_id"/>
                 <field name="amount"/>
                 <field name="currency_id" optional="hide"/>
                 <field name="state" string="Refund Status"/>
-                <field name="origin" string="Source"/><field name="native_reconciliation_status" string="Native completion"/>
+                <field name="origin" string="Source"/><field name="native_completion_label"/>
                 <field name="revolut_order_id" string="Revolut Refund Reference" optional="hide"/>
                 <field name="related_order_id" string="Original Revolut Payment Reference" optional="hide"/>
                 <field name="company_id" groups="base.group_multi_company" optional="hide"/>
@@ -24,6 +24,8 @@
         <field name="arch" type="xml">
             <form create="0" edit="0" delete="0">
                 <header>
+                    <field name="pos_order_id" invisible="True"/>
+                    <field name="native_reconciliation_status" invisible="True"/>
                     <button name="action_check_status" type="object" string="Check status" class="btn-primary" invisible="state in ('verified', 'failed')"/>
                     <button name="action_recover_return" type="object" string="Restore missing return" class="btn-primary" groups="point_of_sale.group_pos_manager" invisible="origin != 'odoo' or state != 'verified' or pos_order_id"/>
                 <button name="action_open_native_completion" type="object" string="Complete native work" groups="point_of_sale.group_pos_manager" invisible="origin != 'external' or state == 'failed' or native_reconciliation_status in ('native_completed', 'financial_only')"/>
@@ -35,11 +37,11 @@
                             <field name="state" string="Refund Status"/>
                             <field name="amount"/>
                             <field name="currency_id" invisible="True"/>
-                            <field name="origin" string="Source"/><field name="native_reconciliation_status" string="Native completion"/>
+                            <field name="origin" string="Source"/><field name="native_completion_label"/>
                         </group>
                         <group>
                             <field name="original_order_id"/>
-                            <field name="pos_order_id" string="Odoo Return"/>
+                            <field name="display_return_id"/>
                             <field name="payment_method_id"/>
                         </group>
                     </group>

@@ -70,9 +70,13 @@ class TestRevolutRegisterWorklists(TransactionCase):
             "actor_id": self.manager.id, "action": "reconcile", "resulting_state": "unresolved",
             "evidence_reference": "mocked worklist evidence",
         })
+        self.return_draft = self.env["pos.order"].create({
+            "session_id": self.session.id, "uuid": str(uuid4()),
+            "amount_total": 0, "amount_tax": 0, "amount_paid": 0, "amount_return": 0,
+        })
         self.refund = self.env["pos.revolut.refund.operation"].sudo().create({
             "original_operation_id": self.operation.id, "pos_session_id": self.session.id,
-            "order_uuid": str(uuid4()), "payment_line_uuid": str(uuid4()),
+            "order_uuid": self.return_draft.uuid, "payment_line_uuid": str(uuid4()),
             "amount": 1, "amount_minor": 100, "currency_id": self.session.currency_id.id,
             "financial_snapshot": {"fixture": "visibility only"},
         })
@@ -102,6 +106,17 @@ class TestRevolutRegisterWorklists(TransactionCase):
             "secret_reference": "ODOO_REVOLUT_SECRET_WORKLIST_TEST", "state": "unresolved",
             **extra,
         }
+
+    def test_pending_refund_worklist_identifies_saved_return_without_settling_it(self):
+        draft = self.return_draft
+        evidence = self.refund.read(["pos_order_id", "native_reconciliation_status", "state"])
+        row = call_kw(self.caller_env[self.refund._name], "read", [
+            [self.refund.id], ["display_return_id", "native_completion_label"],
+        ], {})[0]
+        self.assertEqual(row["display_return_id"][0], draft.id)
+        self.assertEqual(row["native_completion_label"], "Return awaiting refund confirmation")
+        self.assertEqual(self.refund.read(["pos_order_id", "native_reconciliation_status", "state"]), evidence)
+        self.request.assert_not_called()
 
     def _assert_visibility(self, allowed, records=None):
         for record, field in records or self.records:

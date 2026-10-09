@@ -567,3 +567,12 @@ class TestSharedPosSessionAccess(TransactionCase):
         self.env.invalidate_all()
         self.assertTrue(order.with_user(self.users['colleague']).revolut_has_authority_exposure)
         self.request.assert_not_called()
+
+    def test_unsaved_payment_discovery_checks_current_register_grant(self):
+        self.assertFalse(self._rpc('colleague', 'revolut_find_payment',
+            self.order_uuid, self.line_uuid, self.session.id))
+        self.config.revolut_user_ids = [Command.unlink(self.users['colleague'].id)]
+        with self.assertRaisesRegex(AccessError, 'grant your backend user Revolut access'):
+            self._rpc('colleague', 'revolut_find_payment',
+                self.order_uuid, self.line_uuid, self.session.id)
+        self.request.assert_not_called()
