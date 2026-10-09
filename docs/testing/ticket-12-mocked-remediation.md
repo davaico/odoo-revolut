@@ -56,9 +56,30 @@ positive subtotal alone; no stored-sign change is made.
 
 ## Verification
 
-Regression and complete-suite results are recorded here after completion.
+Focused red/green regressions and follow-up checks:
+
+| Check | Result |
+| --- | --- |
+| Complete clean-install addon suite | 619 passed, zero failures/errors; `ODOO_REVOLUT_TEST_PROJECT=ticket12-complete ./scripts/test-addon`. |
+| Exact external and discounted penny returns | 2 passed; persisted native subtotals, negative reports/margins, and posted external credit-note reversal checked. |
+| Native stale synchronization browser regressions | Both failed against the baseline, then 2 passed for cancellation and pending-refund recovery. |
+| Shared register access suite | 27 passed, including revoked unsaved-order discovery. |
+| Worklist and accounting disposition suites | 14 passed, including display-only recovery and accounting-group view visibility. |
+| Supported two-card browser flow | Failed with missing Choose amount UI, then passed with 12.33 and 0.01 allocations, separate references and automatic completion. |
+| Receipt print-width browser regressions | Overflow reproduced before fix; ordinary and mixed-tender receipts passed at 58 mm and 80 mm. |
+| JavaScript suites | 125 passed, no skips: 122 payment-state and 3 allowance cases. |
+| Host tooling suite | 65 run: 62 passed, 3 skipped for missing host Odoo dependencies. |
+| PDF probes in supported isolated runtime | All 7 passed, including the three host-skipped probes. |
+| Standards review | No documented-standard violations or actionable smells. |
+| Specification review | No actionable omissions, scope creep or implementation errors. |
+
 No static typechecker is configured; Python compilation, JavaScript syntax,
 XML parsing and whitespace checks supplement behavioral tests.
+
+Working logs are under `/tmp/ticket12-*`, including `subtotal-final`,
+`sync-green`, `access-green`, `split-ui-green`, `print-green`,
+`print-split-green`, `node-final`, `host-final`, `pdf-runtime` and `complete` (all `.log`).
+These temporary logs are not the durable live-evidence archive.
 
 Manual follow-up after a separately authorized deployment should exercise
 two-browser cancellation, pending-refund recovery, revoked-register feedback,
