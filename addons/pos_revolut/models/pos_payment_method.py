@@ -848,7 +848,7 @@ class PosPaymentMethod(models.Model):
                 )},
             )
 
-    def revolut_find_payment(self, order_uuid, payment_line_uuid):
+    def revolut_find_payment(self, order_uuid, payment_line_uuid, session_id=None):
         self.ensure_one()
         if not self.env.user.has_group("point_of_sale.group_pos_user"):
             raise AccessError(_("Only Point of Sale users can read terminal payments."))
@@ -862,6 +862,12 @@ class PosPaymentMethod(models.Model):
             payment_line_uuid = str(UUID(payment_line_uuid))
         except (TypeError, ValueError, AttributeError):
             raise UserError(_("The POS payment identifiers are invalid.")) from None
+        if session_id is not None:
+            session = self.env["pos.session"].browse(session_id).exists()
+            if (not session or session.company_id != self.company_id
+                    or self not in session.config_id.payment_method_ids):
+                raise AccessError(_("This Revolut terminal is not available in the POS session."))
+            session.config_id._check_revolut_register_access(session=session)
         operation = self.env["pos.revolut.payment.operation"].sudo().search(
             [
                 ("payment_method_id", "=", self.id),

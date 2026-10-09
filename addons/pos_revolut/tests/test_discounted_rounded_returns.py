@@ -70,7 +70,7 @@ class TestDiscountedRoundedReturns(CommonPosTest):
         self.pos_config_usd.write({"cash_rounding": True, "only_round_cash_method": False,
                                    "rounding_method": rounding.id})
 
-    def _collected_sale(self, lines, collected_minor, *, taxes=None, line_taxes=None, stock=False, partner=None):
+    def _collected_sale(self, lines, collected_minor, *, taxes=None, line_taxes=None, stock=False, partner=None, discount=0):
         """Capture and report fixture through public preparation/start/poll."""
         from odoo.addons.pos_revolut.models.terminal_tip import REPORT_COLUMNS
         precision = self.session.currency_id.decimal_places
@@ -94,14 +94,15 @@ class TestDiscountedRoundedReturns(CommonPosTest):
                 self.env["stock.quant"]._update_available_quantity(product, location, abs(quantity))
             identity = f"{index + 1:08x}{str(uuid4())[8:]}"
             values = dict(template, uuid=identity, product_id=product.id, price_unit=price,
-                          qty=quantity, price_subtotal=price * quantity, price_subtotal_incl=price * quantity)
+                          qty=quantity, discount=discount, price_subtotal=price * quantity * (1 - discount / 100),
+                          price_subtotal_incl=price * quantity * (1 - discount / 100))
             if applied_tax:
-                calculated = applied_tax.compute_all(price, self.session.currency_id, quantity, product=product)
+                calculated = applied_tax.compute_all(price * (1 - discount / 100), self.session.currency_id, quantity, product=product)
                 values.update(tax_ids=[Command.set(applied_tax.ids)], price_subtotal=calculated["total_excluded"],
                               price_subtotal_incl=calculated["total_included"])
             sale["lines"].append(Command.create(values))
         sale.update(state="draft", amount_paid=0,
-                    amount_total=self.session.currency_id.round(sum(price * qty for price, qty in lines)))
+                    amount_total=self.session.currency_id.round(sum(price * qty * (1 - discount / 100) for price, qty in lines)))
         if line_taxes is not None:
             sale["amount_total"] = charge_base_minor / factor
         if taxes or line_taxes is not None:
@@ -264,6 +265,64 @@ class TestDiscountedRoundedReturns(CommonPosTest):
         self._collected_sale([(10, 1), (-1, 1)], 900)
         self._return_lines([1, 1], 900)
         self._complete_return(900)
+
+    def test_external_penny_return_native_magnitudes_report_and_invoice_as_refund(self):
+        self._collected_sale([(0.01, 1)], 1)
+        self.refund_id = str(uuid4())
+        refund = self._discover([self._external("completed", amount=1)])
+        self.request.reset_mock()
+        self.request.side_effect = AssertionError("Native completion must not issue a refund")
+        manager = self._mutation_actor()
+        action = self._rpc_refund(manager, "pos.revolut.refund.operation", "action_prepare_native_return", [
+            [refund.id], [{"original_line_id": self.original.lines.id, "quantity": 1}],
+        ])
+        native = self.env["pos.order"].browse(action["res_id"])
+        for finalized in (False, True):
+            if finalized:
+                self._rpc_refund(manager, "pos.revolut.refund.operation", "action_validate_native_return", [[refund.id]])
+            self.env.flush_all()
+            self.env.invalidate_all()
+            line = native.lines.read(["qty", "price_subtotal", "price_subtotal_incl"])[0]
+            self.assertEqual(line["qty"], -1)
+            # Pinned Odoo stores refund magnitudes here; margin, tax bases,
+            # and the reporting view apply their own refund signs.
+            self.assertEqual(line["price_subtotal"], 0.01)
+            self.assertEqual(line["price_subtotal_incl"], 0.01)
+            self.assertEqual(native.amount_total, -0.01)
+        report = self.env["report.pos.order"].search([("order_id", "=", native.id)])
+        self.assertEqual(sum(report.mapped("price_subtotal_excl")), -0.01)
+        self.assertEqual(sum(report.mapped("price_total")), -0.01)
+        self.assertEqual(native.lines.margin, -0.01)
+        native.write({"partner_id": self.partner_mobt.id})
+        result = native.with_context(generate_pdf=False).action_pos_order_invoice()
+        credit = self.env["account.move"].browse(result["res_id"])
+        self.assertEqual(credit.move_type, "out_refund")
+        self.assertEqual(credit.state, "posted")
+        self.assertEqual(credit.amount_total, 0.01)
+        self.assertEqual(sum(credit.invoice_line_ids.mapped("balance")), 0.01)
+        self.assertAlmostEqual(sum(credit.line_ids.mapped("balance")), 0)
+        self.assertEqual(self.original.amount_total, 0.01)
+        self.request.assert_not_called()
+
+    def test_discounted_penny_return_native_subtotals_and_reporting(self):
+        self._collected_sale([(0.01, 2)], 1, discount=50)
+        self._return_lines([1], 1)
+        # Match the native POS return serializer (legacy test fixtures omit
+        # is_refund and consequently use signed line amounts instead).
+        self.payload["is_refund"] = True
+        self.payload["lines"][0][2].update(price_subtotal=0.01, price_subtotal_incl=0.01)
+        refund = self._complete_return(1)
+        self.env.flush_all()
+        self.env.invalidate_all()
+        native = refund.pos_order_id
+        self.assertEqual(native.lines.qty, -2)
+        self.assertEqual(native.lines.discount, 50)
+        self.assertEqual(native.lines.price_subtotal, 0.01)
+        self.assertEqual(native.lines.price_subtotal_incl, 0.01)
+        self.assertEqual(native.amount_total, -0.01)
+        report = self.env["report.pos.order"].search([("order_id", "=", native.id)])
+        self.assertEqual(sum(report.mapped("price_total")), -0.01)
+        self.assertEqual(native.lines.margin, -0.01)
 
     def test_global_rounding_small_last_line_returns_original_collected_amount(self):
         self._five_cent_rounding()

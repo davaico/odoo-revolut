@@ -1,3 +1,4 @@
+import { refundAllowances } from "./refund_allowances";
 import { _t } from "@web/core/l10n/translation";
 import { AlertDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { Dialog } from "@web/core/dialog/dialog";
@@ -86,15 +87,13 @@ class RefundAllocationDialog extends Component {
     }
 
     defaultAmount(source) {
-        const available = source.terminal_tip_evidence
-            ? Math.min(source.remaining_base_minor, source.return_base_minor)
-            : source.remaining_minor;
+        const available = source.allowances.baseMinor;
         return (Math.min(available, this.props.maximumMinor) /
             10 ** this.props.decimalPlaces).toFixed(this.props.decimalPlaces);
     }
 
     defaultTip(source) {
-        return ((source.terminal_tip_evidence ? Math.min(source.remaining_tip_minor, source.return_tip_minor) : 0) /
+        return ((source.terminal_tip_evidence ? source.allowances.tipMinor : 0) /
             10 ** this.props.decimalPlaces).toFixed(this.props.decimalPlaces);
     }
 
@@ -128,8 +127,8 @@ class RefundAllocationDialog extends Component {
             baseMinor < 0 || tipMinor < 0 || !Number.isFinite(tipNumeric) ||
             Math.abs(numeric * factor - baseMinor) > 0.000001 ||
             Math.abs(tipNumeric * factor - tipMinor) > 0.000001 ||
-            (source.terminal_tip_evidence && (baseMinor > Math.min(source.remaining_base_minor, source.return_base_minor) ||
-                tipMinor > Math.min(source.remaining_tip_minor, source.return_tip_minor))) ||
+            (baseMinor > source.allowances.baseMinor ||
+                tipMinor > source.allowances.tipMinor) ||
             minor > source.remaining_minor || minor > this.props.maximumMinor) {
             this.state.error = _t("Choose an original Revolut payment and an amount within its remaining balance and this return.");
             return;
@@ -147,13 +146,17 @@ function chooseRefundAllocation(dialog, sources, paymentMethodId, line, currency
     // The server allocates the original collected base and tip. Native cash
     // rounding of a newly created return can differ from that checked total.
     const otherPaid = line.pos_order_id.payment_ids.filter((payment) => payment.uuid !== line.uuid)
-        .reduce((total, payment) => total + Math.round(-payment.amount * factor), 0);
+        .reduce((total, payment) => total + Math.max(0, Math.round(-payment.amount * factor)), 0);
     const maximumMinor = totals.length === 1 && Number.isSafeInteger(totals[0]) && totals[0] > 0
         ? Math.max(0, totals[0] - otherPaid)
         : Math.round(Math.abs(line.amount) * factor);
+    const availableSources = sources.map((source) => ({
+        ...source,
+        allowances: refundAllowances(source, line.pos_order_id.payment_ids, line.uuid, factor),
+    }));
     return new Promise((resolve) => {
         dialog.add(RefundAllocationDialog, {
-            sources, paymentMethodId, maximumMinor, decimalPlaces,
+            sources: availableSources, paymentMethodId, maximumMinor, decimalPlaces,
             currencySymbol: currency.symbol,
             onConfirm: resolve,
         }, { onClose: () => resolve(false) });
@@ -308,6 +311,13 @@ export class PaymentRevolut extends PaymentInterface {
     }
 
     _showResultError(line, state) {
+        if (state === "register_access_denied") {
+            this.env.services.dialog.add(AlertDialog, {
+                title: _t("Revolut register access required"),
+                body: _t("Your backend user cannot access Revolut on this register. Ask an administrator to check your register grant. Existing payments and refunds remain unchanged; recover their status after access is restored."),
+            });
+            return;
+        }
         if (state === "checkout_restore_failed") {
             this.env.services.dialog.add(AlertDialog, {
                 title: _t("Revolut checkout recovery"),
@@ -396,6 +406,16 @@ patch(PosPayment.prototype, {
 });
 
 patch(PosStore.prototype, {
+    async postSyncAllOrders(orders) {
+        const result = await super.postSyncAllOrders(...arguments);
+        for (const order of orders) {
+            for (const line of order.payment_ids.filter(isRevolut)) {
+                line.payment_method_id.payment_terminal.paymentState.afterSync(order, line);
+            }
+        }
+        return result;
+    },
+
     async afterProcessServerData() {
         const result = await super.afterProcessServerData(...arguments);
         // Native startup reloads shared draft statuses after local state was
@@ -680,6 +700,9 @@ patch(PaymentScreenPaymentLines.prototype, {
             return _t("Payment received — verifying payment details");
         }
         const outcome = paymentOutcome(line);
+        if (outcome === "register_access_denied") {
+            return _t("Register access required — contact an administrator");
+        }
         if (isRevolutRefund(line)) {
             const messages = {
                 discovery_interrupted: _t("Connection check failed — no refund request sent"),
