@@ -714,3 +714,57 @@ recorded runs. A test-only report-poll-count assertion was corrected and its
 affected browser scenarios rerun successfully. Independent review has no
 remaining blocking findings. Not deployed; physical automatic-checkout retest
 remains required. Existing captured sale and pending refund need no replay.
+
+## Deployed tipping fix and Cash smoke — 2026-10-09
+
+[PR #67](https://github.com/davaico/odoo-revolut/pull/67) merged and deployed
+addon **19.0.1.18.6**, exact tested candidate
+`b4c11055bf2258497b736ed80b37525e8bfc79f0`. The merged PR records archive
+acceptance, backup/release paths, preservation of 1,246 financial records,
+109 matching deployed source files, installed version and healthy service.
+This supersedes the earlier local-only status; physical tipped-checkout retest
+remains outstanding.
+
+Following the requested refresh and new £0.01 Cash smoke test, the operator
+provided a Payment Successful screenshot and native receipt showing one £0.01
+test product, £0.01 total and £0.01 Cash tender under Administrator. Cash UI
+smoke passed. No independent backend/no-terminal-dispatch check is claimed
+from the screenshot. The existing refund tab remains visible; its provider
+state was not rechecked in this step. R01 remains partial.
+
+Next repeat R05 on a new £0.01 base sale with £0.01 terminal tip (£0.02 gross),
+expecting automatic receipt with no unresolved popup or manual Check status.
+This new charge has not run. The Cash transaction does not change the Revolut
+gross-charge budget: recorded card spend £0.08, remaining cap £0.17.
+
+## Automatic tipped-checkout retest passed — 2026-10-09
+
+On deployed **19.0.1.18.6**, the operator explicitly reports the next tipped
+payment completed entirely automatically. The screenshot shows Payment
+Successful £0.02, one £0.01 product and one £0.01 Tips line, with total and
+Revolut tender £0.02. The operator reports no manual popup acknowledgement or
+Check status step. Read-only backend verification confirms base one minor
+unit, captured/gross two, terminal tip one, verified payment operation, native
+Paid total/paid £0.02, and exactly one successful create-order plus one
+successful create-intent dispatch for this operation.
+
+R05 automatic tipped-checkout retest is PASS for this case. It does not prove
+the missing transient response from the earlier failure, or close the broader
+R05 tip-refund/no-tip/report cases. Gross campaign card spend is now **£0.10**,
+leaving **£0.15** of the approved £0.25 gross-charge cap. The earlier Cash smoke
+is separate. The existing pending refund tab remains visible; no new status
+or financial action for that refund was performed here.
+
+Next proposed R10/R05 case: use this latest £0.02 sale for a product-only
+£0.01 partial refund, selecting quantity one of the test product and leaving
+the Tips line unselected. Expected allocation is £0.01 base and £0.00 tip,
+leaving the tip unrefunded. This partial refund has not yet been submitted.
+
+
+The operator confirmed the product-only partial-refund allocation and supplied
+its Refund in process screenshot. Read-only backend checks confirm this refund
+is pending/processing at £0.01 base, £0.00 tip, £0.01 total. The earlier full
+£0.01 refund is also still pending/processing. These are two distinct original
+sales; neither is recorded as completed. R10 is pending. Gross card spend stays
+£0.10 with £0.15 remaining. The owner requested deployment of the template-only
+tip-remaining hint as version 19.0.1.18.7; both existing refunds must survive.
