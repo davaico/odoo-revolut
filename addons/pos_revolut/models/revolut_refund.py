@@ -352,7 +352,6 @@ class PosPaymentMethod(models.Model):
                     raise UserError(_("Another refund request is in progress. Check status.")) from None
         operation_id = reservation.operation_id
         source_amount_minor = reservation.source_amount_minor
-        verified_before_claim = reservation.verified_before_claim
         operation = self._read_refund_owned(operation_id, order_uuid, payment_line_uuid)
         try:
             original = self._revolut_api_request(operation, "GET", f"/api/orders/{operation['original_order_id']}")
@@ -361,9 +360,9 @@ class PosPaymentMethod(models.Model):
                     or original.get("amount") != source_amount_minor or original.get("currency") != operation["currency_code"]
                     or type(original.get("refunded_amount")) is not int
                     or not 0 <= original["refunded_amount"] <= source_amount_minor
-                    or original["refunded_amount"] != verified_before_claim
                     or (reservation.source_base_minor is not None and (
-                        reservation.source_base_minor + reservation.source_tip_minor != source_amount_minor))):
+                        reservation.source_base_minor + reservation.source_tip_minor != source_amount_minor))
+                    or not self._revolut_matches_refunded_amount(operation, original["refunded_amount"], reservation)):
                 return self._update_refund_owned(operation_id, {"state": "failed", "provider_state": "original_ineligible"})
             result = self._revolut_api_request(
                 operation, "POST", f"/api/orders/{operation['original_order_id']}/refund",
@@ -376,6 +375,25 @@ class PosPaymentMethod(models.Model):
             return self._update_refund_owned(operation_id, {"revolut_order_id": result["id"], "state": "pending", "provider_state": result.get("state")})
         except (requests.RequestException, UserError, ValueError):
             return self._update_refund_owned(operation_id, {"state": "unresolved", "local_outcome": "interrupted"})
+
+    def _revolut_matches_refunded_amount(self, operation, refunded_minor, reservation):
+        accounted = reservation.verified_before_claim
+        if refunded_minor == accounted:
+            return True
+        if refunded_minor < accounted:
+            return False
+        # Revolut can count a processing refund in the original's aggregate.
+        # Match that amount to exact prior provider records, not a numerical
+        # allowance. These reads neither complete refunds nor release capacity.
+        # Both sets were frozen under the same reservation locks, preventing a
+        # concurrently verified refund from being counted twice.
+        for prior in reservation.pending_refunds_before_claim:
+            expected = {**operation, **prior}
+            detail = self._revolut_api_request(operation, "GET", f"/api/orders/{prior['order_id']}")
+            self._validate_refund_response(expected, detail)
+            if detail["state"] in {"pending", "processing", "authorised", "completed"}:
+                accounted += prior["amount_minor"]
+        return refunded_minor == accounted
 
     def _read_refund_owned(self, operation_id=None, order_uuid=None, payment_line_uuid=None):
         self._check_refund_authority()

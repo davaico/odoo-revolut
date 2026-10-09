@@ -29,5 +29,12 @@ persisted operation and idempotency key per return payment line. Its reservation
 includes verified, pending, dispatching and unresolved operations. A failed
 operation releases its reservation; its key is never reused for a replacement
 payment line. The original order's `refunded_amount` is checked against locally
-verified refunds before another dispatch. Any provider refund not represented by
-verified local operations blocks dispatch for manager investigation.
+verified refunds before another dispatch. Revolut can also include processing
+refunds in that aggregate. If the totals differ, previously referenced pending
+refunds are read from Revolut and checked for matching identity, parent, amount,
+currency and state. Their active/completed amounts plus the frozen verified
+sum must match the aggregate exactly. This permits multiple pending refunds
+against the same original, each with its own operation and key, without treating
+any pending refund as completed or releasing its reserved balance. Invalid or
+unexplained evidence still blocks dispatch. Provider reads are not atomic;
+inconsistent observations remain conservative rather than accepting a range.
