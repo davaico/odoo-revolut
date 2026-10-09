@@ -243,7 +243,16 @@ class PosOrder(models.Model):
                 order.revolut_payable_target = ((authority.payable_minor + sum(
                     op.terminal_tip_minor for op in authority._operations() if op.state == 'verified'
                 )) / 10**order.currency_id.decimal_places) if exposed else 0
-                return_target = order._revolut_return_target_minor()
+                try:
+                    return_target = order._revolut_return_target_minor()
+                except AccessError:
+                    raise
+                except UserError:
+                    # Native history/receipt reads may prefetch abandoned
+                    # returns whose entitlement another return has consumed.
+                    # Keep their stored display amount; refund discovery and
+                    # settlement still independently validate the allocation.
+                    return_target = order.amount_total * 10**order.currency_id.decimal_places
                 if return_target is not None:
                     order.revolut_has_authority_exposure = True
                     order.revolut_payable_target = return_target / 10**order.currency_id.decimal_places

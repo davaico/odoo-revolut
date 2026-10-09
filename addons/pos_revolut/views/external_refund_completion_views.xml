@@ -21,10 +21,12 @@
                         <field name="lot_names"/>
                     </list>
                 </field>
-                <group invisible="disposition != 'existing'">
-                    <field name="return_order_id" domain="[('lines.refunded_orderline_id.order_id', '=', original_order_id)]"/>
+                <div invisible="disposition != 'existing'">
+                    <group>
+                        <field name="return_order_id" domain="[('lines.refunded_orderline_id.order_id', '=', original_order_id), ('state', '!=', 'cancel')]" options="{'no_create': True, 'no_create_edit': True}" context="{'revolut_return_display': True}"/>
+                    </group>
                     <p>Select every external refund already recorded on this return and its exact card reimbursement. Include the refund opened from the worklist. Confirm any terminal tip allocation for each refund explicitly.</p>
-                    <field name="association_line_ids">
+                    <field name="association_line_ids" nolabel="1">
                         <list editable="bottom">
                             <field name="currency_id" column_invisible="True"/>
                             <field name="payment_method_id" column_invisible="True"/>
@@ -32,11 +34,11 @@
                             <field name="refund_id" domain="[('origin', '=', 'external'), ('original_order_id', '=', parent.original_order_id), ('state', '!=', 'failed')]" options="{'no_create': True}"/>
                             <field name="amount"/>
                             <field name="payment_id" domain="[('pos_order_id', '=', parent.return_order_id), ('payment_method_id', '=', payment_method_id)]" options="{'no_create': True}"/>
-                            <field name="base_amount" readonly="not requires_components"/>
-                            <field name="tip_amount" readonly="not requires_components"/>
+                            <field name="base_amount" string="Base amount" readonly="not requires_components"/>
+                            <field name="tip_amount" string="Terminal tip" readonly="not requires_components"/>
                         </list>
                     </field>
-                </group>
+                </div>
                 <group string="Confirm original payment components" invisible="disposition != 'products' or not requires_components">
                     <p>Confirm the base and terminal tip portions explicitly. Their sum must equal the external card refund.</p>
                     <field name="base_amount"/><field name="tip_amount"/>

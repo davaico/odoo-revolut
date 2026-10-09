@@ -10,6 +10,24 @@ import { registry } from "@web/core/registry";
 const PAYMENT_REFERENCE = "2c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf";
 const REFUND_REFERENCE = "6c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf";
 
+function focusPaymentControl(selector) {
+    return {
+        content: "Payment controls are keyboard reachable with a visible focus indicator",
+        trigger: selector,
+        async run(helpers) {
+            this.anchor.focus();
+            // Retry is the last control; Hoot does not wrap past the last tab stop.
+            await helpers.press("Shift+Tab");
+            await helpers.press("Tab");
+            const style = getComputedStyle(this.anchor);
+            if (document.activeElement !== this.anchor || this.anchor.tabIndex < 0 ||
+                style.outlineStyle !== "solid" || parseFloat(style.outlineWidth) < 2) {
+                throw new Error(`Payment control lacks keyboard focus or a visible outline: ${this.anchor.className}; active=${document.activeElement.className}; outline=${style.outlineStyle} ${style.outlineWidth}`);
+            }
+        },
+    };
+}
+
 function receiptContainsReference(reference) {
     return {
         trigger: `.receipt-screen .pos-payment-terminal-receipt:contains('${reference}')`,
@@ -262,9 +280,21 @@ registry.category("web_tour.tours").add("pos_revolut_processing_multiple_cards",
                     identity = { orderUuid: order.uuid, lineUuid: line.uuid };
                 },
             },
-            PaymentScreen.enterPaymentLineAmount("Revolut", "12.33"),
+            ..."12.33".split("").map((key) => ({
+                trigger: ".payment-screen",
+                run: `press ${key}`,
+            })),
             PaymentScreen.selectedPaymentlineHas("Revolut", "12.33"),
-            { trigger: ".payment-screen .send_payment_request:contains('Send')", run: "click" },
+            {
+                content: "Enter sends the allocation without reactivating Choose amount",
+                trigger: ".payment-screen",
+                run(helpers) {
+                    if (!document.activeElement.matches(".send_payment_request")) {
+                        throw new Error("Expected Send to have focus before Enter");
+                    }
+                    return helpers.press("Enter");
+                },
+            },
             { trigger: ".payment-screen .electronic_status:contains('Waiting for card')" },
             {
                 content: "A captured partial card line leaves exactly one penny due on the unchanged order",
@@ -281,7 +311,8 @@ registry.category("web_tour.tours").add("pos_revolut_processing_multiple_cards",
                     identity.paymentId = line.transaction_id;
                 },
             },
-            PaymentScreen.clickPaymentMethod("Revolut"),
+            focusPaymentControl(".payment-screen .paymentmethod:contains('Revolut')"),
+            { trigger: ".payment-screen", run: "press Enter" },
             { trigger: ".payment-screen .electronic_status:contains('Waiting for card')" },
             ReceiptScreen.isShown(),
             {
@@ -380,6 +411,7 @@ registry.category("web_tour.tours").add("pos_revolut_declined_retry", {
         { trigger: ".modal:contains('The Revolut payment was declined')" },
         Dialog.confirm(),
         { trigger: ".payment-screen .electronic_status:contains('Payment declined')" },
+        focusPaymentControl(".payment-screen .send_payment_request:contains('Retry')"),
         {
             content: "A double click on Retry sends only one replacement charge",
             trigger: ".payment-screen .send_payment_request:contains('Retry')",
