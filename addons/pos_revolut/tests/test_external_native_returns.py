@@ -1,6 +1,9 @@
 """Already-issued card money completes manager-selected native returns."""
+from ast import literal_eval
 from copy import deepcopy
 from uuid import uuid4
+
+from lxml import etree
 
 from odoo import Command, fields
 from odoo.exceptions import AccessError, UserError, ValidationError
@@ -11,6 +14,27 @@ from .test_external_refunds import TestExternalRefunds
 
 @tagged("post_install", "-at_install")
 class TestExternalNativeReturns(TestExternalRefunds):
+    def test_return_link_uses_draft_pos_reference_then_final_order_name(self):
+        refund = self._discover([self._external("completed", amount=1234)])
+        native = self._prepare(refund)
+        native.write({"name": "/"})
+        displayed = native.with_context(revolut_return_display=True)
+        self.assertEqual(native.name, "/")
+        self.assertTrue(native.pos_reference)
+        self.assertEqual(displayed.display_name, native.pos_reference)
+        self.assertEqual(native.display_name, "/")
+        manager_refund = refund.with_user(self._mutation_actor())
+        view = manager_refund.get_view(view_type="form")
+        link = etree.fromstring(view["arch"]).xpath("//field[@name='display_return_id']")[0]
+        row = manager_refund.web_read({"display_return_id": {
+            "fields": {"display_name": {}}, "context": literal_eval(link.get("context")),
+        }})[0]
+        self.assertEqual(row["display_return_id"], {
+            "id": native.id, "display_name": native.pos_reference,
+        })
+        refund.with_user(self._mutation_actor()).action_validate_native_return()
+        self.assertEqual(displayed.display_name, native.name)
+
     def test_manager_selects_and_finalizes_native_return_without_moving_money(self):
         refund = self._discover([self._external("completed", amount=1234)])
         manager = self._mutation_actor()
