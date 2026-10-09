@@ -17,6 +17,7 @@ class ReservationClaim:
     existing_status: dict | None = None
     source_amount_minor: int | None = None
     verified_before_claim: int | None = None
+    pending_refunds_before_claim: tuple = ()
     source_base_minor: int | None = None
     source_tip_minor: int | None = None
 
@@ -1070,6 +1071,10 @@ class ReturnAllocation:
             source_base_minor=source_base if explicit else None,
             source_tip_minor=source_tip if explicit else None,
             verified_before_claim=verified_before_claim,
+            pending_refunds_before_claim=tuple(
+                {"order_id": item.revolut_order_id, "amount_minor": item.amount_minor}
+                for item in source_refunds if item.state != "verified" and item.revolut_order_id
+            ),
         )
 
     def _has_revolut_original(self, original_ids):

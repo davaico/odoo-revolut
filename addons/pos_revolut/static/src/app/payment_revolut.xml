@@ -27,7 +27,6 @@
                 <label class="form-label" for="revolut-refund-amount"><t t-if="selectedSource?.terminal_tip_evidence">Base refund amount</t><t t-else="">Refund amount</t></label>
                 <input id="revolut-refund-amount" class="revolut-refund-amount form-control" type="number" min="0"
                     t-att-step="1 / 10 ** props.decimalPlaces" t-att-value="state.amount" t-on-input="updateAmount"/>
-                <small class="text-muted">Remaining on this return: <t t-esc="maximumAmount"/> <t t-esc="props.currencySymbol"/></small>
             </div>
             <div t-if="selectedSource?.terminal_tip_evidence" class="mt-3">
                 <label class="form-label" for="revolut-refund-tip">Terminal tip refund amount</label>
