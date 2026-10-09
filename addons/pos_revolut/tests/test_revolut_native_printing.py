@@ -27,7 +27,7 @@ class TestRevolutNativePrinting(TestPointOfSaleHttpCommon):
         finally:
             self.session = http_session
 
-    def _historical_sale(self, customer=False, invoiced=False):
+    def _historical_sale(self, customer=False, invoiced=False, split=False):
         self.revolut_method = self._configure_revolut_checkout()
         self.pos_config_usd = self.main_pos_config
         self.company = self.main_pos_config.company_id
@@ -45,10 +45,18 @@ class TestRevolutNativePrinting(TestPointOfSaleHttpCommon):
             })
             payload["partner_id"] = self.invoice_customer.id
         payment = payload["payment_ids"][0][2]
+        if split:
+            payment["amount"] = 6.17
+            payload["payment_ids"].append(Command.create({
+                "amount": 6.17, "name": fields.Datetime.now(),
+                "payment_method_id": self.main_pos_config.payment_method_ids.filtered("is_cash_count")[:1].id,
+                "uuid": str(uuid4()),
+            }))
         operation = self._pos_fixture(
             TestRevolutOrderSettlement._operation, payload["uuid"], payment["uuid"],
             financial_snapshot=self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload),
             provider_state="captured", verified_at=historical_date,
+            amount=payment["amount"], amount_minor=617 if split else 1234,
         )
         payment.update(
             transaction_id=operation.revolut_payment_id,
@@ -65,7 +73,7 @@ class TestRevolutNativePrinting(TestPointOfSaleHttpCommon):
             self.assertEqual(self.original.account_move.state, "posted")
         else:
             self.assertFalse(self.original.account_move)
-        self.sale_session.post_closing_cash_details(0)
+        self.sale_session.post_closing_cash_details(6.17 if split else 0)
         self.sale_session.close_session_from_ui()
         self.assertEqual(self.sale_session.state, "closed")
         self.main_pos_config.with_user(self.pos_user).open_ui()
@@ -108,6 +116,17 @@ class TestRevolutNativePrinting(TestPointOfSaleHttpCommon):
         self.assertEqual(self._financial_evidence(operation, invoice_creation=invoice_creation), before)
         self.assertEqual(self.sale_session.state, "closed")
         merchant.assert_not_called()
+
+    def test_long_reference_fits_narrow_native_receipt(self):
+        operation = self._historical_sale()
+        self._native_tour("pos_revolut_receipt_reference_width", operation)
+        self.assertEqual(self.original.nb_print, 1)
+
+    def test_long_reference_fits_narrow_native_split_receipt(self):
+        operation = self._historical_sale(split=True)
+        self.assertEqual(len(self.original.payment_ids), 2)
+        self._native_tour("pos_revolut_receipt_reference_width", operation)
+        self.assertEqual(self.original.nb_print, 1)
 
     def test_week_old_noninvoiced_sale_reprints_through_native_history_after_fresh_load(self):
         operation = self._historical_sale()

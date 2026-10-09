@@ -11,13 +11,14 @@
                     <field name="amount"/><field name="currency_id" invisible="True"/>
                     <field name="disposition"/><field name="requires_components" invisible="True"/>
                 </group>
+                <p invisible="disposition != 'products'">Enter a positive quantity in Return now for each product being returned. Purchased and Already returned are read-only reference quantities.</p>
                 <field name="line_ids" invisible="disposition != 'products'">
                     <list editable="bottom" create="0" delete="0">
                         <field name="original_line_id" column_invisible="True"/>
                         <field name="currency_id" column_invisible="True"/>
-                        <field name="product_id"/><field name="purchased_quantity"/>
-                        <field name="returned_quantity"/><field name="original_amount"/>
-                        <field name="quantity"/><field name="lot_names"/>
+                        <field name="product_id"/><field name="quantity" string="Return now" width="110px"/><field name="purchased_quantity" string="Purchased"/>
+                        <field name="returned_quantity" string="Already returned"/><field name="original_amount"/>
+                        <field name="lot_names"/>
                     </list>
                 </field>
                 <group invisible="disposition != 'existing'">
@@ -42,7 +43,7 @@
                 </group>
                 <group invisible="disposition != 'financial'">
                     <field name="reason"/><field name="correction_move_id"/>
-                    <p>A posted native correction for the exact original sale and amount is required. Leave the document empty to prepare a draft for accounting review. After posting, reopen completion and select it.</p>
+                    <p>A posted native correction for the exact original sale and amount is required. Leave the document empty to prepare a draft for accounting review. Ask an accountant with existing accounting access to enter and post the journal items. After posting, reopen completion and select it.</p>
                 </group>
                 <footer>
                     <button name="action_prepare" type="object" string="Review native work" class="btn-primary"/>
@@ -71,6 +72,7 @@
             <xpath expr="//sheet" position="inside">
                 <group string="External refund correction" invisible="not revolut_external_refund_id">
                     <field name="revolut_external_refund_id"/><field name="revolut_original_order_id"/>
+                    <p>Ask an accountant with existing accounting access to review this draft and enter and post its journal items. POS manager access alone does not show the Journal Items editor. Then return to the refund and complete the financial-only workflow using this posted correction.</p>
                 </group>
             </xpath>
         </field>

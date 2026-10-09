@@ -310,6 +310,18 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.main_pos_config.current_session_id.set_opening_control(0, "")
         return revolut_method
 
+    def test_stale_draft_sync_preserves_payment_recovery(self):
+        self._configure_revolut_checkout()
+        with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request") as provider:
+            self.start_pos_tour("pos_revolut_sync_recovery_payment")
+            provider.assert_not_called()
+
+    def test_stale_draft_sync_preserves_refund_recovery(self):
+        self._configure_revolut_checkout()
+        with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request") as provider:
+            self.start_pos_tour("pos_revolut_sync_recovery_refund")
+            provider.assert_not_called()
+
     def test_successful_payment_is_verified_before_automatic_checkout(self):
         revolut_method = self._configure_revolut_checkout()
         calls = []

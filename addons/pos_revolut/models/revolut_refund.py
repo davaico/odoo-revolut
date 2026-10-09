@@ -34,6 +34,8 @@ class PosRevolutRefundOperation(models.Model):
     pos_session_id = fields.Many2one("pos.session", required=True, readonly=True, ondelete="restrict")
     pos_order_id = fields.Many2one("pos.order", readonly=True, ondelete="restrict")
     pos_payment_id = fields.Many2one("pos.payment", readonly=True, ondelete="restrict")
+    display_return_id = fields.Many2one("pos.order", string="Odoo Return", compute="_compute_return_display")
+    native_completion_label = fields.Char(string="Native completion", compute="_compute_return_display")
     order_uuid = fields.Char(readonly=True, index=True)
     payment_line_uuid = fields.Char(readonly=True, index=True)
     amount = fields.Monetary(required=True, readonly=True)
@@ -94,6 +96,30 @@ class PosRevolutRefundOperation(models.Model):
         "COALESCE(base_amount_minor, 0) = 0 AND COALESCE(tip_amount_minor, 0) = 0))",
         "Refund base and terminal tip amounts must match the refund total.",
     )
+
+    @api.depends("pos_order_id", "pos_order_id.state", "order_uuid", "pos_session_id", "state", "origin", "native_reconciliation_status")
+    def _compute_return_display(self):
+        # Display recovery is not settlement evidence. Search as the current
+        # user, preserving native order rules as well as register visibility.
+        labels = dict(self._fields["native_reconciliation_status"]._description_selection(self.env))
+        for refund in self:
+            order = refund.pos_order_id
+            if not order and refund.origin == "odoo" and refund.order_uuid:
+                order = self.env["pos.order"].search([
+                    ("uuid", "=", refund.order_uuid),
+                    ("company_id", "=", refund.company_id.id),
+                    ("config_id", "=", refund.pos_session_id.config_id.id),
+                ], limit=1)
+            refund.display_return_id = order
+            label = labels.get(refund.native_reconciliation_status)
+            if refund.origin == "odoo" and refund.state != "failed":
+                if order and order.state in ("paid", "done", "invoiced"):
+                    label = _("Native return completed")
+                elif refund.state != "verified":
+                    label = _("Return awaiting refund confirmation")
+                else:
+                    label = _("Native return awaiting validation") if order else _("Return recovery required")
+            refund.native_completion_label = label
 
     @api.depends("amount", "currency_id", "original_order_id.display_name")
     def _compute_display_name(self):

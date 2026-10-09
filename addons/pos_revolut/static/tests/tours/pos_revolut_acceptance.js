@@ -247,18 +247,19 @@ registry.category("web_tour.tours").add("pos_revolut_processing_multiple_cards",
             Chrome.startPoS(),
             ProductScreen.addOrderline("Desk Pad"),
             ProductScreen.clickPayButton(),
+            { trigger: ".revolut-choose-amount", run: "click" },
             {
-                content: "Prepare a partial card line before sending its amount to the terminal",
-                trigger: ".payment-screen",
+                content: "Choosing an amount creates an editable line without sending a terminal request",
+                trigger: ".payment-screen .send_payment_request:contains('Send')",
                 run() {
                     const pos = window.posmodel;
                     const order = pos.getOrder();
-                    const method = pos.config.payment_method_ids.find((item) => item.name === "Revolut");
-                    const result = order.addPaymentline(method);
-                    if (!result.status) {
-                        throw new Error("Could not prepare the partial Revolut line");
+                    const line = order.payment_ids[0];
+                    if (order.payment_ids.length !== 1 || line.payment_status !== "pending" ||
+                        line.uiState.revolutSnapshot?.operation_id) {
+                        throw new Error("Choosing the allocation dispatched a payment before amount entry");
                     }
-                    identity = { orderUuid: order.uuid, lineUuid: result.data.uuid };
+                    identity = { orderUuid: order.uuid, lineUuid: line.uuid };
                 },
             },
             PaymentScreen.enterPaymentLineAmount("Revolut", "12.33"),

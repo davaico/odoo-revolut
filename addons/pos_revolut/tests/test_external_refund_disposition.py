@@ -1,6 +1,8 @@
 from unittest.mock import patch
 from uuid import uuid4
 
+from lxml import etree
+
 from odoo import Command, fields
 from odoo.addons.point_of_sale.tests.common import CommonPosTest
 from odoo.exceptions import AccessError, UserError, ValidationError
@@ -186,6 +188,21 @@ class TestExternalRefundDisposition(CommonPosTest):
             self.refund.action_record_financial_only("Partial concession", credit.id)
         self.assertEqual(self.refund.native_reconciliation_status, "outstanding")
         self.request.assert_not_called()
+
+    def test_correction_editor_requires_existing_accounting_access(self):
+        manager = new_test_user(
+            self.env, login=f"correction_pos_manager_{uuid4()}",
+            groups="point_of_sale.group_pos_manager",
+        )
+        accountant = new_test_user(
+            self.env, login=f"correction_accountant_{uuid4()}",
+            groups="account.group_account_user",
+        )
+        for user, has_editor in ((manager, False), (accountant, True)):
+            view = self.env["account.move"].with_user(user).get_view(view_type="form")
+            arch = etree.fromstring(view["arch"])
+            self.assertEqual(bool(arch.xpath("//page[@id='aml_tab']")), has_editor)
+            self.assertIn("Ask an accountant", view["arch"])
 
     def test_accountant_can_review_draft_but_cannot_complete_manager_disposition(self):
         accountant = new_test_user(
