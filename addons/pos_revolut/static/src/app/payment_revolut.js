@@ -601,6 +601,9 @@ patch(PaymentScreen.prototype, {
         }
         return line.payment_method_id.payment_terminal.paymentState.screenRequest(
             this.currentOrder, line, async () => {
+                if (isRevolutRefund(line)) {
+                    return this._sendRevolutRefundRequest(line);
+                }
                 try {
                     return await super.sendPaymentRequest(line);
                 } finally {
@@ -608,6 +611,20 @@ patch(PaymentScreen.prototype, {
                 }
             }, options
         );
+    },
+
+    async _sendRevolutRefundRequest(line) {
+        // Revolut refunds use the Merchant API, not the physical terminal.
+        // Keep native checkout behavior without acquiring or releasing Odoo's
+        // shared terminal flag: another order may be taking a card payment.
+        const order = line.pos_order_id;
+        this.numberBuffer.capture();
+        order.payment_ids.forEach((payment) => { payment.can_be_reversed = false; });
+        const successful = await line.pay();
+        if (successful && order.isPaid() && this.pos.config.auto_validate_terminal_payment &&
+            !order.isRefundInProcess() && this.pos.getOrder()?.uuid === order.uuid) {
+            this.validateOrder(false);
+        }
     },
 
     updateSelectedPaymentline() {
@@ -625,7 +642,11 @@ patch(PaymentScreen.prototype, {
         return line.payment_method_id.payment_terminal.paymentState.screenCancel(
             this.currentOrder, line,
             () => this.sendPaymentRequest(line),
-            () => { this.pos.paymentTerminalInProgress = false; }
+            () => {
+                if (!isRevolutRefund(line)) {
+                    this.pos.paymentTerminalInProgress = false;
+                }
+            }
         );
     },
 
