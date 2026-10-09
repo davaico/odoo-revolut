@@ -5,7 +5,35 @@ Updated **2026-10-09**. For manual testing, read the
 use the [checklist](ticket-12-final-release-checklist.md). This file records
 release/test provenance, not a second operator timeline.
 
-## Current deployed release
+## Latest deployment evidence — PR #73 / .18.11
+
+[PR #73](https://github.com/davaico/odoo-revolut/pull/73) records deployment of
+main `557f8a8bc6935ef94d6f1c45d83be4c2f7a48078`, including fix commit
+`7d553c1db3fc628d8371214f05475f81c3930e09`, addon **19.0.1.18.11**.
+Its deployment record reports all 118 deployed file hashes matched, the
+installed version and active service verified, local/public login health checks
+passed, and financial records preserved by the guarded upgrade. This is
+provenance from the merged PR, not a new inspection during evidence publication.
+
+The PR reports 621 addon tests, 125 JavaScript tests, and 65 Python-script tests
+with three existing skips. The exact main archive passed retail installation
+and all four migration checks. These automated checks do not pass the remaining
+manual usability retests. The manual campaign results below were observed
+through .18.10. PR #74 independently closed native invoice PDF ticket 34.
+
+## Previous campaign deployment verification — PR #72
+
+Read-only verification on **2026-10-09** confirms installed addon
+**19.0.1.18.10**, active Odoo service, and release directory
+`/opt/odoo-releases/revolut/staging/d232c57b797b898aef57d5139290f11699d4678c/pos_revolut`.
+The campaign baseline was merge `93b06c2` ([PR #72](https://github.com/davaico/Odoo-Revolut/pull/72)).
+This recheck verified path/version/service, not a complete deployed-file comparison.
+See [mocked remediation](ticket-12-mocked-remediation.md) for the newer automated
+verification scope. Earlier live failures remain historical observations pending
+retest or the documented diagnosis; previous live passes retain their original
+version scope. The subsequent two-card split and other manual results are recorded in the handoff.
+
+## Previous deployed release — PR #70
 
 | Item | Verified value |
 | --- | --- |
@@ -26,7 +54,13 @@ release. PR #70 validates previously referenced pending refunds when they
 explain the provider's refund aggregate, keeps reservations/finality strict,
 and removes the misleading base-field hint. No manual server-source patch.
 
-## Current release verification
+Read-only recheck on **2026-10-09 at 10:18 UTC** confirmed the same release
+symlink, installed addon version **19.0.1.18.9** and active Odoo service. This
+recheck did not repeat the archive checksum/source-file comparison, call the
+provider, or mutate staging. Refund/native-record observations are in the
+current handoff and R11 checklist entry.
+
+## Previous .18.9 release verification
 
 All automated provider calls were mocked; these are not live-device passes.
 
