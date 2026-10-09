@@ -1318,14 +1318,19 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
 
     REFUND_ID = "6c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf"
 
-    def _run_full_refund(self, tour, outcome="completed", *, amount_minor=1234):
+    def _run_full_refund(self, tour, outcome="completed", *, amount_minor=1234, next_sale=False):
         self._configure_revolut_checkout()
         calls = []
         refund_polls = 0
         refund_posts = []
+        sale_count = 0
+        sale_order_id = self.ORDER_ID
+        sale_intent_id = self.INTENT_ID
+        sale_payment_id = self.PAYMENT_ID
+        sale_amount = amount_minor
 
         def request(method, url, **kwargs):
-            nonlocal refund_polls
+            nonlocal refund_polls, sale_count, sale_order_id, sale_intent_id, sale_payment_id, sale_amount
             calls.append((method, url, kwargs))
             if method == "GET" and url.endswith("/api/terminals"):
                 return self._response({"terminals": [{
@@ -1333,19 +1338,25 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                     "operation_mode": "pos", "location_id": self.LOCATION_ID,
                 }]})
             if method == "POST" and url.endswith("/api/orders"):
-                self.assertEqual(kwargs["json"]["amount"], amount_minor)
-                return self._response({"id": self.ORDER_ID})
+                sale_count += 1
+                if next_sale and sale_count == 2:
+                    sale_amount = 1
+                    sale_order_id = "d40466e0-2188-41d0-bebb-aa3a930663a9"
+                    sale_intent_id = "4ca74d24-7b42-451a-91fb-8aca308e2631"
+                    sale_payment_id = "2c2f3842-c34d-4cc3-a0fc-9ae40b04dfb0"
+                self.assertEqual(kwargs["json"]["amount"], sale_amount)
+                return self._response({"id": sale_order_id})
             if method == "POST" and url.endswith("/payment-intents"):
-                return self._response({"id": self.INTENT_ID, "state": "pending"})
+                return self._response({"id": sale_intent_id, "state": "pending"})
             if method == "GET" and "/api/payment-intents/" in url:
                 return self._response({
-                    "id": self.INTENT_ID, "order_id": self.ORDER_ID,
-                    "state": "completed", "payment_id": self.PAYMENT_ID,
+                    "id": sale_intent_id, "order_id": sale_order_id,
+                    "state": "completed", "payment_id": sale_payment_id,
                 })
             if method == "GET" and "/api/payments/" in url:
                 return self._response({
-                    "id": self.PAYMENT_ID, "order_id": self.ORDER_ID,
-                    "state": "captured", "amount": amount_minor,
+                    "id": sale_payment_id, "order_id": sale_order_id,
+                    "state": "captured", "amount": sale_amount,
                     "currency": self.main_pos_config.currency_id.name,
                 })
             if method == "POST" and url.endswith("/refund"):
@@ -1387,7 +1398,24 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
             install_zero_reports(self.env, provider)
             self.start_pos_tour(tour, login="pos_admin")
         self.assertEqual(len(refund_posts), 0 if outcome == "undispatched" else 1)
+        self.assertEqual(sale_count, 2 if next_sale else 1)
         return calls
+
+    def test_pending_refund_allows_next_sale_without_refresh(self):
+        self.desk_pad.copy({"name": "One cent item", "list_price": 0.01,
+                            "taxes_id": [Command.clear()]})
+        self._run_full_refund("pos_revolut_refund_terminal_idle", next_sale=True)
+        self.env.invalidate_all()
+        refunds = self.env["pos.revolut.refund.operation"].search([])
+        self.assertEqual(len(refunds), 1)
+        self.assertEqual(refunds.state, "verified")
+        returned = self.env["pos.order"].search([("uuid", "=", refunds.order_uuid)])
+        self.assertEqual(len(returned), 1)
+        self.assertEqual(returned.state, "draft")
+        sales = self.env["pos.revolut.payment.operation"].search([])
+        self.assertEqual(len(sales), 2)
+        self.assertEqual(set(sales.mapped("state")), {"verified"})
+        self.assertEqual(set(sales.mapped("pos_order_id.state")), {"paid"})
 
     def test_manager_returns_full_revolut_sale_in_normal_pos_flow(self):
         self._run_full_refund("pos_revolut_full_refund")
