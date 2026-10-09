@@ -85,10 +85,6 @@ class RefundAllocationDialog extends Component {
         return this.props.sources.find((source) => source.operation_id === this.state.operationId);
     }
 
-    get maximumAmount() {
-        return (this.props.maximumMinor / 10 ** this.props.decimalPlaces).toFixed(this.props.decimalPlaces);
-    }
-
     defaultAmount(source) {
         const available = source.terminal_tip_evidence
             ? Math.min(source.remaining_base_minor, source.return_base_minor)
