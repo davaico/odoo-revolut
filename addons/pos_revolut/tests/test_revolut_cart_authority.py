@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
@@ -11,6 +12,20 @@ from odoo.tests.common import new_test_user
 
 from .test_revolut_terminal_tip import TerminalTipFixtures
 from odoo.tests.common import tagged
+
+
+@contextmanager
+def rollback_fixture(env):
+    """Keep each deliberately inconsistent legacy row in its own savepoint."""
+    class FixtureComplete(Exception):
+        pass
+
+    try:
+        with env.cr.savepoint():
+            yield
+            raise FixtureComplete()
+    except FixtureComplete:
+        pass
 
 
 @tagged('post_install', '-at_install')
@@ -295,7 +310,7 @@ class TestRevolutCartAuthority(TerminalTipFixtures, CommonPosTest):
     def test_unbound_revolut_financial_references_cannot_be_erased_to_unlock_recovery(self):
         from ..models.cart_authorization import _authority_mutation
         for name in ('transaction_id', 'payment_ref_no', 'revolut_order_id', 'revolut_payment_intent_id'):
-            with self.subTest(reference=name), self.env.cr.savepoint():
+            with self.subTest(reference=name), rollback_fixture(self.env):
                 uuid = str(uuid4())
                 payment = self.saved_tender(uuid=uuid)
                 # Trusted fixture setup represents retained legacy rows that
@@ -316,7 +331,7 @@ class TestRevolutCartAuthority(TerminalTipFixtures, CommonPosTest):
     def test_native_removal_preserves_unknown_revolut_tender_statuses(self):
         from ..models.cart_authorization import _authority_mutation
         for status in ('done', 'waitingCancel'):
-            with self.subTest(status=status):
+            with self.subTest(status=status), rollback_fixture(self.env):
                 payment = self.saved_tender(uuid=str(uuid4()))
                 with _authority_mutation(self.env):
                     payment.payment_status = status

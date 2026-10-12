@@ -1065,6 +1065,8 @@ Choose **Resume** to prepare the current cart and explicitly start payment on
 that same tender. Price Control and authenticated manager approval still apply.
 Alternatively, remove the line with its red X; the server retires its identity
 before the browser removes it, then another tender can pay the original sale.
+If that response is lost, Check status identifies the already-removed line;
+remove its local copy with the red X. A retired line cannot be resumed.
 An existing payment attempt or surviving reference keeps its existing status
 and reconciliation protections. If proof is unavailable or connectivity fails,
 the line stays protected; reconnect and repeat the action on the original line.
