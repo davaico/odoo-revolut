@@ -7,8 +7,9 @@ the disposable Odoo 19.0.20260908 test image. The original live
 order63/tender83/operation77 is untouched; no staging deployment or live charge
 is part of this work.
 
-Final verification on `556782e`: **19 focused tests passed**; the full suite
-completed **653 passed / 1 browser timeout / 0 errors (654 total)**, and the
+Final combined verification on `60bd34f`: **37 focused tests passed** with
+tickets 47 and 48 integrated. Earlier verification on `556782e` passed 19
+focused tests; its full suite completed **653 passed / 1 browser timeout / 0 errors (654 total)**, and the
 timed-out test **passed alone on unchanged source**. All ticket 49 regressions
 passed in both the focused matrix and the full run. The timeout remains
 recorded below rather than being presented as a clean full-suite pass.
@@ -55,7 +56,7 @@ calendar slot selection and final native order validation.
 ## Verification
 
 Initial implementation commit: `ae9969d80dc80371c429a3af5837b15b72021027`.
-Final tested runtime revision: `556782e61f808c4e77278ad370c721023eb6c482`,
+Full-suite runtime revision: `556782e61f808c4e77278ad370c721023eb6c482`,
 which integrates ticket 47's approved merged main `5793723`. The approved
 review base remains `6a973d5`; the ticket 49 patch is also isolated against
 merged main for the final integration review.
@@ -185,12 +186,36 @@ run and this rerun. The timeout did not reproduce in isolation; this does not
 establish its root cause. Both disposable test projects were cleaned up and
 the agreed serial test window was released.
 
+## Pre-merge integration with current main
+
+Before PR creation, main advanced to `ad76f2e`, including ticket 48 and the
+latest ticket 12 acceptance notes. Merge `60bd34f` preserves both test imports
+and both closed-ticket index rows; these were the only conflicts. Both
+independent review axes found zero findings in the combined implementation.
+Ticket 49's runtime guards remain unchanged.
+
+An immutable archive of `60bd34f` passed the combined matrix:
+
+```sh
+ODOO_REVOLUT_TEST_PROJECT=odoo-revolut-ticket49-pr-focused scripts/test-addon \
+  --addons-dir /tmp/ticket49-pr-release/addons \
+  --test-tags '/pos_revolut:TestRevolutRestaurantContext,/pos_revolut:TestRevolutTakeoutReadinessUi,/pos_revolut:TestRevolutRestaurantAuthority,/pos_revolut:TestRevolutRestaurantPosStarts,/pos_revolut:TestRevolutManagerUi,/pos_revolut:TestRevolutCartPricing,/pos_revolut:TestOdooTipBrowser,/pos_revolut:TestRevolutVerifiedCheckout.test_verified_saved_refund_checkout_offline_loader_recovers_without_second_refund,/pos_revolut:TestRevolutVerifiedCheckout.test_missing_tip_preparation_reload_resumes_original_tender_once,/pos_revolut:TestRevolutVerifiedCheckout.test_delayed_native_preparation_cannot_start_after_same_tender_recovery'
+```
+
+Result: **37 passed, zero failures/errors**, 2026-10-12 13:46:47 UTC,
+exit status `0` (`/tmp/ticket49-pr-focused.log`), with actual browser execution
+and no Chrome-startup skips. Both Node test files, Python compilation and
+whitespace checks passed after integration. The disposable project was cleaned
+up. The earlier full-suite timeout and isolated rerun remain recorded above;
+the full suite was not repeated after this integration.
+
 ## Release gate
 
 For rollout, upgrade `pos_revolut` to `19.0.1.18.14` and reopen POS to load
 its browser assets. No credential rotation or data migration is introduced.
-Ticket 47 is integrated here. Combine ticket 48 with this revision and validate
-that combined revision before ticket 12's staging acceptance.
+Tickets 47 and 48 are integrated here and their affected paths passed the
+combined 37-test matrix. Ticket 12 retains the wider release-validation and
+staging-acceptance gates.
 
 Ticket 12 still owns deployment and physical-terminal acceptance. This ticket
 must not repeat a charge against the preserved live fixture or treat its
@@ -216,4 +241,6 @@ accessible. The corrected native recovery and integrated 19-test matrix are
 verified. The full suite and the passing isolated rerun of its sole timeout are
 recorded above. Final evidence review confirms that the implementation and
 verification support closure, with the full-suite timeout limitation retained.
-Spec findings: **0**; no outstanding ticket 49 verification requirements.
+The pre-merge integration at `60bd34f` was independently reviewed on both axes
+with zero findings. Spec findings: **0**; no outstanding ticket 49 verification
+requirements.

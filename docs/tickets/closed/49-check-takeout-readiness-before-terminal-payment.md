@@ -97,7 +97,9 @@ financial identity. Native regression tests verify zero dispatch without a
 slot, available-date selection, automatic Paid checkout with one capture, and
 completion of the original captured tender after scheduling correction.
 
-Verification: 19 integrated focused tests passed. The full suite completed
+Verification: 19 integrated focused tests passed initially. Before PR creation,
+current main `ad76f2e` (including ticket 48) was integrated in `60bd34f`; all 37
+combined focused tests passed with zero failures/errors. The full suite completed
 653 passed / 1 browser timeout / 0 errors out of 654; the sole timed-out existing
 refund-recovery scenario passed in isolation on the identical runtime revision.
 All ticket 49 regressions passed in the full run. Both Node test files, Python
