@@ -1,9 +1,62 @@
 # Ticket 12 — Release provenance
 
-Updated **2026-10-09**. For manual testing, read the
+Updated **2026-10-12**. For manual testing, read the
 [current handoff](ticket-12-fresh-retest-2026-10-08.md); for acceptance criteria,
 use the [checklist](ticket-12-final-release-checklist.md). This file records
 release/test provenance, not a second operator timeline.
+
+## October 12 later continuation — saved PDF, closure and new recovery finding
+
+The owner supplied an actual saved native FULL return PDF, inspected by text
+extraction and rendered-page visual review: 261-3-000003, quantity −1, total
+and Revolut tender −£0.01, readable wrapped refund/original references, one page.
+One session-close attempt was rejected for active drafts; successful closure
+and reopening are not claimed. Return 1019 remains owner-accepted as a test,
+with pending settlement/native work preserved operationally.
+
+[Ticket 47](../tickets/needs-triage/47-recover-unstarted-tender-after-reload.md)
+records a new unstarted-tender removal failure after preparation rejection and
+reload. A fresh local reproduction imports the actual lifecycle module with
+mocked empty payment lookups: two false removals, one interrupted message,
+locked/no Resume. This is not a full native Odoo/browser test. At 09:40:19 UTC,
+read-only staging SQL confirms order 1022 remains draft, tender 79 waiting,
+no payment attempt/cart authorization, counts 72/161/17, Price Control false
+after owner cleanup and restored Tips product 1. No charge was recorded in this
+new scenario; gross-charge budget remains £0.06. Runtime files were not edited
+or deployed, and completed regression suites were not repeated during this
+later continuation. Owner UI settings changes and one closure attempt are
+separate from the earlier agent read-only audit below.
+
+## October 12 agent follow-up — fresh checks and limits
+
+Fresh local runs on worktree HEAD `3669539`: **125 JavaScript passed**;
+**65 Python discovered, 62 passed and 3 skipped** (supported-image PDF cases).
+Focused Odoo integration rerun did **not start**: Docker daemon unavailable.
+Do not count that attempt as a pass. Existing PR #73 Odoo/artifact evidence below
+remains prior evidence. Local Git comparison found no runtime/test differences
+between this HEAD and deployed main `557f8a8bc6935ef94d6f1c45d83be4c2f7a48078`.
+
+Read-only staging audit at 08:48–08:50 UTC confirmed installed .18.11, unchanged
+72/161/17 operation/dispatch/refund counts, five Paid campaign returns, matching
+links, and no duplicate refund references or allocations over captured amounts.
+Native Paid totals: £0.18 = £0.14 card + £0.04 cash. Completed refund 19 on draft
+1019 explains the extra £0.01 financial refund not yet in Paid-order totals.
+Refund 20 remains processing; correction 13 remains draft with zero journal items.
+No financial calls, session closure, staging writes or deployment were performed.
+See the [authoritative summary](ticket-12-final-release-checklist.md#current-acceptance-summary--october-12-owner-handoff)
+for commands, temporary log paths, coverage mapping and remaining human work.
+
+The earlier audit below is a historical snapshot **before refund 20 was created**;
+its zero-unresolved statement does not describe the current database.
+
+## October 12 read-only refund verification
+
+Staging SQL verified installed `pos_revolut` **19.0.1.18.11** and completed
+refunds 12/13/16/17/18/19, total £0.06, with six distinct provider references and
+zero unresolved refunds. The owner confirms receipt of funds. Saved native
+returns remain drafts; completion is not claimed. See the
+[October 12 refund audit](ticket-12-final-release-checklist.md#refund-completion-audit--2026-10-12). This is database evidence, not a fresh deployed-file hash check,
+provider API call or native checkout test. No runtime changes were made.
 
 ## Latest deployment evidence — PR #73 / .18.11
 
