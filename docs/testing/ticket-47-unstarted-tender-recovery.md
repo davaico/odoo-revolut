@@ -27,7 +27,11 @@ Removal classifies and deletes the exact native tender in one server transaction
 Its retired UUID cannot be recreated or admitted. Native tender deletion also
 retires saved positive Revolut sale tenders, including pre-fix drafts without
 an earlier recovery marker. A competing successful start retains its operation
-and prevents deletion. The browser acknowledges only the exact already-applied
+and prevents deletion. Saved sale/tender identities remain fixed before the
+first recovery marker, including after an amount is corrected to zero. Native
+deletion checks unknown status and refund evidence as well as charge history.
+Surviving financial references cannot be cleared by stale native sync even when
+no operation link was saved. The browser acknowledges only the exact already-applied
 native deletion; other queued mutations remain intact.
 
 Repeat clicks share in-flight recovery/removal work. Offline, denied and timed-out
@@ -50,6 +54,15 @@ The initial native implementation passed Resume and offline recovery but exposed
 a redundant native deletion: cash settlement attempted to delete the server's
 already-retired tender again. The corrected browser acknowledgement is exercised
 by actual cash settlement, beyond the lifecycle tests.
+
+Independent Spec review found gaps in raw legacy identity/reference preservation
+and native deletion classification. Focused regressions reproduced the accepted
+identity mutations, erased transaction/reference fields and waiting-cancellation
+deletion. The fixes protect the original identity, retain financial proof and
+share the locked no-start classification between recovery and native removal.
+Tests also cover loss of the actual committed removal response: the local line
+stays guarded, Check status reads its retired disposition, and an idempotent
+removal retry permits cash settlement without another provider request.
 
 ## Ticket 12 handoff
 

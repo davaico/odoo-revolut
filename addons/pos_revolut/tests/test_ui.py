@@ -1165,7 +1165,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
     def test_cancel_payment_while_canonical_refresh_is_pending(self):
         self._run_cancelled_payment_preparation("refresh")
 
-    def _run_unstarted_tender_reload(self, *, resume, offline=False):
+    def _run_unstarted_tender_reload(self, *, resume, offline=False, lost_removal=False):
         revolut_method = self._configure_revolut_checkout()
         session = self.main_pos_config.current_session_id
         tip = self.main_pos_config.tip_product_id
@@ -1233,6 +1233,8 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
             tour = "pos_revolut_unstarted_cash_removal"
             if resume:
                 tour = "pos_revolut_unstarted_offline_resume" if offline else "pos_revolut_unstarted_resume"
+            elif lost_removal:
+                tour = "pos_revolut_unstarted_lost_removal_cash"
             self.start_pos_tour(tour)
             if not resume:
                 provider.assert_not_called()
@@ -1272,6 +1274,9 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
 
     def test_missing_tip_preparation_reload_recovers_after_offline_lookup(self):
         self._run_unstarted_tender_reload(resume=True, offline=True)
+
+    def test_missing_tip_preparation_reload_recovers_after_lost_removal_response(self):
+        self._run_unstarted_tender_reload(resume=False, lost_removal=True)
 
     def test_payment_discovery_failure_allows_cash_without_dispatch(self):
         self._configure_revolut_checkout()

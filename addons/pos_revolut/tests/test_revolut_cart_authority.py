@@ -159,6 +159,18 @@ class TestRevolutCartAuthority(TerminalTipFixtures, CommonPosTest):
             self.prepare_recovered({'recovery_revision': state['recovery_revision']})
         self.request.assert_not_called()
 
+    def test_zero_native_removal_of_pre_fix_tender_retires_delayed_admission(self):
+        payment = self.saved_tender()
+        payment.amount = 0
+        payment.unlink()
+        with self.assertRaises(UserError):
+            self.prepare()
+        state = self.env['pos.order'].revolut_checkout_state(self.order.id, self.order.uuid)
+        self.assertEqual(state['recovered_tenders'][self.line_uuid]['state'], 'retired')
+        with self.assertRaises(UserError):
+            self.prepare_recovered({'recovery_revision': state['recovery_revision']})
+        self.request.assert_not_called()
+
     def test_atomic_recovery_removal_is_durable_and_retry_does_not_dispatch(self):
         payment = self.saved_tender()
         self.prepare()
@@ -197,10 +209,11 @@ class TestRevolutCartAuthority(TerminalTipFixtures, CommonPosTest):
                           {'currency_id': -1}, {'payment_line_uuid': str(uuid4())}, {'order_id': True}):
             with self.subTest(overrides=overrides), self.assertRaises(UserError):
                 self.recover(**overrides)
-        payment.transaction_id = 'unknown-provider-reference'
-        with self.assertRaises(UserError):
+        # Roll back the test reference together with the expected recovery
+        # rejection; native financial evidence may not be erased afterwards.
+        with self.assertRaises(UserError), self.env.cr.savepoint():
+            payment.transaction_id = 'unknown-provider-reference'
             self.recover()
-        payment.transaction_id = False
         # The native UUID constraint rejects duplicates before recovery, rather
         # than allowing the browser to manufacture ambiguous saved identities.
         with self.assertRaises(IntegrityError), self.env.cr.savepoint():
@@ -245,6 +258,72 @@ class TestRevolutCartAuthority(TerminalTipFixtures, CommonPosTest):
         # remain possible and require current preparation before a charge.
         self.order.lines.write({'qty': 2})
         self.assertEqual(self.order.lines.qty, 2)
+        self.request.assert_not_called()
+
+    def test_pre_fix_saved_revolut_tender_identity_cannot_be_reassigned(self):
+        payment = self.saved_tender()
+        other_order = self.env['pos.order'].create({'session_id': self.session.id, 'uuid': str(uuid4()),
+            'amount_total': 100, 'amount_tax': 0, 'amount_paid': 0, 'amount_return': 0})
+        for values in ({'uuid': str(uuid4())}, {'pos_order_id': other_order.id},
+                       {'payment_method_id': self.bank_payment_method.id}):
+            with self.subTest(values=values), self.assertRaises(UserError), self.env.cr.savepoint():
+                payment.write(values)
+        self.assertEqual(payment.uuid, self.line_uuid)
+        self.assertEqual(payment.pos_order_id, self.order)
+        self.assertEqual(payment.payment_method_id, self.method)
+        payment.amount = 90
+        self.assertEqual(payment.amount, 90)
+        payment.amount = 0
+        for values in ({'uuid': str(uuid4())}, {'pos_order_id': other_order.id},
+                       {'payment_method_id': self.bank_payment_method.id}):
+            with self.subTest(zero_amount=values), self.assertRaises(UserError), self.env.cr.savepoint():
+                payment.write(values)
+        with self.assertRaises(UserError), self.env.cr.savepoint():
+            self.order.write({'uuid': str(uuid4())})
+        payment.amount = 90
+        self.assertEqual(payment.amount, 90)
+        self.request.assert_not_called()
+
+    def test_pre_fix_saved_revolut_checkout_ownership_cannot_be_reassigned(self):
+        self.saved_tender()
+        with self.assertRaises(UserError), self.env.cr.savepoint():
+            self.order.write({'uuid': str(uuid4())})
+        self.order.lines.write({'qty': 2})
+        self.assertEqual(self.order.lines.qty, 2)
+        self.request.assert_not_called()
+
+    def test_unbound_revolut_financial_references_cannot_be_erased_to_unlock_recovery(self):
+        from ..models.cart_authorization import _authority_mutation
+        for name in ('transaction_id', 'payment_ref_no', 'revolut_order_id', 'revolut_payment_intent_id'):
+            with self.subTest(reference=name), self.env.cr.savepoint():
+                uuid = str(uuid4())
+                payment = self.saved_tender(uuid=uuid)
+                # Trusted fixture setup represents retained legacy rows that
+                # native RPC clients cannot newly manufacture.
+                with _authority_mutation(self.env):
+                    payment.write({name: 'retained-provider-reference'})
+                with self.assertRaises(UserError), self.env.cr.savepoint():
+                    payment.write({name: False})
+                with self.assertRaises(UserError), self.env.cr.savepoint():
+                    payment.write({name: 'replaced-provider-reference'})
+                with self.assertRaises(UserError), self.env.cr.savepoint():
+                    self.order.write({'payment_ids': [Command.update(payment.id, {name: False})]})
+                with self.assertRaises(UserError):
+                    self.recover(uuid=uuid)
+                self.assertEqual(payment[name], 'retained-provider-reference')
+        self.request.assert_not_called()
+
+    def test_native_removal_preserves_unknown_revolut_tender_statuses(self):
+        from ..models.cart_authorization import _authority_mutation
+        for status in ('done', 'waitingCancel'):
+            with self.subTest(status=status):
+                payment = self.saved_tender(uuid=str(uuid4()))
+                with _authority_mutation(self.env):
+                    payment.payment_status = status
+                with self.assertRaises(UserError), self.env.cr.savepoint():
+                    payment.unlink()
+                self.assertTrue(payment.exists())
+                self.assertEqual(payment.payment_status, status)
         self.request.assert_not_called()
 
     def test_recovery_unused_split_tender_preserves_verified_other_allocation(self):
