@@ -6,10 +6,340 @@
 
 **Triage:** ready-for-human
 
-**Updated:** 2026-10-09, after Cash smoke and the first R08 two-browser test; UI-failure investigation deferred by owner.
+**Updated:** 2026-10-12, after saved receipt PDF inspection, blocked session closure and new recovery ticket 47.
 
 Start new implementation work from the latest reviewed `main`, preserving this
 handoff and any local documentation edits. PR #70 is already merged.
+
+## Authoritative handoff checkpoint — October 12
+
+New acceptance finding: restricted-price cashier denial passed, but manager
+cart approval is blocked by [ticket 47](../needs-triage/47-recover-unstarted-tender-after-reload.md).
+Order 1022's unstarted waiting tender is stuck after preparation failure/reload;
+local lifecycle reproduction matches the failed removal and suppressed repeat
+message. Preserve order 59/tender 79. Owner restored Price Control to false;
+Tips product is configured. No payment attempt was created for this scenario.
+This new failure does not reopen completed regression tests or accepted 1019.
+
+Actual saved FULL return receipt PDF passed negative-amount/reference layout
+inspection. One Close Register action was rejected for remaining drafts;
+successful close/reopen remains blocked. No further closure attempt or draft
+cancellation is requested while the preserved 1019 return is unsettled.
+
+Agent follow-up completed: **125 JavaScript passed; 62 Python passed, 3 PDF
+skipped**. Focused Odoo rerun could not start (Docker unavailable). Read-only
+staging audit at 08:48–08:50 UTC reconciled Paid totals and found no duplicate
+refund references or excess refund allocations. Refund 20 remains processing;
+1019 stays owner-accepted but its native draft still needs settlement before
+session closure. Correction 13 remains empty/draft. The current checklist now
+maps existing automated coverage and supersedes the broad 4–8-hour manual plan
+with the owner's **three-hour maximum**. Do not repeat completed scenarios.
+
+Read the [current acceptance summary](../../testing/ticket-12-final-release-checklist.md#current-acceptance-summary--october-12-owner-handoff)
+for finished checks, owner acceptance of return 1019, remaining work and time
+estimates. All five PR #73 UI regressions passed; five campaign native return
+validations/receipts passed. Owner explicitly accepts 1019 as finished/working;
+remove it from the manual retest queue, while preserving its last observed
+processing refund/draft return for operational reconciliation. Ticket 12 stays
+open. Earlier entries below are historical evidence, not the current task list.
+
+
+## Older closed-session sale receipt — PASS for preview, October 12
+
+Operator selected original sale 261-2-000014 dated September 30 and supplied
+its one-page browser print preview. It shows quantity 1, £0.01 total and
+Revolut tender, original receipt date September 30 11:39, a readable wrapped
+payment reference and Davai GBP Terminal Test. Preflight read-only SQL
+verified order 14, original sale name ending 000014, state done, total £0.01,
+and original session Davai GBP Terminal Test/00003 closed. The sale is older
+than one week at this October 12 retest. Close the older-sale/closed-original-
+session retrieval and receipt-preview subcase under R16.
+
+No actual Save as PDF, physical print or explicit fresh-browser/reload was
+reported; those properties are not inferred from the preview. No new payment,
+refund or invoice creation was requested. Three current-campaign finish-up
+stages remain: two-card return 1019 finality/validation, final reconciliation,
+and session close/reopen. These stages are not the full release acceptance
+scope; setup-dependent and controlled technical coverage remain separate.
+Refund 20/source 69 was still pending/processing at the latest read-only check
+on October 12 08:29:30 UTC. Refund 19/source 70 remained verified/completed,
+and return 57 remained draft. Do not infer a newer provider outcome from this
+receipt test.
+
+
+## Draft return link label / navigation — PASS, October 12
+
+Operator supplied the opened native return and then its parent refund form.
+The form is refund 19 / original card source 70 (not the requested newer source
+69), showing Completed, Native return awaiting validation and Odoo Return
+261-3-000019. Clicking the link reached the existing New/draft return with page
+title 261-3-000019, quantity −2 and original sale 000017. Its underlying Order
+Ref remains /, while the user-facing title/link correctly uses the POS reference.
+Close the original slash-only link-label failure and PR #73 targeted R17
+label/navigation retest using this same historically failing fixture.
+
+Do not infer source 69 / refund 20 finality from the source-70 Completed status.
+The newer refund remains processing at its last read-only observation, and
+return 1019 validation is still pending. No new refund, backend Payment action,
+edit or validation was requested during this UI check. The pending native
+completion label is appropriate for the displayed draft return.
+
+All five recorded PR #73 usability-fix retests now passed within their stated
+scope: historical Paid Orders loading, Choose amount Enter, payment/Retry
+keyboard focus, association layout/Create affordance, and draft return link.
+This does not close wider association, accounting, setup-dependent acceptance
+or the unfinished two-card refund/native return.
+
+
+## Existing-return association layout / Create affordance — PASS, October 12
+
+Operator opened external refund 10 for Davai GBP Terminal Test – 000018,
+Complete native work, Associate an existing native return, and its existing-
+return dropdown. Screenshot shows a full-width usable selector, normally
+wrapped instructions, readable table headings and base/tip columns, and no
+former horizontal overflow or vertically wrapped Association Lines label.
+The dropdown displays No records and no Create option. Close the two original
+UI failures and PR #73 targeted layout/Create-affordance retests (R15/R17).
+
+No return was selected and no Review native work/association was reported.
+No records only establishes the displayed empty result; it does not prove the
+selector's full eligibility rules, successful compatible association or server
+rejection of incompatible records. Those R15 cases remain open. This is the
+existing no-goods fixture with outstanding native disposition/correction draft
+13; do not invent a goods return to populate the selector. Cancel this dialog.
+No new financial action or native disposition was requested in the retest.
+
+
+## Choose amount Enter regression — PASS, October 12
+
+Operator followed the order 1018 / Payment / Choose amount £0.01 / Enter-once
+steps and supplied the resulting screenshot. One £0.01 Revolut line is shown,
+Send has a clearly visible keyboard focus outline, no electronic-payment-in-
+progress alert appears, remaining £0.01 and Validate disabled. This matches
+the intended unsent amount-confirmation state. Close the original Choose amount
+Enter failure and targeted PR #73 manual retest (R17). No Send activation was
+requested or reported in this test.
+
+Read-only SQL at 08:11:37 UTC confirms unchanged totals of 72 payment operations,
+161 payment dispatch claims and 17 refunds, supporting no newly recorded
+payment operation/dispatch. Lookup by assumed POS reference 261-3-000018 found
+no saved order, so no individual backend order identity/state is claimed for
+this browser draft. The screenshot establishes its visible state. No live card
+payment or successful terminal-send keyboard test is claimed, and no repeat
+financial test is required to close this specific error/focus regression.
+
+
+## Keyboard focus visibility — PASS, October 12
+
+In response to the explicit question about clearly seeing focus while tabbing
+through Cash, Revolut and Retry, the operator confirmed Yes. Combined with the
+preceding keyboard Retry activation and read-only terminal-unavailable audit,
+close the original payment-method/Retry keyboard focus visibility failure and
+the targeted PR #73 manual retest under R17. Cash and Revolut focus/reachability
+and Retry focus are operator-confirmed; Retry activation was exercised. This
+does not claim keyboard activation of Cash/Revolut, Choose amount Enter
+handling, or all other keyboard paths. No additional request or payment was
+made for this confirmation.
+
+
+## Keyboard Retry / unavailable terminal — PASS for activation, October 12
+
+The operator activated Retry using the keyboard on order 1020 while the
+physical terminal was off, and reported it worked. Screenshot shows Terminal
+unavailable — no charge sent, Retry available, £0.01 remaining and Validate
+disabled. Read-only SQL at 08:02:47 UTC confirms one new retry operation 72,
+linked to cancelled operation 71 and existing draft order 58: failed /
+terminal_unavailable, retry_safe true, no capture recorded, no terminal lock.
+Operation 72 has zero payment dispatch claims. Counts are 72 operations (+1),
+161 dispatch claims (unchanged), 17 refunds (unchanged). No new recorded
+order/intent dispatch occurred; the original order remains draft.
+
+Close keyboard Retry reachability/activation (R17) and this terminal-unavailable
+safe-failure subcase (R06/R07). User activated Retry rather than merely moving
+focus; do not infer visible focus on both Cash and Revolut from this screenshot
+or mark the entire keyboard-focus failure resolved. Payment-method reachability
+and focus-outline clarity, including Retry's outline before activation, still
+need explicit operator confirmation. No repeated retry or card presentation
+requested. Terminal availability failure is expected for the reported powered-
+off device, not an unexpected integration failure. Charge budget unchanged.
+
+
+## Historical external-return receipt preview — PASS, October 12
+
+After the historical Paid Orders loading retest passed, the operator selected
+4 (Refund) / 260-2-000004 and opened Print Receipt. The screenshot shows a
+one-page browser preview for Davai GBP Terminal Test, ticket 260-2-000004,
+original receipt date October 9 at 13:35, quantity −1, total −£0.01 and Revolut
+tender −£0.01. Content is readable and fits the page. Close the previously
+blocked external native return 53 receipt retrieval/rendering subcase under
+R13/R16. Together with the preceding populated-history screenshot, the former
+Paid Orders error no longer blocks this fixture.
+
+No provider refund/original reference footer is visible in this historical
+receipt; do not claim reference-printing coverage from it. Existing backend
+refund linkage was verified separately. Save as PDF is selected but no file
+save or physical print was reported. This three-day-old return does not prove
+the broader week-old/closed-session receipt requirement. No new refund,
+invoice creation or backend mutation was requested. Two-card refund 20 remains
+pending at its last backend observation; no status refresh was performed here.
+
+
+## Historical register Paid Orders — PASS, October 12
+
+Operator followed the targeted Davai GBP Terminal Test / Orders / Paid retest.
+Screenshot shows Paid selected, count 1–19 / 19 and populated historical orders
+without the former quantity/remaining-monetary-entitlement error. The first
+row is 4 (Refund), POS reference 260-2-000004, Paid −£0.01, matching the
+previously verified external native return 53 for original sale 000014.
+Close the specific historical Paid Orders loading failure under R13/R16/R17:
+PR #73's targeted manual history-loading retest passes. The earlier failure
+entries retain their historical release scope; they are no longer an active
+loading blocker. No backend mutation or new financial action was requested.
+Next inspect Print Receipt on that existing top-row return; historical receipt
+preview remains open until observed. No physical print, saved PDF or broader
+history/session-age coverage is inferred from the list screenshot.
+
+
+## FULL Paid Orders reprint — PASS, October 12
+
+Following the guided Orders / Paid / Print Receipt steps, the operator supplied
+a browser print preview for ticket 261-3-000003 in POS config 3 (Revolut
+Acceptance). The populated order history is visible behind the preview. The
+one-page preview shows quantity −1, total and Revolut tender −£0.01, and
+readable wrapped refund/original references matching the earlier FULL receipt.
+Close the current-register FULL history retrieval and reprint-preview subcase
+(R16). This screenshot does not prove a saved PDF, physical printing, explicit
+browser reload, zero outbound HTTP requests, or that the earlier entitlement
+failure in config 2 (Davai GBP Terminal Test) has been fixed in its original
+fixture. That historical-register regression remains open for a targeted
+read-only retest using completed return 53 / 260-2-000004 / 000014 REFUND.
+Pending two-card return 1019 remains untouched; no financial action requested.
+
+
+## Two-card remainder submitted — PENDING, October 12 07:51 UTC
+
+On return 1019 the operator observed source 70 Refund Successful −£0.01,
+remaining −£0.01 and Validate disabled. Allocation picker showed source 70
+exhausted/disabled (0 remaining), source 69 selected with £0.01 remaining,
+base £0.01 and tip £0.00. Operator then confirmed the remaining allocation
+once. Screenshot shows source 69 Refund in process, both −£0.01 tenders,
+remaining −£0.01 and disabled Validate. Exhausted-source display, remaining
+allocation and partial-completion guard subcases PASS; final two-card return
+completion remains PENDING.
+
+Read-only SQL at 07:51:55 UTC verifies new refund 20, source 69, pending /
+processing, base 1 minor unit and tip 0, dispatched 07:51:27 UTC. Its saved
+return/tender UUIDs match existing return 57 / 261-3-000019 and new tender 78
+(waiting). Direct native foreign keys are currently blank for refund 20.
+Existing refund 19 / source 70 remains verified/completed with its October 10
+verification timestamp, linked to return 57 and tender 76 (done). There are
+exactly two refund records with two distinct provider references for these
+sources, combined 2 minor units. Return 57 remains draft, total/recorded paid
+−£0.02; waiting tender is not proof of completion. Counts are now 71 operations,
+161 payment dispatch claims and 17 refund records (+1 refund). This is
+record-level evidence, not exact outbound HTTP single-dispatch proof.
+
+One new £0.01 refund now awaits provider finality; the six earlier refunds
+remain completed. Preserve this same return and both references. Do not Force
+done, send another allocation or validate until the remaining refund is
+verified successful. Resume with Check status if offered after the wait limit;
+final negative receipt/native validation remains open. No new card charge;
+gross charge budget remains £0.06. Five prior native return checks remain PASS.
+
+
+## DISCOUNT native completion — PASS, October 12 07:46 UTC
+
+Operator receipt for 1014 / 261-3-000014 shows quantity −2 at £0.01, the
+original 50% discount and total/Revolut tender −£0.01, with refund/original
+references. Read-only SQL at 07:46:21 UTC confirms existing return 51 Paid,
+total/paid −£0.01, quantity −2, price_unit £0.01 and discount 50%; existing
+tender 69 is done with matching UUID. Refund 18 retains verified/completed,
+amount 1 minor unit and the October 10 verification timestamp; direct links
+restored to 51/69. Counts remain 71 operations / 161 payment dispatch claims /
+16 refunds. Close this discounted full-return native validation, retained
+pricing and on-screen receipt subcase (R21/R11/R16), plus its native-tender
+reconciliation subcase (R18). Wider fractional/global-rounding partitions,
+physical printing, history persistence, exact outbound refund HTTP evidence
+and final accounting are not claimed. Pre-validation automatic status recovery
+was not separately reported. Refund Initiated wording remains the R17 observation.
+
+FULL, PRODUCT, TIP, MIXED and DISCOUNT native validation/receipt checks passed.
+Only the two-card return 1019 remains among the six original pending returns:
+source 70 has already refunded £0.01; source 69 has not. Inspect its Payment
+screen before any further allocation or validation; do not resend source 70.
+
+
+## MIXED native completion — PASS, October 12 07:44 UTC
+
+Before validation, the operator screenshot for 1013 showed total −£0.02,
+Revolut −£0.01 Refund Successful/source 63, Cash −£0.01, zero change and
+Validate enabled. After validation, receipt 261-3-000013 shows quantity −2,
+total −£0.02 and both original −£0.01 tenders with refund/original references.
+Read-only SQL at 07:44:26 UTC confirms existing return 50 Paid, total/paid
+−£0.02; Cash tender 67 −£0.01 and Revolut tender 68 −£0.01/done. Refund 17
+retains verified/completed, base 1 minor unit/tip 0 and the October 10
+verification timestamp; direct links restored to 50/68, card tender UUID matches.
+Ledger counts remain 71 payment operations / 161 payment dispatch claims /
+16 refunds. Close MIXED native validation/link restoration, tender-split and
+on-screen receipt subcases (R10/R11/R16), plus this native-tender reconciliation
+subcase (R18). Physical cash handover, printed receipt, exact outbound refund
+HTTP proof and final session/accounting reconciliation are not claimed.
+
+FULL, PRODUCT, TIP and MIXED native validation/receipt checks are now complete.
+DISCOUNT and the two-card return remain. Receipt-screen Refund Initiated
+wording repeats the existing R17 observation. Next: existing DISCOUNT return
+1014; use its successful £0.01 refund, without another financial request.
+
+
+## TIP native completion — PASS, October 12 07:42 UTC
+
+Operator receipt for 1009 / 261-3-000009 shows Tips quantity −1, total and
+Revolut tender −£0.01, £0.00 base plus −£0.01 tip, and refund/original
+references. Read-only SQL at 07:42:32 UTC confirms original return 40 Paid,
+total/paid −£0.01, tender 56 done with matching UUID and restored direct links.
+Refund 16 remains verified/completed, base 0 and tip 1 minor unit, with the
+same October 10 verification timestamp. PRODUCT return 39/tender 53 also
+remain Paid/done. Their combined verified refunds are 2 minor units (base 1,
+tip 1), exactly source 58's captured 2 minor units, including tip 1.
+
+Close TIP native validation/link restoration and on-screen receipt subcases
+(R05/R10/R11/R16), and this product-plus-tip financial/native-tender
+reconciliation subcase (R18). Ledger counts remain 71/161/16. No new refund
+record is observed; exact outbound HTTP dispatch proof, physical print,
+history persistence and wider accounting effects are not claimed. The
+pre-validation status-recovery interaction was not separately reported.
+FULL, PRODUCT and TIP are now complete for these native validation/receipt
+checks. Three other native returns remain: MIXED, DISCOUNT and two-card.
+Refund Initiated wording repeats the existing R17 observation.
+
+
+## PRODUCT native completion — PASS, October 12 07:41 UTC
+
+Operator supplied the negative receipt for 1008 / 261-3-000008: quantity −1,
+total and Revolut tender −£0.01, refund and original references displayed.
+Read-only SQL at 07:41:09 UTC confirms existing return 39 Paid, total/paid
+−£0.01, existing tender 53 done with matching UUID, and refund 13 still
+verified/completed (base 1 minor unit, tip 0, October 10 verification timestamp).
+Direct links are restored to 39/53. Ledger counts remain 71 operations / 161
+payment dispatch claims / 16 refunds. Close PRODUCT native validation/link
+restoration and on-screen receipt subcases under R10/R11/R16. The screenshot
+does not independently establish whether status recovery was automatic.
+No physical printing or exact outbound refund HTTP proof is claimed.
+FULL and PRODUCT are complete; four other native returns remain. Next is TIP
+1009, using its existing successful refund, without a new financial request.
+Receipt-screen Refund Initiated wording repeats the existing R17 observation.
+
+
+## Latest result — FULL return completed, October 12 07:39 UTC
+
+FULL / 1003 is now PASS for automatic status recovery, native validation and
+on-screen receipt. Return 34 is Paid −£0.01, tender 48 done, refund 12 still
+verified/completed with restored links and unchanged ledger counts (71/161/16).
+The operator needed no Check status; one Validate click opened the matching
+negative receipt. Five other returns still require completion/reconciliation.
+Receipt-screen wording says Refund Initiated although the refund is completed;
+retain as an R17 wording observation. Older six-draft snapshots below describe
+the pre-validation state, not the current FULL result.
 
 ## Start here
 
@@ -21,7 +351,21 @@ specific scenario being run. Read [release provenance](../../testing/ticket-12-r
 when verifying deployment or automated coverage. Older chronological logs are
 available through Git history; loading them is not required to resume.
 
-## Current checkpoint
+## Current checkpoint — 2026-10-12
+
+Six awaited refund financial-completion/funds-received subcases are CLOSED:
+FULL, PRODUCT, TIP, MIXED card portion, DISCOUNT and first two-card allocation.
+Odoo verifies six distinct completed refunds (£0.06); owner confirms money
+received. Zero unresolved provider refunds remain. All six native returns are
+still drafts with waiting card tenders; direct refund links are blank despite
+matching saved UUIDs. Native recovery/validation and receipts remain open.
+Return 1019 still has an unrefunded £0.01 second source. External return 53 stays
+Paid/native_completed; external no-goods correction 13 stays draft/outstanding.
+See the [complete refund audit](../../testing/ticket-12-final-release-checklist.md#refund-completion-audit--2026-10-12).
+Ticket 12 remains open. No financial action, native mutation or deployment was
+performed. Earlier checkpoints below retain their historical observation dates.
+
+## Earlier October 9 checkpoint
 
 - Campaign: **Revolut Acceptance — 2026-10-07**, GBP retail; operator testing is
   underway. Resume unfinished subcases, not the original empty-register setup.
