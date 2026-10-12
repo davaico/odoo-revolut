@@ -272,7 +272,7 @@ Read-only SQL at 09:40:19 UTC confirms config 3 Price Control false, Tip Product
 authority, unchanged 72/161/17 counts. Test setting cleanup is confirmed;
 removal remains FAILED and manager approval BLOCKED. Turning off price control
 does not reset the restored waiting-tender protection. Tracked separately as
-[ticket 47](../tickets/needs-triage/47-recover-unstarted-tender-after-reload.md),
+[ticket 47](../tickets/ready-for-agents/47-recover-unstarted-tender-after-reload.md),
 needs-triage, with safe recovery constraints and reproduction limits. Do not
 repeat live clicks or unlock based only on an empty payment lookup.
 

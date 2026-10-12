@@ -174,6 +174,21 @@ export class PaymentRevolut extends PaymentInterface {
                 call: (method, args) => this.pos.data.call("pos.payment.method", method, args),
                 financialSnapshot,
                 preparePayment: (order, line) => this._preparePayment(order, line),
+                recoverPayment: async (order, line) => {
+                    const result = await this.pos.data.call("pos.order", "revolut_recover_unstarted_payment", [
+                        order.id, order.uuid, line.uuid, this.payment_method_id.id,
+                        line.amount, this.pos.currency.id,
+                    ]);
+                    if (Number.isSafeInteger(result?.recovery_revision)) {
+                        order.uiState.revolutRecoveryRevision = result.recovery_revision;
+                    }
+                    return result;
+                },
+                removeRecoveredPayment: async (order, line) => this.pos.data.call(
+                    "pos.order", "revolut_remove_unstarted_payment", [
+                        order.id, order.uuid, line.uuid, this.payment_method_id.id,
+                        line.amount, this.pos.currency.id,
+                    ]),
                 prepareRefund: (order, line) => this._prepareRefund(order, line),
                 restoreRefundOriginals: (order) => restoreRefundOriginals(this.pos, order),
                 chooseAllocation: (sources, line) => chooseRefundAllocation(
@@ -226,6 +241,7 @@ export class PaymentRevolut extends PaymentInterface {
         }
         this.pos.models.loadConnectedData(missing);
         order.uiState.revolutAuthority = state.authority;
+        order.uiState.revolutRecoveryRevision = state.recovery_revision || 0;
         return state;
     }
 
@@ -246,6 +262,7 @@ export class PaymentRevolut extends PaymentInterface {
         }));
         const result = await this.pos.data.call("pos.order", "revolut_prepare_payment", [
             current.id, current.uuid, current.uiState.revolutAuthority?.cart_version || 0, plan,
+            current.uiState.revolutRecoveryRevision || 0,
         ]);
         await this._refreshAuthorizedOrder(current);
         if (result.status === "approval_required") {
@@ -357,6 +374,7 @@ export class PaymentRevolut extends PaymentInterface {
         const messages = {
             discovery_interrupted: _t("Could not check for an existing Revolut payment. No payment request was sent from this line. Retry after the connection returns, or remove this line and choose another payment method."),
             discovery_timed_out: _t("The check for an existing Revolut payment timed out. No payment request was sent from this line. Retry after the connection returns, or remove this line and choose another payment method."),
+            retired_recovered: _t("Odoo already removed this unstarted payment line. Remove its local copy; this retired line cannot be resumed."),
             terminal_busy: _t("Another Revolut payment is using this order or terminal. No payment request was sent from this line. Use Resume after the terminal is released, or remove this line. Check status only checks for an existing payment."),
             terminal_unavailable: _t("The Revolut terminal is unavailable. No charge was sent. Check the terminal before retrying."),
             terminal_check_failed: _t("The Revolut terminal connection check failed. No charge was sent. Check the connection before retrying."),
@@ -592,7 +610,24 @@ patch(PosOrder.prototype, {
         if (!paymentActions(line).canDelete) {
             return false;
         }
-        return super.removePaymentline(...arguments);
+        const retired = line.uiState?.revolutRetiredPayment;
+        const result = super.removePaymentline(...arguments);
+        if (retired?.orderId === this.id && retired.paymentId === line.id) {
+            // The recovery RPC already unlinked this exact server record.
+            // Native deletion queues an ORM command even for silent deletes;
+            // acknowledge only that command to preserve other pending edits.
+            const commands = this.models.commands["pos.order"];
+            for (const pending of [commands.delete, commands.unlink]) {
+                const remaining = (pending.get("payment_ids") || []).filter((command) =>
+                    command.id !== retired.paymentId || command.parentId !== retired.orderId);
+                if (remaining.length) {
+                    pending.set("payment_ids", remaining);
+                } else {
+                    pending.delete("payment_ids");
+                }
+            }
+        }
+        return result;
     },
 });
 
@@ -669,10 +704,15 @@ patch(PaymentScreen.prototype, {
     async deletePaymentLine(uuid) {
         const line = this.paymentLines.find((payment) => payment.uuid === uuid);
         const actions = paymentActions(line);
-        if (!actions.canDelete) {
-            if (actions.shouldCancelBeforeDelete && await this.sendPaymentCancel(line)) {
-                this.currentOrder.removePaymentline(line);
-                this.numberBuffer.reset();
+        if (!actions.canDelete || line?.uiState.revolutRecoveryRequired) {
+            if ((actions.shouldCancelBeforeDelete || line.uiState.revolutRecoveryRequired) &&
+                await this.sendPaymentCancel(line)) {
+                if (!line.uiState.revolutRecoveryRequired ||
+                    await line.payment_method_id.payment_terminal.paymentState.removeRecoveredPayment(
+                        this.currentOrder, line)) {
+                    this.currentOrder.removePaymentline(line);
+                    this.numberBuffer.reset();
+                }
             }
             return;
         }
@@ -723,6 +763,8 @@ patch(PaymentScreenPaymentLines.prototype, {
             discovery_cancelled: _t("No payment request sent"),
             snapshot_invalid: _t("Correct the cart — no payment request sent"),
             authority_required: _t("Review or approve the cart — no new payment request sent"),
+            unstarted_recovered: _t("No payment request sent — Resume or remove this line"),
+            retired_recovered: _t("This payment line was removed — remove its local copy"),
             terminal_busy: _t("Terminal busy — no payment request sent"),
             terminal_unavailable: _t("Terminal unavailable — no charge sent"),
             terminal_check_failed: _t("Terminal connection check failed — no charge sent"),

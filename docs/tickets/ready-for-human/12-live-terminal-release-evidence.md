@@ -14,7 +14,7 @@ handoff and any local documentation edits. PR #70 is already merged.
 ## Authoritative handoff checkpoint — October 12
 
 New acceptance finding: restricted-price cashier denial passed, but manager
-cart approval is blocked by [ticket 47](../needs-triage/47-recover-unstarted-tender-after-reload.md).
+cart approval is blocked by [ticket 47](../ready-for-agents/47-recover-unstarted-tender-after-reload.md).
 Order 1022's unstarted waiting tender is stuck after preparation failure/reload;
 local lifecycle reproduction matches the failed removal and suppressed repeat
 message. Preserve order 59/tender 79. Owner restored Price Control to false;

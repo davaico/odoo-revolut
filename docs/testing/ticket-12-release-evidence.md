@@ -14,7 +14,7 @@ One session-close attempt was rejected for active drafts; successful closure
 and reopening are not claimed. Return 1019 remains owner-accepted as a test,
 with pending settlement/native work preserved operationally.
 
-[Ticket 47](../tickets/needs-triage/47-recover-unstarted-tender-after-reload.md)
+[Ticket 47](../tickets/ready-for-agents/47-recover-unstarted-tender-after-reload.md)
 records a new unstarted-tender removal failure after preparation rejection and
 reload. A fresh local reproduction imports the actual lifecycle module with
 mocked empty payment lookups: two false removals, one interrupted message,

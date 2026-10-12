@@ -115,6 +115,135 @@ class TestRevolutCartAuthorityConcurrency(TransactionCase):
         return [call for call in self.request.call_args_list
                 if call.args[0] == "POST" and urlsplit(call.args[1]).path != "/api/report-runs"]
 
+    def save_waiting_tender(self):
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            payment = env['pos.payment'].create({'pos_order_id': self.order_id,
+                'uuid': self.line_a, 'payment_method_id': self.method_id,
+                'amount': 100, 'payment_status': 'waiting'})
+            cursor.commit()
+            return payment.id
+
+    def recover(self, remove=False):
+        return self.rpc('pos.order', 'revolut_remove_unstarted_payment' if remove else 'revolut_recover_unstarted_payment',
+            self.order_id, self.order_uuid, self.line_a, self.method_id, 100, self.currency_id)
+
+    def test_recovery_racing_start_either_fences_admission_or_keeps_operation(self):
+        self.save_waiting_tender()
+        authority = self.prepare([(self.line_a, 100)])
+        barrier = Barrier(2)
+
+        def recover():
+            barrier.wait(timeout=10)
+            return self.recover()
+
+        def start():
+            barrier.wait(timeout=10)
+            return self.start(authority, self.line_a, 100)
+
+        results = self.workers([('recovery', recover), ('start', start)])
+        recovery, started = results['recovery'], results['start']
+        if recovery['recovery_status'] == 'unstarted':
+            self.assertFalse(started.get('operation_id'))
+            self.assertFalse(self.operations())
+            self.request.assert_not_called()
+        else:
+            self.assertEqual(recovery['recovery_status'], 'existing_operation')
+            self.assertEqual(recovery['operation_id'], started['operation_id'])
+            self.assertEqual(len(self.operations()), 1)
+            self.assertEqual(len(self.financial_posts()), 2)
+
+    def test_atomic_removal_racing_start_keeps_charge_visible_or_retires_tender(self):
+        self.save_waiting_tender()
+        authority = self.prepare([(self.line_a, 100)])
+        barrier = Barrier(2)
+
+        def remove():
+            barrier.wait(timeout=10)
+            return self.recover(remove=True)
+
+        def start():
+            barrier.wait(timeout=10)
+            return self.start(authority, self.line_a, 100)
+
+        results = self.workers([('removal', remove), ('start', start)])
+        retired, started = results['removal'], results['start']
+        if 'error' in retired:
+            self.assertEqual(retired['error'], 'Another cashier changed this tender. Reload and check its status.')
+        state = self.rpc('pos.order', 'revolut_checkout_state', self.order_id, self.order_uuid)
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            payments = env['pos.order'].browse(self.order_id).payment_ids
+            if retired.get('recovery_status') == 'retired':
+                self.assertFalse(payments)
+                self.assertEqual(state['recovered_tenders'][self.line_a]['state'], 'retired')
+                self.assertFalse(started.get('operation_id'))
+                self.assertFalse(self.operations())
+                self.request.assert_not_called()
+            elif retired.get('recovery_status') == 'existing_operation':
+                self.assertEqual(retired['recovery_status'], 'existing_operation')
+                self.assertEqual(retired['operation_id'], started['operation_id'])
+                self.assertEqual(len(payments), 1)
+                self.assertEqual(len(self.operations()), 1)
+                self.assertEqual(len(self.financial_posts()), 2)
+            else:
+                # Exhausting the bounded contention retry never consumes
+                # removal authority. The original line and any winning charge
+                # remain recoverable through an explicit later status action.
+                self.assertIn('error', retired, repr(results))
+                self.assertEqual(len(payments), 1)
+                recovered = self.recover()
+                if started.get('operation_id'):
+                    self.assertEqual(recovered['recovery_status'], 'existing_operation')
+                    self.assertEqual(recovered['operation_id'], started['operation_id'])
+                    self.assertEqual(len(self.operations()), 1)
+                    self.assertEqual(len(self.financial_posts()), 2)
+                else:
+                    self.assertEqual(recovered['recovery_status'], 'unstarted')
+                    self.assertFalse(self.operations())
+                    self.request.assert_not_called()
+
+    def test_duplicate_recovery_and_delayed_preparation_cannot_dispatch(self):
+        self.save_waiting_tender()
+        barrier = Barrier(2)
+
+        def recover():
+            barrier.wait(timeout=10)
+            return self.recover()
+
+        results = self.workers([('cashier-a', recover), ('cashier-b', recover)])
+        self.assertEqual(results['cashier-a'], results['cashier-b'])
+        with self.assertRaises(UserError):
+            self.prepare([(self.line_a, 100)])
+        self.assertFalse(self.operations())
+        self.request.assert_not_called()
+
+    def test_retired_tender_cannot_start_after_alternative_native_settlement(self):
+        self.save_waiting_tender()
+        authority = self.prepare([(self.line_a, 100)])
+        self.assertEqual(self.recover(remove=True)['recovery_status'], 'retired')
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            order = env['pos.order'].browse(self.order_id)
+            # An ordinary configured bank tender settles the sale independently
+            # only after the original Revolut admission is durably retired.
+            bank = env['pos.payment.method'].create({'name': 'Alternative settlement'})
+            order.session_id.state = 'closed'
+            order.config_id.payment_method_ids = [Command.link(bank.id)]
+            order.session_id.state = 'opened'
+            order.payment_ids = [Command.create({'uuid': str(uuid4()), 'payment_method_id': bank.id, 'amount': 100})]
+            order.action_pos_order_paid()
+            self.assertEqual(order.state, 'paid')
+            cursor.commit()
+        with self.assertRaises(UserError):
+            self.start(authority, self.line_a, 100)
+        with self.assertRaises(UserError):
+            state = self.rpc('pos.order', 'revolut_checkout_state', self.order_id, self.order_uuid)
+            self.rpc('pos.order', 'revolut_prepare_payment', self.order_id, self.order_uuid, 0,
+                [{'uuid': self.line_a, 'payment_method_id': self.method_id, 'amount': 100}], state['recovery_revision'])
+        self.assertFalse(self.operations())
+        self.request.assert_not_called()
+
     def response(self, payload):
         content = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
         response = Mock(status_code=200)

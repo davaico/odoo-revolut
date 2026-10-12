@@ -17,7 +17,7 @@ New R19 scenario: cashier Price disabled PASS; manager could enter £0.02, but
 exact cart approval was not reached. Missing Tip Product blocked preparation;
 owner restored existing Tips. After reload, the unstarted waiting tender could
 not be removed: first red X displayed a communication-failure message, later
-clicks did nothing visibly. This is [ticket 47](../tickets/needs-triage/47-recover-unstarted-tender-after-reload.md),
+clicks did nothing visibly. This is [ticket 47](../tickets/ready-for-agents/47-recover-unstarted-tender-after-reload.md),
 needs-triage. Preserve order 1022 / saved order 59 and tender 79. Read-only SQL
 at 09:40:19 UTC confirms no payment attempt/cart authority, counts 72/161/17,
 Price Control restored to false and Tips product 1 configured (native Tips on).
