@@ -236,7 +236,10 @@ class PosPayment(models.Model):
                 if not tracked:
                     continue
                 order._revolut_check_prepare_identity(order.uuid)
-                order._revolut_assert_unstarted_payment(payment)
+                # Proven terminal-safe history keeps the established cashier
+                # cancellation/removal flow. It is retained, rather than
+                # reclassified as a no-operation preparation failure.
+                order._revolut_assert_unstarted_payment(payment, allow_retry_safe_operations=True)
                 with _authority_mutation(self.env):
                     order._revolut_fence_tender(payment.uuid, {'payment_id': payment.id,
                         'method_id': payment.payment_method_id.id,

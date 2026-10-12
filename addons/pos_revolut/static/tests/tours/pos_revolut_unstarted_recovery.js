@@ -220,3 +220,101 @@ for (const action of ["resume", "cash_removal", "offline_resume", "lost_removal_
         ].flat(),
     });
 }
+
+registry.category("web_tour.tours").add("pos_revolut_stale_preparation_recovery", {
+    steps: () => [
+        Chrome.startPoS(),
+        ProductScreen.addOrderline("Desk Pad"),
+        ProductScreen.clickPayButton(),
+        {
+            content: "Hold the real native draft-save response before cart preparation continues",
+            trigger: ".payment-screen",
+            run() {
+                const pos = window.posmodel;
+                const sync = pos.syncAllOrders.bind(pos);
+                const call = pos.data.call.bind(pos.data);
+                let held = false;
+                window.revolutStalePreparation = { financialCalls: [] };
+                pos.syncAllOrders = async (...args) => {
+                    const result = await sync(...args);
+                    const order = pos.getOrder();
+                    const line = order.payment_ids.find((payment) => payment.uiState.revolutDiscovering);
+                    if (!held && line) {
+                        held = true;
+                        Object.assign(window.revolutStalePreparation, {
+                            orderId: order.id, orderUuid: order.uuid, lineId: line.id,
+                            lineUuid: line.uuid, methodId: line.payment_method_id.id,
+                        });
+                        await new Promise((resolve) => {
+                            window.revolutStalePreparation.release = resolve;
+                            document.querySelector(".payment-screen").dataset.stalePreparationHeld = "true";
+                        });
+                    }
+                    return result;
+                };
+                pos.data.call = async (model, method, ...args) => {
+                    if (model === "pos.payment.method" &&
+                        ["revolut_start_payment", "revolut_cancel_payment"].includes(method)) {
+                        window.revolutStalePreparation.financialCalls.push(method);
+                    }
+                    return call(model, method, ...args);
+                };
+            },
+        },
+        PaymentScreen.clickPaymentMethod("Revolut"),
+        {
+            content: "A competing server recovery fences the saved tender while its preparation response is held",
+            trigger: ".payment-screen[data-stale-preparation-held='true']",
+            async run() {
+                const pos = window.posmodel;
+                const saved = window.revolutStalePreparation;
+                const proof = await pos.data.call("pos.order", "revolut_recover_unstarted_payment", [
+                    saved.orderId, saved.orderUuid, saved.lineUuid, saved.methodId, 12.34, pos.currency.id,
+                ]);
+                if (proof.recovery_status !== "unstarted" || proof.dispatched !== false ||
+                    proof.payment_id !== saved.lineId || saved.financialCalls.length) {
+                    throw new Error("Competing recovery lost the original native tender or dispatched payment");
+                }
+                // Deliberately leave the originating browser's local authority
+                // unchanged, as when recovery came from another POS browser.
+                saved.release();
+            },
+        },
+        { trigger: ".modal:contains('Recovery changed this tender while payment was being prepared')" },
+        Dialog.confirm(),
+        {
+            content: "The delayed preparation cannot adopt the new recovery authority or send a charge",
+            trigger: ".payment-screen .send_payment_request:contains('Check status')",
+            run() {
+                const pos = window.posmodel;
+                const saved = window.revolutStalePreparation;
+                const line = pos.getOrder().getPaymentlineByUuid(saved.lineUuid);
+                if (!line || line.id !== saved.lineId || saved.financialCalls.length ||
+                    line.uiState.revolutUndispatched || line.uiState.revolutRecoveredUnstarted ||
+                    pos.paymentTerminalInProgress) {
+                    throw new Error("Stale preparation unlocked the tender or sent a charge");
+                }
+                this.anchor.click();
+            },
+        },
+        { trigger: ".payment-screen .send_payment_request:contains('Resume')", run: "click" },
+        ReceiptScreen.isShown(),
+        ReceiptScreen.paymentLineContains("Revolut", "12.34"),
+        {
+            content: "Explicit recovery and Resume verify exactly one charge on the original saved tender",
+            trigger: ".receipt-screen",
+            run() {
+                const pos = window.posmodel;
+                const saved = window.revolutStalePreparation;
+                const order = pos.getOrder();
+                const line = order.getPaymentlineByUuid(saved.lineUuid);
+                if (order.uuid !== saved.orderUuid || order.id !== saved.orderId ||
+                    line?.id !== saved.lineId || !line.isDone() ||
+                    line.uiState.revolutSnapshot?.state !== "verified" ||
+                    saved.financialCalls.join() !== "revolut_start_payment" || pos.paymentTerminalInProgress) {
+                    throw new Error("Explicit Resume replaced the tender, remained busy or failed to verify exactly one charge");
+                }
+            },
+        },
+    ].flat(),
+});

@@ -410,7 +410,7 @@ class PosOrder(models.Model):
         return any(payment[name] for name in ('transaction_id', 'payment_ref_no',
             'revolut_order_id', 'revolut_payment_intent_id', 'revolut_operation_id', 'revolut_refund_operation_id'))
 
-    def _revolut_assert_unstarted_payment(self, payment):
+    def _revolut_assert_unstarted_payment(self, payment, allow_retry_safe_operations=False):
         """The recovery RPC and native unlink consume the same locked proof."""
         self.ensure_one()
         payment.ensure_one()
@@ -419,7 +419,16 @@ class PosOrder(models.Model):
         if self._revolut_payment_has_references(payment) or payment.payment_status not in {'waiting', 'waitingCard', 'retry', 'pending', False}:
             raise UserError(_('This tender has financial evidence or an unknown history. Reconcile it first.'))
         domain = ['|', ('payment_line_uuid', '=', payment.uuid), ('pos_payment_id', '=', payment.id)]
-        if self.env['pos.revolut.payment.operation'].sudo().search_count(domain):
+        operations = self.env['pos.revolut.payment.operation'].sudo().search(domain)
+        if operations and (not allow_retry_safe_operations or any(
+            not operation.retry_safe or operation.state == 'verified'
+            or operation.company_id != self.company_id or operation.order_uuid != self.uuid
+            or operation.pos_session_id != self.session_id or operation.payment_method_id != payment.payment_method_id
+            or operation.currency_id != self.currency_id
+            or (operation.pos_order_id and operation.pos_order_id != self)
+            or (operation.pos_payment_id and operation.pos_payment_id != payment)
+            for operation in operations
+        )):
             raise UserError(_('Reconcile the original Revolut attempt before deleting its tender.'))
         if self.env['pos.revolut.refund.operation'].sudo().search_count(domain):
             raise UserError(_('Reconcile the retained refund history before changing this tender.'))

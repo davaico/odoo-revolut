@@ -500,11 +500,12 @@ export class RevolutPaymentState {
                     } catch (error) {
                         line.uiState.revolutDiscovering = false;
                         if (!previousSnapshot) {
-                            line.uiState.revolutStarted = false;
-                            line.uiState.revolutUndispatched = true;
+                            line.uiState.revolutStarted = error.revolutRecoveryRequired === true;
+                            line.uiState.revolutUndispatched = error.revolutRecoveryRequired !== true;
                         }
                         const outcome = error?.data?.name === "odoo.exceptions.AccessError"
-                            ? "register_access_denied" : "authority_required";
+                            ? "register_access_denied" : error.revolutRecoveryRequired === true
+                                ? "recovery_required" : "authority_required";
                         line.uiState.revolutStartRejected = outcome;
                         line.uiState.revolutLocalOutcome = outcome;
                         line.uiState.revolutRejectionMessage = error?.data?.message || error.message;

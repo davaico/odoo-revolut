@@ -245,13 +245,24 @@ export class PaymentRevolut extends PaymentInterface {
         return state;
     }
 
-    async _preparePayment(order) {
+    async _preparePayment(order, line) {
+        // Capture this request's tender authority before native save can be
+        // delayed. Refreshing another tender's retirement must not admit an
+        // old request for a tender recovered while that save was in flight.
+        const recoveryRevision = line.uiState.revolutRecoveryRevision || 0;
         if (!order.revolut_has_authority_exposure) {
             await this.pos.syncAllOrders({ orders: [order], force: true, throw: true });
         }
         const current = this.pos.models["pos.order"].getBy("uuid", order.uuid);
         if (!current || !Number.isInteger(current.id)) {
             throw new Error(_t("The draft was not saved. Reconnect and save it before payment."));
+        }
+        const checkout = await this._refreshAuthorizedOrder(current);
+        const disposition = checkout.recovered_tenders?.[line.uuid];
+        if (disposition && (disposition.state === "retired" || disposition.revision > recoveryRevision)) {
+            const error = new Error(_t("Recovery changed this tender while payment was being prepared. Use Check status before resuming the original line."));
+            error.revolutRecoveryRequired = true;
+            throw error;
         }
         const plan = current.payment_ids.filter((payment) => payment.amount !== 0).map((payment) => ({
             uuid: payment.uuid,
@@ -339,6 +350,13 @@ export class PaymentRevolut extends PaymentInterface {
             this.env.services.dialog.add(AlertDialog, {
                 title: _t("Revolut checkout recovery"),
                 body: _t("Revolut verified this payment or refund, but Odoo could not restore the checkout data. Reconnect, then choose Check status to finish this same sale or return. No new charge or refund will be sent."),
+            });
+            return;
+        }
+        if (state === "recovery_required") {
+            this.env.services.dialog.add(AlertDialog, {
+                title: _t("Revolut tender recovery changed"),
+                body: _t("Recovery changed this tender while payment was being prepared. No new payment request was sent. Use Check status to recover the original line before resuming or removing it."),
             });
             return;
         }
@@ -763,6 +781,7 @@ patch(PaymentScreenPaymentLines.prototype, {
             discovery_cancelled: _t("No payment request sent"),
             snapshot_invalid: _t("Correct the cart — no payment request sent"),
             authority_required: _t("Review or approve the cart — no new payment request sent"),
+            recovery_required: _t("Tender recovery changed — Check status before resuming"),
             unstarted_recovered: _t("No payment request sent — Resume or remove this line"),
             retired_recovered: _t("This payment line was removed — remove its local copy"),
             terminal_busy: _t("Terminal busy — no payment request sent"),

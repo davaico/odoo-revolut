@@ -902,7 +902,11 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.assertEqual(original.order_uuid, replacement.order_uuid)
         self.assertNotEqual(original.payment_line_uuid, replacement.payment_line_uuid)
         self.assertEqual(original.financial_snapshot, replacement.financial_snapshot)
-        self.assertEqual(original.cart_version, replacement.cart_version)
+        # Retiring the old native UUID fences its admission. The unchanged
+        # basket receives fresh authority for the explicit replacement tender.
+        self.assertGreater(replacement.cart_version, original.cart_version)
+        self.assertEqual(original.authorization_id.state, "revoked")
+        self.assertNotEqual(original.authorization_id, replacement.authorization_id)
         self.assertEqual(operations.mapped("amount_minor"), [1234, 1234])
         self.assertEqual(operations.mapped("currency_code"), [session.currency_id.name] * 2)
         self.assertEqual(replacement.revolut_order_id, provider_orders[-1])
@@ -1277,6 +1281,12 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
 
     def test_missing_tip_preparation_reload_recovers_after_lost_removal_response(self):
         self._run_unstarted_tender_reload(resume=False, lost_removal=True)
+
+    def test_delayed_native_preparation_cannot_start_after_same_tender_recovery(self):
+        operation, calls = self._run_unsuccessful_checkout(
+            "captured", "pos_revolut_stale_preparation_recovery")
+        self._assert_restored_checkout(operation, 12.34, self.PAYMENT_ID, self.ORDER_ID)
+        self.assertEqual(sum(method == "POST" for method, _url in calls), 2)
 
     def test_payment_discovery_failure_allows_cash_without_dispatch(self):
         self._configure_revolut_checkout()
