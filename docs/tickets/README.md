@@ -108,6 +108,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [45 — Complete refunds for discounted and rounded sales](closed/45-refund-discounted-and-rounded-sales.md) | `ready-for-agent` at closure | Closed | Conserved discounts/rounding and frozen history; 591 install / 591 upgrade tests, native returns and independent reviews passed |
 | [46 — Recover checkout refresh after payment verification](closed/46-recover-verified-checkout-refresh.md) | `ready-for-agent` at closure | Closed | Read-only verified checkout recovery; 597 install / 597 upgrade tests, six native scenarios and independent reviews passed |
 | [47 — Recover an unstarted Revolut tender after preparation failure and reload](needs-triage/47-recover-unstarted-tender-after-reload.md) | `needs-triage` | Open | New ticket 12 finding; recovery contract needs triage, native mocked runtime required; no fix/deployment yet |
+| [49 — Check timed Takeout readiness before collecting terminal payment](needs-triage/49-check-takeout-readiness-before-terminal-payment.md) | `needs-triage` | Open | Missing-slot popup interrupted automatic checkout; same captured order recovered Paid manually without new charge; readiness fix/mocked replay still required |
 
 ## Integration review follow-up — 2026-10-06
 
