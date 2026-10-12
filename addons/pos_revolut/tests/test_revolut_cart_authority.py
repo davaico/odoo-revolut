@@ -351,6 +351,28 @@ class TestRevolutCartAuthority(TerminalTipFixtures, CommonPosTest):
         self.assertEqual(payment.uuid, self.line_uuid)
         self.request.assert_not_called()
 
+    def test_native_removal_preserves_proven_retry_safe_history_without_dispatch(self):
+        payment = self.saved_tender()
+        authority = self.prepare()
+        unavailable = Mock(status_code=200)
+        unavailable.json.return_value = {'terminals': []}
+        self.request.side_effect = None
+        self.request.return_value = unavailable
+        failed = self.start(authority)
+        self.assertEqual(failed['state'], 'failed')
+        self.assertTrue(failed['retry_safe'])
+        calls = len(self.request.call_args_list)
+        existing = self.recover()
+        self.assertEqual(existing['recovery_status'], 'existing_operation')
+        self.assertEqual(existing['operation_id'], failed['operation_id'])
+        payment.unlink()
+        self.assertEqual(len(self.request.call_args_list), calls)
+        checkout = self.env['pos.order'].revolut_checkout_state(self.order.id, self.order.uuid)
+        self.assertEqual(checkout['recovered_tenders'][self.line_uuid]['state'], 'retired')
+        fresh = self.prepare_recovered({'recovery_revision': checkout['recovery_revision']}, uuid=str(uuid4()))
+        self.assertGreater(fresh['cart_version'], authority['cart_version'])
+        self.assert_no_financial_post(0)
+
     def test_recovery_unused_split_tender_preserves_verified_other_allocation(self):
         second_uuid = str(uuid4())
         self.saved_tender(40)

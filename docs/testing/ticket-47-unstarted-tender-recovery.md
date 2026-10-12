@@ -27,8 +27,9 @@ Removal classifies and deletes the exact native tender in one server transaction
 Its retired UUID cannot be recreated or admitted. Native tender deletion also
 retires saved positive Revolut sale tenders, including pre-fix drafts without
 an earlier recovery marker. A competing successful start retains its operation
-and prevents deletion. Saved sale/tender identities remain fixed before the
-first recovery marker, including after an amount is corrected to zero. Native
+and prevents deletion. Saved sale/tender identities with terminal status,
+financial references or admitted allocations remain fixed before the first
+recovery marker, including after an amount is corrected to zero. Native
 deletion checks unknown status and refund evidence as well as charge history.
 Surviving financial references cannot be cleared by stale native sync even when
 no operation link was saved. The browser acknowledges only the exact already-applied
@@ -72,6 +73,29 @@ authorization regression: retention errors preceded unlink access checks.
 It was stopped and is not acceptance evidence (`/tmp/ticket47-full.log`). The
 corrected guards check access first, then retain history; the existing cashier/
 manager financial-internals test passes (`/tmp/ticket47-auth-green.log`).
+
+The next full attempt exposed native refund compatibility: whole-record proof
+snapshots blocked checked association of new or existing refund tenders, and
+sale identity guards included legacy returns and untouched draft fixtures.
+That run was stopped and is not acceptance evidence
+(`/tmp/ticket47-verified-full.log`). Existing raw references now retain their
+nonempty values and record existence; already-linked financial proof remains
+complete. New checked projection records and added canonical links still pass
+final native validation. Canonical returns and untouched tenders with no
+terminal status, references or admission retain their earlier behavior. A saved
+terminal status cannot be erased to bypass identity protection; its focused
+regression failed before the correction (`/tmp/ticket47-status-clear-red.log`).
+Both reviewers confirmed the compatibility correction.
+
+The existing opposing-parent transfer test used waiting Revolut tenders while
+expecting successful reassignment. Its payment cases now require protected
+identity rejection without deadlock; separate ordinary tenders retain successful
+transfer coverage. Safe historical cancellation remains supported: native
+removal may retire a tender only when every retained charge attempt is
+authoritatively retry-safe, matches original ownership and has no native
+references or refund history. The recovery RPC still returns its existing
+operation rather than calling it unstarted. Retiring that old UUID obtains a
+fresh cart version before a replacement tender can start.
 
 ## Standards review
 

@@ -2364,3 +2364,34 @@ test("a retired tender offers status and removal and cannot initiate a new prepa
     assert.equal(preparations, 0);
     assert.equal(calls.some(({ method }) => method.includes("start")), false);
 });
+
+test("preparation fenced by concurrent recovery requires Check status before same-tender Resume", async () => {
+    let preparations = 0;
+    const { state, order, line, calls } = fixture({
+        preparePayment: async () => {
+            if (++preparations === 1) {
+                const error = new Error("Recovery changed this tender. Check status before resuming.");
+                error.revolutRecoveryRequired = true;
+                throw error;
+            }
+            return { status: "prepared", authorization_id: 32, cart_version: 1, tender_revision: 1 };
+        },
+        recoverPayment: async () => unstartedProof,
+        call(method) {
+            return method === "revolut_start_payment"
+                ? { operation_id: 76, state: "verified", payment_id: "paid-76", order_id: "sale-76" }
+                : false;
+        },
+    });
+    order.id = 42;
+    line.id = 43;
+    assert.equal(await state.request(order, line), false);
+    assert.equal(paymentActions(line).canResume, false);
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(calls.some(({ method }) => method === "revolut_start_payment"), false);
+    assert.equal(await state.request(order, line, { checkOnly: true }), false);
+    assert.equal(paymentActions(line).canResume, true);
+    assert.equal(await state.request(order, line), true);
+    assert.equal(preparations, 2);
+    assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 1);
+});
