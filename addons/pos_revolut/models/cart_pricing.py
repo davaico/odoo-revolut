@@ -319,12 +319,12 @@ class PosOrderCartPricing(models.Model):
         extras, attributes = {}, {}
         for line in self.lines:
             product = line.product_id
+            if product == config.tip_product_id:
+                raise UserError(_("Remove the Odoo-entered tip before using terminal-selected tips."))
             if (not product.active or not product.sale_ok or not product.available_in_pos
                     or product.company_id and product.company_id != self.company_id
                     or line.refunded_orderline_id):
                 raise UserError(_("Use eligible sale products; linked returns require refund allocation."))
-            if product == config.tip_product_id:
-                raise UserError(_("Remove the Odoo-entered tip before using terminal-selected tips."))
             if not 0 <= line.discount <= 100 or line.discount and not config.manual_discount:
                 raise UserError(_("Use an enabled line discount between zero and 100 percent."))
             if float_compare(line.qty, float_round(line.qty, precision_rounding=product.uom_id.rounding), precision_digits=8):
