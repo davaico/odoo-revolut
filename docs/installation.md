@@ -413,6 +413,17 @@ rejects checkout through cash or another terminal while any Revolut attempt for
 that order is unresolved. Wait for a verified or provider-final result before
 continuing; never use another tender to cover uncertain exposure.
 
+For a timed Takeout preset, select an available pickup date and time before
+starting Revolut payment. If the selected day has no slots, choose another day
+in Odoo’s native scheduling picker. A missing slot blocks a new collection
+before provider dispatch; untimed Dine In continues normally.
+
+If a payment was already captured before scheduling was corrected, keep the
+same order and payment line. Select the required slot, use **Check status** if
+payment details still need recovery, then **Validate** the same paid order.
+Native scheduling validation still applies, and completing that order does not
+collect the card payment again.
+
 The Restaurant guards are part of `pos_revolut` and add no Merchant credentials
 or direct browser API calls. They load with the main addon; no separate
 Revolut module needs activation.

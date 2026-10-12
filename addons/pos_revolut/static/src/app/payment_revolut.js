@@ -230,6 +230,9 @@ export class PaymentRevolut extends PaymentInterface {
     }
 
     async _preparePayment(order) {
+        if (order.preset_id?.needsSlot && !order.preset_time) {
+            throw new Error(_t("Please select an available pickup time slot before starting Revolut payment. If there are no slots for this day, choose another date in pickup scheduling."));
+        }
         if (!order.revolut_has_authority_exposure) {
             await this.pos.syncAllOrders({ orders: [order], force: true, throw: true });
         }

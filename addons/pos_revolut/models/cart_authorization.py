@@ -188,6 +188,7 @@ class RevolutCartAuthorization(models.Model):
         self.ensure_one()
         order = self.pos_order_id.with_env(method.env)
         order._revolut_check_prepare_identity(self.order_uuid)
+        order._revolut_check_payment_readiness()
         if self.state != 'prepared' or values.get('cart_version') != self.cart_version or values.get('tender_revision') != self.tender_revision:
             raise UserError(_('Review or prepare the current cart and tender allocation before payment.'))
         if not self._exposed():
@@ -313,6 +314,11 @@ class PosOrder(models.Model):
         if 'table_id' in self._fields and self.table_id and self.config_id not in self.table_id.floor_id.pos_config_ids:
             raise UserError(_('The table does not belong to the original POS configuration.'))
 
+    def _revolut_check_payment_readiness(self):
+        self.ensure_one()
+        if self.preset_id.use_timing and not self.preset_time:
+            raise UserError(_('Please select an available pickup time slot before starting Revolut payment.'))
+
     @api.model
     def revolut_prepare_payment(self, order_id, uuid, expected_cart_version, tender_plan):
         if type(order_id) is not int or type(expected_cart_version) is not int:
@@ -356,6 +362,7 @@ class PosOrder(models.Model):
                 current.write({'tenders':slots,'payable_minor':target,'tender_revision':current.tender_revision+1})
                 self._compute_prices()
             return current._response()
+        self._revolut_check_payment_readiness()
         priced = self._revolut_price_cart()
         native = self._revolut_authority_contents()
         fingerprint = _digest(native)

@@ -4,7 +4,7 @@
 
 **Work branch:** `codex/49-check-takeout-readiness`
 
-**State:** open
+**State:** claimed
 
 **Category:** bug
 
