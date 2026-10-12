@@ -47,8 +47,13 @@ live fixture, terminal, hosting environment or other agent's runtime is used.
   for the cash lane. Server assertions prove a single paid 13.34 order with
   a 1.00 tip, cash only, zero provider calls and zero payment/refund operations.
   Log: `/tmp/ticket48-native.log`.
-- **Existing native recovery:** authorization-pending preparation cancellation
-  passed separately (1 test). Log: `/tmp/ticket48-recovery.log`.
+- **Existing native recovery:** the isolated authorization-pending cancellation
+  rerun reported zero failures but was skipped after Chrome failed to start.
+  Pinned Odoo raises `unittest.SkipTest` in that case, so its summary is not
+  proof that the tour ran. Do not count this isolated run as recovery evidence.
+  The executed new native tip tour above covers safe undispatched removal;
+  the complete payment lifecycle suite covers preparation/exposure guards.
+  Log: `/tmp/ticket48-recovery.log`.
 - **JavaScript:** running each `static/tests/*.test.mjs` directly passed 122
   payment lifecycle tests and 3 refund allowance tests. Logs:
   `/tmp/ticket48-lifecycle.log`, `/tmp/ticket48-refund-js.log`.
@@ -56,15 +61,32 @@ live fixture, terminal, hosting environment or other agent's runtime is used.
   with 3 existing environment-dependent skips. Log: `/tmp/ticket48-python.log`.
 - **Syntax:** Python compilation, `node --check` on the new tour and
   `git diff --check` passed. No static typechecking configuration is present.
-- **Full addon suite:** running; final outcome will be recorded before closure.
+- **Full addon suite:** `./scripts/test-addon` completed with **1 failed,
+  0 errors, 625 tests**; exit 1. The failure was the existing
+  `TestNativeAdjustmentBrowser.test_browser_completes_remaining_adjustment_without_another_refund`
+  tour timing out at its first Open Register step before opening POS.
+  Three existing native-printing tours skipped after Chrome startup failed:
+  conserved remaining-refund receipt, narrow receipt and narrow split receipt.
+  Two invoice tours also reported Chrome debugger connection timeouts and
+  remain unverified. The new tip-feedback tour executed with its expected
+  server rejection and no recorded failure. Log: `/tmp/ticket48-full.log`.
+
+This is not a green full-suite result. During the run the shared host had
+239 MiB free memory, essentially full 4 GiB swap, load 25.59 and substantial
+memory/I/O waits. Those observations support a runtime-pressure explanation,
+but are not proof that all startup failures are environmental. No unrelated
+return/printing code was changed. Serial reruns of the affected existing tours
+remain a broader validation limit. At ticket 47's owner-authorized coordination
+request, no additional Docker/browser suite was launched after this run;
+all ticket 48 disposable containers were stopped before its validation window.
 
 The first combined focused run had three new fixture assertion failures:
 deferred product-template writes were not flushed before preparation opened
 its server cursor. Explicit fixture flushes corrected this; all 17 pricing
 tests then passed. The same combined run had one existing browser startup
-timeout before opening POS. Its isolated rerun passed. The other 32 tests in
-that run passed, including 17 cart-authority tests and native invalid-cart
-removal/cash checkout. Original log: `/tmp/ticket48-focused.log`.
+timeout before opening POS. Its isolated rerun skipped browser execution.
+The 17 cart-authority tests and native invalid-cart removal/cash checkout
+reported no failures in that run. Original log: `/tmp/ticket48-focused.log`.
 
 ## Ticket 12 handoff and limits
 
@@ -77,3 +99,22 @@ existing saved waiting tender after reload. Use that reviewed recovery contract
 before removing the original tender or the unexposed Odoo tip; retain status
 and reconciliation protections for uncertain or verified money. Ticket 49
 owns Takeout readiness. Ticket 12's broader release gates remain open.
+
+## Standards
+
+Independent review of `6a973d5...81d367f`: no findings. The change follows the
+existing addon/test style, keeps configured-tip identity on the server and
+preserves financial rejection and recovery boundaries. No actionable baseline
+smells were introduced.
+
+## Spec
+
+Independent review found no implementation defect or scope creep. One P2
+evidence finding identified the misleading recovery rerun claim: Chrome startup
+failure raises `SkipTest`, so zero failures did not prove that tour executed.
+That claim is corrected above. The skipped check remains explicitly unverified;
+the new executed tip tour independently proves the ticket's safe-removal path.
+
+The Spec reviewer rechecked the corrected evidence and confirmed no remaining
+findings. Review totals: Standards 0 findings; Spec 1 evidence finding, resolved;
+0 open findings on either axis.

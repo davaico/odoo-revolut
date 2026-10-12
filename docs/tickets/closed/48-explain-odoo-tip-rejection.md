@@ -4,7 +4,7 @@
 
 **Work branch:** `codex/48-explain-odoo-tip-rejection`
 
-**State:** claimed
+**State:** closed
 
 **Category:** bug
 
@@ -56,13 +56,13 @@ recovery remain separate issues.
 
 ## Acceptance criteria
 
-- [ ] On the normal native Tips product, an Odoo-entered tip produces specific
+- [x] On the normal native Tips product, an Odoo-entered tip produces specific
   understandable removal/terminal-tip guidance before Revolut dispatch.
-- [ ] Preserve generic ineligible-product and linked-return protections for
+- [x] Preserve generic ineligible-product and linked-return protections for
   ordinary goods/return lines; no bypass based on a product name or browser flag.
-- [ ] Add a narrow mocked/native regression that asserts the relevant message
+- [x] Add a narrow mocked/native regression that asserts the relevant message
   and zero provider calls for a valid sale plus the configured native tip.
-- [ ] Keep order/tender recovery within the safe contract established by ticket
+- [x] Keep order/tender recovery within the safe contract established by ticket
   47; clearer wording alone must not unlock uncertain payment evidence.
 
 ## Dependencies and fixture preservation
@@ -84,10 +84,25 @@ from `main` revision `6a973d5`. The server-configured tip rejection now precedes
 generic eligibility, preserving rejection and all payment/recovery contracts.
 The pinned-native regression failed with the misleading message before the
 fix and passed afterward. Native POS feedback and safe undispatched tender
-removal passed with zero provider calls; cart pricing and existing recovery
-checks passed. See the [verification record](../../testing/ticket-48-odoo-tip-feedback.md)
+removal passed with zero provider calls; cart pricing checks passed. An existing
+recovery tour's browser startup failed and a verified rerun remains pending.
+See the [verification record](../../testing/ticket-48-odoo-tip-feedback.md)
 for commands, counts, evidence limits and ticket 12 fixture-preservation handoff.
-Full-suite verification and independent review are pending before closure.
+Implementation committed as `81d367f`; independent Standards review had no
+findings. Spec review's P2 evidence claim was corrected and its documentation
+recheck had no remaining findings. All 17 focused cart-pricing tests, the executed
+native tip feedback/safe-removal tour, 122 lifecycle tests and 3 refund allowance
+tests passed. Repository Python passed 65 tests with 3 existing skips. The full
+addon run completed 625 tests with one existing tour login failure and browser
+startup/debugger skips under shared host pressure; it is explicitly not a green
+full-suite result. The isolated existing cancellation rerun is unverified after
+Chrome startup skipped it. These broader runtime limits are recorded in the
+verification document and do not replace the executed ticket-specific evidence.
+
+Closed for the scoped, locally verified feedback fix. Tickets 47 and 49,
+all preserved live fixtures and ticket 12's deployment/acceptance gates remain
+unchanged by this branch. No further Docker/browser runners were started after
+the owner-coordinated serial window was handed to ticket 47.
 
 ## Agent Brief
 
@@ -114,16 +129,16 @@ return lines, financial authority, and safe tender recovery.
   reason while preserving the original tender's financial safety state.
 
 **Acceptance criteria:**
-- [ ] First reproduce the current misleading error in pinned native Odoo with
+- [x] First reproduce the current misleading error in pinned native Odoo with
   a valid sale and the configured active native Tips product whose
   `available_in_pos` is false; mock every provider call.
-- [ ] That fixture receives specific removal/terminal-tip guidance before any
+- [x] That fixture receives specific removal/terminal-tip guidance before any
   payment starts, and the regression asserts the message and zero provider calls.
-- [ ] Ineligible ordinary goods and linked-return lines remain rejected; product
+- [x] Ineligible ordinary goods and linked-return lines remain rejected; product
   names and browser flags cannot exempt a line from server validation.
-- [ ] A failed preparation remains recoverable through the existing safe
+- [x] A failed preparation remains recoverable through the existing safe
   contract; no wording change enables retries against uncertain exposure.
-- [ ] Run the affected cart-pricing/preparation tests and relevant native
+- [x] Run the affected cart-pricing/preparation tests and relevant native
   feedback/recovery checks; record revision, results, and evidence limits.
 
 **Out of scope:**
