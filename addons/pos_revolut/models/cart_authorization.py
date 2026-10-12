@@ -201,6 +201,7 @@ class RevolutCartAuthorization(models.Model):
             payment = order.payment_ids.filtered(lambda item: item.uuid == values['payment_line_uuid'])
             if len(payment) != 1 or payment.id != recovery['payment_id'] or recovery['method_id'] != method.id or recovery['minor'] != values['amount_minor'] or payment.payment_method_id != method or _tender_amount(order.currency_id, payment.amount)[1] != values['amount_minor'] or order._revolut_payment_has_references(payment):
                 raise UserError(_('Recover the exact saved tender before starting payment.'))
+        order._revolut_check_payment_readiness()
         if self.state != 'prepared' or values.get('cart_version') != self.cart_version or values.get('tender_revision') != self.tender_revision:
             raise UserError(_('Review or prepare the current cart and tender allocation before payment.'))
         if not self._exposed():
@@ -327,6 +328,11 @@ class PosOrder(models.Model):
             raise UserError(_('The terminal report cannot represent this currency precision.'))
         if 'table_id' in self._fields and self.table_id and self.config_id not in self.table_id.floor_id.pos_config_ids:
             raise UserError(_('The table does not belong to the original POS configuration.'))
+
+    def _revolut_check_payment_readiness(self):
+        self.ensure_one()
+        if self.preset_id.use_timing and not self.preset_time:
+            raise UserError(_('Please select an available pickup time slot before starting Revolut payment.'))
 
     @api.model
     def revolut_remove_unstarted_payment(self, order_id, uuid, payment_line_uuid, payment_method_id, amount, currency_id):
@@ -492,6 +498,7 @@ class PosOrder(models.Model):
                 current.write({'tenders':slots,'payable_minor':target,'tender_revision':current.tender_revision+1})
                 self._compute_prices()
             return current._response()
+        self._revolut_check_payment_readiness()
         priced = self._revolut_price_cart()
         native = self._revolut_authority_contents()
         fingerprint = _digest(native)
