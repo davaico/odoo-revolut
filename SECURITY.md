@@ -4,7 +4,7 @@
 
 Use **Report a vulnerability** in this repository's GitHub Security tab. Include the affected version, permissions, impact and a minimal reproduction with mocked provider responses.
 
-If the private form is unavailable, ask a maintainer for an approved private route before sharing details. Never put vulnerabilities, credentials or financial evidence in a public issue. Do not test against another merchant, live terminal or customer transaction.
+If the private form is unavailable, email [emile@davai.co](mailto:emile@davai.co). Never put vulnerabilities, credentials or financial evidence in a public issue. Do not test against another merchant, live terminal or customer transaction.
 
 Use synthetic examples. Keep secrets, card/customer data, live terminal/location identifiers, transaction references, private hostnames and operational logs out of public reports and fixtures.
 

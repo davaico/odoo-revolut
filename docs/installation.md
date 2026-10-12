@@ -1,6 +1,6 @@
 # Install POS Revolut
 
-For an existing database, use [Upgrading](upgrading.md). Tested runtime: Odoo Community `19.0.20260908` and PostgreSQL `16.14`. Final release acceptance is pending.
+For an existing database, use [Upgrading](upgrading.md). Tested runtime: Odoo Community `19.0.20260908` and PostgreSQL `16.14`.
 
 ## Requirements
 

@@ -1,6 +1,6 @@
 # POS Revolut for Odoo 19
 
-> Release candidate. Final acceptance and publication checks are pending.
+> Release candidate. Publication checks are pending.
 
 Connect Odoo Point of Sale to a Revolut terminal: send the amount, let the customer pay, and complete the sale after Odoo verifies payment. Credentials and authenticated Revolut calls stay on the server.
 
