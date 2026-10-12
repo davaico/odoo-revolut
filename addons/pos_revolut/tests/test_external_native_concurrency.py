@@ -652,19 +652,30 @@ class TestExternalNativeConcurrency(TransactionCase):
         self.request.assert_not_called()
 
     def test_parent_commands_transfer_lines_and_payments_across_sessions_without_deadlock(self):
-        for field, model, owner_field in (
-            ("lines", "pos.order.line", "order_id"),
-            ("payment_ids", "pos.payment", "pos_order_id"),
+        for field, model, owner_field, ordinary_payment in (
+            ("lines", "pos.order.line", "order_id", False),
+            ("payment_ids", "pos.payment", "pos_order_id", False),
+            ("payment_ids", "pos.payment", "pos_order_id", True),
         ):
             for kind in ("link", "set"):
-                with self.subTest(field=field, command=kind):
+                with self.subTest(field=field, command=kind, ordinary_payment=ordinary_payment):
                     with self.registry.cursor() as cursor:
                         env = api.Environment(cursor, SUPERUSER_ID, self.context)
                         original = env["pos.order"].browse(self.original_id)
+                        method_id, first_session_id = self.method_id, self.session_id
+                        if ordinary_payment:
+                            ordinary_method = env['pos.payment.method'].create({'name': 'Ordinary parent transfer'})
+                            first_config = env['pos.config'].create({
+                                'name': f'Ordinary owner transfer {kind}',
+                                'payment_method_ids': [Command.link(ordinary_method.id)],
+                                'revolut_user_ids': [Command.set(self.manager_ids)],
+                            })
+                            first_session = env['pos.session'].create({'config_id': first_config.id, 'state': 'opened'})
+                            method_id, first_session_id = ordinary_method.id, first_session.id
                         config = original.config_id if field == "lines" and kind == "set" else env["pos.config"].create({
                             "name": f"Opposite owner transfer {field} {kind}",
                             "auto_validate_terminal_payment": True,
-                            "payment_method_ids": [Command.link(self.method_id)],
+                            "payment_method_ids": [Command.link(method_id)],
                             "revolut_user_ids": [Command.set(self.manager_ids)],
                         })
                         # Pinned native line.write reads config fields on its
@@ -674,7 +685,7 @@ class TestExternalNativeConcurrency(TransactionCase):
                             "config_id": config.id,
                             "state": "closed" if field == "lines" and kind == "set" else "opened",
                         })
-                        session_ids = [self.session_id, second_session.id]
+                        session_ids = [first_session_id, second_session.id]
                         orders = env["pos.order"]
                         for session_id in session_ids:
                             session = env["pos.session"].browse(session_id)
@@ -690,8 +701,8 @@ class TestExternalNativeConcurrency(TransactionCase):
                                     "uuid": str(uuid4()),
                                 })],
                                 "payment_ids": [Command.create({
-                                    "payment_method_id": self.method_id, "amount": 12.34,
-                                    "payment_status": "waiting", "uuid": str(uuid4()),
+                                    "payment_method_id": method_id, "amount": 12.34,
+                                    "payment_status": False if ordinary_payment else "waiting", "uuid": str(uuid4()),
                                 })],
                             })
                         order_ids = orders.ids
@@ -725,12 +736,19 @@ class TestExternalNativeConcurrency(TransactionCase):
                             except SerializationFailure:
                                 if attempt == 2:
                                     raise
+                            except UserError as error:
+                                if field != 'payment_ids' or ordinary_payment:
+                                    raise
+                                self.assertEqual(str(error), 'Keep the original saved Revolut tender identity.')
+                                return 'protected'
 
-                    self._run_workers([
+                    results = self._run_workers([
                         ("owner-session-holder", hold_sessions),
                         ("first-parent-transfer", lambda: transfer(0)),
                         ("opposite-parent-transfer", lambda: transfer(1)),
                     ])
+                    protected_payment = field == 'payment_ids' and not ordinary_payment
+                    self.assertEqual(results.count('protected'), 2 if protected_payment else 0)
                     with self.registry.cursor() as cursor:
                         env = api.Environment(cursor, SUPERUSER_ID, self.context)
                         orders = env["pos.order"].browse(order_ids)
@@ -741,6 +759,12 @@ class TestExternalNativeConcurrency(TransactionCase):
                         self.assertEqual(sum(orders.lines.mapped("qty")), 2)
                         self.assertEqual(sum(orders.payment_ids.mapped("amount")), 24.68)
                         self.assertTrue(all(record[owner_field] in orders for record in records))
+                        if protected_payment:
+                            # Persisted waiting tenders now carry protected
+                            # identity even before their first operation. Both
+                            # opposing transfers roll back without deadlocking.
+                            for child_id, order_id in zip(child_ids, order_ids):
+                                self.assertEqual(env[model].browse(child_id)[owner_field].id, order_id)
                         self.assertEqual(set(orders.mapped("state")), {"draft"})
                         self.assertFalse(orders.picking_ids)
                         self.assertFalse(orders.account_move)
