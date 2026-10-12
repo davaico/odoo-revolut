@@ -91,4 +91,4 @@ Use a short imperative commit subject, such as `fix(pos): Preserve recovery afte
 
 Public reports must not contain credentials, card/customer data, live transaction or device identifiers, private hostnames, or original operational logs. Follow [SECURITY.md](SECURITY.md) for suspected vulnerabilities, including its fallback if private reporting is unavailable. Do not test a vulnerability against somebody else's register or Merchant account.
 
-The intended license is LGPL-3. Before contributing material from another project, identify its source and retain any required notices. Do not assume Git authorship alone establishes permission to relicense somebody else's work.
+The project is licensed under LGPL-3. Before contributing material from another project, identify its source and retain any required notices. Do not assume Git authorship alone establishes permission to relicense somebody else's work.

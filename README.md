@@ -1,6 +1,6 @@
 # POS Revolut for Odoo 19
 
-> Release candidate. Public release is pending final acceptance, completion of the publication checks, and confirmation of the right to publish under LGPL-3.
+> Release candidate. Public release is pending final acceptance and completion of the publication checks.
 
 `pos_revolut` connects Odoo Point of Sale to a Revolut terminal. The cashier selects a Revolut payment method, the customer pays on the terminal, and Odoo verifies the payment before completing the sale. Merchant credentials and authenticated Revolut requests stay on the Odoo server.
 
@@ -29,4 +29,4 @@ An uncertain payment stays protected until reconciled. A timeout is not proof of
 
 ## License
 
-The addon manifest declares **LGPL-3**, which is the intended release license. See [LGPL-3](LICENSE) and its referenced [GPL-3 terms](COPYING). Confirmation of the copyright holder's authority to license the code remains a publication prerequisite.
+This project is licensed under **LGPL-3**. See [LGPL-3](LICENSE) and its referenced [GPL-3 terms](COPYING).
