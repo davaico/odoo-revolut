@@ -18,6 +18,7 @@ _PAYMENT_PROOF_FIELDS = {
     "transaction_id", "payment_ref_no", "revolut_order_id",
     "revolut_payment_intent_id", "revolut_operation_id", "revolut_refund_operation_id",
 }
+_NATIVE_PAYMENT_REFERENCES = {'transaction_id', 'payment_ref_no', 'revolut_order_id', 'revolut_payment_intent_id'}
 
 
 def _payment_proof(payment):
@@ -46,7 +47,10 @@ class _RevolutMutation:
         self.env = env
         self.order_ids = set()
         self.payment_proofs = {}
+        self.raw_reference_proofs = {}
+        self.created_payment_ids = set()
         self.identities = {}
+        self.recovery_identities = {}
         self.settled_returns = {}
         self.return_sources = set()
         self.line_contents = {}
@@ -65,6 +69,8 @@ class _RevolutMutation:
                 self.return_sources.add(order.id)
             if order._revolut_has_exposure():
                 self.identities[order.id] = _order_identity(order)
+            if order.revolut_recovered_tenders or order.payment_ids.filtered(lambda payment: payment._revolut_retains_sale_identity()):
+                self.recovery_identities[order.id] = _order_identity(order)
             if order.state in {"paid", "done"} and order._revolut_return_source():
                 self.identities[order.id] = _order_identity(order)
                 self.settled_returns[order.id] = order._revolut_order_values()["lines"]
@@ -86,10 +92,18 @@ class _RevolutMutation:
                 order._revolut_order_values()["lines"] != self.settled_returns[order_id]
             ):
                 raise UserError(_("Completed Revolut return contents cannot be changed."))
+        for order_id, identity in self.recovery_identities.items():
+            order = self.env['pos.order'].browse(order_id).exists()
+            if not order or _order_identity(order) != identity:
+                raise UserError(_("Keep the original Revolut checkout ownership and currency."))
         for payment_id, proof in self.payment_proofs.items():
             payment = self.env["pos.payment"].browse(payment_id).exists()
             if not payment or _payment_proof(payment) != proof:
                 raise UserError(_("Verified Revolut payment evidence cannot be changed or detached."))
+        for payment_id, references in self.raw_reference_proofs.items():
+            payment = self.env['pos.payment'].browse(payment_id).exists()
+            if not payment or any(payment[name] != value for name, value in references.items()):
+                raise UserError(_("Retained Revolut transaction references cannot be changed or detached."))
         for line_id, contents in self.line_contents.items():
             line = self.env["pos.order.line"].browse(line_id).exists()
             if not line or _line_contents(line) != contents:
@@ -106,6 +120,13 @@ class _RevolutMutation:
                 payment.revolut_operation_id or payment.revolut_refund_operation_id
             ):
                 self.payment_proofs[payment.id] = _payment_proof(payment)
+            if payment.id not in self.created_payment_ids and payment.id not in self.raw_reference_proofs and payment.payment_method_id.use_payment_terminal == 'revolut':
+                references = {name: payment[name] for name in _NATIVE_PAYMENT_REFERENCES if payment[name]}
+                if references:
+                    # A checked association can add a canonical operation link
+                    # to existing references. Preserve their actual evidence,
+                    # while final validation still checks the resulting link.
+                    self.raw_reference_proofs[payment.id] = references
 
     def watch_lines(self, lines):
         if not self.validating:
@@ -142,6 +163,17 @@ class PosPayment(models.Model):
         "pos.revolut.payment.operation", readonly=True, ondelete="restrict", index=True
     )
 
+    def _revolut_retains_sale_identity(self):
+        self.ensure_one()
+        order = self.pos_order_id
+        if self.payment_method_id.use_payment_terminal != 'revolut' or order.is_refund or order._revolut_return_source():
+            return False
+        authority = order.revolut_authorization_id.sudo()
+        return bool(self.payment_status or (order.revolut_recovered_tenders or {}).get(self.uuid)
+            or any(self[name] for name in _NATIVE_PAYMENT_REFERENCES)
+            or (authority and authority.state not in {'revoked', 'consumed'} and any(
+                slot['uuid'] == self.uuid and slot['revolut'] for slot in authority.tenders or [])))
+
     @api.model_create_multi
     def create(self, vals_list):
         with _revolut_mutation(self.env) as mutation:
@@ -149,7 +181,16 @@ class PosPayment(models.Model):
                 values["pos_order_id"] for values in vals_list if values.get("pos_order_id")
             ]))
             payments = super().create(vals_list)
+            # A checked native projection builds new tenders in several writes
+            # before final canonical validation. Raw references on those new
+            # rows are not preexisting evidence; operation-linked proofs still
+            # retain their existing protection even inside this mutation.
+            mutation.created_payment_ids.update(payments.ids)
             mutation.watch(payments.pos_order_id)
+            for payment in payments:
+                recovery = (payment.pos_order_id.revolut_recovered_tenders or {}).get(payment.uuid)
+                if recovery and (recovery['state'] == 'retired' or recovery['payment_id'] != payment.id):
+                    raise UserError(_("A recovered or removed Revolut tender cannot be recreated."))
             return payments
 
     def write(self, values):
@@ -160,6 +201,21 @@ class PosPayment(models.Model):
             target = self.env["pos.order"].browse(values.get("pos_order_id"))
             mutation.watch(self.pos_order_id | target)
             mutation.watch_payments(self)
+            if 'payment_status' in values and not values['payment_status']:
+                from .cart_authorization import _authority_internal
+                if not _authority_internal(self.env) and self.filtered(lambda payment:
+                    payment.payment_status and payment._revolut_retains_sale_identity()
+                ):
+                    raise UserError(_("Keep the saved Revolut terminal status until its payment is reconciled."))
+            if {'uuid', 'pos_order_id', 'payment_method_id'}.intersection(values):
+                for payment in self:
+                    retained_identity = (payment.pos_order_id.revolut_recovered_tenders or {}).get(payment.uuid) or payment._revolut_retains_sale_identity()
+                    if retained_identity and any(
+                        values.get(name, payment[name].id if payment._fields[name].type == 'many2one' else payment[name]) !=
+                        (payment[name].id if payment._fields[name].type == 'many2one' else payment[name])
+                        for name in {'uuid', 'pos_order_id', 'payment_method_id'}.intersection(values)
+                    ):
+                        raise UserError(_("Keep the original saved Revolut tender identity."))
             result = super().write(values)
             mutation.watch(self.pos_order_id)
             return result
@@ -170,6 +226,24 @@ class PosPayment(models.Model):
             mutation.watch(self.pos_order_id)
             if self.filtered(lambda payment: payment.revolut_operation_id or payment.revolut_refund_operation_id):
                 raise UserError(_("Verified Revolut payment evidence cannot be deleted."))
+            from .cart_authorization import _authority_mutation, _tender_amount
+            for payment in self:
+                order = payment.pos_order_id
+                authority = order.revolut_authorization_id.sudo()
+                tracked = (order.revolut_recovered_tenders or {}).get(payment.uuid) or (
+                    authority and any(slot['uuid'] == payment.uuid and slot['revolut'] for slot in authority.tenders or [])) or (
+                    payment.payment_method_id.use_payment_terminal == 'revolut' and not order.is_refund and not order._revolut_return_source())
+                if not tracked:
+                    continue
+                order._revolut_check_prepare_identity(order.uuid)
+                # Proven terminal-safe history keeps the established cashier
+                # cancellation/removal flow. It is retained, rather than
+                # reclassified as a no-operation preparation failure.
+                order._revolut_assert_unstarted_payment(payment, allow_retry_safe_operations=True)
+                with _authority_mutation(self.env):
+                    order._revolut_fence_tender(payment.uuid, {'payment_id': payment.id,
+                        'method_id': payment.payment_method_id.id,
+                        'minor': _tender_amount(order.currency_id, payment.amount)[1], 'state': 'retired'})
             return super().unlink()
 
 
@@ -318,6 +392,8 @@ class PosOrder(models.Model):
             mutation.watch(self)
             if any(order._revolut_has_exposure() for order in self):
                 raise UserError(_("An exposed Revolut order cannot be deleted."))
+            if any(order.revolut_recovered_tenders for order in self):
+                raise UserError(_("Retain the original checkout and its recovered tender history."))
             return super().unlink()
 
     def _revolut_payment_values(self, order, existing_order):

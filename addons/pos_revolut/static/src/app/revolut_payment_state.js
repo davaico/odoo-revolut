@@ -45,7 +45,7 @@ export function paymentActions(line) {
     const reconcile = (state.revolutDiscovering || !unstartedRefund) &&
         !failedRefund && (locked || refund) &&
         state.revolutSnapshot?.state !== "verified";
-    const retrySafe = !state.revolutDiscovering &&
+    const retrySafe = !state.revolutDiscovering && !state.revolutRecoveredRetired &&
         (state.revolutSnapshot?.retry_safe === true ||
             (state.revolutUndispatched === true && !financialStartMayHaveOccurred(line)));
     return {
@@ -59,7 +59,7 @@ export function paymentActions(line) {
         refundException: (!state.revolutDiscovering && unstartedRefund) || failedRefund,
         retrySafe,
         canResume: retrySafe &&
-            ["terminal_busy", "snapshot_invalid", "authority_required"].includes(state.revolutStartRejected),
+            ["terminal_busy", "snapshot_invalid", "authority_required", "unstarted_recovered"].includes(state.revolutStartRejected),
     };
 }
 
@@ -90,6 +90,16 @@ export function paymentOutcome(line) {
 }
 
 export function restorePaymentLine(line) {
+    if (line.uiState.revolutRecoveredUnstarted || line.uiState.revolutRecoveredRetired) {
+        // Recovery actions consume current server authority. A restored or
+        // merged browser snapshot cannot know whether another cashier started.
+        line.uiState.revolutRecoveredUnstarted = false;
+        line.uiState.revolutRecoveredRetired = false;
+        line.uiState.revolutUndispatched = false;
+        line.uiState.revolutStarted = true;
+        line.uiState.revolutStartRejected = false;
+        line.uiState.revolutLocalOutcome = false;
+    }
     const started = isRevolut(line) && (financialStartMayHaveOccurred(line) ||
         (line.uiState.revolutUndispatched !== true && line.getPaymentStatus() === "waiting"));
     line.uiState.revolutStarting = false;
@@ -160,7 +170,7 @@ export class RevolutPaymentState {
         const owner = this.owner(order, line);
         // A draft response can carry the waiting status serialized before the
         // latest provider observation. Idle recovery uses surviving evidence.
-        if (!owner.request && !owner.cancellation && !owner.screenRequest) {
+        if (!owner.request && !owner.cancellation && !owner.screenRequest && !owner.removal) {
             restorePaymentLine(line);
             if (paymentResponseSuccessful(line, true)) {
                 line.setPaymentStatus("done");
@@ -255,6 +265,7 @@ export class RevolutPaymentState {
             line.uiState.revolutStarted = true;
             line.uiState.revolutUndispatched = false;
         }
+        line.uiState.revolutMessage = false;
         owner.checkOnly = checkOnly;
         const request = Promise.resolve().then(invoke).finally(() => {
             if (owner.screenRequest === request) {
@@ -292,6 +303,9 @@ export class RevolutPaymentState {
 
     request(order, line, { checkOnly = false } = {}) {
         const owner = this.owner(order, line);
+        if (owner.removal) {
+            return owner.removal.then(() => false);
+        }
         if (owner.request) {
             return owner.request;
         }
@@ -316,6 +330,10 @@ export class RevolutPaymentState {
         line.uiState.revolutDiscovering = true;
         line.setPaymentStatus("waiting");
         try {
+            if (line.uiState.revolutRecoveredRetired && !checkOnly) {
+                this.showError(line, "retired_recovered");
+                return false;
+            }
             if (line.uiState.revolutSnapshot?.state === "verified") {
                 line.uiState.revolutDiscovering = false;
                 return await this.setVerified(line);
@@ -380,6 +398,22 @@ export class RevolutPaymentState {
                         line.uiState.revolutLocalOutcome = "no_refund_attempt";
                         line.setPaymentStatus("retry");
                         this.showError(line, "no_refund_attempt");
+                        return false;
+                    }
+                }
+                if (!refund && !result && this.canRecoverPayment(order, line)) {
+                    result = await this.recoverPayment(order, line, deadline);
+                    if (line.uiState.revolutRecoveredUnstarted || line.uiState.revolutRecoveredRetired) {
+                        // Recovery changes admission authority, never starts a charge.
+                        return false;
+                    }
+                    if (result?.operation_id) {
+                        // Classification found a winning start. Retain its
+                        // exposure; this recovery click sends no Merchant call.
+                        if (result.state === "verified") {
+                            return await this.setVerified(line);
+                        }
+                        this.showError(line, result.local_outcome || result.state);
                         return false;
                     }
                 }
@@ -466,11 +500,12 @@ export class RevolutPaymentState {
                     } catch (error) {
                         line.uiState.revolutDiscovering = false;
                         if (!previousSnapshot) {
-                            line.uiState.revolutStarted = false;
-                            line.uiState.revolutUndispatched = true;
+                            line.uiState.revolutStarted = error.revolutRecoveryRequired === true;
+                            line.uiState.revolutUndispatched = error.revolutRecoveryRequired !== true;
                         }
                         const outcome = error?.data?.name === "odoo.exceptions.AccessError"
-                            ? "register_access_denied" : "authority_required";
+                            ? "register_access_denied" : error.revolutRecoveryRequired === true
+                                ? "recovery_required" : "authority_required";
                         line.uiState.revolutStartRejected = outcome;
                         line.uiState.revolutLocalOutcome = outcome;
                         line.uiState.revolutRejectionMessage = error?.data?.message || error.message;
@@ -603,6 +638,95 @@ export class RevolutPaymentState {
         }
     }
 
+    canRecoverPayment(order, line) {
+        return !isRevolutRefund(line) && order.state === "draft" &&
+            Number.isInteger(order.id) && Number.isInteger(line.id) &&
+            !line.uiState.revolutStarting && !line.uiState.revolutOperationId &&
+            !line.uiState.revolutSnapshot && !line.transaction_id && !line.payment_ref_no;
+    }
+
+    async recoverPayment(order, line, deadline) {
+        // Existing local proof may be stale after another cashier starts.
+        // Keep the line guarded while obtaining current serialized authority.
+        line.uiState.revolutRecoveredUnstarted = false;
+        line.uiState.revolutRecoveredRetired = false;
+        line.uiState.revolutStarted = true;
+        line.uiState.revolutUndispatched = false;
+        const proof = await this.clock.before(this.adapter.recoverPayment(order, line), deadline);
+        if (proof?.operation_id) {
+            this.remember(line, proof);
+            return proof;
+        }
+        if (["unstarted", "retired"].includes(proof?.recovery_status) && proof.dispatched === false &&
+            proof.order_id === order.id && proof.order_uuid === order.uuid &&
+            proof.payment_id === line.id && proof.payment_line_uuid === line.uuid &&
+            Number.isSafeInteger(proof.recovery_revision) && proof.recovery_revision > 0 &&
+            this.canRecoverPayment(order, line)) {
+            line.uiState.revolutRecoveredUnstarted = proof.recovery_status === "unstarted";
+            line.uiState.revolutRecoveredRetired = proof.recovery_status === "retired";
+            line.uiState.revolutRecoveryRequired = true;
+            line.uiState.revolutRecoveryRevision = proof.recovery_revision;
+            line.uiState.revolutStarted = false;
+            line.uiState.revolutUndispatched = true;
+            line.uiState.revolutStartRejected = `${proof.recovery_status}_recovered`;
+            line.uiState.revolutLocalOutcome = `${proof.recovery_status}_recovered`;
+        }
+        return false;
+    }
+
+    removeRecoveredPayment(order, line) {
+        const owner = this.owner(order, line);
+        if (owner.removal) {
+            return owner.removal;
+        }
+        const remove = async () => {
+            line.uiState.revolutMessage = false;
+            line.uiState.revolutRecoveredUnstarted = false;
+            line.uiState.revolutRecoveredRetired = false;
+            line.uiState.revolutStarted = true;
+            line.uiState.revolutUndispatched = false;
+            line.uiState.revolutDiscovering = true;
+            try {
+                const result = await this.clock.before(this.adapter.removeRecoveredPayment(order, line),
+                    this.clock.now() + PAYMENT_TIMEOUT_MS);
+                if (result?.operation_id) {
+                    this.remember(line, result);
+                    if (result.state === "verified") {
+                        await this.setVerified(line);
+                    } else {
+                        this.showError(line, result.local_outcome || result.state);
+                    }
+                    return false;
+                }
+                if (result?.recovery_status !== "retired" || result.dispatched !== false ||
+                    result.order_id !== order.id || result.order_uuid !== order.uuid ||
+                    result.payment_id !== line.id || result.payment_line_uuid !== line.uuid ||
+                    !Number.isSafeInteger(result.recovery_revision) || result.recovery_revision <= 0) {
+                    this.showError(line, "interrupted");
+                    return false;
+                }
+                line.uiState.revolutStarted = false;
+                line.uiState.revolutUndispatched = true;
+                line.uiState.revolutRecoveryRequired = false;
+                line.uiState.revolutRetiredPayment = { orderId: result.order_id, paymentId: result.payment_id };
+                return true;
+            } catch (error) {
+                this.showError(line, error instanceof ForegroundTimeout ? "timed_out" : "interrupted");
+                return false;
+            } finally {
+                line.uiState.revolutDiscovering = false;
+                line.setPaymentStatus(paymentResponseSuccessful(line, true) ? "done" : "retry");
+            }
+        };
+        const removal = remove().finally(() => {
+            if (owner.removal === removal) {
+                owner.removal = null;
+            }
+        });
+        owner.removal = removal;
+        return removal;
+    }
+
     operationCall(method, order, line) {
         return this.adapter.call(method, [
             [this.methodId], line.uiState.revolutOperationId, order.uuid, line.uuid,
@@ -618,6 +742,9 @@ export class RevolutPaymentState {
                 result.operation_id === line.uiState.revolutPreviousOperationId)) {
             return;
         }
+        line.uiState.revolutRecoveredUnstarted = false;
+        line.uiState.revolutRecoveredRetired = false;
+        line.uiState.revolutRecoveryRequired = false;
         line.uiState.revolutSnapshot = result;
         line.uiState.revolutOperationId = result.operation_id;
         line.uiState.revolutStarted = true;
@@ -629,9 +756,13 @@ export class RevolutPaymentState {
 
     cancel(order, line) {
         const owner = this.owner(order, line);
+        if (owner.removal) {
+            return owner.removal;
+        }
         if (owner.cancellation) {
             return owner.cancellation;
         }
+        line.uiState.revolutMessage = false;
         let cancellation;
         if (owner.request && line.uiState.revolutDiscovering) {
             // Stop discovery/preparation before it can dispatch. Share its
@@ -662,7 +793,8 @@ export class RevolutPaymentState {
             await this.setVerified(line);
             return false;
         }
-        if (line.uiState.revolutUndispatched && !financialStartMayHaveOccurred(line)) {
+        if (line.uiState.revolutUndispatched && !financialStartMayHaveOccurred(line) &&
+            !line.uiState.revolutRecoveryRequired) {
             return true;
         }
         if (isRevolutRefund(line)) {
@@ -683,11 +815,29 @@ export class RevolutPaymentState {
                 const result = await this.clock.before(this.adapter.call("revolut_find_payment", [
                     [this.methodId], order.uuid, line.uuid,
                 ]), deadline);
-                if (!result || result.operation_id === line.uiState.revolutPreviousOperationId) {
+                if (!result && this.canRecoverPayment(order, line)) {
+                    const recovered = await this.recoverPayment(order, line, deadline);
+                    if (line.uiState.revolutRecoveredUnstarted || line.uiState.revolutRecoveredRetired) {
+                        return true;
+                    }
+                    if (recovered?.operation_id) {
+                        // Recovery reports the winning start without cancelling
+                        // it. A subsequent explicit action may reconcile it.
+                        if (recovered.state === "verified") {
+                            await this.setVerified(line);
+                        } else {
+                            this.showError(line, recovered.local_outcome || recovered.state);
+                        }
+                        return false;
+                    }
+                } else if (result?.operation_id) {
+                    this.remember(line, result);
+                }
+                if (!line.uiState.revolutOperationId ||
+                    line.uiState.revolutOperationId === line.uiState.revolutPreviousOperationId) {
                     this.showError(line, "interrupted");
                     return false;
                 }
-                this.remember(line, result);
             }
             let result;
             while (true) {
