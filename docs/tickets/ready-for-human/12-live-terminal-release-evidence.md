@@ -351,16 +351,18 @@ specific scenario being run. Read [release provenance](../../testing/ticket-12-r
 when verifying deployment or automated coverage. Older chronological logs are
 available through Git history; loading them is not required to resume.
 
-## Current checkpoint — 2026-10-12
+## Historical initial October 12 checkpoint — before native validation and refund 20
 
-Six awaited refund financial-completion/funds-received subcases are CLOSED:
+At this initial observation, six awaited refund financial-completion/funds-received subcases were CLOSED:
 FULL, PRODUCT, TIP, MIXED card portion, DISCOUNT and first two-card allocation.
-Odoo verifies six distinct completed refunds (£0.06); owner confirms money
-received. Zero unresolved provider refunds remain. All six native returns are
-still drafts with waiting card tenders; direct refund links are blank despite
-matching saved UUIDs. Native recovery/validation and receipts remain open.
-Return 1019 still has an unrefunded £0.01 second source. External return 53 stays
-Paid/native_completed; external no-goods correction 13 stays draft/outstanding.
+Odoo verified six distinct completed refunds (£0.06); owner confirmed money
+received. Zero unresolved provider refunds remained at that time. All six native
+returns were drafts with waiting card tenders and blank direct links despite
+matching UUIDs. Native recovery/validation and receipts were then pending;
+five subsequently completed. The then-unrefunded second source on 1019 later
+received refund 20, now processing. External return 53 was Paid/native_completed;
+external no-goods correction 13 was draft/outstanding. This snapshot is superseded
+by the authoritative handoff above and is not a repeat-test queue.
 See the [complete refund audit](../../testing/ticket-12-final-release-checklist.md#refund-completion-audit--2026-10-12).
 Ticket 12 remains open. No financial action, native mutation or deployment was
 performed. Earlier checkpoints below retain their historical observation dates.

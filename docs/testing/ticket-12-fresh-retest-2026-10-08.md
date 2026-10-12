@@ -339,19 +339,18 @@ Receipt-screen wording says Refund Initiated although the refund is completed;
 retain as an R17 wording observation. Older six-draft snapshots below describe
 the pre-validation state, not the current FULL result.
 
-## Current checkpoint — refund finality confirmed, 2026-10-12
+## Historical initial refund checkpoint — before native validation and refund 20
 
-All six awaited refunds are verified/completed and the owner confirms receipt
-of the £0.06. Their financial-completion checks are CLOSED. No provider waiting
-remains. Read the [October 12 refund audit](ticket-12-final-release-checklist.md#refund-completion-audit--2026-10-12) for each result and outstanding native work.
-All six returns remain drafts with waiting card tenders and blank direct refund
-links, although saved UUIDs locate the correct records. Next: recover the same
-FULL return and verify native completion; no new refund is needed. Return 1019
-also has an unrefunded £0.01 second source. Accounting correction 13 and broader
-refund fixtures remain open. Ticket 12 is not complete. Installed .18.11 was
-read-only verified; no new deployment or money request was made.
+At this initial October 12 observation, all six awaited refunds were
+verified/completed and the owner confirmed receipt of £0.06. No provider waiting
+remained at that time. All six returns were drafts with waiting card tenders and
+blank direct links despite matching UUIDs. FULL native recovery was then planned;
+it subsequently passed, alongside PRODUCT/TIP/MIXED/DISCOUNT. The then-unrefunded
+second source on 1019 subsequently received refund 20, now processing. This
+snapshot is superseded by the authoritative handoff above, not a next-step queue.
+See the [initial refund audit](ticket-12-final-release-checklist.md#refund-completion-audit--2026-10-12).
 
-## Checkpoint — manual evidence reconciled with PRs #73 and #74
+## Historical October 9 checkpoint — before PR #73 manual retests
 
 The last deployment verified in this campaign is **19.0.1.18.10 / PR #72**.
 PR #73 (code `7d553c1`, addon **19.0.1.18.11**) is now merged into main:
@@ -409,12 +408,12 @@ representation by the remediation investigation, not an established accounting
 bug. Do not send these back as blanket failure retests. Remaining live charge
 budget £0.06; all pending/cancelled drafts and correction evidence preserved.
 
-## Latest continuation
+## Historical October 9 continuation — superseded
 
-The manual results below were observed through PR #72 / .18.10. Resume from
-the checkpoint above: confirm the browser uses the deployed PR #73 candidate before retests,
-preserve pending refunds, and prepare remaining fixtures separately. The
-chronological selections below are historical instructions, not a new test queue.
+The manual results below were observed through PR #72 / .18.10. At this point,
+PR #73 browser verification and targeted retests were still planned; they
+subsequently completed on October 12. The chronological selections below are
+historical instructions, not a new test queue. Use the authoritative handoff.
 
 ## Earlier resume checkpoint
 

@@ -149,10 +149,11 @@ merely because they appear in older checklist rows.
 1. **Return 1019 testing is DONE / OWNER-ACCEPTED.** The owner expects settlement
    to take several days; do not wait for it to continue testing. Preserve the
    existing refund and native draft for later operational completion.
-2. **Proceed step by step to the session close/reopen check**, first inspecting
-   the Closing Register summary and remaining drafts. A pending-refund guard
-   may prevent actual closure; record that outcome once without bypassing it
-   or repeating 1019. Reopening requires successful reconciled closure.
+2. **Session close/reopen is BLOCKED; the closure attempt is already recorded.**
+   Closing totals agreed after count entry; one Close Register click was rejected
+   for active drafts. Preserve them and do not retry closure while 1019 remains
+   unsettled. Later operational settlement/native completion must precede any
+   successful reconciled closure and reopening; this is not a repeat test now.
 3. **Accountant/owner handles correction 13 separately**, with real balanced
    accounting evidence. Do not manufacture a journal or return goods to finish
    a test. Timing depends on the intended accounting treatment.
