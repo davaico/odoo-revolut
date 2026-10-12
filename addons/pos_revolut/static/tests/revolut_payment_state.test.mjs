@@ -52,6 +52,8 @@ const snapshotRejection = {
 function fixture({ refund = false, call, chooseAllocation = async () => false,
     restoreRefundOriginals = async () => {},
     prepareRefund = async () => {},
+    recoverPayment = async () => false,
+    removeRecoveredPayment = async () => false,
     preparePayment = async () => ({status:"prepared", authorization_id:1, cart_version:1, tender_revision:1}),
     projectVerified = async () => {} } = {}) {
     const clock = new ControlledClock();
@@ -74,6 +76,8 @@ function fixture({ refund = false, call, chooseAllocation = async () => false,
     const preparationMessages = [];
     const adapter = {
         preparePayment,
+        recoverPayment,
+        removeRecoveredPayment,
         prepareRefund,
         async call(method, args) {
             calls.push({ method, args });
@@ -2095,4 +2099,299 @@ test("native draft sync preserves restored verified completion", () => {
     state.afterSync(order, line);
     assert.equal(line.getPaymentStatus(), "done");
     assert.equal(paymentResponseSuccessful(line, true), true);
+});
+
+
+const unstartedProof = {
+    recovery_status: "unstarted", dispatched: false, recovery_revision: 2,
+    order_id: 42, order_uuid: "order-1", payment_id: 43, payment_line_uuid: "line-1",
+};
+
+function savedUnstarted(options = {}) {
+    const context = fixture(options);
+    context.order.id = 42;
+    context.line.id = 43;
+    context.line.payment_status = "waiting";
+    restorePaymentLine(context.line);
+    return context;
+}
+
+test("explicit status recovery unlocks the original saved unstarted tender without charging", async () => {
+    let recoveries = 0;
+    const { state, order, line, calls } = savedUnstarted({
+        recoverPayment: async () => { recoveries++; return unstartedProof; },
+    });
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(await state.request(order, line, { checkOnly: true }), false);
+    assert.equal(recoveries, 1);
+    assert.equal(paymentActions(line).canResume, true);
+    assert.equal(paymentActions(line).canDelete, true);
+    assert.equal(orderActions(order).blocksAlternativeTender, false);
+    assert.equal(line.uuid, "line-1");
+    assert.equal(line.id, 43);
+    assert.equal(calls.some(({ method }) => method.includes("start")), false);
+});
+
+test("saved tender deletion rechecks server authority and repeated denied recovery stays visible", async () => {
+    let recoveries = 0;
+    const { state, order, line, calls, errors } = savedUnstarted({
+        recoverPayment: async () => {
+            recoveries++;
+            if (recoveries === 1) return unstartedProof;
+            throw new Error("Recovery unavailable");
+        },
+    });
+    let idle = 0;
+    const cancel = () => state.screenCancel(order, line, async () => {
+        throw new Error("Removal must not resume payment");
+    }, () => { idle++; });
+    assert.equal(await cancel(), true);
+    assert.equal(paymentActions(line).canResume, true);
+    assert.equal(await cancel(), false);
+    assert.equal(await cancel(), false);
+    assert.equal(recoveries, 3);
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(idle, 3);
+    assert.deepEqual(errors, ["interrupted", "interrupted"]);
+    assert.equal(calls.some(({ method }) => method.includes("start") || method.includes("cancel")), false);
+});
+
+test("recovery coalesces duplicate status clicks and only explicit Resume sends a fresh authorized start", async () => {
+    const proof = deferred();
+    let recoveries = 0;
+    let preparations = 0;
+    const { state, order, line, calls } = savedUnstarted({
+        recoverPayment: async () => { recoveries++; return proof.promise; },
+        preparePayment: async () => {
+            preparations++;
+            return { status: "prepared", authorization_id: 31, cart_version: 4, tender_revision: 2 };
+        },
+        call(method) {
+            return method === "revolut_start_payment"
+                ? { operation_id: 71, state: "verified", payment_id: "paid-71", order_id: "sale-71" }
+                : false;
+        },
+    });
+    const first = state.request(order, line, { checkOnly: true });
+    assert.equal(state.request(order, line, { checkOnly: true }), first);
+    await tick();
+    assert.equal(paymentActions(line).canResume, false);
+    assert.equal(paymentActions(line).canDelete, false);
+    proof.resolve(unstartedProof);
+    assert.equal(await first, false);
+    assert.equal(recoveries, 1);
+    assert.equal(preparations, 0);
+    const resume = state.request(order, line);
+    assert.equal(state.request(order, line), resume);
+    assert.equal(await resume, true);
+    assert.equal(preparations, 1);
+    const starts = calls.filter(({ method }) => method === "revolut_start_payment");
+    assert.equal(starts.length, 1);
+    assert.deepEqual(starts[0].args.slice(-3), [31, 4, 2]);
+    assert.equal(line.id, 43);
+    assert.equal(line.transaction_id, "paid-71");
+});
+
+test("timed out recovery ignores late proof, keeps native removal guarded and supports visible retry", async () => {
+    const late = deferred();
+    let recoveries = 0;
+    const { state, clock, order, line, errors } = savedUnstarted({
+        recoverPayment: async () => ++recoveries === 1 ? late.promise : unstartedProof,
+    });
+    let idle = 0;
+    const cancel = state.screenCancel(order, line, async () => {}, () => { idle++; });
+    await tick();
+    clock.advance(60000);
+    assert.equal(await cancel, false);
+    assert.equal(idle, 1);
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(paymentActions(line).canResume, false);
+    late.resolve(unstartedProof);
+    await tick();
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.deepEqual(errors, ["timed_out"]);
+    assert.equal(await state.screenCancel(order, line, async () => {}, () => { idle++; }), true);
+    assert.equal(idle, 2);
+    assert.equal(paymentActions(line).canResume, true);
+});
+
+for (const invalidProof of [
+    { ...unstartedProof, payment_id: 44 },
+    { ...unstartedProof, order_id: 99 },
+    { ...unstartedProof, payment_line_uuid: "another-line" },
+    { ...unstartedProof, dispatched: true },
+    { ...unstartedProof, recovery_revision: 0 },
+    false,
+]) {
+    test(`incomplete or mismatched recovery proof remains guarded: ${JSON.stringify(invalidProof)}`, async () => {
+        const { state, order, line, calls } = savedUnstarted({ recoverPayment: async () => invalidProof });
+        assert.equal(await state.request(order, line, { checkOnly: true }), false);
+        assert.equal(paymentActions(line).canResume, false);
+        assert.equal(paymentActions(line).canDelete, false);
+        assert.equal(calls.some(({ method }) => method.includes("start")), false);
+    });
+}
+
+test("recovery that finds a concurrent existing operation retains its exposure", async () => {
+    const { state, order, line, calls } = savedUnstarted({
+        recoverPayment: async () => ({ operation_id: 72, state: "unresolved", retry_safe: false }),
+        call(method) {
+            return method === "revolut_poll_payment" ? { operation_id: 72, state: "unresolved", retry_safe: false } : false;
+        },
+    });
+    assert.equal(await state.request(order, line, { checkOnly: true }), false);
+    assert.equal(paymentActions(line).canResume, false);
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(calls.some(({ method }) => method.includes("start")), false);
+});
+
+
+test("native removal consumes durable retired authority before releasing the local tender", async () => {
+    const retirement = deferred();
+    let removals = 0;
+    const { state, order, line } = savedUnstarted({
+        recoverPayment: async () => unstartedProof,
+        removeRecoveredPayment: async () => { removals++; return retirement.promise; },
+    });
+    await state.request(order, line, { checkOnly: true });
+    const remove = state.removeRecoveredPayment(order, line);
+    assert.equal(state.removeRecoveredPayment(order, line), remove);
+    await tick();
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(paymentActions(line).canResume, false);
+    retirement.resolve({ ...unstartedProof, recovery_status: "retired", recovery_revision: 3 });
+    assert.equal(await remove, true);
+    assert.equal(removals, 1);
+    assert.equal(paymentActions(line).canDelete, true);
+});
+
+test("concurrent removal retains a winning operation and never releases the local tender", async () => {
+    const { state, order, line, calls } = savedUnstarted({
+        recoverPayment: async () => unstartedProof,
+        removeRecoveredPayment: async () => ({ operation_id: 74, state: "unresolved", retry_safe: false }),
+    });
+    await state.request(order, line, { checkOnly: true });
+    assert.equal(await state.removeRecoveredPayment(order, line), false);
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(paymentActions(line).canResume, false);
+    assert.equal(orderActions(order).blocksAlternativeTender, true);
+    assert.equal(calls.some(({ method }) => method.includes("start")), false);
+});
+
+test("offline retirement remains guarded and late timeout authority cannot remove or restart the tender", async () => {
+    const late = deferred();
+    const { state, clock, order, line, errors, calls } = savedUnstarted({
+        recoverPayment: async () => unstartedProof,
+        removeRecoveredPayment: () => late.promise,
+    });
+    await state.request(order, line, { checkOnly: true });
+    const removal = state.removeRecoveredPayment(order, line);
+    const cancel = state.cancel(order, line);
+    assert.equal(cancel, removal);
+    const attemptedResume = state.request(order, line);
+    await tick();
+    state.afterSync(order, line);
+    assert.equal(paymentActions(line).canDelete, false);
+    clock.advance(60000);
+    assert.equal(await removal, false);
+    assert.equal(await attemptedResume, false);
+    late.resolve({ ...unstartedProof, recovery_status: "retired", recovery_revision: 3 });
+    await tick();
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(paymentActions(line).canResume, false);
+    assert.deepEqual(errors, ["timed_out"]);
+    assert.equal(calls.some(({ method }) => method.includes("start")), false);
+});
+
+test("native sync and reload require current recovery authority before re-exposing safe actions", async () => {
+    let recoveries = 0;
+    const { state, order, line } = savedUnstarted({
+        recoverPayment: async () => { recoveries++; return unstartedProof; },
+    });
+    await state.request(order, line, { checkOnly: true });
+    assert.equal(paymentActions(line).canResume, true);
+    state.afterSync(order, line);
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(paymentActions(line).canResume, false);
+    await state.request(order, line, { checkOnly: true });
+    assert.equal(paymentActions(line).canResume, true);
+    restorePaymentLine(line);
+    assert.equal(paymentActions(line).canDelete, false);
+    await state.request(order, line, { checkOnly: true });
+    assert.equal(paymentActions(line).canResume, true);
+    assert.equal(recoveries, 3);
+});
+
+test("native deletion that classifies a winning start retains exposure without a provider cancellation", async () => {
+    const { state, order, line, calls } = savedUnstarted({
+        recoverPayment: async () => ({ operation_id: 75, state: "pending", retry_safe: false }),
+        call(method) {
+            if (method === "revolut_find_payment") return false;
+            throw new Error("Recovery must not send a provider operation");
+        },
+    });
+    let idle = 0;
+    assert.equal(await state.screenCancel(order, line, async () => {}, () => { idle++; }), false);
+    assert.equal(idle, 1);
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(paymentActions(line).canResume, false);
+    assert.deepEqual(calls.map(({ method }) => method), ["revolut_find_payment"]);
+});
+
+test("a lost retirement response recovers the tombstone for removal while prohibiting Resume", async () => {
+    const retired = { ...unstartedProof, recovery_status: "retired", recovery_revision: 3 };
+    const { state, order, line, calls } = savedUnstarted({
+        recoverPayment: async () => retired,
+        removeRecoveredPayment: async () => retired,
+    });
+    assert.equal(await state.request(order, line, { checkOnly: true }), false);
+    assert.equal(paymentActions(line).canResume, false);
+    assert.equal(paymentActions(line).canDelete, true);
+    assert.equal(await state.screenCancel(order, line, async () => {}, () => {}), true);
+    assert.equal(await state.removeRecoveredPayment(order, line), true);
+    assert.equal(calls.some(({ method }) => method.includes("start")), false);
+});
+
+test("a retired tender offers status and removal and cannot initiate a new preparation", async () => {
+    let preparations = 0;
+    const { state, order, line, calls } = savedUnstarted({
+        recoverPayment: async () => ({ ...unstartedProof, recovery_status: "retired", recovery_revision: 3 }),
+        preparePayment: async () => { preparations++; throw new Error("Retired tender cannot prepare"); },
+    });
+    await state.request(order, line, { checkOnly: true });
+    assert.equal(paymentActions(line).retrySafe, false);
+    assert.equal(await state.request(order, line), false);
+    assert.equal(preparations, 0);
+    assert.equal(calls.some(({ method }) => method.includes("start")), false);
+});
+
+test("preparation fenced by concurrent recovery requires Check status before same-tender Resume", async () => {
+    let preparations = 0;
+    const { state, order, line, calls } = fixture({
+        preparePayment: async () => {
+            if (++preparations === 1) {
+                const error = new Error("Recovery changed this tender. Check status before resuming.");
+                error.revolutRecoveryRequired = true;
+                throw error;
+            }
+            return { status: "prepared", authorization_id: 32, cart_version: 1, tender_revision: 1 };
+        },
+        recoverPayment: async () => unstartedProof,
+        call(method) {
+            return method === "revolut_start_payment"
+                ? { operation_id: 76, state: "verified", payment_id: "paid-76", order_id: "sale-76" }
+                : false;
+        },
+    });
+    order.id = 42;
+    line.id = 43;
+    assert.equal(await state.request(order, line), false);
+    assert.equal(paymentActions(line).canResume, false);
+    assert.equal(paymentActions(line).canDelete, false);
+    assert.equal(calls.some(({ method }) => method === "revolut_start_payment"), false);
+    assert.equal(await state.request(order, line, { checkOnly: true }), false);
+    assert.equal(paymentActions(line).canResume, true);
+    assert.equal(await state.request(order, line), true);
+    assert.equal(preparations, 2);
+    assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 1);
 });
