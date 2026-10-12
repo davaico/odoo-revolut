@@ -52,6 +52,36 @@ class TestRevolutCartPricing(CommonPosTest):
         self.request.assert_not_called()
         super().tearDown()
 
+    def test_tip_identity_does_not_depend_on_name_availability_or_browser_flags(self):
+        tip = self.pos_config_usd.tip_product_id
+        tip.write({"name": "Gratuity", "available_in_pos": True})
+        order = self._order(product_id=tip.id)
+        self.assertFalse(order.is_tipped)
+        self.assertEqual(order.tip_amount, 0)
+        self.env.flush_all()
+        with self.assertRaisesRegex(
+            UserError, "Remove the Odoo-entered tip before using terminal-selected tips",
+        ), self.env.cr.savepoint():
+            self._prepare(order)
+
+    def test_ineligible_goods_and_linked_returns_keep_generic_rejection(self):
+        self.product.name = "Tips"
+        for values in ({"active": False}, {"sale_ok": False}, {"available_in_pos": False}):
+            with self.subTest(values=values), self.env.cr.savepoint():
+                order = self._order()
+                order.write({"is_tipped": True, "tip_amount": 10})
+                self.product.write(values)
+                self.env.flush_all()
+                with self.assertRaisesRegex(UserError, "Use eligible sale products; linked returns require refund allocation"):
+                    self._prepare(order)
+                self.product.write({name: True for name in values})
+        original = self._order()
+        linked = self._order(refunded_orderline_id=original.lines.id)
+        with self.assertRaisesRegex(
+            UserError, "Use eligible sale products; linked returns require refund allocation",
+        ), self.env.cr.savepoint():
+            self._prepare(linked)
+
     def _order(self, price=10, **line_values):
         return self.env["pos.order"].create({
             "session_id": self.session.id, "uuid": str(uuid4()), "state": "draft",
@@ -102,6 +132,26 @@ class TestRevolutCartPricing(CommonPosTest):
         tip = self.pos_config_usd.tip_product_id
         with self.assertRaises(UserError), self.env.cr.savepoint():
             self._prepare(self._order(product_id=tip.id))
+
+    def test_native_odoo_tip_explains_removal_before_product_eligibility(self):
+        tip = self.env.ref("point_of_sale.product_product_tip")
+        self.assertTrue(tip.active)
+        self.assertFalse(tip.available_in_pos)
+        self.pos_config_usd.tip_product_id = tip
+        order = self._order()
+        order.write({
+            "amount_total": 11, "is_tipped": True, "tip_amount": 1,
+            "lines": [Command.create({
+                "product_id": tip.id, "qty": 1, "price_unit": 1,
+                "price_subtotal": 1, "price_subtotal_incl": 1,
+                "tax_ids": [Command.clear()],
+            })],
+        })
+        with self.assertRaisesRegex(
+            UserError, "Remove the Odoo-entered tip before using terminal-selected tips",
+        ), self.env.cr.savepoint():
+            self._prepare(order, amount=11)
+        self.request.assert_not_called()
 
     def test_fixed_percentage_formula_and_quantity_pricelist_prices(self):
         pricelist = self.pos_config_usd.pricelist_id
