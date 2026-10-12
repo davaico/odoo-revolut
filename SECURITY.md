@@ -1,17 +1,17 @@
 # Security
 
-Keep credentials and original customer or payment evidence out of public issues, pull requests and test fixtures. This includes Merchant secrets, access tokens, card data, terminal/location identifiers and transaction references that can be linked to live operations. Use synthetic examples.
-
 ## Report a vulnerability
 
-Use GitHub's private **Report a vulnerability** form in this repository's Security tab. Describe the affected version, required permissions, impact and a minimal reproduction using mocked provider responses. Share only the evidence needed to reproduce the issue. Do not exercise a report against another merchant, live terminal or customer transaction.
+Use **Report a vulnerability** in this repository's GitHub Security tab. Include the affected version, permissions, impact and a minimal reproduction with mocked provider responses.
 
-If the private form is unavailable, do not open a public issue containing vulnerability details or financial evidence. Ask a maintainer for an approved private reporting route first.
+If the private form is unavailable, ask a maintainer for an approved private route before sharing details. Never put vulnerabilities, credentials or financial evidence in a public issue. Do not test against another merchant, live terminal or customer transaction.
 
-## Operating the addon
+Use synthetic examples. Keep secrets, card/customer data, live terminal/location identifiers, transaction references, private hostnames and operational logs out of public reports and fixtures.
 
-Merchant secrets belong in the Odoo server's secret store and worker environment. Odoo stores an authorized variable reference, not the secret value. Restrict access to server configuration, backups and logs; grant each backend POS user access only to the required register.
+## Deployment
 
-Use supported Odoo updates and review the addon upgrade notes before deploying. An unresolved payment or refund must be reconciled using its existing operation. Do not clear a reservation, remove a pending tender or start a replacement transaction merely to dismiss an error.
+Keep Merchant secrets in the server secret store and worker environment. Odoo stores authorized variable references. Restrict configuration, backups and logs; grant users only the registers they need.
 
-The repository's Compose environment is disposable and uses public test credentials. It is not a production deployment template. Automated tests block real Merchant API traffic.
+Follow [Installation](docs/installation.md) and [Upgrading](docs/upgrading.md). Resolve uncertain payments/refunds through their original records using the [recovery steps](docs/user-guide.md#understand-the-payment-status).
+
+Compose is a disposable test environment with fake credentials and blocked Merchant HTTP, not a production template.

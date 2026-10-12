@@ -1,43 +1,42 @@
-# How POS Revolut works
+# Architecture
 
-The browser is an untrusted POS client. Odoo owns cart authorization, register access, credentials, dispatch, financial verification, and refund reservations. The Revolut terminal collects the customer's card payment and optional tip. The browser never receives Merchant secrets or makes authenticated Merchant API calls.
+Odoo owns cart authorization, register access, credentials, financial requests and verification. The POS browser is untrusted. The terminal collects card payments and optional tips; Merchant secrets stay on the server.
 
 ## Payment lifecycle
 
-1. Save the native draft, check required pickup scheduling before preparing a new payment, and derive permitted prices, taxes, and tender amounts on the server.
-2. Record an authorized cart and reserve the selected base allocation before dispatch.
-3. Persist dispatch ownership, create a Revolut order, and push a terminal payment intent.
-4. Observe the intent and underlying payment. A completed intent alone is not proof of payment.
-5. Verify a successful final payment and an authenticated payment-report row proving the gross, base, and tip amounts, including an explicit zero tip.
-6. Apply the verified tender and tip to the original order. Native POS completion still requires the full balance and its own validation rules.
+1. Save the draft, check required pickup scheduling, and derive prices, taxes and tender amounts on the server.
+2. Authorize the cart and reserve the selected base allocation.
+3. Persist dispatch ownership, create a Revolut order and send a terminal payment intent.
+4. Verify the underlying successful payment and authenticated report: gross, base and tip, including explicit zero-tip evidence. Intent completion alone is insufficient.
+5. Apply the verified tender and tip to the original order. Complete native POS checkout when fully paid and validation requirements are satisfied.
 
-Provider requests and local database updates cross failure boundaries. Persisted attempts, references, dispatch claims, and immutable financial snapshots let Odoo distinguish a safe undispatched retry from a request whose response was lost. Uncertain outcomes retain their reservation; mutating requests are not replayed automatically. Concurrent status readers share the recorded observation.
+Persisted attempts, references, dispatch claims and immutable financial snapshots distinguish undispatched requests from lost responses. Uncertain outcomes retain reservations; mutating requests are not automatically replayed. Concurrent status readers share the recorded observation.
 
-Each operation retains its original company, register, Merchant authority, currency, amount, order, and tender identity. Changing current configuration does not redirect historical reconciliation to a different Merchant account. Interactive operations require explicit backend-user register access; employee selection supplies attribution, not authorization.
+Recovery retains the original company, register, Merchant authority, currency, amount, order and tender. Current configuration cannot redirect historical reconciliation. Backend-user register grants authorize interactive actions; employee selection only supplies attribution.
 
-Pickup time remains mutable native scheduling data outside the immutable financial identity. The addon checks that required scheduling is present before new collection; native Odoo owns slot selection and final checkout validation. Correcting scheduling after capture preserves access to discovery, status checks, and recovery of the original payment.
+Pickup time remains editable outside financial identity. Native Odoo owns slot selection and checkout validation; correcting scheduling after capture preserves the original payment and its recovery actions.
 
 ## Refund lifecycle
 
-Odoo refunds reserve quantities and original tender capacity before sending the request. Completed, pending, and uncertain reservations count toward the ceiling. Only a verified successful refund can settle its native negative tender. Base and terminal-tip components remain separate.
+Reserve original quantities and tender capacity before requesting a refund. Completed, pending and uncertain allocations count against limits; base and tip remain separate. Only verified success settles the native negative tender.
 
-External refund discovery records provider evidence against known original payments. It cannot infer the returned goods from the amount. Managers separately complete or associate native returns, or record the required financial-only accounting correction. Discovery and reconciliation do not create another refund.
+External discovery records refunds against known payments but cannot infer returned goods. Managers complete or associate native returns, or record financial-only accounting corrections. These actions send no new refund.
 
 ## Source map
 
-All addon paths below are relative to `addons/pos_revolut`.
+Paths below are relative to `addons/pos_revolut`.
 
-| Area | Main files |
+| Area | Files |
 | --- | --- |
-| Credentials and register access | `models/merchant_credential.py`, `models/pos_config.py` |
-| Cart preparation and pricing | `models/cart_authorization.py`, `models/cart_pricing.py`, `models/financial_snapshot.py` |
-| Terminal configuration and dispatch | `models/pos_payment_method.py`, `models/revolut_payment_operation.py` |
+| Credentials and access | `models/merchant_credential.py`, `models/pos_config.py` |
+| Cart and pricing | `models/cart_authorization.py`, `models/cart_pricing.py`, `models/financial_snapshot.py` |
+| Configuration and dispatch | `models/pos_payment_method.py`, `models/revolut_payment_operation.py` |
 | Payment observation and tips | `models/payment_observation.py`, `models/terminal_tip.py` |
-| Refund allocation and verification | `models/return_allocation.py`, `models/revolut_refund.py` |
-| External refunds and native completion | `models/external_refund_discovery.py`, `models/external_refund_completion.py` |
-| Native settlement guards | `models/pos_order.py` |
+| Refunds | `models/return_allocation.py`, `models/revolut_refund.py` |
+| External refunds | `models/external_refund_discovery.py`, `models/external_refund_completion.py` |
+| Native settlement | `models/pos_order.py` |
 | POS interface | `static/src/app/payment_revolut.js`, `static/src/app/revolut_payment_state.js`, `static/src/app/restaurant_revolut.js` |
-| Permissions and background reconciliation | `security/`, `data/revolut_reconciliation_cron.xml` |
-| Runtime and browser coverage | `tests/`, `static/tests/` |
+| Permissions and reconciliation | `security/`, `data/revolut_reconciliation_cron.xml` |
+| Odoo and browser tests | `tests/`, `static/tests/` |
 
-Root `tests/` covers supporting tools; root `scripts/` provides test runners. [Contributing](../CONTRIBUTING.md) explains how to exercise these paths with provider HTTP blocked.
+Root `tests/` covers test tooling; `scripts/` contains the runners. See [Contributing](../CONTRIBUTING.md) for commands.

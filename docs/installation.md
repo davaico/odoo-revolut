@@ -1,60 +1,58 @@
-# Install and configure POS Revolut
+# Install POS Revolut
 
-These instructions cover a new installation. For an existing database, read [Upgrading](upgrading.md) first. The current tested runtime is Odoo Community `19.0.20260908` with PostgreSQL `16.14`; final release acceptance and publication approval remain pending.
+For an existing database, use [Upgrading](upgrading.md). Tested runtime: Odoo Community `19.0.20260908` and PostgreSQL `16.14`. Final release acceptance is pending.
 
 ## Requirements
 
-- An Odoo server you administer, with outbound HTTPS and the standard POS and Restaurant addons available.
-- A Revolut Merchant account, its Merchant secret, a physical location ID, and a terminal ID belonging to that location.
+- An administered Odoo server with outbound HTTPS, standard POS/Restaurant addons and working journal, currency and accounting configuration.
+- A Revolut Merchant account, secret, location ID and terminal belonging to that location.
 - An online terminal in **Pay at Counter** mode.
-- Credential access to terminal operations and Merchant `payments_report` creation, polling, and download. **Check Connection** does not test all these capabilities.
-- A normal working Odoo POS configuration, journal, currency, and accounting setup.
+- Access to terminal operations and Merchant `payments_report` creation, polling and download. **Check Connection** does not verify all these permissions.
 
-The addon calls the fixed Sandbox or Production Merchant host using API version `2026-08-17`. Sandbox credentials and devices are separate from Production. Sandbox simulation does not establish that a production terminal is ready.
+The addon uses fixed Sandbox/Production Merchant hosts and API version `2026-08-17`. Their credentials and devices are separate; sandbox simulation does not prove production readiness.
 
-## Install the addon
+## Install
 
-1. Obtain the reviewed release and place its `addons/pos_revolut` directory on the server. Add its parent directory to Odoo's `addons_path`, preserving the existing paths.
-2. Take database and filestore backups. Stop the Odoo service and run the module installation with the same configuration and service environment used by Odoo:
+1. Place the reviewed `addons/pos_revolut` directory on the server. Add its parent to `addons_path`, preserving existing entries.
+2. Back up the database and filestore, stop Odoo, then install using the service's configuration and environment. Replace the placeholders:
 
    ```bash
    odoo --config /path/to/odoo.conf --database DATABASE_NAME \
      --init pos_revolut --stop-after-init --no-http --workers=0
    ```
 
-3. Confirm installation succeeded, restart Odoo, and open the Apps list. **POS Revolut** should be installed. Odoo installs `point_of_sale` and `pos_restaurant` as dependencies; there is no separate Revolut Restaurant addon. Retail registers can remain in retail mode.
+3. After success, restart Odoo and confirm **POS Revolut** is installed. Dependencies `point_of_sale` and `pos_restaurant` install automatically; retail registers can remain in retail mode.
 
-The path and database name above are placeholders. Use your deployment's Odoo executable and configuration. Native invoice PDFs also need a working server PDF renderer compatible with your Odoo installation; the addon does not install it.
+Invoice PDFs require a working Odoo-compatible server PDF renderer, installed separately.
 
-## Provision the Merchant secret
+## Authorize credentials
 
-Inject the Merchant secret into every Odoo worker through your deployment's secret store. Give the variable a name beginning with `ODOO_REVOLUT_SECRET_`, containing only uppercase letters, digits, and underscores, for example `ODOO_REVOLUT_SECRET_REGISTER_1`.
+Inject the Merchant secret into every Odoo worker using the deployment secret store. Name its variable with prefix `ODOO_REVOLUT_SECRET_` and uppercase letters, digits and underscores, for example `ODOO_REVOLUT_SECRET_REGISTER_1`.
 
-Store the **value** only in the server secret store. Do not put it in this repository, Odoo fields, `odoo.conf`, command arguments, browser code, or support logs. If an environment file is used, keep it outside the repository with restricted ownership and mode `0600`.
+Keep the value out of Git, Odoo fields, `odoo.conf`, command arguments, browser code and logs. Any environment file must be outside the repository with restricted ownership and mode `0600`.
 
-As a system administrator, verify which Merchant account and company own the secret. Open **Point of Sale → Revolut Merchant Authorities** and create a record for that company, Sandbox or Production environment, and variable name. This authorizes the reference; it does not store the secret. POS managers can select only an authorized reference for their company. Creating a new Revolut payment method as a system administrator can also provision its authority, so treat that action as the same ownership decision. Editing an existing method never provisions authority automatically.
+As system administrator, verify the owning Merchant account/company. Under **Point of Sale → Revolut Merchant Authorities**, authorize the company, environment and variable name. POS managers select an authorized reference, never the secret value. Creating a new Revolut method as administrator can also provision authority; editing an existing method cannot.
 
-## Configure the register
+## Configure a register
 
-1. Open **Point of Sale → Configuration → Payment Methods**. Create a bank payment method for the intended company.
-2. Set **Integration** to **Terminal**, and **Integrate with** to **Revolut**.
-3. Set **Revolut Environment**, **Revolut Location ID**, **Revolut Terminal ID**, and **Revolut Secret Reference**. The reference is the variable's name, never its value. Use one configured terminal for this method.
-4. Set **Revolut Fulfilment**. Retail uses **Eat In** as the current interim mapping. Restaurant checkout derives **Eat In** or **Take Away** from the table and Dine In/Takeout preset. Delivery and unknown no-table presets are guarded.
-5. Save and select **Check Connection**. It performs terminal discovery and verifies the selected terminal is online; it sends no payment.
-6. Add the method to the intended POS configuration. Keep **Automatically validate terminal payments** enabled.
-7. Configure Odoo's **Tip Product**, even if customers will leave no tip. Its taxes and Product Price precision must represent collected currency minor units exactly; the standard untaxed tip product is supported. Enable or disable the terminal's customer tip prompt as needed.
-8. Disable Restaurant **Add tips after payment**. Remove native Odoo-entered tips before starting Revolut payment; the customer selects any tip on the terminal.
-9. As a system administrator, open **Point of Sale → Configuration → Point of Sale**, open the register, and set **Revolut register access → Revolut backend users**. Add every backend till user and supervisor who needs this register. Managers and administrators acting as managers need an explicit grant too.
-10. Keep the **Reconcile Revolut POS payments** and **Reconcile Revolut POS refunds** scheduled actions enabled. Reopen POS to load its assets.
+1. Under **Point of Sale → Configuration → Payment Methods**, create a bank method for the company. Set **Integration → Terminal** and **Integrate with → Revolut**.
+2. Set **Revolut Environment**, **Location ID**, **Terminal ID** and **Secret Reference** (the variable name). Use one terminal per method.
+3. Set **Revolut Fulfilment**. Retail currently uses **Eat In**. Restaurant derives **Eat In/Take Away** from its table and Dine In/Takeout preset; delivery and unknown no-table presets are guarded.
+4. Save and select **Check Connection** to discover the terminal and verify it is online. This sends no payment.
+5. Add the method to the register; enable **Automatically validate terminal payments**.
+6. Configure **Tip Product**, even with tips disabled. Its taxes and Product Price precision must represent currency minor units exactly; the standard untaxed product is supported. Configure the terminal's tip prompt as needed.
+7. Disable Restaurant **Add tips after payment**. Remove Odoo-entered tips before collection; Revolut supports terminal-selected tips.
+8. As system administrator, open the register under **Configuration → Point of Sale**. In **Revolut register access → Revolut backend users**, add each till user and supervisor, including managers/administrators who operate it.
+9. Enable scheduled actions **Reconcile Revolut POS payments** and **Reconcile Revolut POS refunds**. Reopen POS to load assets.
 
-Register grants start empty. Employee switching and PINs do not grant backend access. Removing a user blocks their next interactive Revolut request but does not cancel an existing payment; scheduled reconciliation continues.
+Register grants start empty; employee PINs do not grant access. Removing a user blocks their next interactive request without cancelling existing payments or scheduled reconciliation.
 
-For timed Takeout, configure the preset's pickup calendar and select an available pickup date/time before payment. A missing pickup time blocks new collection before provider dispatch. If a day has no slots, choose another day in Odoo's scheduling picker. See [Restaurant orders](user-guide.md#restaurant-orders) for captured-payment recovery.
+For timed Takeout, configure the pickup calendar and select an available date/time before payment. Choose another day if no slots remain. See [Restaurant orders](user-guide.md#restaurant-orders) for recovery after capture.
 
-## Verify and maintain the setup
+## Verify and maintain
 
-First check ordinary POS operation, terminal discovery, account/location/currency agreement, permissions, and payment-report availability. Perform financial acceptance only with the account owner's approved amounts and a reconciliation plan. A connection check or passing mocked tests cannot substitute for the actual device checks.
+Check ordinary POS operation, terminal discovery, account/location/currency agreement, register permissions and payment-report access. Financial acceptance needs the account owner's approved amounts and a reconciliation plan. Mocked tests and connection checks cannot replace device checks.
 
-After an authorized test, verify the native sale, provider payment, tip, receipt, and refund outcome as applicable. Retain sensitive evidence privately. Use [the user guide](user-guide.md) for uncertain results; do not repeat a charge just because checkout is waiting.
+Verify the native sale, provider payment, tip, receipt and refund as applicable; retain evidence privately. Follow the [user guide](user-guide.md) if results are uncertain.
 
-For rotation within the same Merchant account, replace the value behind the existing variable, restart every Odoo worker, check connectivity, then revoke the old key. For a different Merchant account or variable name, provision and authorize a new reference first. Historical attempts retain their original credential authority: keep that reference available while old payments or refunds still require reconciliation. An authority cannot be reassigned to another company or environment.
+For key rotation within the same Merchant account, replace the existing variable's value, restart every worker, check connectivity, then revoke the old key. For a new account or variable name, authorize a new reference first. Keep historical references available for reconciliation/refunds; authorities cannot move across companies or environments.

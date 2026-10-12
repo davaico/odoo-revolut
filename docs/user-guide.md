@@ -1,77 +1,81 @@
 # Use POS Revolut
 
-An administrator must complete [installation and register setup](installation.md) before checkout. Cashiers need a backend-user register grant; refunds and manual reconciliation require a POS manager with the same register access.
+Complete [register setup](installation.md) first. Cashiers need a backend-user register grant; refunds and manual reconciliation require a POS manager with that grant.
 
 ## Take a payment
 
-1. Add the goods and review the order. Remove any tip entered in Odoo; the customer chooses the tip on the terminal.
-2. Select the Revolut payment method. If a **Send** button is shown, use it to start the selected line. The terminal receives that line's amount.
-3. The customer follows the terminal prompts and presents their card.
-4. Wait for Odoo to verify the payment. The sale completes automatically when the full order is paid and native checkout requirements are satisfied.
+1. Review the goods. Remove Odoo-entered tips; customers choose tips on the terminal.
+2. Select Revolut and use **Send** if shown. The terminal receives that line's amount.
+3. The customer follows the prompts and presents their card.
+4. Wait for verification. Odoo completes a fully paid sale when native checkout requirements are satisfied.
 
-For cash plus card, enter the intended cash amount first and use Revolut for the remainder. For a partial card payment, use **Choose amount — [payment method]**, then add further tenders for the balance. A successful partial payment leaves the order open; it is not permission to change the paid goods or price.
+For cash/card splits, enter cash first and use Revolut for the remainder. For a partial card payment, use **Choose amount — [payment method]**, then add tenders for the balance. Keep paid goods and prices unchanged.
 
-If price control requires manager approval, a manager opens the saved order in their own Odoo session and selects **Approve Revolut Cart**. The cashier then uses **Resume** after reviewing the canonical cart. Switching employees in the cashier browser does not provide this approval.
+If price approval is required, a manager opens the saved order in their own Odoo session and selects **Approve Revolut Cart**. The cashier reviews the approved cart and uses **Resume**. Employee switching cannot grant this approval.
 
 ## Understand the payment status
 
-| What you see | What to do |
+| Status | Action |
 | --- | --- |
-| **Waiting for card** | Let the customer finish on the terminal. |
-| **Payment received — verifying payment details** | Money was captured; Odoo is verifying the report and tip details. Keep the same line and use **Check status** if offered. |
-| Declined, failed, or cancelled | Follow **Retry** only when Odoo offers it after establishing that another charge is safe. |
-| Interrupted, timed out, or unresolved | Keep the order and payment line. Reconnect and choose **Check status**; ask a manager if it remains unresolved. |
-| **Terminal busy — no payment request sent** | Use **Resume** after the terminal is released, or remove the undispatched line if the interface permits it. |
-| **Verified — reconnect and Check status to restore checkout** | Reconnect and choose **Check status** on the same line. Odoo restores checkout data without collecting again. |
+| **Waiting for card** | Let the customer finish. |
+| **Payment received — verifying payment details** | Money was captured. Keep the line; use **Check status** if offered while Odoo verifies the report/tip. |
+| Declined, failed or cancelled | Use **Retry** only when offered. |
+| Interrupted, timed out or unresolved | Keep the order and line. Reconnect, use **Check status**, then ask a manager if unresolved. |
+| **Terminal busy — no payment request sent** | **Resume** when available, or remove the undispatched line if permitted. |
+| **Verified — reconnect and Check status to restore checkout** | Reconnect and check the same line to restore checkout without charging again. |
 
-A local timeout does not mean the customer was not charged. Do not create a replacement payment, use another tender to cover an uncertain charge, clear browser storage, or force a line paid. **Check status** recovers the existing attempt; it does not initiate a new charge. The scheduled reconciler can record a late outcome, but the original order must still complete through POS.
+**A timeout does not prove failure.** Never replace an uncertain charge with another payment/tender, clear browser storage or force a line paid. **Check status** recovers the existing attempt. Scheduled reconciliation records late outcomes; the original order still needs POS completion.
 
-To cancel, use the payment line's cancellation/removal action and wait for confirmation. Processing payments may no longer be cancellable. If payment succeeds while cancellation is being checked, the verified payment is retained. An uncertain cancellation keeps the line protected.
+To cancel, use the line's cancellation/removal action and wait. Processing payments may be uncancellable; a payment that succeeds during cancellation remains recorded, and uncertainty keeps the line protected.
 
-If preparation failed before a payment existed and a waiting line remains after reload, fix the reported setup problem and choose **Check status** on the original line in its original open session. Odoo may then offer **Resume**, or allow its safe removal. A lost response or missing reference is not enough to establish that a line never started.
+For preparation failures leaving a waiting line after reload, fix setup and choose **Check status** on the original line in its original open session. Use **Resume** or removal only when offered. Missing references or lost responses do not prove no payment started.
 
 ## Restaurant orders
 
-Use the normal table and Dine In/Takeout preset. Settle bill splitting and order merging before collecting payment: changing order identity or financial contents after a Revolut attempt starts is guarded. Moving the same draft to another table preserves its payment association.
+Use the normal table and Dine In/Takeout preset. Split/merge orders before payment; changing identity or financial contents after an attempt starts is guarded. Moving the same draft between tables preserves its payment association.
 
-Timed Takeout requires a pickup date and time before a new Revolut payment can start. Choose an available slot in Odoo's native scheduling picker; choose another date if the selected day has no slots. With scheduling satisfied, a verified payment can complete the fully paid order automatically.
-
-If a payment was already captured and native checkout asks for scheduling, keep the same order and payment line. Select the required slot, use **Check status** if payment details need recovery, then **Validate** the same paid order. This completes native checkout without charging again; the terminal's success screen alone does not prove the Odoo order is paid.
+Timed Takeout needs an available pickup date/time before collection. Choose another day if no slots remain. If checkout requests scheduling after capture, keep the order and line, select the slot, recover details with **Check status** if needed, then **Validate**. This completes the paid order without charging again; terminal success alone does not establish Odoo completion.
 
 ## Refund a sale in Odoo
 
-1. Sign in as an authorized POS manager. In POS **Orders**, select the original paid sale and use **Refund** to choose the products and quantities being returned.
-2. On the payment screen, choose a Revolut method used on the original sale and click **Refund**.
-3. Select the original Revolut payment. Confirm the **Base refund amount** and, when applicable, **Terminal tip refund amount**, then choose **Confirm refund allocation**. To refund everything, return all eligible goods and include the remaining tip amount you intend to refund.
-4. Add a separate refund line for each additional original Revolut payment. Return any cash or other manual-tender portion using its original tender; manual refund amounts are negative.
-5. Wait for financial verification, then validate the saved return once all its tenders are complete. A provider-accepted refund can remain processing; acceptance alone does not finish the return.
+1. As an authorized manager, open POS **Orders**, select the original sale and **Refund** the returned products/quantities.
+2. Choose an original Revolut method on the payment screen and click **Refund**.
+3. Select the original payment. Review **Base refund amount** and **Terminal tip refund amount**, then **Confirm refund allocation**. For a full refund, return all eligible goods and include the remaining tip you intend to refund.
+4. Add a line for each further original payment. Refund cash/manual portions through their original tender with negative amounts.
+5. Wait for verified success, then validate the saved return when all tenders are complete. Provider acceptance can still mean processing.
 
-Odoo limits refunds by original products, quantities, tender balances, and prior reservations. Preserve the original prices, discounts, taxes, and currency. Pending or uncertain refunds consume refundable capacity until reconciled. A zero-value adjustment return needs no reimbursement payment; do not send a zero refund or add a balancing tender.
+Preserve original prices, discounts, taxes and currency. Refund limits include original quantities, tender balances, and pending/uncertain reservations. A zero-value adjustment needs no reimbursement or balancing tender.
 
-If a refund times out or connectivity fails, keep the saved return and use **Check status** on the same line, including after reload. Never issue another refund to work around uncertainty. For a confirmed failed allocation, replace only that failed line when permitted; completed allocations must not be repeated.
+After a timeout/reload, keep the saved return and **Check status** on the same line. Replace only a confirmed failed allocation when permitted; never repeat completed or uncertain refunds.
 
-Open **Point of Sale → Revolut Refunds** for the worklist. **Refund Status** describes the money; **Odoo Return** links the native return. If a completed older refund lost its return, **Restore missing return** reconstructs a draft using the existing financial records. Review and validate it; restoration sends no new refund. If the original session is closed, recovery uses a new session on the same authorized register. Uncertain refunds and unfinished native returns can block register closure.
+In **Point of Sale → Revolut Refunds**, **Refund Status** describes the money and **Odoo Return** links the native return. **Restore missing return** reconstructs a missing older return without refunding again: review and validate its draft. Closed-session recovery uses a new session on the same authorized register. Uncertain refunds and unfinished returns can block register closure.
 
 ## Refunds issued from Revolut
 
-The scheduled reconciler also discovers refunds made on the terminal or in other Merchant tools. They appear in **Revolut Refunds** with source **Detected in Revolut**. Discovery can take time. A detected card refund does not identify returned products and does not itself return stock, credit an invoice, or reimburse cash.
+Scheduled discovery finds terminal/other Merchant-tool refunds under **Revolut Refunds → Detected in Revolut**. Discovery may take time; a card refund alone does not return stock, credit an invoice or reimburse cash.
 
-Open the refund and select **Complete native work**:
+Choose **Complete native work**:
 
-- For goods, confirm the original products, positive **Return now** quantities, and any required lot/serial details. Confirm the base/tip split when requested. Select **Review native work**, review the resulting draft, then validate the confirmed return once the refund is verified.
-- Choose **Associate an existing native return** when the return was already recorded. Select its exact reimbursement payment and every relevant external refund instead of creating another return.
-- Choose **No products returned** for a financial-only refund and record a reason. An accountant must prepare and post the required correction for the exact original sale and amount. Reopen completion and select that document. For an uninvoiced original, configure the original payment method's outstanding account and prepare its correction through this workflow.
+| Situation | Action |
+| --- | --- |
+| Goods returned | Confirm original products, positive **Return now** quantities, lots/serials and any requested base/tip split. **Review native work**, review the draft, then validate once the refund is verified. |
+| Return already recorded | **Associate an existing native return**; select its exact reimbursement payment and all relevant external refunds. |
+| No goods returned | **No products returned**; record a reason. Have an accountant prepare/post the correction for the exact sale and amount, then select it in completion. For an uninvoiced sale, configure the original payment method's outstanding account and prepare the correction through this workflow. |
 
-These completion actions use money already refunded; they send no new card refund. A pending refund can reserve a draft but cannot validate it. **Native completion** and **Refund Status** remain separate. An unexplained refund total or unknown base/tip split blocks further Odoo refunds until reviewed; do not bypass that safeguard.
+These actions use money already refunded. A pending refund may reserve a draft but cannot validate it. **Native completion** and **Refund Status** are separate. Unexplained totals or unknown base/tip splits block further refunds pending review.
 
 ## Reconcile an uncertain payment
 
-A manager opens **Point of Sale → Revolut Reconciliation**, finds the original attempt, and chooses **Request Reconciliation**. If a provider reference was lost, use **Associate References** only after identifying the matching transaction in the original Merchant account. Odoo checks the amount, currency, device, and saved order/tender identity before accepting it.
+A manager opens **Point of Sale → Revolut Reconciliation**, selects the original attempt and **Request Reconciliation**. For lost references, use **Associate References** only after identifying the matching transaction in its original Merchant account. Odoo verifies amount, currency, device and order/tender identity.
 
-There is no manual mark-paid or unlock control. If the result remains uncertain, keep the original records and involve your administrator or provider support. Share original transaction references only through approved private support channels.
+There is no manual mark-paid/unlock. Keep unresolved records and involve an administrator or provider support through an approved private channel.
 
-## Print a receipt or invoice
+## Receipts and invoices
 
-In POS **Orders**, choose **Paid**, find the sale, and use **Print Receipt**, **Details**, or **Invoice**. Historical receipt access can use a current authorized register session even when the original session is closed.
+In POS **Orders → Paid**, find the sale and choose **Print Receipt**, **Details** or **Invoice**. A current authorized register session can access historical receipts after the original session closes.
 
-An Odoo **POS sales receipt** describes the sale and tenders. An **accounting invoice** is a separate native Odoo document and may require a customer and the normal invoice-creation flow. A **Revolut payment receipt** comes from Revolut; retrieve or reprint it through the terminal's transaction history. Adding a payment reference to an Odoo receipt does not make it the original Revolut receipt. Reprinting does not initiate another payment or refund.
+- **POS sales receipt:** Odoo sale and tenders, possibly with Revolut references.
+- **Accounting invoice:** separate native Odoo document; customer and invoice setup may be required.
+- **Revolut payment receipt:** retrieve/reprint through the terminal's transaction history.
+
+Printing a reference does not turn an Odoo receipt into a Revolut receipt. Reprinting sends no payment or refund.

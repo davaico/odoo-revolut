@@ -1,22 +1,17 @@
-# Repository guidelines
+# Working on POS Revolut
 
-The installable Odoo 19 integration lives in `addons/pos_revolut`. Keep product code, tests and integration documentation in this repository. Inspect existing code and use its conventions before changing an interface.
+`addons/pos_revolut` is the Odoo 19 addon. Keep integration code here; follow existing Odoo conventions.
 
-## Payment boundaries
+Before changing payment flows, read [Architecture](docs/architecture.md) for the lifecycle and source map. Use [CONTEXT.md](CONTEXT.md) for domain terms and [CONTRIBUTING.md](CONTRIBUTING.md) for test commands.
 
-- Keep Revolut credentials and authenticated HTTP calls on the Odoo server.
-- Persist attempts and external references, use idempotency where supported, and reconcile uncertain operations before permitting retries.
-- Verify the underlying successful payment and required payment details before completing a sale. A completed terminal intent alone is insufficient.
-- Link refunds to original payments and conserve base, tip and returned-quantity allowances.
-- Preserve native Odoo authorization, company and register boundaries.
-- Use synthetic fixtures. Never commit credentials, original operational evidence or sensitive cardholder data.
+## Financial boundaries
 
-## Verification and contributions
+- Keep credentials and authenticated Revolut calls on the server.
+- Persist attempts and references before dispatch; reconcile uncertainty before retrying.
+- Verify the underlying payment and base/tip amounts. A completed intent alone cannot authorize checkout.
+- Preserve original order, tender and Merchant authority during recovery.
+- Enforce company/register access and refund quantity, base and tip limits on the server.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and test commands, and [CONTEXT.md](CONTEXT.md) when changing payment terminology. For state, authorization, retry or refund changes, inspect the relevant models and existing regression tests before implementation.
+## Changes
 
-Keep changes scoped to the request. Run the narrowest relevant checks, including a behavior test when a financial boundary changes. State skipped checks and their reason; a build alone does not prove the risky behavior was exercised. Revolut HTTP in automated tests must be mocked and the Merchant network guard must remain enabled.
-
-Use short imperative commit subjects. Pull requests should explain payment-flow impact, verification, configuration changes and any upgrade or credential-rotation steps. Keep public reports sanitized; use [SECURITY.md](SECURITY.md) for vulnerabilities.
-
-Internal historical tickets and financial acceptance records are maintained outside the public distribution; use the public issue tracker for new public reports.
+Keep changes scoped. Exercise affected behavior with the narrowest relevant tests; report skipped checks. Mock all Revolut HTTP and keep the Merchant network guard enabled. Use synthetic fixtures and follow [SECURITY.md](SECURITY.md) for sensitive reports.

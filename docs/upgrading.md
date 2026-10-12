@@ -1,33 +1,35 @@
 # Upgrade POS Revolut
 
-An upgrade must preserve existing financial records and their original Merchant account access. Read the release notes for the exact starting and target versions. Do not uninstall the addon, delete uncertain attempts, or change transaction references to make an upgrade pass.
+Preserve financial records and their original Merchant access. Review changes between the starting and target versions. Never uninstall the addon or delete uncertain attempts to make an upgrade pass.
 
-## Before upgrading
+## Upgrade procedure
 
-1. Inventory pending or uncertain payments, refunds, unfinished native returns, and externally detected refunds requiring review. Reconcile them with their existing references and plan recovery before maintenance; do not collect or refund again to clear the list.
-2. Back up the database, filestore, current addon release, and deployment configuration. Preserve historical secret references securely. Verify the restore procedure.
-3. Test the upgrade on a disposable copy appropriate to your retention policy, with real provider traffic disabled. Run the relevant historical upgrade tests from [Contributing](../CONTRIBUTING.md).
-4. Arrange a maintenance window and stop all Odoo workers. Replace the addon with the reviewed release while retaining any required legacy bridge described below.
-5. Run the module update using your Odoo service configuration and environment:
+1. Inventory unresolved payments, refunds, native returns and external refunds needing review. Plan recovery using their existing references.
+2. Back up the database, filestore, addon and configuration; securely preserve secret references. Verify restoration.
+3. Test on a disposable copy with real provider traffic disabled. Run relevant [historical upgrade tests](../CONTRIBUTING.md#choose-checks).
+4. Stop all workers for maintenance. Install the reviewed release, retaining any legacy bridge described below.
+5. Update with the service's configuration and environment:
 
    ```bash
    odoo --config /path/to/odoo.conf --database DATABASE_NAME \
      --update pos_revolut --stop-after-init --no-http --workers=0
    ```
 
-6. Restart only after the update succeeds. Verify company authorities, register grants, connection checks, scheduled actions, current setup, and access to historical sales/returns. Reopen every POS browser to load the new assets.
+6. After success, restart and verify authorities, register grants, connection checks, scheduled actions and historical sales/returns. Reopen every POS browser.
 
-If the update fails, keep the service stopped while investigating. Do not restore an old database over financial operations that may have happened since its backup. Preserve the current evidence and reconcile provider outcomes before deciding a rollback or restore.
+If updating fails, keep the service stopped. Preserve evidence and reconcile provider outcomes before rollback: restoring an older database could lose subsequent financial operations.
 
-## Timed Takeout readiness
+## Version-specific steps
 
-Version `19.0.1.18.14` checks required pickup scheduling before new timed Takeout collection. Update the module and reopen every POS browser to load the guard. This change introduces no data migration or credential rotation. Existing captured tenders keep their original references; correct scheduling and complete the same order without collecting again.
+### Timed Takeout — 19.0.1.18.14
 
-## Older Merchant authority records
+Required pickup scheduling is checked before new collection. Update and reopen POS; no data migration or credential rotation is needed. For already captured payments, correct scheduling and complete the same order without collecting again.
 
-Version `19.0.1.10.0` introduced company-scoped Merchant authorities. Upgrades do not automatically trust old secret references. A system administrator must verify each reference's Merchant account, company, and environment, create its authority, and attest each historical operation that still needs reconciliation or refunds. Creating or editing a current payment method does not attest historical operations.
+### Merchant authorities — 19.0.1.10.0
 
-For an independently reviewed operation, the administrator-only Odoo shell action is:
+Old secret references are not automatically trusted. A system administrator must verify each reference's account, company and environment, create its authority, and attest historical operations needing reconciliation/refunds. Editing current payment methods does not attest history.
+
+For each independently reviewed operation, use the administrator-only Odoo shell action:
 
 ```python
 operation = env["pos.revolut.payment.operation"].browse(REVIEWED_OPERATION_ID)
@@ -37,24 +39,24 @@ operation.invalidate_recordset(["credential_id"])
 assert operation.sudo().credential_id
 ```
 
-`REVIEWED_OPERATION_ID` must identify the exact reviewed record. The action binds only a matching authority and sends no Merchant request. If validation fails, roll back and investigate; do not invent a binding or approve records in bulk. Keep the original environment-variable reference available for historical work. Authorities cannot be reassigned across companies or environments.
+Use the exact reviewed record ID. The action binds a matching authority without a Merchant request. On failure, roll back and investigate; do not invent bindings or approve records in bulk. Retain original environment references. Authorities cannot change company or environment.
 
-## Register grants and historical financial evidence
+### Register access — 19.0.1.11.0
 
-Version `19.0.1.11.0` introduced explicit register grants. Existing registers start with an empty **Revolut backend users** list. Provision backend till users and supervisors before reopening Revolut checkout. Company membership, POS-manager status, or an employee PIN does not grant access automatically.
+**Revolut backend users** starts empty. Grant till users and supervisors access before reopening checkout. Company membership, manager status and employee PINs do not grant register access.
 
-Older verified records may lack newer cart or tip evidence. Upgrades preserve them and their references; they do not fabricate authorizations or assume a zero tip. Affected recovery or additional allocations may require administrator/manager reconciliation. Keep original prices, currency, tender ownership, and financial history intact.
+Older records may lack newer cart/tip evidence. Upgrades preserve history without fabricating authorizations or assuming zero tips. Recovery or further allocations may require reconciliation.
 
-## Former Restaurant bridge
+### Former Restaurant bridge — 19.0.1.15.0
 
-Version `19.0.1.15.0` merged the former `pos_revolut_restaurant` bridge into `pos_revolut`. When upgrading from a two-addon release, retain the old bridge directory on `addons_path` until the `pos_revolut` update succeeds. The migration retires the asset-only bridge while preserving financial records.
+The separate `pos_revolut_restaurant` bridge merged into `pos_revolut`. Keep its old directory on `addons_path` until updating `pos_revolut` succeeds; migration retires it while preserving financial records.
 
-After success, remove the old bridge directory, refresh the Apps list, and confirm **POS Revolut** plus standard Odoo Restaurant are installed. There is no separate Revolut Restaurant addon for new installations. Do not manually uninstall POS Revolut to remove the old bridge entry.
+Then remove the bridge directory, refresh Apps and confirm **POS Revolut** and standard Restaurant are installed. Do not uninstall POS Revolut to remove the bridge entry.
 
-## Retired custom receipt and evidence screens
+### Retired screens — 19.0.1.12.0 and 19.0.1.16.1
 
-Version `19.0.1.12.0` retired standalone Revolut receipt interfaces in favor of native POS receipts and invoices. Existing financial references, accounting documents, and saved PDF attachments remain preserved. Retrieve the original Revolut card receipt from the terminal. Verify native invoice PDF generation on the server where it is needed.
+Custom receipt screens were replaced by native POS receipts/invoices; financial references, accounting documents and saved PDFs remain. Retrieve Revolut card receipts from the terminal and verify native invoice PDF generation separately.
 
-Version `19.0.1.16.1` removed the internal refund-discovery evidence screen and user read access. Matched refunds remain available through **Revolut Refunds**. Do not restore broad user permissions to inspect merchant-wide observations; an administrator should investigate retained server evidence through a trusted support process.
+The internal refund-discovery evidence screen and user access were removed. Matched refunds remain in **Revolut Refunds**. Administrators investigate retained server evidence privately; do not restore broad access to merchant-wide observations.
 
-Newer releases preserve completed and uncertain refund allocations while improving fractional/discounted returns, external native completion, and saved-payment recovery. Missing or inconsistent historical evidence still requires reconciliation. The [user guide](user-guide.md) describes supported recovery actions; database edits and replacement financial operations are not recovery procedures.
+Missing or inconsistent evidence requires [reconciliation](user-guide.md#reconcile-an-uncertain-payment), not database edits or replacement financial operations.
