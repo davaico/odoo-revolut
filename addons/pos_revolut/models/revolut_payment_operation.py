@@ -301,6 +301,9 @@ class PosRevolutPaymentOperation(models.Model):
                     )
         return super().write(values)
 
+    def unlink(self):
+        raise UserError(_("Retain Revolut payment history for reconciliation and safe tender recovery."))
+
     @api.model_create_multi
     def create(self, vals_list):
         if any({"captured_amount_minor", "captured_payment_created_at", "gross_amount_minor",
@@ -746,6 +749,9 @@ class PosRevolutPaymentDispatch(models.Model):
         if {"operation_id", "action", "claimed_at"}.intersection(values):
             raise UserError(_("Revolut dispatch claims are immutable."))
         return super().write(values)
+
+    def unlink(self):
+        raise UserError(_("Retain Revolut dispatch evidence for reconciliation and safe tender recovery."))
 
 
 class PosRevolutOrderLock(models.Model):

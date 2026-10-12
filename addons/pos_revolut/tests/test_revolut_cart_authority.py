@@ -6,6 +6,8 @@ from odoo import Command, fields
 from odoo.addons.point_of_sale.tests.common import CommonPosTest
 from odoo.exceptions import AccessError, UserError
 from datetime import timedelta
+from psycopg2 import IntegrityError
+from odoo.tests.common import new_test_user
 
 from .test_revolut_terminal_tip import TerminalTipFixtures
 from odoo.tests.common import tagged
@@ -67,6 +69,26 @@ class TestRevolutCartAuthority(TerminalTipFixtures, CommonPosTest):
             [{'uuid': uuid or self.line_uuid, 'payment_method_id': self.method.id, 'amount': amount}],
         )
 
+    def test_saved_preparation_failure_can_recover_original_tender_without_dispatch(self):
+        payment = self.env['pos.payment'].create({'pos_order_id': self.order.id,
+            'uuid': self.line_uuid, 'payment_method_id': self.method.id,
+            'amount': 100, 'payment_status': 'waiting'})
+        tip = self.pos_config_usd.tip_product_id
+        self.pos_config_usd.tip_product_id = False
+        with self.assertRaises(UserError):
+            self.prepare()
+        self.pos_config_usd.tip_product_id = tip
+        self.env.invalidate_all()
+        recovered = self.env['pos.order'].revolut_recover_unstarted_payment(
+            self.order.id, self.order.uuid, self.line_uuid, self.method.id,
+            100, self.order.currency_id.id)
+        self.assertEqual(recovered['recovery_status'], 'unstarted')
+        self.assertEqual(recovered['payment_id'], payment.id)
+        self.assertFalse(recovered['dispatched'])
+        self.request.assert_not_called()
+        self.assertFalse(self.env['pos.revolut.payment.operation'].sudo().search([
+            ('order_uuid', '=', self.order.uuid)]))
+
     def start(self, authorization=None, amount=100, uuid=None):
         authorization = authorization or {}
         return self.method.revolut_start_payment(
@@ -75,6 +97,174 @@ class TestRevolutCartAuthority(TerminalTipFixtures, CommonPosTest):
             authorization.get('authorization_id'), authorization.get('cart_version'),
             authorization.get('tender_revision'),
         )
+
+    def saved_tender(self, amount=100, uuid=None):
+        return self.env['pos.payment'].create({'pos_order_id': self.order.id,
+            'uuid': uuid or self.line_uuid, 'payment_method_id': self.method.id,
+            'amount': amount, 'payment_status': 'waiting'})
+
+    def recover(self, amount=100, uuid=None, **overrides):
+        values = {'order_id': self.order.id, 'uuid': self.order.uuid,
+            'payment_line_uuid': uuid or self.line_uuid, 'payment_method_id': self.method.id,
+            'amount': amount, 'currency_id': self.order.currency_id.id, **overrides}
+        return self.env['pos.order'].revolut_recover_unstarted_payment(**values)
+
+    def prepare_recovered(self, recovery, amount=100, uuid=None):
+        return self.env['pos.order'].revolut_prepare_payment(self.order.id, self.order.uuid, 0,
+            [self.slot(uuid or self.line_uuid, amount)], recovery['recovery_revision'])
+
+    def test_recovery_fences_delayed_prepare_and_start_and_resume_uses_same_tender(self):
+        payment = self.saved_tender()
+        old = self.prepare()
+        recovered = self.recover()
+        with self.assertRaises(UserError):
+            self.prepare()
+        self.assertFalse(self.start(old)['dispatched'])
+        self.request.assert_not_called()
+        fresh = self.prepare_recovered(recovered)
+        self.provider()
+        started = self.start(fresh)
+        duplicate = self.start(fresh)
+        self.assertEqual(started['operation_id'], duplicate['operation_id'])
+        self.assertEqual(self.order.payment_ids.ids, [payment.id])
+        self.assert_no_financial_post(2)
+        guarded = self.recover()
+        self.assertEqual(guarded['recovery_status'], 'existing_operation')
+        self.assertEqual(guarded['operation_id'], started['operation_id'])
+        self.assert_no_financial_post(2)
+
+    def test_recovery_retirement_blocks_stale_start_and_tender_recreation(self):
+        payment = self.saved_tender()
+        old = self.prepare()
+        recovered = self.recover()
+        fresh = self.prepare_recovered(recovered)
+        payment.unlink()
+        for authority in (old, fresh):
+            self.assertFalse(self.start(authority)['dispatched'])
+        with self.assertRaises(UserError), self.env.cr.savepoint():
+            self.saved_tender()
+        checkout = self.env['pos.order'].revolut_checkout_state(self.order.id, self.order.uuid)
+        with self.assertRaises(UserError):
+            self.prepare_recovered({'recovery_revision': checkout['recovery_revision']})
+        self.request.assert_not_called()
+
+    def test_native_removal_of_pre_fix_tender_fences_delayed_preparation(self):
+        payment = self.saved_tender()
+        payment.unlink()
+        with self.assertRaises(UserError):
+            self.prepare()
+        state = self.env['pos.order'].revolut_checkout_state(self.order.id, self.order.uuid)
+        self.assertEqual(state['recovered_tenders'][self.line_uuid]['state'], 'retired')
+        with self.assertRaises(UserError):
+            self.prepare_recovered({'recovery_revision': state['recovery_revision']})
+        self.request.assert_not_called()
+
+    def test_atomic_recovery_removal_is_durable_and_retry_does_not_dispatch(self):
+        payment = self.saved_tender()
+        self.prepare()
+        args = (self.order.id, self.order.uuid, self.line_uuid, self.method.id, 100, self.order.currency_id.id)
+        retired = self.env['pos.order'].revolut_remove_unstarted_payment(*args)
+        self.assertEqual(retired['recovery_status'], 'retired')
+        self.assertEqual(retired['payment_id'], payment.id)
+        self.env.invalidate_all()
+        self.assertFalse(payment.exists())
+        duplicate = self.env['pos.order'].revolut_remove_unstarted_payment(*args)
+        self.assertEqual(duplicate, retired)
+        # A lost removal response can be recovered by the ordinary status
+        # action without resurrecting either the native tender or admission.
+        self.assertEqual(self.env['pos.order'].revolut_recover_unstarted_payment(*args), retired)
+        self.request.assert_not_called()
+
+    def test_recovery_cannot_bypass_restricted_price_manager_approval(self):
+        self.pos_config_usd.restrict_price_control = True
+        self.order.lines.write({'price_unit': 90, 'price_subtotal': 90, 'price_subtotal_incl': 90})
+        self.order.amount_total = 90
+        self.saved_tender(90)
+        recovered = self.recover(90)
+        authority = self.prepare_recovered(recovered, 90)
+        self.assertEqual(authority['status'], 'approval_required')
+        self.assertFalse(self.start(authority, 90)['dispatched'])
+        self.request.assert_not_called()
+        approved = self.env['pos.order'].revolut_approve_cart(self.order.id, self.order.uuid, authority['cart_version'])
+        self.provider(base=9000)
+        started = self.start(approved, 90)
+        self.assertTrue(started['operation_id'])
+        self.assert_no_financial_post(2)
+
+    def test_recovery_identity_refs_duplicate_and_closed_session_fail_closed(self):
+        payment = self.saved_tender()
+        for overrides in ({'amount': 99}, {'uuid': str(uuid4())}, {'payment_method_id': self.bank_payment_method.id},
+                          {'currency_id': -1}, {'payment_line_uuid': str(uuid4())}, {'order_id': True}):
+            with self.subTest(overrides=overrides), self.assertRaises(UserError):
+                self.recover(**overrides)
+        payment.transaction_id = 'unknown-provider-reference'
+        with self.assertRaises(UserError):
+            self.recover()
+        payment.transaction_id = False
+        # The native UUID constraint rejects duplicates before recovery, rather
+        # than allowing the browser to manufacture ambiguous saved identities.
+        with self.assertRaises(IntegrityError), self.env.cr.savepoint():
+            self.saved_tender()
+        self.session.state = 'closing_control'
+        with self.assertRaises(UserError):
+            self.recover()
+        self.request.assert_not_called()
+
+    def test_recovery_rejects_ungranted_user_and_foreign_company_context(self):
+        self.saved_tender()
+        denied = new_test_user(self.env, login='unstarted_recovery_ungranted',
+            groups='base.group_user,point_of_sale.group_pos_user',
+            company_id=self.order.company_id.id,
+            company_ids=[Command.set([self.order.company_id.id])])
+        args = (self.order.id, self.order.uuid, self.line_uuid, self.method.id, 100, self.order.currency_id.id)
+        with self.assertRaises(AccessError):
+            self.env['pos.order'].with_user(denied).revolut_recover_unstarted_payment(*args)
+        foreign = self.env['res.company'].create({'name': 'Foreign recovery authority'})
+        with self.assertRaises(AccessError):
+            self.env['pos.order'].with_context(allowed_company_ids=[foreign.id]).revolut_recover_unstarted_payment(*args)
+        self.request.assert_not_called()
+
+    def test_recovery_authority_cannot_be_forged_through_native_writes(self):
+        self.saved_tender()
+        for values in ({'revolut_recovery_revision': 20}, {'revolut_recovered_tenders': {self.line_uuid: {'state': 'unstarted'}}}):
+            with self.subTest(values=values), self.assertRaises(AccessError):
+                self.order.with_context(revolut_authority_cursor=True).write(values)
+            with self.subTest(create=values), self.assertRaises(AccessError):
+                self.env['pos.order'].create({'session_id': self.session.id, 'amount_total': 100,
+                    'amount_tax': 0, 'amount_paid': 0, 'amount_return': 0, **values})
+        self.request.assert_not_called()
+
+    def test_recovered_native_identity_cannot_be_reassigned_but_unstarted_cart_can_be_edited(self):
+        payment = self.saved_tender()
+        self.recover()
+        with self.assertRaises(UserError), self.env.cr.savepoint():
+            self.order.write({'uuid': str(uuid4())})
+        with self.assertRaises(UserError), self.env.cr.savepoint():
+            payment.write({'uuid': str(uuid4())})
+        # No financial exposure has been created; normal cart corrections still
+        # remain possible and require current preparation before a charge.
+        self.order.lines.write({'qty': 2})
+        self.assertEqual(self.order.lines.qty, 2)
+        self.request.assert_not_called()
+
+    def test_recovery_unused_split_tender_preserves_verified_other_allocation(self):
+        second_uuid = str(uuid4())
+        self.saved_tender(40)
+        second = self.saved_tender(60, second_uuid)
+        authority = self.plan([self.slot(self.line_uuid, 40), self.slot(second_uuid, 60)])
+        self.provider(base=4000)
+        first = self.start(authority, 40)
+        self.assertEqual(self.poll(first)['state'], 'verified')
+        count = len(self.request.call_args_list)
+        recovery = self.recover(60, second_uuid)
+        self.assertEqual(recovery['recovery_status'], 'unstarted')
+        self.assertEqual(recovery['payment_id'], second.id)
+        self.assertEqual(len(self.request.call_args_list), count)
+        fresh = self.env['pos.order'].revolut_prepare_payment(self.order.id, self.order.uuid, 0,
+            [self.slot(self.line_uuid, 40), self.slot(second_uuid, 60)], recovery['recovery_revision'])
+        self.assertEqual(fresh['remaining_minor'], 6000)
+        self.provider(base=6000)
+        self.assertTrue(self.start(fresh, 60, second_uuid)['operation_id'])
 
     def test_old_amount_snapshot_rpc_cannot_dispatch(self):
         with self.assertRaises(UserError):
