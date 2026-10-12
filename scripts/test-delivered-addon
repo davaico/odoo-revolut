@@ -2,16 +2,82 @@
 """Run disposable Odoo acceptance from an exact committed release artifact."""
 
 import argparse
-import importlib.machinery
-import importlib.util
+import hashlib
 import re
 import subprocess
 import tarfile
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
+MAX_ARCHIVE_MEMBERS = 10000
+MAX_ARCHIVE_BYTES = 100 * 1024 * 1024
+
+
+class ArtifactError(RuntimeError):
+    """A release artifact cannot be safely used for acceptance."""
+
+
+def sha256(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def extract_addons(archive, destination, addons):
+    """Validate the whole Git archive before extracting the requested addons."""
+    try:
+        with tarfile.open(archive, "r:gz") as bundle:
+            members = []
+            paths = set()
+            total_size = 0
+            for member in bundle:
+                if len(members) >= MAX_ARCHIVE_MEMBERS:
+                    raise ArtifactError("Artifact has an invalid file count.")
+                path = PurePosixPath(member.name)
+                is_parent = member.isdir() and path.parts == ("addons",)
+                is_content = (
+                    len(path.parts) >= 2
+                    and path.parts[0] == "addons"
+                    and path.parts[1] in addons
+                    and (len(path.parts) > 2 or member.isdir())
+                )
+                if (
+                    path.is_absolute()
+                    or ".." in path.parts
+                    or not (is_parent or is_content)
+                    or not (member.isfile() or member.isdir())
+                    or path in paths
+                    or member.size < 0
+                ):
+                    raise ArtifactError("Artifact contains an unsafe path or member type.")
+                total_size += member.size
+                if total_size > MAX_ARCHIVE_BYTES:
+                    raise ArtifactError("Artifact is unexpectedly large.")
+                paths.add(path)
+                members.append(member)
+            if not members:
+                raise ArtifactError("Artifact has an invalid file count.")
+            for addon in addons:
+                manifest = f"addons/{addon}/__manifest__.py"
+                if not any(member.name == manifest and member.isfile() for member in members):
+                    raise ArtifactError(f"Artifact does not contain the {addon} addon manifest.")
+            destination.mkdir(parents=True, exist_ok=False)
+            bundle.extractall(destination, members=members, filter="data")
+    except (OSError, tarfile.TarError) as error:
+        raise ArtifactError("Artifact extraction failed.") from error
+    return destination / "addons"
+
+
+def archive_addons(revision, archive, addons):
+    subprocess.run(
+        ["git", "archive", "--format=tar.gz", "--output", str(archive),
+         revision, "--", *(f"addons/{addon}" for addon in addons)],
+        cwd=REPOSITORY, check=True,
+    )
 
 
 def main():
@@ -26,52 +92,40 @@ def main():
         parser.error("--migration-from must be a full commit SHA")
     if not re.fullmatch(r"[0-9a-f]{40}", args.revision):
         parser.error("--revision must be a full commit SHA")
-    resolved = subprocess.check_output(
-        ["git", "rev-parse", "--verify", f"{args.revision}^{{commit}}"],
-        cwd=REPOSITORY, text=True,
-    ).strip()
-    if resolved != args.revision:
-        parser.error("--revision did not resolve to the exact commit")
+    for option, revision in (("--revision", args.revision),
+                             ("--migration-from", args.migration_from)):
+        if revision is None:
+            continue
+        try:
+            resolved = subprocess.check_output(
+                ["git", "rev-parse", "--verify", f"{revision}^{{commit}}"],
+                cwd=REPOSITORY, text=True, stderr=subprocess.PIPE,
+            ).strip()
+        except subprocess.CalledProcessError:
+            parser.error(f"{option} is not an available commit")
+        if resolved != revision:
+            parser.error(f"{option} did not resolve to the exact commit")
 
     with tempfile.TemporaryDirectory(prefix="pos-revolut-delivered-") as temporary:
         root = Path(temporary)
         archive = root / "release.tar.gz"
-        subprocess.run(
-            ["git", "archive", "--format=tar.gz", "--output", str(archive),
-             args.revision, "--", "addons/pos_revolut"],
-            cwd=REPOSITORY, check=True,
-        )
-        remote_source = subprocess.check_output(
-            ["git", "show", f"{args.revision}:scripts/deploy-addon-remote"],
-            cwd=REPOSITORY,
-        )
-        remote_path = root / "deploy-addon-remote"
-        remote_path.write_bytes(remote_source)
-        loader = importlib.machinery.SourceFileLoader("delivered_remote", str(remote_path))
-        spec = importlib.util.spec_from_loader(loader.name, loader)
-        remote = importlib.util.module_from_spec(spec)
-        loader.exec_module(remote)
-        deployment = remote.RemoteDeployment(
-            runner=remote.CommandRunner(), root=root, archive=archive,
-            expected_sha256=remote.sha256(archive), revision=args.revision,
-            database="odoo_revolut_tests", customer="revolut", environment="test",
-            mode="install",
-        )
-        release = deployment._extract_release()
+        archive_addons(args.revision, archive, ("pos_revolut",))
+        try:
+            release = extract_addons(archive, root / "release", ("pos_revolut",))
+        except ArtifactError as error:
+            parser.exit(1, f"{parser.prog}: {error}\n")
         legacy_args = []
         if args.scenario == "migration":
             legacy_archive = root / "legacy.tar.gz"
-            subprocess.run(
-                ["git", "archive", "--format=tar.gz", "--output", str(legacy_archive),
-                 args.migration_from, "--", "addons/pos_revolut", "addons/pos_revolut_restaurant"],
-                cwd=REPOSITORY, check=True,
-            )
-            legacy_root = root / "legacy"
-            with tarfile.open(legacy_archive) as bundle:
-                bundle.extractall(legacy_root, filter="data")
-            legacy_args = ["--legacy-addons-dir", str(legacy_root / "addons")]
+            legacy_addons = ("pos_revolut", "pos_revolut_restaurant")
+            archive_addons(args.migration_from, legacy_archive, legacy_addons)
+            try:
+                legacy_root = extract_addons(legacy_archive, root / "legacy", legacy_addons)
+            except ArtifactError as error:
+                parser.exit(1, f"{parser.prog}: {error}\n")
+            legacy_args = ["--legacy-addons-dir", str(legacy_root)]
         print(f"Artifact revision: {args.revision}", flush=True)
-        print(f"Artifact SHA256: {remote.sha256(archive)}", flush=True)
+        print(f"Artifact SHA256: {sha256(archive)}", flush=True)
         subprocess.run(
             [str(REPOSITORY / "scripts" / "test-addon"),
              "--addons-dir", str(release), *legacy_args,

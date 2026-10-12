@@ -51,8 +51,8 @@ class PosPaymentMethod(models.Model):
         copy=False,
         groups="point_of_sale.group_pos_manager",
         help=(
-            "The restaurant fulfilment sent to Revolut. Retail terminal "
-            "fulfilment is not enabled until Revolut confirms its contract."
+            "Retail registers use Eat In as the current fulfilment mapping. "
+            "Restaurant checkout derives fulfilment from its table and preset."
         ),
     )
     revolut_secret_reference = fields.Char(

@@ -15,31 +15,31 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SCENARIOS = {
     "cart-authority": (
-        "719bae93390c3a326673af2d0e6b89aea0a84b65", "upgrade",
+        "295ae79ad6404a0e0dc2c9798421731b03cb715d", "upgrade",
         "odoo-revolut-cart-upgrade", "odoo_revolut_cart_upgrade",
     ),
     "credential-authority": (
-        "09c982d", "credential_upgrade",
+        "2f4328cef1fdef51a02883faad45d9c24f5eb99c", "credential_upgrade",
         "odoo-revolut-credential-upgrade", "odoo_revolut_credential_upgrade",
     ),
     "evidence-retirement": (
-        "319407e1a47a37f1a7aa8c328c0d7f290301ce66", "evidence_retirement",
+        "412e1b21e64431970d9bab7a29177d7b9cd2c624", "evidence_retirement",
         "odoo-revolut-evidence-retirement", "odoo_revolut_evidence_retirement",
     ),
     "external-native": (
-        "354ca65", "external_native_upgrade",
+        "4301fa653a46bb53ec4eeca2ec4383c11b544569", "external_native_upgrade",
         "odoo-revolut-external-native-upgrade", "odoo_revolut_external_native_upgrade",
     ),
     "receipt-retirement": (
-        "83a7b2484ee16adcacc16e336d1c6e53e8d5508d", "receipt_retirement",
+        "2de85210ff99757624e058396b19dec9d7784e82", "receipt_retirement",
         "odoo-revolut-receipt-retirement", "odoo_revolut_receipt_retirement",
     ),
     "register-access": (
-        "d1124f4", "register_upgrade",
+        "71bce6238c299b35fa2648dd16f76633493ae13c", "register_upgrade",
         "odoo-revolut-register-upgrade", "odoo_revolut_register_upgrade",
     ),
     "return-rounding": (
-        "7df76793d7bd772af69b1e3e5054c96d9c69b84b", "return_rounding_upgrade",
+        "a07b43704fc8982883d9b1e641101f7e2bcb831e", "return_rounding_upgrade",
         "odoo-revolut-return-rounding-upgrade", "odoo_revolut_return_rounding_upgrade",
     ),
 }

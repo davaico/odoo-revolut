@@ -12,7 +12,7 @@ case "$scenario" in
     cart-authority)
         default_project="odoo-revolut-cart-upgrade"
         database_name="odoo_revolut_cart_upgrade"
-        old_revision="719bae93390c3a326673af2d0e6b89aea0a84b65"
+        old_revision="295ae79ad6404a0e0dc2c9798421731b03cb715d"
         seed_fixture="upgrade_seed.py"
         verify_fixture="upgrade_verify.py"
         success_message="Historical cart-authority upgrade passed across old and new Odoo processes"
@@ -20,7 +20,7 @@ case "$scenario" in
     credential-authority)
         default_project="odoo-revolut-credential-upgrade"
         database_name="odoo_revolut_credential_upgrade"
-        old_revision="09c982d"
+        old_revision="2f4328cef1fdef51a02883faad45d9c24f5eb99c"
         seed_fixture="credential_upgrade_seed.py"
         verify_fixture="credential_upgrade_verify.py"
         success_message="Company credential upgrade passed across old and new Odoo processes"
@@ -28,7 +28,7 @@ case "$scenario" in
     evidence-retirement)
         default_project="odoo-revolut-evidence-retirement"
         database_name="odoo_revolut_evidence_retirement"
-        old_revision="319407e1a47a37f1a7aa8c328c0d7f290301ce66"
+        old_revision="412e1b21e64431970d9bab7a29177d7b9cd2c624"
         seed_fixture="evidence_retirement_seed.py"
         verify_fixture="evidence_retirement_verify.py"
         success_message="Evidence page retirement upgrade preserves financial controls and denies user access"
@@ -36,7 +36,7 @@ case "$scenario" in
     external-native)
         default_project="odoo-revolut-external-native-upgrade"
         database_name="odoo_revolut_external_native_upgrade"
-        old_revision="354ca65"
+        old_revision="4301fa653a46bb53ec4eeca2ec4383c11b544569"
         seed_fixture="external_native_upgrade_seed.py"
         verify_fixture="external_native_upgrade_verify.py"
         success_message="External refund upgrade preserves historical assertions and pending reservations; native completion moves no money"
@@ -44,7 +44,7 @@ case "$scenario" in
     receipt-retirement)
         default_project="odoo-revolut-receipt-retirement"
         database_name="odoo_revolut_receipt_retirement"
-        old_revision="83a7b2484ee16adcacc16e336d1c6e53e8d5508d"
+        old_revision="2de85210ff99757624e058396b19dec9d7784e82"
         seed_fixture="receipt_retirement_seed.py"
         verify_fixture="receipt_retirement_verify.py"
         success_message="Receipt retirement upgrade preserves history and disables standalone documents"
@@ -52,7 +52,7 @@ case "$scenario" in
     register-access)
         default_project="odoo-revolut-register-upgrade"
         database_name="odoo_revolut_register_upgrade"
-        old_revision="d1124f4"
+        old_revision="71bce6238c299b35fa2648dd16f76633493ae13c"
         seed_fixture="register_upgrade_seed.py"
         verify_fixture="register_upgrade_verify.py"
         success_message="Register access upgrade passed across old and new Odoo processes"
@@ -60,7 +60,7 @@ case "$scenario" in
     return-rounding)
         default_project="odoo-revolut-return-rounding-upgrade"
         database_name="odoo_revolut_return_rounding_upgrade"
-        old_revision="7df76793d7bd772af69b1e3e5054c96d9c69b84b"
+        old_revision="a07b43704fc8982883d9b1e641101f7e2bcb831e"
         seed_fixture="return_rounding_upgrade_seed.py"
         verify_fixture="return_rounding_upgrade_verify.py"
         success_message="Return rounding upgrade preserves completed and uncertain financial history"
