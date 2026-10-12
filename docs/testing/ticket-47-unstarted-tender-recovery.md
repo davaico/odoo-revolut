@@ -99,12 +99,13 @@ fresh cart version before a replacement tender can start.
 
 ## Standards review
 
-Zero documented-standard violations. One optional P3 maintenance suggestion
-remains: the browser classification and retirement paths repeat some proof
-checks and guard resets. Their distinct lifecycle transitions are retained in
-the existing project style; the reviewer found no behavior defect. The shared
-server classifier and the final fixture/ACL corrections introduce no new
-standards concerns.
+Zero documented-standard violations. Two optional P3 maintenance suggestions
+remain: the browser classification and retirement paths repeat some proof
+checks and guard resets, and the shared helper's unstarted name understates its
+explicit native retry-safe-history mode. The distinct lifecycle transitions
+and explicit private argument are retained in the existing project style;
+the reviewer found no behavior defect. The final compatibility, admission and
+fixture/ACL corrections introduce no hard standards concerns.
 
 ## Spec review
 
@@ -113,7 +114,7 @@ raw identity, orphan references and native deletion classification were fixed
 and re-reviewed. The reviewer also confirmed the lost-response instructions,
 isolated legacy fixtures and ACL correction. No scope creep was found.
 
-Final review totals: Standards zero hard violations and one optional suggestion;
+Final review totals: Standards zero hard violations and two optional suggestions;
 Spec zero remaining findings. Reviews are static; the automated verification
 below supplies runtime evidence.
 
