@@ -1,28 +1,39 @@
 # Ticket 12 — Manual testing handoff
 
 Updated **2026-10-12**, through completed usability regressions, refund receipts,
-the session closure attempt and new recovery ticket 47. This campaign began October 7.
+the session closure attempt and automated ticket 47 implementation. This
+campaign began October 7.
 Read this file first; use the [R01–R24 checklist](ticket-12-final-release-checklist.md)
 for full subcase requirements. Resume unfinished subcases rather than restarting
 the campaign. A successful subcase does not pass an entire checklist row.
 
 ## Authoritative handoff checkpoint — October 12
 
+Ticket 47's automated implementation is closed on `19.0.1.18.12`; fresh install
+and update each passed 648 mocked tests. After reviewed deployment and POS asset
+reload, use **Check status → Resume** on original order 1022 / saved order 59,
+tender 79, session 10/register 3. Keep Tips product 1 and restore the intended
+Price Control policy for the pending manager-approval check. Preserve the
+fixture and £0.06 gross live budget. See the [recovery handoff](ticket-47-unstarted-tender-recovery.md).
+No staging deployment or live financial operation was performed by ticket 47.
+
 Latest continuation: actual saved FULL return PDF passed inspection; one
 session-close attempt was rejected for active drafts. Close/reopen is blocked
 by the preserved pending/unsettled return 1019. Its campaign test is DONE /
 OWNER-ACCEPTED: continue independent work without waiting or repeating it.
 
-New R19 scenario: cashier Price disabled PASS; manager could enter £0.02, but
-exact cart approval was not reached. Missing Tip Product blocked preparation;
+Recorded pre-fix R19 scenario: cashier Price disabled PASS; manager could enter
+£0.02, but exact cart approval was not reached. Missing Tip Product blocked preparation;
 owner restored existing Tips. After reload, the unstarted waiting tender could
 not be removed: first red X displayed a communication-failure message, later
-clicks did nothing visibly. This is [ticket 47](../tickets/needs-triage/47-recover-unstarted-tender-after-reload.md),
-needs-triage. Preserve order 1022 / saved order 59 and tender 79. Read-only SQL
+clicks did nothing visibly. This is [ticket 47](../tickets/closed/47-recover-unstarted-tender-after-reload.md),
+reported then as `needs-triage` (implementation now closed). Preserve order
+1022 / saved order 59 and tender 79. Read-only SQL
 at 09:40:19 UTC confirms no payment attempt/cart authority, counts 72/161/17,
 Price Control restored to false and Tips product 1 configured (native Tips on).
 Do not repeat removal, clear storage or create a replacement order/tender.
-Manager-approval testing is BLOCKED pending safe recovery; no code fix/deployment.
+Manager-approval testing remains BLOCKED pending the reviewed deployment and
+original-tender recovery described above.
 
 Agent follow-up completed: **125 JavaScript passed; 62 Python passed, 3 PDF
 skipped**. Focused Odoo rerun could not start (Docker unavailable). Read-only

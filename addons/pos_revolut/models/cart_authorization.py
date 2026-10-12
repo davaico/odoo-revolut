@@ -64,6 +64,7 @@ class RevolutCartAuthorization(models.Model):
     order_uuid = fields.Char(required=True, readonly=True)
     cart_version = fields.Integer(required=True, readonly=True)
     tender_revision = fields.Integer(required=True, readonly=True, default=1)
+    recovery_revision = fields.Integer(readonly=True, default=0)
     base_total_minor = fields.Integer(required=True, readonly=True)
     payable_minor = fields.Integer(required=True, readonly=True)
     tip_product_id = fields.Many2one('product.product', required=True, readonly=True, ondelete='restrict')
@@ -112,7 +113,8 @@ class RevolutCartAuthorization(models.Model):
     def _response(self):
         self.ensure_one()
         return {'status': self.state, 'authorization_id': self.id, 'cart_version': self.cart_version,
-            'tender_revision': self.tender_revision, 'projection_revision': self.projection_revision,
+            'tender_revision': self.tender_revision, 'recovery_revision': self.recovery_revision,
+            'projection_revision': self.projection_revision,
             'canonical': self.canonical, 'payable_minor': self.payable_minor,
             'remaining_minor': max(0, self.payable_minor - sum(op.amount_minor for op in self._exposed())
                 - sum(slot['minor'] for slot in self.tenders or [] if not slot['revolut'])),
@@ -137,6 +139,8 @@ class RevolutCartAuthorization(models.Model):
             method = self.config_id.payment_method_ids.filtered(lambda item: item.id == method_id)
             if not method or method.company_id != self.company_id or uuid in seen:
                 raise UserError(_('The tender method or identifier is invalid.'))
+            if (self.pos_order_id.revolut_recovered_tenders or {}).get(uuid, {}).get('state') == 'retired':
+                raise UserError(_('This removed tender cannot be used again. Select a new tender.'))
             minor = normalize(self.currency_id, value.get('amount'))[1]
             if minor == 0 or (minor < 0 and not method.is_cash_count):
                 raise UserError(_('Only actual cash change may be negative.'))
@@ -188,6 +192,15 @@ class RevolutCartAuthorization(models.Model):
         self.ensure_one()
         order = self.pos_order_id.with_env(method.env)
         order._revolut_check_prepare_identity(self.order_uuid)
+        if self.recovery_revision != order.revolut_recovery_revision:
+            raise UserError(_('This payment authorization predates tender recovery. Prepare again.'))
+        recovery = (order.revolut_recovered_tenders or {}).get(values['payment_line_uuid'])
+        if recovery:
+            if recovery['state'] != 'unstarted':
+                raise UserError(_('The original tender has been removed.'))
+            payment = order.payment_ids.filtered(lambda item: item.uuid == values['payment_line_uuid'])
+            if len(payment) != 1 or payment.id != recovery['payment_id'] or recovery['method_id'] != method.id or recovery['minor'] != values['amount_minor'] or payment.payment_method_id != method or _tender_amount(order.currency_id, payment.amount)[1] != values['amount_minor'] or order._revolut_payment_has_references(payment):
+                raise UserError(_('Recover the exact saved tender before starting payment.'))
         order._revolut_check_payment_readiness()
         if self.state != 'prepared' or values.get('cart_version') != self.cart_version or values.get('tender_revision') != self.tender_revision:
             raise UserError(_('Review or prepare the current cart and tender allocation before payment.'))
@@ -224,6 +237,8 @@ class PosOrder(models.Model):
     revolut_authorization_id = fields.Many2one('pos.revolut.cart.authorization', readonly=True, copy=False, ondelete='restrict')
     revolut_payable_target = fields.Float(compute='_compute_revolut_target')
     revolut_has_authority_exposure = fields.Boolean(compute='_compute_revolut_target')
+    revolut_recovery_revision = fields.Integer(readonly=True, copy=False, default=0)
+    revolut_recovered_tenders = fields.Json(readonly=True, copy=False)
 
     @api.depends_context('uid', 'allowed_company_ids')
     @api.depends('config_id.revolut_user_ids', 'revolut_authorization_id.payable_minor', 'revolut_authorization_id.operation_ids.state',
@@ -271,7 +286,7 @@ class PosOrder(models.Model):
         selected = selected or list(self._fields)
         return list(dict.fromkeys(name for name in selected + [
             'revolut_payable_target','revolut_has_authority_exposure'
-        ] if name != 'revolut_authorization_id'))
+        ] if name not in {'revolut_authorization_id', 'revolut_recovery_revision', 'revolut_recovered_tenders'}))
 
     def _revolut_authority_contents(self):
         self.ensure_one()
@@ -320,8 +335,127 @@ class PosOrder(models.Model):
             raise UserError(_('Please select an available pickup time slot before starting Revolut payment.'))
 
     @api.model
-    def revolut_prepare_payment(self, order_id, uuid, expected_cart_version, tender_plan):
-        if type(order_id) is not int or type(expected_cart_version) is not int:
+    def revolut_remove_unstarted_payment(self, order_id, uuid, payment_line_uuid, payment_method_id, amount, currency_id):
+        return self.revolut_recover_unstarted_payment(order_id, uuid, payment_line_uuid,
+            payment_method_id, amount, currency_id, remove=True)
+
+    @api.model
+    def revolut_recover_unstarted_payment(self, order_id, uuid, payment_line_uuid, payment_method_id, amount, currency_id, remove=False):
+        """Fence an exact saved tender without issuing any provider request.
+
+        Every financial dispatch has a retained operation committed first. The
+        shared session/order locks make its absence authoritative for this
+        canonical tender, including drafts saved before recovery was available.
+        """
+        if type(remove) is not bool or any(type(value) is not int or value <= 0 for value in (order_id, payment_method_id, currency_id)):
+            raise UserError(_('Select the exact saved Revolut tender.'))
+        try:
+            payment_line_uuid = str(UUID(payment_line_uuid))
+        except (ValueError, TypeError, AttributeError):
+            raise UserError(_('Select a valid original tender identifier.')) from None
+        for attempt in range(3):
+            try:
+                with self.env.registry.cursor() as cursor:
+                    env = api.Environment(cursor, self.env.uid, dict(self.env.context))
+                    order = env['pos.order'].browse(order_id).exists()
+                    if not order:
+                        raise UserError(_('Save the original draft before recovering its tender.'))
+                    order._revolut_check_prepare_identity(uuid)
+                    from .return_allocation import ReturnAllocation
+                    ReturnAllocation(env).acquire_native_mutation(order)
+                    order._revolut_check_prepare_identity(uuid)
+                    payment = order.payment_ids.filtered(lambda item: item.uuid == payment_line_uuid)
+                    previous = (order.revolut_recovered_tenders or {}).get(payment_line_uuid)
+                    if not payment and previous and previous.get('state') == 'retired' and previous.get('method_id') == payment_method_id and previous.get('minor') == _tender_amount(order.currency_id, amount)[1] and currency_id == order.currency_id.id:
+                        cursor.commit()
+                        return {'recovery_status': 'retired', 'dispatched': False, 'order_id': order.id,
+                            'order_uuid': order.uuid, 'payment_id': previous['payment_id'],
+                            'payment_line_uuid': payment_line_uuid, 'recovery_revision': order.revolut_recovery_revision}
+                    if len(payment) != 1 or env['pos.payment'].sudo().search_count([('uuid', '=', payment_line_uuid)]) != 1:
+                        raise UserError(_('The saved tender identity is missing or ambiguous.'))
+                    payment.check_access('write')
+                    method = payment.payment_method_id
+                    minor = _tender_amount(order.currency_id, amount)[1]
+                    if method.id != payment_method_id or method not in order.config_id.payment_method_ids or method.company_id != order.company_id or method.use_payment_terminal != 'revolut' or currency_id != order.currency_id.id or minor <= 0 or _tender_amount(order.currency_id, payment.amount)[1] != minor:
+                        raise UserError(_('Recovery must match the original tender ownership and amount.'))
+                    # Include global UUID matches: a conflicting historical
+                    # owner must never disappear behind the caller's company.
+                    operations = env['pos.revolut.payment.operation'].sudo().search([
+                        '|', ('payment_line_uuid', '=', payment_line_uuid), ('pos_payment_id', '=', payment.id)], order='id desc')
+                    if operations:
+                        for operation in operations:
+                            if operation.company_id != order.company_id or operation.order_uuid != order.uuid or operation.pos_session_id != order.session_id or operation.payment_method_id != method or operation.currency_id != order.currency_id or operation.amount_minor != minor or (operation.pos_order_id and operation.pos_order_id != order) or (operation.pos_payment_id and operation.pos_payment_id != payment):
+                                raise UserError(_('The retained payment history does not match this tender.'))
+                            operation.with_env(env)._check_revolut_register_access()
+                        result = {**operations.operation_snapshot(operations[0]), 'recovery_status': 'existing_operation'}
+                    else:
+                        order._revolut_assert_unstarted_payment(payment)
+                        identity = {'payment_id': payment.id, 'method_id': method.id, 'minor': minor, 'state': 'unstarted'}
+                        if previous and previous.get('state') == 'retired':
+                            raise UserError(_('The original tender has already been removed.'))
+                        current = order.revolut_authorization_id.sudo()
+                        needs_fence = not previous or any(previous.get(key) != value for key, value in identity.items()) or (current and current.state not in {'revoked', 'consumed'} and any(slot['uuid'] == payment_line_uuid for slot in current.tenders or []))
+                        with _authority_mutation(env):
+                            if needs_fence:
+                                order._revolut_fence_tender(payment_line_uuid, identity)
+                            payment_id = payment.id
+                            if remove:
+                                payment.unlink()
+                        result = {'recovery_status': 'unstarted', 'dispatched': False,
+                            'order_id': order.id, 'order_uuid': order.uuid, 'payment_id': payment_id,
+                            'payment_line_uuid': payment_line_uuid, 'recovery_revision': order.revolut_recovery_revision}
+                        if remove:
+                            result['recovery_status'] = 'retired'
+                    cursor.commit()
+                    return result
+            except (IntegrityError, SerializationFailure):
+                if attempt == 2:
+                    raise UserError(_('Another cashier changed this tender. Reload and check its status.')) from None
+
+    def _revolut_payment_has_references(self, payment):
+        return any(payment[name] for name in ('transaction_id', 'payment_ref_no',
+            'revolut_order_id', 'revolut_payment_intent_id', 'revolut_operation_id', 'revolut_refund_operation_id'))
+
+    def _revolut_assert_unstarted_payment(self, payment, allow_retry_safe_operations=False):
+        """The recovery RPC and native unlink consume the same locked proof."""
+        self.ensure_one()
+        payment.ensure_one()
+        if payment.pos_order_id != self or payment.company_id != self.company_id or payment.session_id != self.session_id or payment.payment_method_id.company_id != self.company_id or payment.payment_method_id not in self.config_id.payment_method_ids:
+            raise UserError(_('The original saved tender ownership is invalid.'))
+        if self._revolut_payment_has_references(payment) or payment.payment_status not in {'waiting', 'waitingCard', 'retry', 'pending', False}:
+            raise UserError(_('This tender has financial evidence or an unknown history. Reconcile it first.'))
+        domain = ['|', ('payment_line_uuid', '=', payment.uuid), ('pos_payment_id', '=', payment.id)]
+        operations = self.env['pos.revolut.payment.operation'].sudo().search(domain)
+        if operations and (not allow_retry_safe_operations or any(
+            not operation.retry_safe or operation.state == 'verified'
+            or operation.company_id != self.company_id or operation.order_uuid != self.uuid
+            or operation.pos_session_id != self.session_id or operation.payment_method_id != payment.payment_method_id
+            or operation.currency_id != self.currency_id
+            or (operation.pos_order_id and operation.pos_order_id != self)
+            or (operation.pos_payment_id and operation.pos_payment_id != payment)
+            for operation in operations
+        )):
+            raise UserError(_('Reconcile the original Revolut attempt before deleting its tender.'))
+        if self.env['pos.revolut.refund.operation'].sudo().search_count(domain):
+            raise UserError(_('Reconcile the retained refund history before changing this tender.'))
+
+    def _revolut_fence_tender(self, uuid, identity):
+        """Caller holds the native mutation lock and server authority scope."""
+        self.ensure_one()
+        revision = self.revolut_recovery_revision + 1
+        recovered = dict(self.revolut_recovered_tenders or {})
+        recovered[uuid] = {**identity, 'revision': revision}
+        self.write({'revolut_recovery_revision': revision, 'revolut_recovered_tenders': recovered})
+        authority = self.revolut_authorization_id.sudo()
+        if authority and authority.state not in {'revoked', 'consumed'}:
+            if authority._exposed():
+                authority.write({'tender_revision': authority.tender_revision + 1, 'recovery_revision': revision})
+            else:
+                authority.write({'state': 'revoked'})
+
+    @api.model
+    def revolut_prepare_payment(self, order_id, uuid, expected_cart_version, tender_plan, expected_recovery_revision=0):
+        if type(order_id) is not int or type(expected_cart_version) is not int or type(expected_recovery_revision) is not int:
             raise UserError(_('Select an exact persisted cart version.'))
         for attempt in range(3):
             try:
@@ -334,6 +468,8 @@ class PosOrder(models.Model):
                     from .return_allocation import ReturnAllocation
                     ReturnAllocation(env).acquire_native_mutation(order)
                     order._revolut_check_prepare_identity(uuid)
+                    if order.revolut_recovery_revision != expected_recovery_revision:
+                        raise UserError(_('Checkout recovery changed. Reload before preparing payment.'))
                     with _authority_mutation(env):
                         result = order._revolut_prepare_locked(expected_cart_version,tender_plan)
                     cursor.commit()
@@ -381,6 +517,7 @@ class PosOrder(models.Model):
             'pos_order_id':self.id, 'company_id':self.company_id.id, 'session_id':self.session_id.id,
             'config_id':config.id, 'currency_id':self.currency_id.id, 'order_uuid':self.uuid,
             'cart_version':versions.cart_version+1 if versions else 1, 'base_total_minor':priced['total_minor'],
+            'recovery_revision':self.revolut_recovery_revision,
             'payable_minor':priced['total_minor'], 'tip_product_id':config.tip_product_id.id,
             'canonical':priced, 'native_contents':native, 'fingerprint':fingerprint,
             'projected_snapshot':priced['snapshot'], 'tenders':[],
@@ -472,16 +609,18 @@ class PosOrder(models.Model):
         if order.uuid != uuid or order.company_id not in self.env.companies:
             raise AccessError(_('Recover the exact original checkout.'))
         return {'data':order.read_pos_data([],order.config_id),
+            'recovery_revision':order.revolut_recovery_revision,
+            'recovered_tenders':order.revolut_recovered_tenders or {},
             'authority':order.revolut_authorization_id.sudo()._response() if order.revolut_authorization_id else False}
 
     @api.model_create_multi
     def create(self, vals_list):
-        if not _authority_internal(self.env) and any('revolut_authorization_id' in vals for vals in vals_list):
+        if not _authority_internal(self.env) and any({'revolut_authorization_id', 'revolut_recovery_revision', 'revolut_recovered_tenders'}.intersection(vals) for vals in vals_list):
             raise AccessError(_('Cart authority is server-owned.'))
         return super().create(vals_list)
 
     def write(self, values):
-        if 'revolut_authorization_id' in values and not _authority_internal(self.env):
+        if {'revolut_authorization_id', 'revolut_recovery_revision', 'revolut_recovered_tenders'}.intersection(values) and not _authority_internal(self.env):
             raise AccessError(_('Cart authority is server-owned.'))
         return super().write(values)
 
