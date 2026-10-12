@@ -319,6 +319,7 @@ Ticket 12 retains reviewed deployment, POS asset reload and live manager-cart
 approval. Preserve its original order 1022 / saved order 59, tender 79, session
 10, register 3 and configured Tips product 1. After the reviewed upgrade,
 Check status then Resume on that same tender; re-enable the intended Price
-Control policy for manager approval. The gross live budget stays £0.06.
+Control policy for manager approval. Use ticket12's updated remaining gross
+budget (£0.03); the owner holds deployment until their explicit go.
 No staging mutation, deployment or live financial call was performed here.
 The root cause of the blank Tip Product remains outside this ticket.
