@@ -341,6 +341,16 @@ class TestRevolutCartAuthority(TerminalTipFixtures, CommonPosTest):
                 self.assertEqual(payment.payment_status, status)
         self.request.assert_not_called()
 
+    def test_saved_waiting_revolut_status_cannot_be_cleared_to_reassign_identity(self):
+        payment = self.saved_tender()
+        with self.assertRaises(UserError), self.env.cr.savepoint():
+            payment.write({'payment_status': False})
+        self.assertEqual(payment.payment_status, 'waiting')
+        with self.assertRaises(UserError), self.env.cr.savepoint():
+            payment.write({'uuid': str(uuid4())})
+        self.assertEqual(payment.uuid, self.line_uuid)
+        self.request.assert_not_called()
+
     def test_recovery_unused_split_tender_preserves_verified_other_allocation(self):
         second_uuid = str(uuid4())
         self.saved_tender(40)

@@ -64,6 +64,35 @@ Tests also cover loss of the actual committed removal response: the local line
 stays guarded, Check status reads its retired disposition, and an idempotent
 removal retry permits cash settlement without another provider request.
 
+Two deliberately malformed legacy fixtures initially remained in their shared
+order between subcases, blocking later fixture creation. Each subcase now
+explicitly rolls back its fixture after assertions; the two corrected regressions
+pass (`/tmp/ticket47-fixture-green.log`). The first full attempt exposed a separate
+authorization regression: retention errors preceded unlink access checks.
+It was stopped and is not acceptance evidence (`/tmp/ticket47-full.log`). The
+corrected guards check access first, then retain history; the existing cashier/
+manager financial-internals test passes (`/tmp/ticket47-auth-green.log`).
+
+## Standards review
+
+Zero documented-standard violations. One optional P3 maintenance suggestion
+remains: the browser classification and retirement paths repeat some proof
+checks and guard resets. Their distinct lifecycle transitions are retained in
+the existing project style; the reviewer found no behavior defect. The shared
+server classifier and the final fixture/ACL corrections introduce no new
+standards concerns.
+
+## Spec review
+
+Zero remaining findings. The independent review's three initial findings about
+raw identity, orphan references and native deletion classification were fixed
+and re-reviewed. The reviewer also confirmed the lost-response instructions,
+isolated legacy fixtures and ACL correction. No scope creep was found.
+
+Final review totals: Standards zero hard violations and one optional suggestion;
+Spec zero remaining findings. Reviews are static; the automated verification
+below supplies runtime evidence.
+
 ## Ticket 12 handoff
 
 After the reviewed upgrade and POS asset reload, keep staging order 1022/tender
