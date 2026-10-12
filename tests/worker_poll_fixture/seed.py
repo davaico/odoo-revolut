@@ -1,7 +1,6 @@
 """Seed two real cashier authorities; financial dispatch is mocked, never live."""
 
 import json
-import os
 from pathlib import Path
 from unittest.mock import Mock, patch
 from uuid import uuid4
@@ -89,12 +88,11 @@ for index in (1, 2):
         "provider_order": provider_order, "provider_intent": provider_intent,
         "terminal": terminal, "currency": config.currency_id.name,
     })
-if os.environ.get("ODOO_REVOLUT_COALESCED_PROBE") == "1":
-    # Both real authorities can poll the same operation, while the second
-    # register retains a separate operation for the capacity comparison.
-    env["pos.config"].browse(fixture[0]["config_id"]).write({
-        "revolut_user_ids": [Command.link(fixture[1]["uid"])],
-    })
+# Both real authorities can poll the same operation, while the second
+# register retains a separate operation for the capacity comparison.
+env["pos.config"].browse(fixture[0]["config_id"]).write({
+    "revolut_user_ids": [Command.link(fixture[1]["uid"])],
+})
 # Retain the production cron worker count, but quiesce scheduled jobs to isolate
 # HTTP contention. Cron overlap is independently covered by existing tests.
 env["ir.cron"].search([]).write({"active": False})

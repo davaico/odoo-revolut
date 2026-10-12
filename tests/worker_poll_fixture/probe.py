@@ -1,6 +1,5 @@
-"""Real HTTP RPC characterization; all provider waits are bounded test fixtures."""
+"""Verify coalesced status polling across real HTTP workers with mocked provider waits."""
 
-import argparse
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -56,10 +55,6 @@ def poll_snapshot(session, item):
     return result, elapsed
 
 
-def poll(session, item):
-    return poll_snapshot(session, item)[1]
-
-
 def arrivals():
     path = ROOT / "arrivals.jsonl"
     return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
@@ -87,76 +82,6 @@ while True:
         if time.monotonic() >= deadline:
             raise
         time.sleep(0.25)
-
-def historical_probe(control):
-    # Independent authenticated sessions exclude browser/session-lock effects.
-    sessions = [login(fixture[index // 2]) for index in range(4)]
-    before = unrelated(control, fixture[0]["uid"])
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        try:
-            one_poll = pool.submit(poll, sessions[0], fixture[0])
-            wait_until(lambda: len(arrivals()) == 1, "single held provider read")
-            single_read = pool.submit(unrelated, control, fixture[0]["uid"])
-            single = single_read.result(timeout=5)
-            assert not one_poll.done(), "Single provider fixture unexpectedly finished"
-            release(1)
-            one_poll.result(timeout=10)
-
-            # Two browser sessions for one cashier occupy both HTTP workers.
-            polls = [pool.submit(poll, sessions[index], fixture[0]) for index in (0, 1)]
-            wait_until(lambda: len(arrivals()) == 3, "two duplicate reads held")
-            occupied = arrivals()[1:3]
-            assert len({item["pid"] for item in occupied}) == 2, occupied
-            assert {item["cashier"] for item in occupied} == {1}
-            assert not any((ROOT / f"release-{sequence}").exists() for sequence in (2, 3))
-            polls.extend(pool.submit(poll, sessions[index], fixture[1]) for index in (2, 3))
-            entered = Event()
-            delayed = pool.submit(unrelated, control, fixture[0]["uid"], entered)
-            assert entered.wait(2), "Unrelated RPC client did not enter request"
-            held_at = time.monotonic()
-            time.sleep(2)
-            hold_seconds = time.monotonic() - held_at
-            assert not delayed.done(), "Unrelated RPC progressed while both workers were held"
-            assert len(arrivals()) == 3, "Queued polls unexpectedly reached provider"
-
-            # Release entire status calls sequentially to isolate worker admission
-            # from pending-state database observation retries.
-            for sequence in range(2, 6):
-                wait_until(lambda: len(arrivals()) >= sequence, f"provider read {sequence}")
-                done_before = sum(future.done() for future in polls)
-                release(sequence)
-                wait_until(lambda: sum(future.done() for future in polls) > done_before,
-                           f"completed status call {sequence}")
-            poll_times = [future.result(timeout=5) for future in polls]
-            delayed_seconds = delayed.result(timeout=5)
-        finally:
-            for sequence in range(1, 16):
-                release(sequence)
-    after = unrelated(control, fixture[0]["uid"])
-    observed = arrivals()
-    runtime = json.loads((ROOT / "runtime.json").read_text())
-    assert runtime["http_workers"] == 2 and runtime["max_cron_threads"] == 1
-    assert len(observed) == 5, observed
-    assert [item["cashier"] for item in observed[1:]] == [1, 1, 2, 2], observed
-    assert delayed_seconds >= hold_seconds
-    print(json.dumps({
-        "scenario": "two-http-workers-four-authorized-tabs", "odoo_version": "19.0.20260908",
-        "http_workers": runtime["http_workers"], "max_cron_threads": runtime["max_cron_threads"],
-        "master_pid": runtime["master_pid"], "scheduled_jobs": "quiesced",
-        "cashiers": 2, "tabs_per_cashier": 2, "provider": "mocked-pending-only",
-        "mock_provider_reads": len(observed), "main_scenario_provider_reads": 4,
-        "maximum_simultaneous_held_provider_reads": len(occupied),
-        "main_scenario_financial_posts": 0, "worker_pids": sorted({item["pid"] for item in occupied}),
-        "main_scenario_reads_per_cashier": [2, 2], "all_four_status_results": "pending",
-        "unrelated_rpc_seconds_before": round(before, 6),
-        "unrelated_rpc_seconds_one_held_poll": round(single, 6),
-        "unrelated_rpc_seconds_two_held_polls": round(delayed_seconds, 6),
-        "confirmed_both_workers_held_seconds": round(hold_seconds, 6),
-        "unrelated_rpc_seconds_after": round(after, 6),
-        "poll_rpc_seconds": [round(value, 6) for value in poll_times],
-        "merchant_http_guard": "verified-before-init", "runtime_network": "internal",
-    }), flush=True)
-
 
 def coalesced_probe(control):
     # Four independent cookies model two tabs per granted backend cashier.
@@ -243,10 +168,4 @@ def coalesced_probe(control):
     }), flush=True)
 
 
-parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--coalesced", action="store_true", help="Verify ticket 38 observation coalescing")
-arguments = parser.parse_args()
-if arguments.coalesced:
-    coalesced_probe(control)
-else:
-    historical_probe(control)
+coalesced_probe(control)

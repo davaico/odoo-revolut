@@ -14,7 +14,7 @@ node --test addons/pos_revolut/static/tests/*.test.mjs
 ./scripts/test-addon
 ```
 
-The Python suite checks the portable historical test runner. Native Odoo document and PDF checks belong to the addon suite and need its Odoo runtime. The Docker runner installs the addon on the pinned Odoo/PostgreSQL runtime, checks its HTTP guard and browser transport, runs the addon suite, and removes its disposable resources. Record any skipped checks and why they did not run.
+The Python suite checks the portable historical and delivered-artifact test runners. Native Odoo document and PDF checks belong to the addon suite and need its Odoo runtime. The Docker runner installs the addon on the pinned Odoo/PostgreSQL runtime, checks its HTTP guard and browser transport, runs the addon suite, and removes its disposable resources. Record any skipped checks and why they did not run.
 
 No Merchant credential or physical terminal is needed. Compose supplies an explicitly fake credential. Building the image needs network access; the test runtime uses an internal network and blocks Merchant HTTP. Automated tests must mock Revolut requests and must never contact a real terminal or Merchant API.
 
@@ -53,6 +53,15 @@ The historical upgrade commands cover older cart authority, credential authority
 ```
 
 These commands extract earlier addon versions from Git and require a full clone of the repository's history. Do not silently skip missing historical revisions or replace their fixtures with the current implementation.
+
+For recovery across Odoo process restarts and status polling across HTTP workers:
+
+```bash
+./scripts/test-restart-recovery
+./scripts/test-status-poll-workers
+```
+
+The worker test verifies that duplicate polls share one provider observation and leave another HTTP worker available. Distinct operations can still occupy both workers; the test also checks that capacity limit. Provider responses are mocked and all resources are disposable.
 
 `scripts/test-delivered-addon` tests the addon extracted from an exact committed revision. Its migration scenario also requires a retained two-addon historical revision. Replace the placeholders with full commit hashes from this repository:
 
