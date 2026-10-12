@@ -109,7 +109,7 @@ Use separate worktrees for concurrent agents, within the project's designated wo
 | [46 — Recover checkout refresh after payment verification](closed/46-recover-verified-checkout-refresh.md) | `ready-for-agent` at closure | Closed | Read-only verified checkout recovery; 597 install / 597 upgrade tests, six native scenarios and independent reviews passed |
 | [47 — Recover an unstarted Revolut tender after preparation failure and reload](closed/47-recover-unstarted-tender-after-reload.md) | `ready-for-agent` at closure | Closed | Server-owned recovery/retirement and delayed-start fencing; 648 tests passed on both install and upgrade; ticket 12 deployment/live acceptance pending |
 | [48 — Explain an Odoo-entered tip rejection before generic product eligibility](ready-for-agents/48-explain-odoo-tip-rejection.md) | `ready-for-agent` | Open | None for local implementation; reproduce message/zero-call behavior and preserve ticket 47 recovery compatibility |
-| [49 — Check timed Takeout readiness before collecting terminal payment](ready-for-agents/49-check-takeout-readiness-before-terminal-payment.md) | `ready-for-agent` | Open | None for mocked diagnosis; native reproduction first, then pre-dispatch readiness and automatic checkout verification |
+| [49 — Check timed Takeout readiness before collecting terminal payment](closed/49-check-takeout-readiness-before-terminal-payment.md) | `ready-for-agent` at closure | Closed | Pickup readiness and original-tender recovery verified; 19 focused passed, full suite 653/654 plus passing isolated rerun of its browser timeout; ticket 12 release gates remain |
 
 ## Tip feedback and Takeout readiness triage — 2026-10-12
 
