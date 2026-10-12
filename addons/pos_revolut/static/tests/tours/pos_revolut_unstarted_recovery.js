@@ -52,7 +52,7 @@ registry.category("web_tour.tours").add("pos_revolut_unstarted_prepare_failure",
     ].flat(),
 });
 
-for (const action of ["resume", "cash_removal", "offline_resume"]) {
+for (const action of ["resume", "cash_removal", "offline_resume", "lost_removal_cash"]) {
     registry.category("web_tour.tours").add(`pos_revolut_unstarted_${action}`, {
         steps: () => [
             Chrome.startPoS(),
@@ -79,6 +79,7 @@ for (const action of ["resume", "cash_removal", "offline_resume"]) {
                     }
                     const call = pos.data.call.bind(pos.data);
                     let offlineRecovery = action === "offline_resume";
+                    let lostRemoval = action === "lost_removal_cash";
                     pos.data.call = async (model, method, ...args) => {
                         if (offlineRecovery && model === "pos.order" &&
                             method === "revolut_recover_unstarted_payment") {
@@ -89,7 +90,13 @@ for (const action of ["resume", "cash_removal", "offline_resume"]) {
                             ["revolut_start_payment", "revolut_cancel_payment"].includes(method)) {
                             window.revolutUnstartedIdentity.financialCalls.push(method);
                         }
-                        return call(model, method, ...args);
+                        const result = await call(model, method, ...args);
+                        if (lostRemoval && model === "pos.order" &&
+                            method === "revolut_remove_unstarted_payment") {
+                            lostRemoval = false;
+                            throw new Error("Disposable browser lost the committed removal response");
+                        }
+                        return result;
                     };
                 },
             },
@@ -111,7 +118,44 @@ for (const action of ["resume", "cash_removal", "offline_resume"]) {
                     },
                 },
             ] : []),
-            ...(action !== "cash_removal" ? [
+            ...(action === "lost_removal_cash" ? [
+                PaymentScreen.clickPaymentlineDelButton("Revolut", "12.34"),
+                { trigger: ".modal:contains('Communication with Revolut was interrupted')" },
+                Dialog.confirm(),
+                {
+                    content: "A lost committed removal response retains the original local tender and releases native busy state",
+                    trigger: ".payment-screen .send_payment_request:contains('Check status')",
+                    run() {
+                        const pos = window.posmodel;
+                        const saved = window.revolutUnstartedIdentity;
+                        const order = pos.getOrder();
+                        const line = order.getPaymentlineByUuid(saved.lineUuid);
+                        if (!line || line.id !== saved.lineId || !line.uiState.revolutRecoveryRequired ||
+                            line.uiState.revolutRecoveredUnstarted || line.uiState.revolutUndispatched ||
+                            order.uuid !== saved.orderUuid || saved.financialCalls.length ||
+                            pos.paymentTerminalInProgress) {
+                            throw new Error("Lost removal response discarded the local identity, unlocked money or kept native busy state");
+                        }
+                        this.anchor.click();
+                    },
+                },
+                {
+                    content: "Read the durable retired disposition without offering Resume or sending a provider operation",
+                    trigger: ".payment-screen .electronic_status:contains('This payment line was removed')",
+                    run() {
+                        const pos = window.posmodel;
+                        const saved = window.revolutUnstartedIdentity;
+                        const line = pos.getOrder().getPaymentlineByUuid(saved.lineUuid);
+                        if (!line?.uiState.revolutRecoveredRetired || !line.uiState.revolutRecoveryRequired ||
+                            line.id !== saved.lineId || saved.financialCalls.length || pos.paymentTerminalInProgress ||
+                            [...document.querySelectorAll(".send_payment_request")].some((button) =>
+                                button.textContent.trim() === "Resume")) {
+                            throw new Error("Retired recovery allowed a charge or lost durable removal authority");
+                        }
+                    },
+                },
+            ] : []),
+            ...(!["cash_removal", "lost_removal_cash"].includes(action) ? [
                 { trigger: ".payment-screen .send_payment_request:contains('Check status')", run: "click" },
                 {
                     content: "Recovery exposes Resume without dispatch or replacing the tender",

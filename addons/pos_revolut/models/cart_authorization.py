@@ -383,11 +383,7 @@ class PosOrder(models.Model):
                             operation.with_env(env)._check_revolut_register_access()
                         result = {**operations.operation_snapshot(operations[0]), 'recovery_status': 'existing_operation'}
                     else:
-                        if order._revolut_payment_has_references(payment) or payment.payment_status not in {'waiting', 'waitingCard', 'retry', 'pending', False}:
-                            raise UserError(_('This tender has financial evidence or an unknown history. Reconcile it first.'))
-                        if env['pos.revolut.refund.operation'].sudo().search_count([
-                            '|', ('payment_line_uuid', '=', payment_line_uuid), ('pos_payment_id', '=', payment.id)]):
-                            raise UserError(_('Reconcile the retained refund history before changing this tender.'))
+                        order._revolut_assert_unstarted_payment(payment)
                         identity = {'payment_id': payment.id, 'method_id': method.id, 'minor': minor, 'state': 'unstarted'}
                         if previous and previous.get('state') == 'retired':
                             raise UserError(_('The original tender has already been removed.'))
@@ -413,6 +409,20 @@ class PosOrder(models.Model):
     def _revolut_payment_has_references(self, payment):
         return any(payment[name] for name in ('transaction_id', 'payment_ref_no',
             'revolut_order_id', 'revolut_payment_intent_id', 'revolut_operation_id', 'revolut_refund_operation_id'))
+
+    def _revolut_assert_unstarted_payment(self, payment):
+        """The recovery RPC and native unlink consume the same locked proof."""
+        self.ensure_one()
+        payment.ensure_one()
+        if payment.pos_order_id != self or payment.company_id != self.company_id or payment.session_id != self.session_id or payment.payment_method_id.company_id != self.company_id or payment.payment_method_id not in self.config_id.payment_method_ids:
+            raise UserError(_('The original saved tender ownership is invalid.'))
+        if self._revolut_payment_has_references(payment) or payment.payment_status not in {'waiting', 'waitingCard', 'retry', 'pending', False}:
+            raise UserError(_('This tender has financial evidence or an unknown history. Reconcile it first.'))
+        domain = ['|', ('payment_line_uuid', '=', payment.uuid), ('pos_payment_id', '=', payment.id)]
+        if self.env['pos.revolut.payment.operation'].sudo().search_count(domain):
+            raise UserError(_('Reconcile the original Revolut attempt before deleting its tender.'))
+        if self.env['pos.revolut.refund.operation'].sudo().search_count(domain):
+            raise UserError(_('Reconcile the retained refund history before changing this tender.'))
 
     def _revolut_fence_tender(self, uuid, identity):
         """Caller holds the native mutation lock and server authority scope."""
