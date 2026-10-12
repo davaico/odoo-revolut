@@ -1079,7 +1079,9 @@ dispatch and cart-authorization history. Recovery assumes that financial history
 has been retained; a database with deleted or incomplete history requires audited
 reconciliation before recovery. Old browser preparation requests fail after a
 recovery revision changes. Do not clear browser storage, cancel the whole sale,
-replace the original order/tender or repair it with SQL.
+or repair it with SQL as a recovery workaround.
 
 Ticket 12 retains deployment and the live manager-approval check on order
-1022/tender 79. Automated tests use disposable records and mocked provider HTTP.
+1022/tender 79. Preserve both for that acceptance check. Automated tests use
+disposable records and mocked provider HTTP.
+See the [verification and recovery handoff](testing/ticket-47-unstarted-tender-recovery.md).

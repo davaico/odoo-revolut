@@ -4,7 +4,7 @@
 
 **Work branch:** `codex/47-recover-unstarted-tender-after-reload`
 
-**State:** claimed
+**State:** closed
 
 **Triage:** ready-for-agent
 
@@ -42,6 +42,10 @@ Do not infer that an actual network failure occurred solely from the message.
 
 ## Local reproduction and limits
 
+This section records the pre-fix investigation on `dad1f21`. Its baseline
+adapter does not implement the new recovery RPC and is not post-fix acceptance
+evidence; the tracked server/native tests below verify the completed flow.
+
 `node /tmp/ticket12-restored-unstarted-tender-repro.mjs` imports the actual
 `revolut_payment_state.js`, restores a waiting line with empty UI state and no
 financial references, mocks empty `revolut_find_payment` results, then calls
@@ -57,7 +61,7 @@ conversion to a tracked regression at the appropriate native lifecycle seam.
 
 ### Durable local reproduction
 
-Run from the repository root with Node. Exit 1 is the expected current red
+Run from the repository root at `dad1f21` with Node. Exit 1 is the expected pre-fix red
 signal; this invokes only local lifecycle code with mocked lookup results.
 
 ```bash
@@ -115,17 +119,17 @@ proof of an unstarted preparation failure or another safe recovery contract.
 
 ## Acceptance criteria
 
-- [ ] Reproduce preparation failure → native saved waiting tender → reload →
+- [x] Reproduce preparation failure → native saved waiting tender → reload →
   removal/continuation through the real native POS path with mocked Merchant HTTP.
-- [ ] Recover an authoritatively unstarted tender without provider dispatch,
+- [x] Recover an authoritatively unstarted tender without provider dispatch,
   alternate-tender settlement of uncertain money, or force completion.
-- [ ] Preserve the same order/tender authority as required by the chosen recovery
+- [x] Preserve the same order/tender authority as required by the chosen recovery
   contract; no new charge can occur without an explicit authorized start.
-- [ ] Preserve unknown legacy, exposed, pending and verified payment protections;
+- [x] Preserve unknown legacy, exposed, pending and verified payment protections;
   absent lookup evidence is not sufficient to unlock them.
-- [ ] Show usable recovery or understandable persistent feedback on repeated
+- [x] Show usable recovery or understandable persistent feedback on repeated
   actions rather than leaving an apparently inert red X.
-- [ ] Verify the narrow affected lifecycle/native tests and provide ticket 12
+- [x] Verify the narrow affected lifecycle/native tests and provide ticket 12
   with recovery instructions for manager-cart approval on the existing fixture
   after a reviewed deployed fix. Deployment and live acceptance belong to 12.
 
@@ -254,31 +258,31 @@ tender locked; Resume is absent and repeated clicks can appear inert.
 
 **Acceptance criteria:**
 
-- [ ] Reproduce missing Tip Product preparation failure after native draft
+- [x] Reproduce missing Tip Product preparation failure after native draft
   save, then restore configuration, reload and recover through the actual POS
   adapter/screen with Merchant HTTP mocked. Preserve the original identities
   and prove zero operations/dispatches during failed preparation and recovery.
-- [ ] Test both explicit same-tender Resume and safe removal. Recovery/removal
+- [x] Test both explicit same-tender Resume and safe removal. Recovery/removal
   send zero provider calls; Resume requires fresh valid authorization and
   dispatches exactly once only after the cashier's explicit start.
-- [ ] Recover an equivalent pre-fix saved waiting fixture with no historical
+- [x] Recover an equivalent pre-fix saved waiting fixture with no historical
   failure marker, using server proof and fencing rather than browser assertions
   or an empty lookup. Keep the real staging fixture untouched during tests.
-- [ ] Race recovery/removal against delayed preparation, delayed start,
+- [x] Race recovery/removal against delayed preparation, delayed start,
   another cashier, duplicate clicks and native sync. If recovery wins, old
   admission cannot dispatch; if start wins, its exposure remains guarded.
   Exercise a delayed start after alternative-tender settlement as well.
-- [ ] Preserve unknown legacy lines, reference-bearing lines, existing
+- [x] Preserve unknown legacy lines, reference-bearing lines, existing
   unclaimed operations, claimed/ambiguous dispatch, pending payments, verified
   payments, refunds and split-tender authority. Forged recovery state, mismatched
   identity or amount, denied access and unavailable proof cannot unlock them.
-- [ ] Repeat recovery after sync/reload, rejected preparation, offline lookup
+- [x] Repeat recovery after sync/reload, rejected preparation, offline lookup
   and timeout. Visible actions and feedback remain truthful; no unhandled
   rejection, duplicate dispatch or stranded native terminal-busy flag occurs.
-- [ ] Pass focused lifecycle, server admission/mutation/concurrency and native
+- [x] Pass focused lifecycle, server admission/mutation/concurrency and native
   POS regressions in a disposable runtime with Merchant HTTP blocked. Assert
   actual financial side effects and native settlement, beyond a passing build.
-- [ ] Document the recovery action and upgrade implications, and hand off the
+- [x] Document the recovery action and upgrade implications, and hand off the
   existing-fixture recovery/manager-approval scenario to ticket 12. Keep live
   acceptance distinct from automated implementation completion.
 
@@ -287,3 +291,34 @@ rewrite; provider behavior changes; force completion; storage clearing;
 whole-order cancellation; replacement of the staging sale/tender; direct SQL
 repair; staging fault injection; deployment or new live financial operations.
 Preserve the existing fixture and live budget limits recorded above.
+
+## Implementation and closure — 2026-10-12
+
+Implemented on `codex/47-recover-unstarted-tender-after-reload`, with runtime
+source `6630fed954804ca90049d4ed17e5b6b956a46047` and addon `19.0.1.18.12`.
+Check status now obtains server-owned no-start authority for the exact saved
+tender. Explicit Resume uses fresh authorization on that same tender; safe
+removal atomically retires its identity. Delayed preparation/start cannot charge
+using superseded authority. Existing exposure, refund history and references
+remain protected. Recovery and retirement make no provider request.
+
+The final serial full suite passed **648 tests on fresh installation and 648
+on addon update**, zero failures/errors, with real Merchant HTTP blocked.
+Focused server/native tests passed 43; the six corrected or resource-affected
+regressions passed unchanged in isolation. Lifecycle tests passed 141, refund
+allowance tests passed three, and tooling passed 62 with three optional skips.
+Syntax checks passed; no static typechecker is configured. The verification
+record distinguishes earlier failed/stopped runs from final acceptance.
+
+Independent review against the owner-selected `dad1f21`: Standards zero hard
+violations and two optional maintenance suggestions; Spec zero remaining
+findings. All acceptance criteria above are supported by mocked server/native
+runtime evidence. See the [verification and recovery handoff](../../testing/ticket-47-unstarted-tender-recovery.md).
+
+Ticket 12 retains reviewed deployment, POS asset reload and live manager-cart
+approval. Preserve its original order 1022 / saved order 59, tender 79, session
+10, register 3 and configured Tips product 1. After the reviewed upgrade,
+Check status then Resume on that same tender; re-enable the intended Price
+Control policy for manager approval. The gross live budget stays £0.06.
+No staging mutation, deployment or live financial call was performed here.
+The root cause of the blank Tip Product remains outside this ticket.

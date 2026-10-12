@@ -6,15 +6,24 @@
 
 **Triage:** ready-for-human
 
-**Updated:** 2026-10-12, after saved receipt PDF inspection, blocked session closure and new recovery ticket 47.
+**Updated:** 2026-10-12, after automated ticket 47 closure; staging deployment and R19 acceptance remain pending.
 
 Start new implementation work from the latest reviewed `main`, preserving this
 handoff and any local documentation edits. PR #70 is already merged.
 
 ## Authoritative handoff checkpoint — October 12
 
-New acceptance finding: restricted-price cashier denial passed, but manager
-cart approval is blocked by [ticket 47](../ready-for-agents/47-recover-unstarted-tender-after-reload.md).
+Ticket 47's automated implementation is closed on addon `19.0.1.18.12`:
+648 tests passed on fresh install and again after update, with Merchant HTTP
+blocked. See the [verification and recovery handoff](../../testing/ticket-47-unstarted-tender-recovery.md).
+R19 remains pending a reviewed deployment and POS asset reload, then **Check
+status → Resume** on original order 1022/tender 79 in session 10/register 3.
+Keep Tips product 1 configured; re-enable the intended Price Control policy
+for manager-cart approval. Preserve the fixture and £0.06 gross live budget.
+No staging deployment or new financial operation was performed by ticket 47.
+
+Recorded pre-fix acceptance finding: restricted-price cashier denial passed,
+but manager cart approval was blocked by [ticket 47](../closed/47-recover-unstarted-tender-after-reload.md).
 Order 1022's unstarted waiting tender is stuck after preparation failure/reload;
 local lifecycle reproduction matches the failed removal and suppressed repeat
 message. Preserve order 59/tender 79. Owner restored Price Control to false;

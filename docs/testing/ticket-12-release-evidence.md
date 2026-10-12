@@ -5,6 +5,17 @@ Updated **2026-10-12**. For manual testing, read the
 use the [checklist](ticket-12-final-release-checklist.md). This file records
 release/test provenance, not a second operator timeline.
 
+## Ticket 47 automated recovery handoff — October 12
+
+Addon `19.0.1.18.12`, runtime source `6630fed954804ca90049d4ed17e5b6b956a46047`,
+passed 648 tests on fresh installation and 648 after update, zero failures/errors,
+with Merchant HTTP blocked. Standards review has zero hard violations and two
+optional suggestions; Spec review has zero remaining findings. Ticket 47 is
+closed; [its verification record](ticket-47-unstarted-tender-recovery.md) records
+failed attempts, final evidence, upgrade implications and original-fixture recovery.
+Deployment and live R19 manager approval remain with ticket 12. The staging
+fixture and £0.06 gross live charge budget were not changed by this implementation.
+
 ## October 12 later continuation — saved PDF, closure and new recovery finding
 
 The owner supplied an actual saved native FULL return PDF, inspected by text
@@ -14,7 +25,7 @@ One session-close attempt was rejected for active drafts; successful closure
 and reopening are not claimed. Return 1019 remains owner-accepted as a test,
 with pending settlement/native work preserved operationally.
 
-[Ticket 47](../tickets/ready-for-agents/47-recover-unstarted-tender-after-reload.md)
+[Ticket 47](../tickets/closed/47-recover-unstarted-tender-after-reload.md)
 records a new unstarted-tender removal failure after preparation rejection and
 reload. A fresh local reproduction imports the actual lifecycle module with
 mocked empty payment lookups: two false removals, one interrupted message,

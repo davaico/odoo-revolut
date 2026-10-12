@@ -118,6 +118,75 @@ Final review totals: Standards zero hard violations and two optional suggestions
 Spec zero remaining findings. Reviews are static; the automated verification
 below supplies runtime evidence.
 
+## Automated verification
+
+The final focused run passed 43 tests with zero failures or errors
+(`/tmp/ticket47-admission-final.log`): server cart authority, opposing-parent
+native mutation coverage, the two existing unclaimed-worker recovery tours,
+and five new native recovery tours. Those five exercise same-tender Resume,
+safe removal followed by Cash settlement, offline lookup, a lost committed
+removal response, and delayed native preparation after competing recovery.
+The assertions inspect persisted identities, operations and dispatches.
+
+The lifecycle suite passed 141 tests, the refund allowance suite passed three,
+and tooling passed 62 tests with three optional skips (65 total). Python
+compilation, JavaScript syntax checks and `git diff --check` passed. This
+repository has no configured static typechecker; the native tours exercise
+the changed adapter in the actual Odoo runtime.
+
+The broad run on `f2abaf8` exposed one additional old test cleanup that erased
+an injected unrelated refund reference. The new retained-reference contract
+correctly rejects that erasure. The fixture now rolls back the rejected
+association in a savepoint; its subsequent successful association and provider
+assertions are unchanged. The corrected test passed independently
+(`/tmp/ticket47-ref-fixture.log`) and both reviewers confirmed the change.
+That earlier broad run also found two old native tours attempting amount
+editing underneath the newly required repeated uncertainty warning. The tours
+now assert and dismiss the exact current warning after each explicit status
+check and unsuccessful removal, preserving their amount, reference, deletion
+and provider assertions. Both reviewers accepted the test-only correction.
+The run finished with two failures and one error across 648 tests
+(`/tmp/ticket47-complete-full.log`); it is not final acceptance evidence.
+
+The install-and-upgrade matrix uses an immutable addon archive from
+`6630fed954804ca90049d4ed17e5b6b956a46047`:
+
+```bash
+mkdir -p /tmp/ticket47-release
+git archive 6630fed954804ca90049d4ed17e5b6b956a46047 addons \
+  | tar -x -C /tmp/ticket47-release
+ODOO_REVOLUT_TEST_PROJECT=odoo-revolut-ticket47-serial-final \
+  scripts/test-addon --addons-dir /tmp/ticket47-release/addons \
+  --verify-install-upgrade
+```
+
+The script checks the pinned Odoo version, requires the native browser
+dependency, verifies the outbound Merchant HTTP guard before loading the
+addon, and cleans its disposable containers and database volumes on exit.
+
+The first attempt on that archive was stopped during native tours
+(`/tmp/ticket47-release-full.log`), after login, foreground-timeout and
+pending-refund browser timeouts. Browser shutdown also timed out. At inspection,
+the host had less than 200 MB available memory, full swap and concurrent ticket
+48/49 test projects; these are resource-pressure indicators, not proof of a
+product cause. Only this ticket's disposable container was stopped and cleaned.
+This attempt is not acceptance evidence. No product or test behavior was
+changed to mask the timeouts.
+
+After the owner authorized coordination, tickets 48 and 49 deferred their next
+Docker/browser runs. All six isolated checks passed unchanged in the serial
+window (`/tmp/ticket47-capacity-check.log`): the three resource-affected native
+tours, both repeated-warning tours and the unrelated-reference fixture. This
+supplies actual runtime confirmation beyond the static resource diagnosis.
+
+Final serial matrix (`/tmp/ticket47-serial-final.log`), on the same immutable
+source, with outbound Merchant HTTP blocked:
+
+| Phase | Result | UTC completion |
+| --- | --- | --- |
+| Fresh installation | 648 tests, zero failures/errors | 2026-10-12 12:22:56 |
+| Addon update | 648 tests, zero failures/errors | 2026-10-12 12:37:48 |
+
 ## Ticket 12 handoff
 
 After the reviewed upgrade and POS asset reload, keep staging order 1022/tender
@@ -132,3 +201,8 @@ Deployment, manager acceptance and any live payment belong to ticket 12.
 Automated removal coverage uses disposable records. Do not remove or replace
 the staging fixture, clear browser storage, cancel its whole order or repair it
 with SQL. Existing uncertain history stays protected and requires reconciliation.
+
+The complete script exited zero, verified the consolidated Restaurant module
+state after both phases, and removed its disposable project and volumes. No
+browser startup/debugger skips occurred in the successful serial run. The test
+window was then released to ticket 49 under the owner-approved coordination.
