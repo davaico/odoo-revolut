@@ -3,14 +3,16 @@ import os
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
-from odoo import Command
+from odoo import Command, fields
 from odoo.addons.point_of_sale.tests.common import CommonPosTest
 from odoo.exceptions import UserError
 from odoo.tests.common import tagged
 
+from .test_revolut_terminal_tip import TerminalTipFixtures
+
 
 @tagged("post_install", "-at_install", "pos_revolut_restaurant")
-class TestRevolutRestaurantAuthority(CommonPosTest):
+class TestRevolutRestaurantAuthority(TerminalTipFixtures, CommonPosTest):
     def setUp(self):
         super().setUp()
         if self.env["ir.module.module"].search([("name", "=", "pos_restaurant")]).state != "installed":
@@ -74,6 +76,110 @@ class TestRevolutRestaurantAuthority(CommonPosTest):
             })],
         })
         self.enterContext(patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_TEST_TERMINAL": "test-only"}))
+
+    def _select_timed_takeout(self, preset_time=False):
+        preset = self.env.ref("pos_restaurant.pos_takeout_preset")
+        calendar = self.env["resource.calendar"].create({
+            "name": "Restaurant pickup test hours",
+            "attendance_ids": [Command.create({
+                "name": "Pickup", "dayofweek": str(day), "hour_from": 0,
+                "hour_to": 24, "day_period": "morning",
+            }) for day in range(7)],
+        })
+        preset.write({"use_timing": True, "resource_calendar_id": calendar.id})
+        self.pos_config_usd.write({"available_preset_ids": [Command.link(preset.id)]})
+        self.order.write({"preset_id": preset.id, "table_id": False, "preset_time": preset_time})
+
+    def _prepare(self):
+        # RPC-owned cursors see the persisted draft, as after native POS sync.
+        self.env.flush_all()
+        return self.env["pos.order"].revolut_prepare_payment(self.order.id, self.order.uuid, 0, [{
+            "uuid": self.line_uuid, "payment_method_id": self.method.id, "amount": 12.34,
+        }])
+
+    def _start(self, prepared):
+        self.env.flush_all()
+        return self.method.revolut_start_payment(
+            self.session.id, self.order.uuid, self.line_uuid, 12.34, self.order.currency_id.id,
+            False, False, prepared["authorization_id"], prepared["cart_version"], prepared["tender_revision"],
+        )
+
+    def test_timed_takeout_requires_pickup_before_preparation(self):
+        self._select_timed_takeout()
+        with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request") as provider:
+            with self.assertRaisesRegex(UserError, "select.*time slot"):
+                self._prepare()
+            provider.assert_not_called()
+        checkout = self.env["pos.order"].revolut_checkout_state(self.order.id, self.order.uuid)
+        self.assertFalse(checkout["authority"])
+        self.assertFalse(self.method.revolut_find_payment(self.order.uuid, self.line_uuid, self.session.id))
+
+    def test_timed_takeout_missing_pickup_after_preparation_cannot_dispatch(self):
+        self._select_timed_takeout(fields.Datetime.now())
+        prepared = self._prepare()
+        self.order.write({"preset_time": False})
+        with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+                   side_effect=AssertionError("Missing pickup must not contact Revolut")) as provider:
+            rejected = self._start(prepared)
+            self.assertFalse(rejected["dispatched"])
+            self.assertRegex(rejected["message"], "select.*time slot")
+            provider.assert_not_called()
+        self.assertFalse(self.method.revolut_find_payment(self.order.uuid, self.line_uuid, self.session.id))
+        self.order.write({"preset_time": fields.Datetime.now()})
+        corrected = self._prepare()
+        self.assertEqual(corrected["authorization_id"], prepared["authorization_id"])
+        self.assertEqual(corrected["cart_version"], prepared["cart_version"])
+
+    def test_captured_takeout_keeps_original_recovery_when_pickup_needs_correction(self):
+        self._select_timed_takeout(fields.Datetime.now())
+        prepared = self._prepare()
+        self.base_minor = self.gross_minor = 1234
+        self.tip_minor = 0
+        self.provider_order_id, self.provider_intent_id, self.provider_payment_id = (
+            str(uuid4()) for _ in range(3)
+        )
+        self.report_status, self.report_post_count = "completed", 0
+        self.csv_content, self.order_payments = None, None
+        with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+                   side_effect=self.provider_response) as provider:
+            started = self._start(prepared)
+            captured = self.method.revolut_poll_payment(
+                started["operation_id"], self.order.uuid, self.line_uuid,
+            )
+            self.assertEqual(captured["state"], "verified")
+            self.assertEqual(captured["captured_amount_minor"], 1234)
+            capture_fields = ("operation_id", "state", "order_id", "payment_intent_id", "payment_id",
+                              "authorization_id", "cart_version", "tender_revision",
+                              "captured_amount_minor", "gross_amount_minor")
+            original_capture = {name: captured[name] for name in capture_fields}
+            self.assertEqual(len([call for call in provider.call_args_list
+                                  if call.args[0] == "POST" and "/api/report-runs" not in call.args[1]]), 2)
+            # Polling commits capture in an owned cursor. Native edits and reads
+            # must reload that committed state, as a subsequent RPC would.
+            self.env.invalidate_all()
+
+            # A captured order may lose scheduling during synchronization or
+            # need a new pickup time. Its original payment remains recoverable.
+            self.order.write({"preset_time": False})
+            self.env.flush_all()
+            provider.reset_mock()
+            found = self.method.revolut_find_payment(self.order.uuid, self.line_uuid, self.session.id)
+            self.assertEqual({name: found[name] for name in capture_fields}, original_capture)
+            missing_slot = self._prepare()
+            same_start = self._start(prepared)
+            self.assertEqual({name: same_start[name] for name in capture_fields}, original_capture)
+            provider.assert_not_called()
+
+            self.order.write({"preset_time": fields.Datetime.now()})
+            corrected = self._prepare()
+            for result in (missing_slot, corrected):
+                for name in ("authorization_id", "cart_version", "tender_revision", "canonical", "tenders"):
+                    self.assertEqual(result[name], prepared[name])
+            same_start = self._start(corrected)
+            self.assertEqual({name: same_start[name] for name in capture_fields}, original_capture)
+            found = self.method.revolut_find_payment(self.order.uuid, self.line_uuid, self.session.id)
+            self.assertEqual({name: found[name] for name in capture_fields}, original_capture)
+            provider.assert_not_called()
 
     def test_exposed_direct_table_moves_preserve_original_config_and_operation(self):
         prepared = self.env["pos.order"].revolut_prepare_payment(self.order.id, self.order.uuid, 0, [{

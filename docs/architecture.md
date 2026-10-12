@@ -4,7 +4,7 @@ The browser is an untrusted POS client. Odoo owns cart authorization, register a
 
 ## Payment lifecycle
 
-1. Save the native draft and derive permitted prices, taxes, and tender amounts on the server.
+1. Save the native draft, check required pickup scheduling before preparing a new payment, and derive permitted prices, taxes, and tender amounts on the server.
 2. Record an authorized cart and reserve the selected base allocation before dispatch.
 3. Persist dispatch ownership, create a Revolut order, and push a terminal payment intent.
 4. Observe the intent and underlying payment. A completed intent alone is not proof of payment.
@@ -14,6 +14,8 @@ The browser is an untrusted POS client. Odoo owns cart authorization, register a
 Provider requests and local database updates cross failure boundaries. Persisted attempts, references, dispatch claims, and immutable financial snapshots let Odoo distinguish a safe undispatched retry from a request whose response was lost. Uncertain outcomes retain their reservation; mutating requests are not replayed automatically. Concurrent status readers share the recorded observation.
 
 Each operation retains its original company, register, Merchant authority, currency, amount, order, and tender identity. Changing current configuration does not redirect historical reconciliation to a different Merchant account. Interactive operations require explicit backend-user register access; employee selection supplies attribution, not authorization.
+
+Pickup time remains mutable native scheduling data outside the immutable financial identity. The addon checks that required scheduling is present before new collection; native Odoo owns slot selection and final checkout validation. Correcting scheduling after capture preserves access to discovery, status checks, and recovery of the original payment.
 
 ## Refund lifecycle
 

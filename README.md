@@ -23,7 +23,7 @@ Both the Odoo server and terminal need internet access. The terminal must belong
 
 Only terminal-selected tips are supported for Revolut checkout. Remove an Odoo-entered tip before starting payment, and disable Restaurant **Add tips after payment**. Retail uses `Eat In` as an interim fulfilment mapping; this is an integration choice, not a retail-specific Revolut contract.
 
-Timed Takeout checkout has a known readiness gap: missing pickup scheduling can prevent native order completion after payment is captured. Select the required pickup slot before payment. If capture has already happened, correct scheduling and validate the original order without collecting again. Automatic completion for a valid timed Takeout slot still needs regression verification before claiming full support.
+Timed Takeout requires a pickup date and time before a new Revolut payment can start. Choose an available slot in Odoo's native scheduling picker; choose another date if the selected day has no slots. With scheduling satisfied, a verified payment can complete the fully paid order automatically. If scheduling needs correction after capture, keep the same order and tender, correct the slot, and validate without collecting again.
 
 An uncertain payment stays protected until reconciled. A timeout is not proof of failure. Odoo completes a sale only after the underlying payment and its base/tip breakdown are verified and the whole order is paid. Background reconciliation records financial outcomes; the original sale or return still follows native POS completion.
 

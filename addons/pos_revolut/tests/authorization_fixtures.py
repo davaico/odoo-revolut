@@ -33,7 +33,8 @@ def native_products(env, config):
     return product
 
 
-def prepare_fixture(method, session_id, order_uuid, line_uuid, amount, snapshot, *, commit_draft=False):
+def prepare_fixture(method, session_id, order_uuid, line_uuid, amount, snapshot, *,
+                    commit_draft=False, preset_time=False):
     """Persist a fixture draft, then obtain real server authority through RPC."""
     env = method.env
     env.invalidate_all()
@@ -77,6 +78,10 @@ def prepare_fixture(method, session_id, order_uuid, line_uuid, amount, snapshot,
                 desired.append(Command.delete(line.id))
         order.write({"lines": desired, "pricelist_id": normalized["pricelist_id"],
                      "fiscal_position_id": normalized["fiscal_position_id"]})
+    # Pickup scheduling is native draft data, outside financial identity.
+    if preset_time:
+        order.write({"preset_time": preset_time})
+        env.flush_all()
     current = order.revolut_authorization_id.sudo()
     plan = [{"uuid": slot["uuid"], "payment_method_id": slot["method_id"],
              "amount": float(Decimal(slot["minor"]) / (Decimal(10) ** order.currency_id.decimal_places))}
@@ -91,13 +96,13 @@ def prepare_fixture(method, session_id, order_uuid, line_uuid, amount, snapshot,
 
 
 def authorized_start(method, session_id, order_uuid, line_uuid, amount, currency_id,
-                     previous_operation_id=False, snapshot=False, *, commit_draft=False):
+                     previous_operation_id=False, snapshot=False, *, commit_draft=False, preset_time=False):
     if not snapshot:
         return method.revolut_start_payment(session_id, order_uuid, line_uuid, amount, currency_id,
                                            previous_operation_id, snapshot)
     install_zero_reports(method.env, requests.request)
     authority = prepare_fixture(method, session_id, order_uuid, line_uuid, amount, snapshot,
-                                commit_draft=commit_draft)
+                                commit_draft=commit_draft, preset_time=preset_time)
     return method.revolut_start_payment(session_id, order_uuid, line_uuid, amount, currency_id,
                                        previous_operation_id, False, authority["authorization_id"],
                                        authority["cart_version"], authority["tender_revision"])

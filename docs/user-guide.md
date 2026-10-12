@@ -34,7 +34,9 @@ If preparation failed before a payment existed and a waiting line remains after 
 
 Use the normal table and Dine In/Takeout preset. Settle bill splitting and order merging before collecting payment: changing order identity or financial contents after a Revolut attempt starts is guarded. Moving the same draft to another table preserves its payment association.
 
-Timed Takeout currently has a known readiness gap. Select a valid pickup date/time before starting payment. If a captured tender is already present and native checkout asks for scheduling, correct scheduling and validate the **same order** without sending another payment. Automatic completion with a valid slot remains pending verification; do not assume the terminal's success screen means the native order completed.
+Timed Takeout requires a pickup date and time before a new Revolut payment can start. Choose an available slot in Odoo's native scheduling picker; choose another date if the selected day has no slots. With scheduling satisfied, a verified payment can complete the fully paid order automatically.
+
+If a payment was already captured and native checkout asks for scheduling, keep the same order and payment line. Select the required slot, use **Check status** if payment details need recovery, then **Validate** the same paid order. This completes native checkout without charging again; the terminal's success screen alone does not prove the Odoo order is paid.
 
 ## Refund a sale in Odoo
 

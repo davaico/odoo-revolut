@@ -49,7 +49,7 @@ As a system administrator, verify which Merchant account and company own the sec
 
 Register grants start empty. Employee switching and PINs do not grant backend access. Removing a user blocks their next interactive Revolut request but does not cancel an existing payment; scheduled reconciliation continues.
 
-For timed Takeout, select the required pickup slot before payment. The current readiness gap and recovery procedure are described in the [user guide](user-guide.md#restaurant-orders).
+For timed Takeout, configure the preset's pickup calendar and select an available pickup date/time before payment. A missing pickup time blocks new collection before provider dispatch. If a day has no slots, choose another day in Odoo's scheduling picker. See [Restaurant orders](user-guide.md#restaurant-orders) for captured-payment recovery.
 
 ## Verify and maintain the setup
 

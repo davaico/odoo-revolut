@@ -2058,7 +2058,7 @@ class TestRevolutRestaurantContext(TransactionCase):
         response.json.return_value = payload
         return response
 
-    def _start(self, preset_id, table_id):
+    def _start(self, preset_id, table_id, *, preset_time=False):
         order_uuid, line_uuid = str(uuid4()), str(uuid4())
         snapshot = {
             "pricelist_id": self.config.pricelist_id.id,
@@ -2072,7 +2072,7 @@ class TestRevolutRestaurantContext(TransactionCase):
         }
         return authorized_start(self.method,
             self.session.id, order_uuid, line_uuid, 4.34,
-            self.config.currency_id.id, False, snapshot,
+            self.config.currency_id.id, False, snapshot, preset_time=preset_time,
         )
 
     @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
@@ -2207,7 +2207,8 @@ class TestRevolutRestaurantContext(TransactionCase):
             self._response({"id": str(uuid4()), "state": "pending"}),
         ]
         started = self._start(
-            self.env.ref("pos_restaurant.pos_takeout_preset").id, False
+            self.env.ref("pos_restaurant.pos_takeout_preset").id, False,
+            preset_time=fields.Datetime.now(),
         )
         self.assertEqual(started["state"], "pending")
         order_post = [call for call in request.call_args_list

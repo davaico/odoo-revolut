@@ -19,6 +19,10 @@ An upgrade must preserve existing financial records and their original Merchant 
 
 If the update fails, keep the service stopped while investigating. Do not restore an old database over financial operations that may have happened since its backup. Preserve the current evidence and reconcile provider outcomes before deciding a rollback or restore.
 
+## Timed Takeout readiness
+
+Version `19.0.1.18.14` checks required pickup scheduling before new timed Takeout collection. Update the module and reopen every POS browser to load the guard. This change introduces no data migration or credential rotation. Existing captured tenders keep their original references; correct scheduling and complete the same order without collecting again.
+
 ## Older Merchant authority records
 
 Version `19.0.1.10.0` introduced company-scoped Merchant authorities. Upgrades do not automatically trust old secret references. A system administrator must verify each reference's Merchant account, company, and environment, create its authority, and attest each historical operation that still needs reconciliation or refunds. Creating or editing a current payment method does not attest historical operations.

@@ -250,6 +250,9 @@ export class PaymentRevolut extends PaymentInterface {
         // delayed. Refreshing another tender's retirement must not admit an
         // old request for a tender recovered while that save was in flight.
         const recoveryRevision = line.uiState.revolutRecoveryRevision || 0;
+        if (order.preset_id?.needsSlot && !order.preset_time) {
+            throw new Error(_t("Please select an available pickup time slot before starting Revolut payment. If there are no slots for this day, choose another date in pickup scheduling."));
+        }
         if (!order.revolut_has_authority_exposure) {
             await this.pos.syncAllOrders({ orders: [order], force: true, throw: true });
         }
