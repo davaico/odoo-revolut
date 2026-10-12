@@ -22,15 +22,24 @@ handoff checkpoint before using older chronological entries as next steps.
 This section is authoritative for the next session; the dated entries below
 are evidence history and must not be read as a fresh queue of failures.
 
+Ticket 47's automated implementation is closed on `19.0.1.18.12`; 648 tests
+passed on installation and again after update. R19 remains pending reviewed
+deployment, POS asset reload and **Check status → Resume** on original order
+1022/tender 79, with the intended Price Control policy restored for manager
+approval. Preserve Tips product 1, the original fixture and £0.06 live budget.
+See the [verification and recovery handoff](ticket-47-unstarted-tender-recovery.md).
+No staging deployment or new live financial operation was performed here.
+
 ### Finished checks
 
-**New October 12 finding, after completed regressions:** order 1022's unstarted
-waiting tender cannot be removed after reload. Owner reports first red-X click
+**Recorded pre-fix October 12 finding, after completed regressions:** order
+1022's unstarted waiting tender cannot be removed after reload. Owner reports first red-X click
 gave a communication-failure popup; subsequent clicks do nothing visibly even
 after refresh. Local mocked lifecycle reproduction matches the stuck removal
 and single interruption message. R19 exact manager approval is BLOCKED by this
-new recovery failure; do not repeat completed regressions or create replacement
-orders to work around it. Details are in the restricted-pricing entry below.
+recovery failure until the reviewed upgrade and original-tender recovery. Do
+not repeat completed regressions or create replacement orders to work around
+it. Details are in the restricted-pricing entry below.
 
 | Check | Disposition |
 | --- | --- |
@@ -272,9 +281,10 @@ Read-only SQL at 09:40:19 UTC confirms config 3 Price Control false, Tip Product
 authority, unchanged 72/161/17 counts. Test setting cleanup is confirmed;
 removal remains FAILED and manager approval BLOCKED. Turning off price control
 does not reset the restored waiting-tender protection. Tracked separately as
-[ticket 47](../tickets/needs-triage/47-recover-unstarted-tender-after-reload.md),
-needs-triage, with safe recovery constraints and reproduction limits. Do not
-repeat live clicks or unlock based only on an empty payment lookup.
+[ticket 47](../tickets/closed/47-recover-unstarted-tender-after-reload.md),
+reported then as `needs-triage`, with safe recovery constraints and reproduction
+limits. Its automated implementation is now closed; current next steps are
+above. Do not repeat live clicks or unlock based only on an empty payment lookup.
 
 ## FULL saved native receipt PDF — PASS, October 12
 

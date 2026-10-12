@@ -902,7 +902,11 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.assertEqual(original.order_uuid, replacement.order_uuid)
         self.assertNotEqual(original.payment_line_uuid, replacement.payment_line_uuid)
         self.assertEqual(original.financial_snapshot, replacement.financial_snapshot)
-        self.assertEqual(original.cart_version, replacement.cart_version)
+        # Retiring the old native UUID fences its admission. The unchanged
+        # basket receives fresh authority for the explicit replacement tender.
+        self.assertGreater(replacement.cart_version, original.cart_version)
+        self.assertEqual(original.authorization_id.state, "revoked")
+        self.assertNotEqual(original.authorization_id, replacement.authorization_id)
         self.assertEqual(operations.mapped("amount_minor"), [1234, 1234])
         self.assertEqual(operations.mapped("currency_code"), [session.currency_id.name] * 2)
         self.assertEqual(replacement.revolut_order_id, provider_orders[-1])
@@ -1164,6 +1168,125 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
 
     def test_cancel_payment_while_canonical_refresh_is_pending(self):
         self._run_cancelled_payment_preparation("refresh")
+
+    def _run_unstarted_tender_reload(self, *, resume, offline=False, lost_removal=False):
+        revolut_method = self._configure_revolut_checkout()
+        session = self.main_pos_config.current_session_id
+        tip = self.main_pos_config.tip_product_id
+        self.main_pos_config.tip_product_id = False
+        calls = []
+
+        def request(method, url, **kwargs):
+            calls.append((method, url, kwargs))
+            if not resume:
+                raise AssertionError("Removing the unstarted tender must not contact Revolut")
+            if method == "GET" and url.endswith("/api/terminals"):
+                return self._response({"terminals": [{
+                    "id": self.TERMINAL_ID, "online": True,
+                    "operation_mode": "pos", "location_id": self.LOCATION_ID,
+                }]})
+            if method == "POST" and url.endswith("/api/orders"):
+                self.assertEqual(kwargs["json"]["amount"], 1234)
+                return self._response({"id": self.ORDER_ID})
+            if method == "POST" and url.endswith("/payment-intents"):
+                return self._response({"id": self.INTENT_ID, "state": "pending"})
+            if method == "GET" and "/api/payment-intents/" in url:
+                return self._response({
+                    "id": self.INTENT_ID, "order_id": self.ORDER_ID,
+                    "state": "completed", "payment_id": self.PAYMENT_ID,
+                })
+            if method == "GET" and "/api/payments/" in url:
+                return self._response({
+                    "id": self.PAYMENT_ID, "order_id": self.ORDER_ID,
+                    "state": "captured", "amount": 1234,
+                    "currency": self.main_pos_config.currency_id.name,
+                })
+            raise AssertionError(f"Unexpected Revolut request: {method} {url}")
+
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+            side_effect=request,
+        ) as provider:
+            # The first browser saves the actual native draft before rejected
+            # server preparation. A new browser cannot inherit its uiState.
+            self.start_pos_tour("pos_revolut_unstarted_prepare_failure")
+            provider.assert_not_called()
+            self.env.invalidate_all()
+            orders = self.env["pos.order"].search([
+                ("session_id", "=", session.id), ("state", "=", "draft"),
+            ])
+            self.assertEqual(len(orders), 1)
+            order = orders
+            tender = order.payment_ids.filtered(lambda line: line.payment_method_id == revolut_method)
+            self.assertEqual(len(tender), 1)
+            original_identity = (order.id, order.uuid, tender.id, tender.uuid)
+            self.assertEqual(order.amount_total, 12.34)
+            self.assertEqual(tender.amount, 12.34)
+            self.assertEqual(tender.payment_status, "waiting")
+            self.assertFalse(tender.transaction_id)
+            self.assertFalse(tender.payment_ref_no)
+            self.assertFalse(order.revolut_authorization_id)
+            self.assertFalse(self.env["pos.revolut.payment.operation"].search([
+                ("order_uuid", "=", order.uuid),
+            ]))
+            # Repair the disposable configuration through Python, independently
+            # of the cashier browser. Leave the original saved tender intact.
+            self.main_pos_config.tip_product_id = tip
+            if resume:
+                install_zero_reports(self.env, provider)
+            tour = "pos_revolut_unstarted_cash_removal"
+            if resume:
+                tour = "pos_revolut_unstarted_offline_resume" if offline else "pos_revolut_unstarted_resume"
+            elif lost_removal:
+                tour = "pos_revolut_unstarted_lost_removal_cash"
+            self.start_pos_tour(tour)
+            if not resume:
+                provider.assert_not_called()
+
+        self.env.invalidate_all()
+        order = self.env["pos.order"].browse(original_identity[0]).exists()
+        self.assertEqual(order.uuid, original_identity[1])
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(order.amount_total, 12.34)
+        self.assertEqual(len(order.payment_ids), 1)
+        self.assertEqual(order.lines.product_id, self.desk_pad.product_variant_id)
+        self.assertEqual(order.lines.qty, 1)
+        operations = self.env["pos.revolut.payment.operation"].search([
+            ("order_uuid", "=", order.uuid),
+        ])
+        if resume:
+            self.assertEqual(len(operations), 1)
+            self.assertEqual(operations.state, "verified")
+            self.assertEqual(operations.pos_order_id, order)
+            self.assertEqual(operations.pos_payment_id.id, original_identity[2])
+            self.assertEqual(operations.payment_line_uuid, original_identity[3])
+            self.assertTrue(operations.authorization_id)
+            self.assertEqual(order.payment_ids.transaction_id, self.PAYMENT_ID)
+            financial_posts = [call for call in calls if call[0] == "POST" and "/api/report-runs" not in call[1]]
+            self.assertEqual(len(financial_posts), 2)
+        else:
+            self.assertFalse(operations)
+            self.assertFalse(self.env["pos.payment"].browse(original_identity[2]).exists())
+            self.assertEqual(order.payment_ids.payment_method_id.name, "Cash")
+            self.assertFalse(calls)
+
+    def test_missing_tip_preparation_reload_resumes_original_tender_once(self):
+        self._run_unstarted_tender_reload(resume=True)
+
+    def test_missing_tip_preparation_reload_removes_original_tender_for_cash(self):
+        self._run_unstarted_tender_reload(resume=False)
+
+    def test_missing_tip_preparation_reload_recovers_after_offline_lookup(self):
+        self._run_unstarted_tender_reload(resume=True, offline=True)
+
+    def test_missing_tip_preparation_reload_recovers_after_lost_removal_response(self):
+        self._run_unstarted_tender_reload(resume=False, lost_removal=True)
+
+    def test_delayed_native_preparation_cannot_start_after_same_tender_recovery(self):
+        operation, calls = self._run_unsuccessful_checkout(
+            "captured", "pos_revolut_stale_preparation_recovery")
+        self._assert_restored_checkout(operation, 12.34, self.PAYMENT_ID, self.ORDER_ID)
+        self.assertEqual(sum(method == "POST" for method, _url in calls), 2)
 
     def test_payment_discovery_failure_allows_cash_without_dispatch(self):
         self._configure_revolut_checkout()

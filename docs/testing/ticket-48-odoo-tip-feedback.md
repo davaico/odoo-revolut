@@ -118,3 +118,22 @@ the new executed tip tour independently proves the ticket's safe-removal path.
 The Spec reviewer rechecked the corrected evidence and confirmed no remaining
 findings. Review totals: Standards 0 findings; Spec 1 evidence finding, resolved;
 0 open findings on either axis.
+
+## Integration with merged ticket 47
+
+Before opening the ticket 48 PR, merged `origin/main` at
+`57937232af9c1e769f56373ba7d0e85c548b6586` (PR 79). The only conflict was the
+ticket index; both tickets' closure/evidence entries were preserved. Production
+code merged without conflicts. The integrated addon inherits `19.0.1.18.12`
+and ticket 47's recovery/upgrade contract; ticket 48 adds no schema change.
+
+Post-integration checks passed: 141 payment lifecycle tests, 3 refund allowance
+tests, Python compilation, tour JavaScript syntax and whitespace checks.
+Repository Python tests passed 65 tests with 3 existing skips. Logs:
+`/tmp/ticket48-post-main-lifecycle.log`, `/tmp/ticket48-post-main-refund-js.log`,
+`/tmp/ticket48-post-main-python.log`.
+
+No post-integration native Odoo run was started because ticket 49 owns the
+agreed serial Docker/browser window. Earlier ticket-specific native evidence
+and the full-suite limitations above remain distinct from these lightweight
+integration checks. The owner explicitly authorized opening and merging this PR.

@@ -1056,3 +1056,37 @@ Addon version `19.0.1.18.1` contains this browser recovery correction. Upgrade
 `pos_revolut` and reload POS assets using the usual deployment procedure; no
 schema migration, configuration change or credential rotation is required.
 See the [verification record](testing/ticket-46-verified-checkout-recovery.md).
+
+## Recovering a saved tender that never started (`19.0.1.18.12`)
+
+If cart preparation fails before any payment attempt exists, the saved sale
+can retain a waiting Revolut line after reload. Restore the required configuration
+(including a valid Tip Product), open the original sale in its original open
+session, and choose **Check status** on that line. The server checks its exact
+saved identity and retained payment history, then invalidates any older start
+authorization before offering **Resume**. Recovery itself sends no Revolut request.
+
+Choose **Resume** to prepare the current cart and explicitly start payment on
+that same tender. Price Control and authenticated manager approval still apply.
+Alternatively, remove the line with its red X; the server retires its identity
+before the browser removes it, then another tender can pay the original sale.
+If that response is lost, Check status identifies the already-removed line;
+remove its local copy with the red X. A retired line cannot be resumed.
+An existing payment attempt or surviving reference keeps its existing status
+and reconciliation protections. If proof is unavailable or connectivity fails,
+the line stays protected; reconnect and repeat the action on the original line.
+
+Upgrade the addon using the usual stopped-service deployment procedure and
+reload POS assets. This version adds server-owned recovery revisions and tender
+dispositions; existing records begin at revision zero and need no failure-marker
+backfill, credential rotation or new configuration. Preserve all operation,
+dispatch and cart-authorization history. Recovery assumes that financial history
+has been retained; a database with deleted or incomplete history requires audited
+reconciliation before recovery. Old browser preparation requests fail after a
+recovery revision changes. Do not clear browser storage, cancel the whole sale,
+or repair it with SQL as a recovery workaround.
+
+Ticket 12 retains deployment and the live manager-approval check on order
+1022/tender 79. Preserve both for that acceptance check. Automated tests use
+disposable records and mocked provider HTTP.
+See the [verification and recovery handoff](testing/ticket-47-unstarted-tender-recovery.md).

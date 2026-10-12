@@ -107,10 +107,11 @@ class TestExternalNativeReturns(TestExternalRefunds):
         self.request.reset_mock()
         with self.assertRaises(UserError):
             refund.with_user(manager).action_prepare_native_return(return_order_id=native.id)
-        payment.write({"transaction_id": str(uuid4())})
-        with self.assertRaises(UserError):
+        # Roll back the injected unrelated reference with its rejection;
+        # existing financial evidence cannot be erased as test cleanup.
+        with self.assertRaises(UserError), self.env.cr.savepoint():
+            payment.write({"transaction_id": str(uuid4())})
             refund.with_user(manager).action_prepare_native_return(return_order_id=native.id, payment_id=payment.id)
-        payment.write({"transaction_id": False})
         action = refund.with_user(manager).action_prepare_native_return(return_order_id=native.id, payment_id=payment.id)
         self.assertEqual(action["res_id"], native.id)
         refund.with_user(manager).action_validate_native_return()
