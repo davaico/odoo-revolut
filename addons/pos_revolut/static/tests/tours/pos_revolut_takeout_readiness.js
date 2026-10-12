@@ -2,7 +2,6 @@ import * as Dialog from "@point_of_sale/../tests/generic_helpers/dialog_util";
 import * as PaymentScreen from "@point_of_sale/../tests/pos/tours/utils/payment_screen_util";
 import * as ProductScreen from "@point_of_sale/../tests/pos/tours/utils/product_screen_util";
 import * as ReceiptScreen from "@point_of_sale/../tests/pos/tours/utils/receipt_screen_util";
-import OrderPaymentValidation from "@point_of_sale/app/utils/order_payment_validation";
 import { registry } from "@web/core/registry";
 
 function beginTakeout(loseSlotAfterCapture = false) {
@@ -53,9 +52,12 @@ function beginTakeout(loseSlotAfterCapture = false) {
                     }
                     return call(model, rpc, args, ...rest);
                 };
-                const validate = OrderPaymentValidation.prototype.validateOrder;
-                OrderPaymentValidation.prototype.validateOrder = function (...args) {
-                    if (this.orderUuid === order.uuid) {
+                // POS pages are available when this tour runs, while the
+                // shared test bundle also loads in the manager backend.
+                const screenPrototype = registry.category("pos_pages").get("PaymentScreen").component.prototype;
+                const validate = screenPrototype.validateOrder;
+                screenPrototype.validateOrder = function (...args) {
+                    if (this.currentOrder?.uuid === order.uuid) {
                         record("validation");
                     }
                     return validate.apply(this, args);
