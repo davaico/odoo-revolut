@@ -195,7 +195,9 @@ sale and choose **Check status**. If the server proves it unstarted, choose
 **Resume** on that same tender for the remaining manager-cart-approval scenario.
 Re-enable the intended Price Control policy for that acceptance check; recovery
 does not approve the overridden price. Preserve the original order/tender and
-the £0.06 gross live charge budget. Recovery itself needs no terminal charge.
+the current £0.03 gross live charge budget recorded in ticket12. Recovery
+itself needs no terminal charge. The owner holds the staging upgrade and this
+dependent acceptance until their explicit go, while ticket49 is in progress.
 Deployment, manager acceptance and any live payment belong to ticket 12.
 
 Automated removal coverage uses disposable records. Do not remove or replace

@@ -6,51 +6,52 @@
 
 **Triage:** ready-for-human
 
-**Updated:** 2026-10-12, after automated ticket 47 closure; staging deployment and R19 acceptance remain pending.
+**Updated:** 2026-10-12, after resumed manual acceptance and reconciliation; staging upgrade is held for the owner's go.
 
 Start new implementation work from the latest reviewed `main`, preserving this
 handoff and any local documentation edits. PR #70 is already merged.
 
 ## Authoritative handoff checkpoint — October 12
 
-Ticket 47's automated implementation is closed on addon `19.0.1.18.12`:
-648 tests passed on fresh install and again after update, with Merchant HTTP
-blocked. See the [verification and recovery handoff](../../testing/ticket-47-unstarted-tender-recovery.md).
-R19 remains pending a reviewed deployment and POS asset reload, then **Check
-status → Resume** on original order 1022/tender 79 in session 10/register 3.
-Keep Tips product 1 configured; re-enable the intended Price Control policy
-for manager-cart approval. Preserve the fixture and £0.06 gross live budget.
-No staging deployment or new financial operation was performed by ticket 47.
+The quick manual pass on available fixtures is nearly complete; ticket 12 stays
+open for remaining scoped requirements and publication gates. Do not repeat
+completed regressions or wait for pending refunds as a manual-test prerequisite.
+The owner explicitly holds the staging upgrade and dependent retests until
+**their go**, while ticket 49 is in progress. Staging last reported19.0.1.18.11
+at 13:00:03 UTC. Ticket 47/48 implementations are merged; targeted live recovery,
+manager approval and tip-message acceptance follow the reviewed upgrade.
 
-Recorded pre-fix acceptance finding: restricted-price cashier denial passed,
-but manager cart approval was blocked by [ticket 47](../closed/47-recover-unstarted-tender-after-reload.md).
-Order 1022's unstarted waiting tender is stuck after preparation failure/reload;
-local lifecycle reproduction matches the failed removal and suppressed repeat
-message. Preserve order 59/tender 79. Owner restored Price Control to false;
-Tips product is configured. No payment attempt was created for this scenario.
-This new failure does not reopen completed regression tests or accepted 1019.
+Current gross spend is £0.22 of £0.25; **£0.03 remains**. At 12:55:42 UTC, stored
+counts were 76 payment operations/169 dispatch claims/18 refunds, with no refund
+cap violation or active payment attempt. Refund 20/source 69 and refund 21/source 75
+each remain processing 1p. Keep returns1019/1026 and their saved evidence for
+operational completion; do not resend, Force done or cancel them to close the
+retail session. Return1019's manual campaign test remains DONE/OWNER-ACCEPTED.
+Correction13 is draft/zero; Restaurant move 16 is posted £0.02. Ticket 33 retention
+remains open; ticket 34 stays closed.
 
-Actual saved FULL return receipt PDF passed negative-amount/reference layout
-inspection. One Close Register action was rejected for remaining drafts;
-successful close/reopen remains blocked. No further closure attempt or draft
-cancellation is requested while the preserved 1019 return is unsettled.
+New completed observations since the earlier handoff:
 
-Agent follow-up completed: **125 JavaScript passed; 62 Python passed, 3 PDF
-skipped**. Focused Odoo rerun could not start (Docker unavailable). Read-only
-staging audit at 08:48–08:50 UTC reconciled Paid totals and found no duplicate
-refund references or excess refund allocations. Refund 20 remains processing;
-1019 stays owner-accepted but its native draft still needs settlement before
-session closure. Correction 13 remains empty/draft. The current checklist now
-maps existing automated coverage and supersedes the broad 4–8-hour manual plan
-with the owner's **three-hour maximum**. Do not repeat completed scenarios.
+- Controlled decline and funded retry both updated automatically, same1024,
+  linked declined 74 → captured 75, one 1p capture and matching native receipt.
+- Selected Restaurant dine-in and Takeout payment/fulfilment/receipt checks
+  completed. Takeout needed manual slot correction/Validate without a new
+  payment; automatic checkout remains ticket 49. Session11 then closed with
+  posted £0.02 accounting and reopened as empty session 12/free Table 1.
+- Wrong-sale existing-return search showed No records; no compatible positive
+  control or forged backend rejection is claimed. Ordinary second-refund
+  action on the already fully returned sale also created no new return.
+- Test gary's manager refund menu was absent and direct record URL denied.
+- Quarter-unit return 261-3-000025 completed Paid £0.00 with no tender/provider
+  refund. Remaining0.75 unit retained the penny entitlement: sole refund 21 is
+  processing 1p, linked by saved identities to draft1026. Further quantity/refund
+  selection is blocked; no extra native or financial record appeared.
+- Odoo-entered tip was blocked before dispatch; misleading wording is ticket 48,
+  whose implementation is now merged but live acceptance is pending.
 
-Read the [current acceptance summary](../../testing/ticket-12-final-release-checklist.md#current-acceptance-summary--october-12-owner-handoff)
-for finished checks, owner acceptance of return 1019, remaining work and time
-estimates. All five PR #73 UI regressions passed; five campaign native return
-validations/receipts passed. Owner explicitly accepts 1019 as finished/working;
-remove it from the manual retest queue, while preserving its last observed
-processing refund/draft return for operational reconciliation. Ticket 12 stays
-open. Earlier entries below are historical evidence, not the current task list.
+Detailed timestamps, native identities, screenshots and observation limits are
+in the [resumed results](../../testing/ticket-12-final-release-checklist.md#october-12-resumed-manual-results--authoritative-evidence).
+Earlier entries below are historical evidence, not a new test queue.
 
 
 ## Older closed-session sale receipt — PASS for preview, October 12

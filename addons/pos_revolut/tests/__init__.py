@@ -44,3 +44,4 @@ from . import test_external_native_association
 from . import test_discounted_rounded_returns
 from . import test_native_adjustment_ui
 from . import test_takeout_readiness_ui
+from . import test_odoo_tip_ui
