@@ -242,6 +242,11 @@ As a Point of Sale administrator:
 11. Disable Restaurant **Add tips after payment** for this configuration.
     Revolut tips are selected on the terminal during the payment. Remove any
     unexposed Odoo-entered tip before selecting Revolut to avoid two prompts.
+    If a configured native Odoo tip is still present, preparation reports
+    **Remove the Odoo-entered tip before using terminal-selected tips.**
+    This also applies to the standard Tips product that is not available in POS.
+    The rejection sends no payment request and does not release uncertain or
+    verified tenders; follow their existing status/reconciliation actions.
 12. Confirm the server credential can create, poll and download Merchant
     `payments_report` runs. Report availability and terminal identity/units
     still require the ticket 12 device acceptance checks.
