@@ -302,6 +302,7 @@ class PosRevolutPaymentOperation(models.Model):
         return super().write(values)
 
     def unlink(self):
+        self.check_access("unlink")
         raise UserError(_("Retain Revolut payment history for reconciliation and safe tender recovery."))
 
     @api.model_create_multi
@@ -751,6 +752,7 @@ class PosRevolutPaymentDispatch(models.Model):
         return super().write(values)
 
     def unlink(self):
+        self.check_access("unlink")
         raise UserError(_("Retain Revolut dispatch evidence for reconciliation and safe tender recovery."))
 
 
