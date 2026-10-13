@@ -116,6 +116,7 @@ class TestDeliveredAddon(unittest.TestCase):
         legacy = self.commit()
         shutil.rmtree(self.repo / "addons/pos_revolut_restaurant")
         self.write_addon("pos_revolut", "combined")
+        (self.repo / "addons/pos_revolut").rename(self.repo / "pos_revolut")
         revision = self.commit()
 
         result = self.run_cli(revision, "migration", legacy)
@@ -130,6 +131,45 @@ class TestDeliveredAddon(unittest.TestCase):
         self.assertEqual(old["pos_revolut/__init__.py"], "# original\n")
         self.assertEqual(old["pos_revolut_restaurant/__init__.py"], "# legacy-bridge\n")
         self.assertTrue(all(not Path(tree["root"]).exists() for tree in call["trees"].values()))
+
+    def test_root_addon_uses_committed_files_after_repository_relocation(self):
+        self.commit()
+        (self.repo / "addons/pos_revolut").rename(self.repo / "pos_revolut")
+        revision = self.commit()
+        expected = (self.repo / "pos_revolut/__manifest__.py").read_text()
+        (self.repo / "pos_revolut/__manifest__.py").write_text("dirty working tree\n")
+        self.write_addon("pos_revolut", "obsolete-untracked-copy")
+        (self.repo / "private-note.txt").write_text("outside addon\n")
+        archive = subprocess.check_output(
+            ["git", "archive", "--format=tar.gz", "--prefix=addons/", revision,
+             "--", "pos_revolut"], cwd=self.repo,
+        )
+
+        result = self.run_cli(revision)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"Artifact SHA256: {hashlib.sha256(archive).hexdigest()}", result.stdout)
+        call = json.loads(self.log.read_text())
+        self.assertEqual(call["trees"]["--addons-dir"]["files"], {
+            "pos_revolut/__manifest__.py": expected,
+            "pos_revolut/__init__.py": "# original\n",
+        })
+        self.assertFalse(Path(call["trees"]["--addons-dir"]["root"]).exists())
+
+    def test_missing_or_ambiguous_committed_layout_does_not_delegate(self):
+        (self.repo / "addons/pos_revolut").rename(self.repo / "pos_revolut")
+        self.write_addon("pos_revolut", "duplicate")
+        result = self.run_cli(self.commit())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unambiguous layout", result.stderr)
+        self.assertFalse(self.log.exists())
+
+        (self.repo / "pos_revolut/__manifest__.py").unlink()
+        (self.repo / "addons/pos_revolut/__manifest__.py").unlink()
+        result = self.run_cli(self.commit())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unambiguous layout", result.stderr)
+        self.assertFalse(self.log.exists())
 
     def test_bad_revisions_and_missing_migration_input_do_not_delegate(self):
         revision = self.commit()
