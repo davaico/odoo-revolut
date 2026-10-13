@@ -24,7 +24,7 @@ External discovery records refunds against known payments but cannot infer retur
 
 ## Source map
 
-Paths below are relative to `addons/pos_revolut`.
+Paths below are relative to `pos_revolut`, the addon directory at the repository root.
 
 | Area | Files |
 | --- | --- |
@@ -40,3 +40,20 @@ Paths below are relative to `addons/pos_revolut`.
 | Odoo and browser tests | `tests/`, `static/tests/` |
 
 Root `tests/` covers test tooling; `scripts/` contains the runners. See [Contributing](../CONTRIBUTING.md) for commands.
+
+## Vocabulary
+
+| Term | Meaning |
+| --- | --- |
+| Authorized cart | Sale contents and permitted pricing approved by the server. |
+| Base payment allocation | Cart balance assigned to one tender, excluding its terminal-selected tip. |
+| Payment attempt | Recorded collection of one allocation through a specific terminal and Merchant account, retaining its identity through recovery. |
+| Payment intent | Revolut terminal interaction; completion does not establish successful payment. |
+| Uncertain outcome | Payment or refund awaiting a confirmed provider outcome; its allocation remains reserved. |
+| Terminal-selected tip | Extra amount chosen by the customer on the terminal before payment. |
+| Cashier-entered tip | Tip entered in Odoo before terminal payment. |
+| External refund | Refund initiated outside the addon; recording its Odoo return or accounting correction is separate work. |
+| Revolut payment receipt | Card-payment receipt issued by Revolut. |
+| POS sales receipt | Odoo record of the sale and tenders, possibly including Revolut references. |
+| Accounting invoice | Accounting document for an invoiced sale; payment alone does not create it. |
+| Reprint | Another copy of an existing receipt, with no new financial transaction. |

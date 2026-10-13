@@ -21,6 +21,12 @@ If updating fails, keep the service stopped. Preserve evidence and reconcile pro
 
 ## Version-specific steps
 
+### Repository layout
+
+The addon now lives at `pos_revolut/` instead of `addons/pos_revolut/`. If deploying a full Git clone, change its `addons_path` entry from the repository's `addons` directory to the repository root, preserving other entries. Deployments that copy only the module directory can keep their existing parent path. Remove any obsolete deployed copy from the active addon paths so Odoo loads the reviewed version.
+
+This changes packaging only; the technical module name remains `pos_revolut`. Preserve the database and financial history, and follow the normal update procedure above.
+
 ### Timed Takeout — 19.0.1.18.14
 
 Required pickup scheduling is checked before new collection. Update and reopen POS; no data migration or credential rotation is needed. For already captured payments, correct scheduling and complete the same order without collecting again.

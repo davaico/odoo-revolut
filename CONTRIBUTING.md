@@ -1,6 +1,6 @@
 # Contributing
 
-Keep changes focused on `addons/pos_revolut`, its tests or documentation. Read [Architecture](docs/architecture.md) before changing payment boundaries; discuss broad redesigns first.
+Keep integration code in `pos_revolut` and follow Odoo conventions. Keep changes focused on the addon, its tests or documentation. Read [Architecture](docs/architecture.md) before changing payment boundaries; discuss broad redesigns first.
 
 ## Development setup
 
@@ -10,7 +10,7 @@ From the repository root:
 
 ```bash
 python3 -m unittest discover -s tests -v
-node --test addons/pos_revolut/static/tests/*.test.mjs
+node --test pos_revolut/static/tests/*.test.mjs
 ./scripts/test-addon
 ```
 
@@ -60,8 +60,29 @@ To test an exact committed addon, replace these placeholders with full repositor
 
 ## Payment changes
 
-Preserve the [financial boundaries](AGENTS.md#financial-boundaries). Cover affected success/failure paths, lost responses, duplicate submissions and concurrency with mocked tests. Keep native Odoo stock, accounting, receipts and session behavior intact. Never log secrets, raw provider responses or cardholder data.
+Preserve these financial boundaries:
+
+- Keep credentials and authenticated Revolut calls on the server.
+- Persist attempts and references before dispatch; reconcile uncertainty before retrying.
+- Verify the underlying payment and base/tip amounts. A completed intent alone cannot authorize checkout.
+- Preserve original order, tender and Merchant authority during recovery.
+- Enforce company/register access and refund quantity, base and tip limits on the server.
+
+Cover affected success/failure paths, lost responses, duplicate submissions and concurrency with mocked tests. Mock all Revolut HTTP and keep the Merchant network guard enabled. Use synthetic fixtures. Keep native Odoo stock, accounting, receipts and session behavior intact. Never log secrets, raw provider responses or cardholder data.
 
 ## Pull requests
 
 Use short imperative commit subjects, such as `fix(pos): Preserve recovery after a lost response`. Explain the problem, resulting behavior, payment impact, checks run and any configuration, upgrade or credential-rotation steps. Use synthetic reproductions; follow [SECURITY.md](SECURITY.md) for private reports.
+
+## Preparing an Odoo Apps release
+
+Follow the [submission instructions](https://apps.odoo.com/apps/upload) and [Vendor Guidelines](https://apps.odoo.com/apps/vendor-guidelines). Repository cleanup alone does not complete the publication checks.
+
+- Keep each addon in its own folder at the repository root. Publish Odoo 19 releases from a branch named exactly `19.0`, registered as `ssh://git@github.com/davaico/odoo-revolut.git#19.0`. A local preparation branch can have a descriptive name.
+- Validate the manifest's name, release version, license and dependencies. Retain LGPL-3 and its license texts; omit `price` for a free module.
+- Prepare an English `pos_revolut/static/description/index.html`, a PNG `icon.png`, a cover declared by `images`, and screenshots using synthetic data. Describe only implemented features, prerequisites and limitations, including the required Revolut service.
+- Explain data sent to Revolut in the manifest, store description and application, with explicit agreement before transmission. Follow the store's restrictions on external links, image formats, HTML and JavaScript; a privacy policy is recommended.
+- Keep installation and upgrade instructions available. The store can display module documentation from `doc/index.rst`; the repository's Markdown guides remain the maintainer documentation.
+- Verify the exact candidate's installation, upgrades and affected behavior with mocked Revolut HTTP and the Merchant guard enabled. Review code and security findings; document skipped checks and obtain device acceptance separately before claiming production readiness.
+
+Do not register or publish a repository, or push a preparation branch, without an explicit request.

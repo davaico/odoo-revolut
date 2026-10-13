@@ -78,7 +78,7 @@ if [[ ! "$project_name" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
     exit 2
 fi
 for fixture in "$seed_fixture" "$verify_fixture"; do
-    if [[ ! -f "$repository_root/addons/pos_revolut/tests/$fixture" ]]; then
+    if [[ ! -f "$repository_root/pos_revolut/tests/$fixture" ]]; then
         echo "Missing historical upgrade fixture: $fixture" >&2
         exit 2
     fi
@@ -204,17 +204,17 @@ shell_phase() {
         --database "$database_name" --db_host db --db_user odoo \
         --db_password odoo --no-http --max-cron-threads 0 \
         --shell-interface python --log-level warn \
-        < "$repository_root/addons/pos_revolut/tests/$1"
+        < "$repository_root/pos_revolut/tests/$1"
 }
 
 phase="seed historical scenario"
 shell_phase "$seed_fixture"
-export ODOO_REVOLUT_ADDONS_DIR="$repository_root/addons"
+export ODOO_REVOLUT_ADDONS_DIR="$repository_root"
 if [[ -d "$old_tree/addons/pos_revolut_restaurant" ]]; then
     phase="prepare legacy Restaurant addon overlay"
     # Keep the legacy asset-only addon until the upgrade retires registration.
     migration_addons_dir="$(mktemp -d /tmp/revolut-historical-upgrade-addons.XXXXXX)"
-    cp -R -- "$repository_root/addons/pos_revolut" "$migration_addons_dir/"
+    cp -R -- "$repository_root/pos_revolut" "$migration_addons_dir/"
     cp -R -- "$old_tree/addons/pos_revolut_restaurant" "$migration_addons_dir/"
     chmod -R u+w "$migration_addons_dir"
     chmod a+rx "$migration_addons_dir"
@@ -223,7 +223,7 @@ fi
 phase="upgrade to candidate addon"
 run_command "${compose[@]}" run --rm odoo --database "$database_name" --update pos_revolut \
     --stop-after-init --workers 0 --max-cron-threads 0 --log-level warn
-export ODOO_REVOLUT_ADDONS_DIR="$repository_root/addons"
+export ODOO_REVOLUT_ADDONS_DIR="$repository_root"
 if [[ -n "$migration_addons_dir" ]]; then
     phase="remove legacy Restaurant addon overlay"
     rm -rf -- "$migration_addons_dir"

@@ -73,9 +73,23 @@ def extract_addons(archive, destination, addons):
 
 
 def archive_addons(revision, archive, addons):
+    # Current releases place modules at the root. Retain the historical layout
+    # for migration inputs, normalizing both to the guarded extraction format.
+    manifests = subprocess.check_output(
+        ["git", "ls-tree", "--name-only", "-r", revision, "--",
+         *(f"{prefix}{addon}/__manifest__.py"
+           for prefix in ("", "addons/") for addon in addons)],
+        cwd=REPOSITORY, text=True,
+    ).splitlines()
+    layouts = [prefix for prefix in ("", "addons/")
+               if all(f"{prefix}{addon}/__manifest__.py" in manifests for addon in addons)]
+    if len(layouts) != 1:
+        raise ArtifactError("Artifact must contain all requested addons in one unambiguous layout.")
+    prefix = layouts[0]
     subprocess.run(
         ["git", "archive", "--format=tar.gz", "--output", str(archive),
-         revision, "--", *(f"addons/{addon}" for addon in addons)],
+         *(["--prefix=addons/"] if not prefix else []),
+         revision, "--", *(f"{prefix}{addon}" for addon in addons)],
         cwd=REPOSITORY, check=True,
     )
 
@@ -109,8 +123,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix="pos-revolut-delivered-") as temporary:
         root = Path(temporary)
         archive = root / "release.tar.gz"
-        archive_addons(args.revision, archive, ("pos_revolut",))
         try:
+            archive_addons(args.revision, archive, ("pos_revolut",))
             release = extract_addons(archive, root / "release", ("pos_revolut",))
         except ArtifactError as error:
             parser.exit(1, f"{parser.prog}: {error}\n")
@@ -118,8 +132,8 @@ def main():
         if args.scenario == "migration":
             legacy_archive = root / "legacy.tar.gz"
             legacy_addons = ("pos_revolut", "pos_revolut_restaurant")
-            archive_addons(args.migration_from, legacy_archive, legacy_addons)
             try:
+                archive_addons(args.migration_from, legacy_archive, legacy_addons)
                 legacy_root = extract_addons(legacy_archive, root / "legacy", legacy_addons)
             except ArtifactError as error:
                 parser.exit(1, f"{parser.prog}: {error}\n")
