@@ -35,7 +35,7 @@ not an official or certified Revolut or Odoo product. Revolut hardware, account
 and processing charges are separate from the free addon.
 """,
     "author": "Davai",
-    "images": ["static/description/cover.png"],
+    "images": ["static/description/revolut-terminal.jpg"],
     "depends": ["point_of_sale", "pos_restaurant"],
     "data": [
         "security/ir.model.access.csv",
