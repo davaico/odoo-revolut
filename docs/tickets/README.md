@@ -11,6 +11,6 @@ private host details and credentials in restricted records.
 
 ## Open tickets
 
-| Ticket | Triage | State | Blocked by |
-| --- | --- | --- | --- |
-| [68 — Investigate an extra Revolut line after draft reload](needs-triage/68-investigate-duplicate-revolut-line-after-reload.md) | `needs-triage` | Open | Triage and deterministic mocked reproduction |
+| Ticket | Category | Triage | State | Blocked by |
+| --- | --- | --- | --- | --- |
+| [68 — Investigate an extra Revolut line after draft reload](ready-for-agents/68-investigate-duplicate-revolut-line-after-reload.md) | `bug` | `ready-for-agent` | Open | None to start; reproduce before choosing a fix |
