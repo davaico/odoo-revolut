@@ -201,6 +201,58 @@ class TestRevolutCartAuthority(TerminalTipFixtures, TestPointOfSaleCommon):
         self.assertEqual(self.env['pos.order'].revolut_recover_unstarted_payment(*args), retired)
         self.request.assert_not_called()
 
+    def test_saved_zero_tender_can_be_retired_without_becoming_resumable(self):
+        payment = self.saved_tender()
+        payment.amount = 0
+        args = (self.order.id, self.order.uuid, self.line_uuid, self.method.id, 0, self.order.currency_id.id)
+        retired = self.env['pos.order'].revolut_remove_unstarted_payment(*args)
+        self.assertEqual(retired['recovery_status'], 'retired')
+        self.assertEqual(self.env['pos.order'].revolut_remove_unstarted_payment(*args), retired)
+        self.env.invalidate_all()
+        self.assertFalse(payment.exists())
+        self.request.assert_not_called()
+
+    def test_retry_safe_removal_is_idempotent_and_retains_original_attempt(self):
+        payment = self.saved_tender()
+        authority = self.prepare()
+        unavailable = Mock(status_code=200)
+        unavailable.json.return_value = {'terminals': []}
+        self.request.side_effect = None
+        self.request.return_value = unavailable
+        failed = self.start(authority)
+        self.env.invalidate_all()
+        operation = self.env['pos.revolut.payment.operation'].browse(failed['operation_id'])
+        fields = ['state', 'order_uuid', 'payment_line_uuid', 'amount_minor',
+                  'revolut_order_id', 'revolut_payment_intent_id', 'revolut_payment_id']
+        original = operation.read(fields)
+        calls = len(self.request.call_args_list)
+        args = (self.order.id, self.order.uuid, self.line_uuid, self.method.id, 100, self.order.currency_id.id)
+        retired = self.env['pos.order'].revolut_remove_unstarted_payment(*args)
+        self.assertEqual(retired['recovery_status'], 'retired')
+        self.assertEqual(retired['payment_id'], payment.id)
+        duplicate = self.env['pos.order'].revolut_remove_unstarted_payment(*args)
+        self.assertEqual(duplicate, retired)
+        self.env.invalidate_all()
+        self.assertFalse(payment.exists())
+        self.assertEqual(operation.read(fields), original)
+        self.assertEqual(len(self.request.call_args_list), calls)
+        self.assert_no_financial_post(0)
+
+    def test_removal_of_pending_attempt_returns_history_without_retiring_tender(self):
+        payment = self.saved_tender()
+        authority = self.prepare()
+        self.provider()
+        pending = self.start(authority)
+        calls = len(self.request.call_args_list)
+        result = self.env['pos.order'].revolut_remove_unstarted_payment(
+            self.order.id, self.order.uuid, self.line_uuid, self.method.id, 100, self.order.currency_id.id)
+        self.assertEqual(result['recovery_status'], 'existing_operation')
+        self.assertEqual(result['operation_id'], pending['operation_id'])
+        self.env.invalidate_all()
+        self.assertTrue(payment.exists())
+        self.assertEqual(len(self.request.call_args_list), calls)
+        self.assert_no_financial_post(2)
+
     def test_recovery_cannot_bypass_restricted_price_manager_approval(self):
         self.pos_config.restrict_price_control = True
         self.order.lines.write({'price_unit': 90, 'price_subtotal': 90, 'price_subtotal_incl': 90})

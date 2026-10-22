@@ -2,9 +2,9 @@
 
 # 68 — Investigate an extra Revolut line after draft reload
 
-**Work branch:** `codex/68-v18-duplicate-line-reload` (create from latest `feat/v18_rev` when claimed).
+**Work branch:** `feat/v18_rev` (owner selected the existing sanitized checkout).
 
-**State:** open
+**State:** claimed
 
 **Category:** bug
 
@@ -164,3 +164,13 @@ be merged merely because their method and amount match.
 mocked disposable fixtures. If the claim cannot be reproduced, record the
 attempted sequences and precise missing evidence; do not invent a fix or mark
 the defect verified from a broad passing suite.
+
+## Implementation investigation
+
+A deterministic native browser reproduction and minimised variant now identify
+the extra row as the original removed cancelled tender, restored from the
+server after its in-memory deletion command is lost on refresh. See the
+[synthetic investigation and validation record](../../testing/ticket-68-draft-reload.md).
+The scoped correction is under validation; no deployment or physical acceptance
+claim is made. Odoo 19 has an analogous source gap and requires an adapted
+regression/backport before claiming that version corrected.

@@ -952,12 +952,35 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.assertEqual(len([call for call in calls if call[0] == "POST"]), 2)
 
     def test_pending_cancellation_preserves_unpaid_order(self):
+        self._run_pending_cancellation("pos_revolut_pending_cancel")
+
+    def test_cancelled_payment_then_unsent_allocation_reload(self):
+        self._run_pending_cancellation("pos_revolut_cancelled_unsent_reload_synced")
+
+    def test_cancelled_payment_then_local_unsent_allocation_reload(self):
+        self._run_pending_cancellation("pos_revolut_cancelled_unsent_reload_local")
+
+    def test_cancelled_payment_then_minimal_unsent_allocation_reload(self):
+        self._run_pending_cancellation("pos_revolut_cancelled_unsent_reload_minimal")
+
+    def test_cancelled_payment_removal_offline_keeps_original_tender(self):
+        self._run_pending_cancellation("pos_revolut_cancelled_unsent_reload_offline")
+
+    def test_cancelled_payment_removal_lost_response_is_retryable(self):
+        self._run_pending_cancellation("pos_revolut_cancelled_unsent_reload_lost_response")
+
+    def test_saved_unsent_allocation_remains_removable_after_zero_edit(self):
+        self._run_pending_cancellation("pos_revolut_cancelled_unsent_reload_zero_before_remove")
+
+    def _run_pending_cancellation(self, tour):
         revolut_method = self._configure_revolut_checkout()
         cancelled = False
         cancel_calls = 0
+        calls = []
 
         def request(method, url, **kwargs):
             nonlocal cancelled, cancel_calls
+            calls.append((method, url))
             if method == "GET" and url.endswith("/api/terminals"):
                 return self._response(
                     {"terminals": [{
@@ -990,7 +1013,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
             side_effect=request,
         ) as provider:
             install_zero_reports(self.env, provider)
-            self.start_pos_tour("pos_revolut_pending_cancel")
+            self.start_pos_tour(tour)
 
         self.env.invalidate_all()
         operation = self.env["pos.revolut.payment.operation"].search(
@@ -999,6 +1022,17 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.assertEqual(operation.state, "cancelled")
         self.assertNotEqual(operation.pos_order_id.state, "paid")
         self.assertEqual(cancel_calls, 1)
+        self.assertEqual(len([call for call in calls if call[0] == "POST"]), 3)
+        self.assertEqual(operation.revolut_order_id, self.ORDER_ID)
+        self.assertEqual(operation.revolut_payment_intent_id, self.INTENT_ID)
+        self.assertFalse(operation.revolut_payment_id)
+        if tour != "pos_revolut_pending_cancel":
+            self.assertFalse(operation.pos_payment_id)
+            self.assertFalse(operation.pos_order_id.payment_ids)
+            dispatches = self.env["pos.revolut.payment.dispatch"].sudo().search([
+                ("operation_id", "=", operation.id),
+            ])
+            self.assertEqual(len(dispatches), 3)
 
     def _run_unclaimed_worker_recovery(self, stage):
         revolut_method = self._configure_revolut_checkout()

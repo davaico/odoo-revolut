@@ -192,11 +192,24 @@ export class PaymentRevolut extends PaymentInterface {
                     }
                     return result;
                 },
-                removeRecoveredPayment: async (order, line) => this.pos.data.call(
-                    "pos.order", "revolut_remove_unstarted_payment", [
+                removeRecoveredPayment: async (order, line) => {
+                    // Editable local amounts, including zero, may differ from
+                    // the saved tender. Retire its canonical server identity.
+                    const state = await this.pos.data.call("pos.order", "revolut_checkout_state", [order.id, order.uuid]);
+                    const saved = state.data["pos.payment"]?.find((payment) =>
+                        payment.id === line.id && payment.uuid === line.uuid);
+                    const retired = state.recovered_tenders?.[line.uuid];
+                    const amount = saved?.amount ?? (retired?.state === "retired" &&
+                        retired.payment_id === line.id && retired.method_id === this.payment_method_id.id
+                        ? retired.minor / 10 ** this.pos.currency.decimal_places : undefined);
+                    if (!Number.isFinite(amount)) {
+                        throw new Error(_t("The original saved tender could not be identified."));
+                    }
+                    return this.pos.data.call("pos.order", "revolut_remove_unstarted_payment", [
                         order.id, order.uuid, line.uuid, this.payment_method_id.id,
-                        line.amount, this.pos.currency.id,
-                    ]),
+                        amount, this.pos.currency.id,
+                    ]);
+                },
                 prepareRefund: (order, line) => this._prepareRefund(order, line),
                 restoreRefundOriginals: (order) => restoreRefundOriginals(this.pos, order),
                 chooseAllocation: (sources, line) => chooseRefundAllocation(
@@ -756,13 +769,13 @@ patch(PosOrder.prototype, {
             // Native deletion queues an ORM command even for silent deletes;
             // acknowledge only that command to preserve other pending edits.
             const commands = this.models.commands["pos.order"];
+            const key = `payment_ids_${this.id}`;
             for (const pending of [commands.delete, commands.unlink]) {
-                const remaining = (pending.get("payment_ids") || []).filter((command) =>
-                    command.id !== retired.paymentId || command.parentId !== retired.orderId);
+                const remaining = (pending.get(key) || []).filter((id) => id !== retired.paymentId);
                 if (remaining.length) {
-                    pending.set("payment_ids", remaining);
+                    pending.set(key, remaining);
                 } else {
-                    pending.delete("payment_ids");
+                    pending.delete(key);
                 }
             }
         }
@@ -866,16 +879,28 @@ patch(PaymentScreen.prototype, {
 
     async deletePaymentLine(uuid) {
         const line = this.paymentLines.find((payment) => payment.uuid === uuid);
+        const order = this.currentOrder;
         const actions = paymentActions(line);
         if (!actions.canDelete || line?.uiState.revolutRecoveryRequired) {
-            if ((actions.shouldCancelBeforeDelete || line.uiState.revolutRecoveryRequired) &&
-                await this.sendPaymentCancel(line)) {
-                if (!line.uiState.revolutRecoveryRequired ||
-                    await line.payment_method_id.payment_terminal.paymentState.removeRecoveredPayment(
-                        this.currentOrder, line)) {
-                    this.currentOrder.remove_paymentline(line);
-                    this.numberBuffer.reset();
-                }
+            if (!(actions.shouldCancelBeforeDelete || line.uiState.revolutRecoveryRequired) ||
+                !await this.sendPaymentCancel(line)) {
+                return;
+            }
+            if (line.uiState.revolutRecoveryRequired &&
+                !await line.payment_method_id.payment_terminal.paymentState.removeRecoveredPayment(order, line)) {
+                return;
+            }
+        }
+        if (isRevolut(line) && !isRevolutRefund(line) && Number.isInteger(line.id)) {
+            // Native removal only queues an in-memory command lost on refresh.
+            // Require durable, idempotent server retirement before hiding it.
+            if (!line.uiState.revolutRetiredPayment &&
+                !await line.payment_method_id.payment_terminal.paymentState.removeRecoveredPayment(order, line)) {
+                return;
+            }
+            order.remove_paymentline(line);
+            if (this.currentOrder === order) {
+                this.numberBuffer.reset();
             }
             return;
         }

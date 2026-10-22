@@ -680,13 +680,18 @@ export class RevolutPaymentState {
             return owner.removal;
         }
         const remove = async () => {
-            line.uiState.revolutMessage = false;
             line.uiState.revolutRecoveredUnstarted = false;
             line.uiState.revolutRecoveredRetired = false;
             line.uiState.revolutStarted = true;
             line.uiState.revolutUndispatched = false;
             line.uiState.revolutDiscovering = true;
             try {
+                if (owner.request) {
+                    // Drain the cancelled foreground poll before retirement;
+                    // it must not publish again onto a removed tender.
+                    await this.clock.before(owner.request, this.clock.now() + PAYMENT_TIMEOUT_MS);
+                    line.uiState.revolutDiscovering = true;
+                }
                 const result = await this.clock.before(this.adapter.removeRecoveredPayment(order, line),
                     this.clock.now() + PAYMENT_TIMEOUT_MS);
                 if (result?.operation_id) {
@@ -694,6 +699,7 @@ export class RevolutPaymentState {
                     if (result.state === "verified") {
                         await this.setVerified(line);
                     } else {
+                        line.uiState.revolutMessage = false;
                         this.showError(line, result.local_outcome || result.state);
                     }
                     return false;
@@ -702,6 +708,7 @@ export class RevolutPaymentState {
                     result.order_id !== order.id || result.order_uuid !== order.uuid ||
                     result.payment_id !== line.id || result.payment_line_uuid !== line.uuid ||
                     !Number.isSafeInteger(result.recovery_revision) || result.recovery_revision <= 0) {
+                    line.uiState.revolutMessage = false;
                     this.showError(line, "interrupted");
                     return false;
                 }
@@ -711,6 +718,7 @@ export class RevolutPaymentState {
                 line.uiState.revolutRetiredPayment = { orderId: result.order_id, paymentId: result.payment_id };
                 return true;
             } catch (error) {
+                line.uiState.revolutMessage = false;
                 this.showError(line, error instanceof ForegroundTimeout ? "timed_out" : "interrupted");
                 return false;
             } finally {
