@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Sourced by disposable runners; never select a moving upstream tag.
+case "${ODOO_REVOLUT_ODOO_MAJOR:-18}" in
+    18)
+        export ODOO_REVOLUT_ODOO_MAJOR=18
+        export ODOO_REVOLUT_ODOO_VERSION=18.0.20261015
+        export ODOO_REVOLUT_BASE_IMAGE=odoo:18.0-20261015@sha256:1b346c6f9145c79b802b711a554a141acbd0503ed6cd7d31cb3c938889c4cc36
+        ;;
+    19)
+        export ODOO_REVOLUT_ODOO_MAJOR=19
+        export ODOO_REVOLUT_ODOO_VERSION=19.0.20260908
+        export ODOO_REVOLUT_BASE_IMAGE=odoo:19.0@sha256:144175ec0039d52daff1d79f7e51c9281ca3c98b96c830feb49d09764a9f5d7c
+        ;;
+    *)
+        echo "ODOO_REVOLUT_ODOO_MAJOR must be 18 or 19" >&2
+        exit 2
+        ;;
+esac
+export ODOO_REVOLUT_TEST_IMAGE="odoo-revolut-test:${ODOO_REVOLUT_ODOO_VERSION}-chrome153"

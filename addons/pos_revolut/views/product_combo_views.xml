@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="product_combo_revolut_quantities_form" model="ir.ui.view">
+        <field name="name">product.combo.revolut.quantities.form</field>
+        <field name="model">product.combo</field>
+        <field name="inherit_id" ref="product.product_combo_view_form"/>
+        <field name="arch" type="xml">
+            <field name="company_id" position="after">
+                <field name="qty_free"/>
+                <field name="qty_max"/>
+            </field>
+        </field>
+    </record>
+</odoo>

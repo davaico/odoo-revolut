@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="pos_preset_view_list" model="ir.ui.view">
+        <field name="name">pos.preset.list</field>
+        <field name="model">pos.preset</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="pricelist_id"/>
+                <field name="fiscal_position_id"/>
+                <field name="is_return"/>
+                <field name="use_timing"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+    <record id="pos_preset_view_form" model="ir.ui.view">
+        <field name="name">pos.preset.form</field>
+        <field name="model">pos.preset</field>
+        <field name="arch" type="xml">
+            <form string="Checkout Preset">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="company_id" groups="base.group_multi_company"/>
+                        <field name="pricelist_id"/>
+                        <field name="fiscal_position_id"/>
+                        <field name="identification"/>
+                        <field name="is_return"/>
+                        <field name="use_timing"/>
+                    </group>
+                    <group string="Pickup Slots" invisible="not use_timing">
+                        <field name="resource_calendar_id" required="use_timing"/>
+                        <field name="calendar_tz" readonly="1"/>
+                        <field name="slots_per_interval"/>
+                        <field name="interval_time"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="action_pos_presets" model="ir.actions.act_window">
+        <field name="name">Checkout Presets</field>
+        <field name="res_model">pos.preset</field>
+        <field name="view_mode">list,form</field>
+    </record>
+    <menuitem id="menu_pos_presets" name="Checkout Presets"
+        parent="point_of_sale.menu_point_config_product" action="action_pos_presets"
+        sequence="25" groups="point_of_sale.group_pos_manager"/>
+    <record id="pos_config_presets_form" model="ir.ui.view">
+        <field name="name">pos.config.checkout.presets.form</field>
+        <field name="model">pos.config</field>
+        <field name="inherit_id" ref="point_of_sale.pos_config_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet" position="inside">
+                <group string="Checkout Presets" groups="point_of_sale.group_pos_manager">
+                    <field name="use_presets"/>
+                    <field name="default_preset_id" invisible="not use_presets" required="use_presets"
+                        domain="['|', ('company_id', '=', False), ('company_id', '=', company_id)]"/>
+                    <field name="available_preset_ids" invisible="not use_presets" widget="many2many_tags"
+                        domain="['|', ('company_id', '=', False), ('company_id', '=', company_id)]"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

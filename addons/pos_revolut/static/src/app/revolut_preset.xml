@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="pos_revolut.CheckoutPreset" t-inherit="point_of_sale.ControlButtons" t-inherit-mode="extension">
+        <xpath expr="//SelectPartnerButton" position="after">
+            <button t-if="pos.config.use_presets and !props.showRemainingButtons"
+                class="revolut-preset-button btn btn-light btn-lg"
+                t-att-disabled="revolutPresetLocked" t-on-click="selectRevolutPreset">
+                <t t-esc="currentOrder?.preset_id?.name || 'Checkout preset'"/>
+            </button>
+            <button t-if="pos.config.use_presets and !props.showRemainingButtons and currentOrder?.preset_id?.needsSlot and !currentOrder._isRefundOrder()"
+                class="revolut-pickup-button btn btn-light btn-lg"
+                t-on-click="() => pos.openPresetTiming()">
+                <i class="fa fa-clock-o me-2" aria-hidden="true"/>
+                <t t-esc="currentOrder.presetPickupLabel || 'Pickup time'"/>
+            </button>
+        </xpath>
+        <xpath expr="//button[@t-on-click='clickTakeAway']" position="attributes">
+            <attribute name="t-if">pos.config.takeaway and !pos.config.use_presets</attribute>
+        </xpath>
+    </t>
+
+    <t t-name="pos_revolut.PaymentPickup" t-inherit="point_of_sale.PaymentScreenButtons" t-inherit-mode="extension">
+        <xpath expr="//div[hasclass('payment-buttons')]" position="inside">
+            <button t-if="pos.config.use_presets and currentOrder.preset_id?.needsSlot and !currentOrder._isRefundOrder()"
+                class="revolut-pickup-button btn btn-light btn-lg w-100"
+                t-on-click="() => pos.openPresetTiming()">
+                <i class="fa fa-clock-o me-2" aria-hidden="true"/>
+                <t t-esc="currentOrder.presetPickupLabel || 'Pickup time'"/>
+            </button>
+        </xpath>
+    </t>
+
+    <t t-name="pos_revolut.PresetTimingDialog">
+        <Dialog title="'Pickup time'" footer="false">
+            <p>Choose a pickup date and an available time.</p>
+            <p class="text-muted"><t t-esc="props.timezone"/></p>
+            <div class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="Pickup date">
+                <button t-foreach="props.days" t-as="day" t-key="day.date"
+                    class="btn" t-att-class="state.date === day.date ? 'btn-primary' : 'btn-secondary'"
+                    t-att-aria-pressed="state.date === day.date ? 'true' : 'false'"
+                    t-att-disabled="state.saving"
+                    t-on-click="() => this.state.date = day.date">
+                    <t t-esc="dayLabel(day)"/>
+                </button>
+            </div>
+            <div t-if="state.error" class="alert alert-danger" role="alert" t-esc="state.error"/>
+            <div t-if="!selectedDay?.slots.length" class="alert alert-warning" role="status">
+                No slot available for this day
+            </div>
+            <div t-else="" class="d-flex flex-wrap gap-2" role="group" aria-label="Pickup time">
+                <button t-foreach="selectedDay.slots" t-as="slot" t-key="slot.time"
+                    class="preset-slot-button btn btn-outline-primary btn-lg"
+                    t-att-disabled="state.saving" t-on-click="() => this.selectSlot(slot)">
+                    <t t-esc="slot.label"/>
+                </button>
+            </div>
+            <p t-if="state.saving" class="mt-3" role="status">Saving pickup time…</p>
+        </Dialog>
+    </t>
+
+    <t t-name="pos_revolut.ReceiptPickup" t-inherit="point_of_sale.OrderReceipt" t-inherit-mode="extension">
+        <xpath expr="//ReceiptHeader" position="after">
+            <div t-if="props.data.presetName" class="revolut-receipt-preset text-center my-2">
+                <div t-esc="props.data.presetName"/>
+                <div t-if="props.data.presetPickup" class="revolut-receipt-pickup">
+                    Pickup: <t t-esc="props.data.presetPickup"/>
+                    (<t t-esc="props.data.presetTimezone"/>)
+                </div>
+            </div>
+        </xpath>
+    </t>
+</templates>

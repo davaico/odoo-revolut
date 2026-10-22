@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="pos_revolut.SplitPaymentLines" t-inherit="point_of_sale.PaymentScreenPaymentLines" t-inherit-mode="extension">
+        <xpath expr="//div[hasclass('paymentlines')]" position="attributes">
+            <attribute name="t-ref">revolutPaymentLines</attribute>
+        </xpath>
+    </t>
+    <t t-name="pos_revolut.SplitPaymentMethods" t-inherit="point_of_sale.PaymentScreenMethods" t-inherit-mode="extension">
+        <xpath expr="//div[hasclass('paymentmethod')]" position="attributes">
+            <attribute name="t-tag">'button'</attribute>
+            <attribute name="type">button</attribute>
+        </xpath>
+        <xpath expr="//div[hasclass('paymentmethod')]" position="after">
+            <button t-if="paymentMethod.use_payment_terminal === 'revolut' and !this.isRefundOrder"
+                class="revolut-choose-amount btn btn-outline-secondary"
+                t-att-disabled="this.pos.paymentTerminalInProgress or this.currentOrder.get_due() &lt;= 0"
+                t-on-click="() => this.addRevolutSplitLine(paymentMethod)">
+                Choose amount — <t t-esc="paymentMethod.name"/>
+            </button>
+        </xpath>
+        <xpath expr="//div[hasclass('paymentmethods-container')]" position="inside">
+            <p t-if="this.isRefundOrder" class="small text-muted mt-2 mb-0">
+                For Cash or other manual refund tenders, enter a negative amount (for example, −0.01).
+            </p>
+        </xpath>
+    </t>
+</templates>

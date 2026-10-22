@@ -1,0 +1,70 @@
+# Repository Guidelines
+
+## Repository Boundary
+
+This repository is the single source of truth for the complete integration. Keep development environment configuration and agent worktrees outside the addon source tree. Develop integration code here, rather than directly on an Odoo server.
+
+## Project Mission
+
+Maintain an installable Odoo Community 18 and 19 Point of Sale addon that integrates a Revolut payment terminal through the Revolut Merchant API. Follow established Odoo addon conventions and keep changes focused on this integration.
+
+The finished integration must:
+
+1. Send the payment amount from Odoo POS to the Revolut terminal.
+2. Let the customer complete the card payment on the terminal.
+3. Monitor and verify the final payment status.
+4. Confirm the Odoo order automatically only after successful payment.
+5. Handle declined, failed, cancelled, and timed-out payments explicitly.
+6. Support full and partial refunds.
+7. Store Revolut transaction references in Odoo for reconciliation and support.
+8. Keep all Revolut API credentials on the Odoo server; never expose secrets to the POS browser.
+9. Install cleanly in a new Odoo environment and include complete installation instructions.
+
+## Planned Project Structure
+
+Place the addon under `addons/`, keeping models, views, security rules, static POS code, data, and tests inside one addon package. Put project documentation in `docs/` and reusable development scripts in `scripts/`.
+
+## Odoo 18 Agent Work
+
+All Odoo 18 work targets `feat/v18_rev`. Before editing, verify the active branch.
+Base task branches and parallel-agent worktrees on the latest `feat/v18_rev`, not
+`main`, and integrate their changes back into `feat/v18_rev`. Include this base and
+target in every Odoo 18 agent handoff.
+
+Before implementation or review, read
+[`docs/adr/0002-maintain-odoo-18-and-19-support.md`](docs/adr/0002-maintain-odoo-18-and-19-support.md)
+for the agreed parity and installation scope.
+
+## Development and Testing Principles
+
+- Treat the Odoo server as the only trusted boundary for Revolut API calls and credentials.
+- Make payment operations idempotent, persist each attempt and its external references, and reconcile an uncertain attempt before allowing a retry.
+- Never treat a completed payment intent as proof of payment; confirm the underlying payment reached a successful final state before completing the Odoo sale.
+- Model payment states explicitly and link refunds to their original transaction.
+- Never log access tokens, secrets, or sensitive cardholder data.
+- Mock Revolut HTTP calls in automated tests; tests must never contact a real terminal or Merchant API.
+- Cover success, decline, failure, cancellation, interruption, timeout, safe retry, and full/partial refund paths.
+
+Run the narrowest relevant tests before submission. Use short, imperative commit subjects. Pull requests should explain payment-flow impact, tests performed, configuration changes, and deployment or credential-rotation steps.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are local Markdown tickets under `docs/tickets/`, organized by triage
+with dependency gates recorded in each ticket. Before creating, moving or
+closing tickets, read the folder mapping in `docs/agents/issue-tracker.md`.
+Preserve `docs/tickets/ready-for-agents/` and its tracked `.gitkeep`, including
+when the folder is empty.
+
+### Triage labels
+
+Use the default `needs-triage`, `needs-info`, `ready-for-agent`,
+`ready-for-human`, and `wontfix` vocabulary. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository using root `CONTEXT.md` and system-wide
+ADRs under `docs/adr/` when those documents are needed. See
+`docs/agents/domain.md`.

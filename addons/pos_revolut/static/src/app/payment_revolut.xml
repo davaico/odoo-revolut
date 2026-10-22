@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="pos_revolut.RefundAllocationDialog">
+        <Dialog title="title">
+            <p>Select an original Revolut payment and confirm the amount before issuing this refund. Return any non-Revolut portion using its own tender.</p>
+            <div class="revolut-refund-sources d-grid gap-2">
+                <t t-foreach="props.sources" t-as="source" t-key="source.operation_id">
+                    <label class="border rounded p-2" t-att-class="source.payment_method_id !== props.paymentMethodId or source.remaining_minor &lt;= 0 ? 'text-muted' : ''">
+                        <input type="radio" name="revolut-refund-source" class="revolut-refund-source me-2"
+                            t-att-value="source.operation_id"
+                            t-att-checked="state.operationId === source.operation_id"
+                            t-att-disabled="source.payment_method_id !== props.paymentMethodId or source.remaining_minor &lt;= 0"
+                            t-on-change="selectSource"/>
+                        <strong t-esc="source.payment_method_name"/>
+                        <span class="ms-2">Allocation source #<t t-esc="source.operation_id"/></span>
+                        <span class="ms-2">Original: <t t-esc="source.original_order_id"/></span>
+                        <span class="ms-2">Payment: <t t-esc="source.original_payment_id"/></span>
+                        <span class="ms-2">Remaining: <t t-esc="source.remaining_amount"/> <t t-esc="props.currencySymbol"/></span>
+                        <div t-if="source.external_refund_review_required" class="text-danger small" role="alert" t-esc="source.external_refund_review_note"/>
+                        <small t-if="source.payment_method_id !== props.paymentMethodId" class="d-block ms-4">
+                            Add a separate refund line using this original payment method.
+                        </small>
+                    </label>
+                </t>
+            </div>
+            <div class="mt-3">
+                <label class="form-label" for="revolut-refund-amount"><t t-if="selectedSource?.terminal_tip_evidence">Base refund amount</t><t t-else="">Refund amount</t></label>
+                <input id="revolut-refund-amount" class="revolut-refund-amount form-control" type="number" min="0"
+                    t-att-step="1 / 10 ** props.decimalPlaces" t-att-value="state.amount" t-on-input="updateAmount"/>
+                <small t-if="selectedSource" class="text-muted">Base refund allowance excluding tips, after other allocations: <t t-esc="defaultAmount(selectedSource)"/> <t t-esc="props.currencySymbol"/></small>
+            </div>
+            <div t-if="selectedSource?.terminal_tip_evidence" class="mt-3">
+                <label class="form-label" for="revolut-refund-tip">Terminal tip refund amount</label>
+                <input id="revolut-refund-tip" class="revolut-refund-tip form-control" type="number" min="0"
+                    t-att-step="1 / 10 ** props.decimalPlaces" t-att-value="state.tipAmount" t-on-input="updateTip"/>
+                <small class="text-muted">Terminal tip refund allowance, after other allocations: <t t-esc="defaultTip(selectedSource)"/> <t t-esc="props.currencySymbol"/></small>
+            </div>
+            <div t-if="state.error" class="alert alert-danger mt-2" role="alert" t-esc="state.error"/>
+            <t t-set-slot="footer">
+                <button class="btn btn-secondary" t-on-click="() => this.props.close()">Cancel</button>
+                <button class="btn btn-primary revolut-refund-confirm" t-on-click="confirm">Confirm refund allocation</button>
+            </t>
+        </Dialog>
+    </t>
+    <t t-name="pos_revolut.PaymentScreenPaymentLines" t-inherit="point_of_sale.PaymentScreenPaymentLines" t-inherit-mode="extension">
+        <xpath expr="//t[@t-elif=&quot;line.payment_status == 'done'&quot;]/div[hasclass('electronic_status')]" position="replace">
+            <div class="electronic_status">
+                <t t-if="line.payment_method_id.use_payment_terminal === 'revolut' and line.amount &lt; 0">Refund Successful</t>
+                <t t-else="">Payment Successful</t>
+            </div>
+        </xpath>
+        <xpath expr="//t[@t-if=&quot;line.payment_status == 'pending'&quot;]/div[hasclass('send_payment_request')]" position="replace">
+            <button type="button" class="button send_payment_request btn btn-primary highlight" title="Send Payment Request" t-on-click="() => this.props.sendPaymentRequest(line)">Send</button>
+        </xpath>
+        <xpath expr="//t[@t-elif=&quot;line.payment_status == 'waitingCard'&quot;]//div[hasclass('electronic_status')]" position="replace">
+            <div class="electronic_status">
+                <t t-if="line.payment_method_id.use_payment_terminal === 'revolut' and line.uiState.revolutSnapshot?.awaiting_tip_details">Payment received — verifying payment details</t>
+                <t t-elif="line.pos_order_id._isRefundOrder()">Refund in process</t>
+                <t t-else="">Waiting for card</t>
+            </div>
+        </xpath>
+        <xpath expr="//div[hasclass('send_payment_cancel')]" position="replace">
+            <button t-if="line.payment_method_id.use_payment_terminal === 'revolut'" type="button"
+                class="button send_payment_cancel btn btn-secondary" title="Cancel Payment Request"
+                t-on-click="() => this.props.sendPaymentCancel(line)">Cancel</button>
+            <div t-else="" class="button send_payment_cancel" title="Cancel Payment Request"
+                t-on-click="() => this.props.sendPaymentCancel(line)">Cancel</div>
+        </xpath>
+        <xpath expr="//t[@t-elif=&quot;line.payment_status == 'retry'&quot;]/div[hasclass('electronic_status')]" position="replace">
+            <div class="electronic_status">
+                <t t-if="line.payment_method_id.use_payment_terminal === 'revolut'" t-esc="this.revolutPaymentStatus(line)"/>
+                <t t-else="">Transaction cancelled</t>
+            </div>
+        </xpath>
+        <xpath expr="//t[@t-elif=&quot;line.payment_status == 'retry'&quot;]/div[hasclass('send_payment_request')]" position="replace">
+            <button type="button" class="button send_payment_request btn btn-primary highlight" title="Send Payment Request" t-on-click="() => this.props.sendPaymentRequest(line, { checkOnly: line.payment_method_id.use_payment_terminal === 'revolut' and !this.revolutCanRetry(line) })">
+                <t t-if="line.payment_method_id.use_payment_terminal === 'revolut' and this.revolutCanResume(line)">Resume</t>
+                <t t-elif="line.payment_method_id.use_payment_terminal === 'revolut' and !this.revolutCanRetry(line)">Check status</t>
+                <t t-else="">Retry</t>
+            </button>
+            <button t-if="line.payment_method_id.use_payment_terminal === 'revolut' and this.revolutCanResume(line)" class="button revolut_check_status btn btn-secondary" t-on-click="() => this.props.sendPaymentRequest(line, { checkOnly: true })">Check status</button>
+        </xpath>
+        <xpath expr="//div[@t-if=&quot;line.payment_status == 'waitingCancel'&quot;]" position="attributes">
+            <attribute name="t-if">line.payment_status == 'waitingCancel' and line.payment_method_id.use_payment_terminal !== 'revolut'</attribute>
+        </xpath>
+        <xpath expr="//div[contains(@t-attf-class, 'electronic_payment')]" position="inside">
+            <div t-if="line.payment_method_id.use_payment_terminal === 'revolut' and line.amount &lt; 0 and line.uiState.revolutSnapshot?.order_id" class="revolut-refund-reference small text-break">
+                Refund: <t t-esc="line.uiState.revolutSnapshot.order_id"/>
+                <t t-if="line.uiState.revolutSnapshot.original_order_id">
+                    — Original: <t t-esc="line.uiState.revolutSnapshot.original_order_id"/>
+                </t>
+                <t t-if="line.uiState.revolutSnapshot.original_operation_id">
+                    — Source #<t t-esc="line.uiState.revolutSnapshot.original_operation_id"/>
+                </t>
+            </div>
+        </xpath>
+    </t>
+</templates>

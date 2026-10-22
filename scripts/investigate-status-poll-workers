@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$repository_root/scripts/odoo-runtime"
+coalesced=0
+probe_args=()
+if [[ "${1:-}" == "--coalesced" && "$#" == 1 ]]; then
+    coalesced=1
+    probe_args=(--coalesced)
+elif [[ "$#" != 0 ]]; then
+    echo "Usage: $0 [--coalesced]" >&2
+    exit 2
+fi
+default_project_name="odoo-revolut-t29-worker-probe"
+if [[ "$coalesced" == 1 ]]; then
+    default_project_name="odoo-revolut-t38-worker-probe"
+fi
+project_name="${ODOO_REVOLUT_TEST_PROJECT:-$default_project_name}"
+database_name="odoo_revolut_worker_probe"
+export ODOO_REVOLUT_WORKER_FIXTURE_DIR="$repository_root/tests/worker_poll_fixture"
+compose=(docker compose --project-name "$project_name" --file "$repository_root/compose.yaml"
+    --file "$ODOO_REVOLUT_WORKER_FIXTURE_DIR/compose.yaml")
+
+cleanup() {
+    "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+cleanup
+"${compose[@]}" build odoo
+installed_version="$("${compose[@]}" run --rm --no-deps --entrypoint dpkg-query odoo \
+    --show --showformat='${Version}' odoo)"
+if [[ "$installed_version" != "$ODOO_REVOLUT_ODOO_VERSION" ]]; then
+    echo "Expected Odoo $ODOO_REVOLUT_ODOO_VERSION, found $installed_version" >&2
+    exit 1
+fi
+"${compose[@]}" run --rm --no-deps --entrypoint python3 odoo \
+    /opt/odoo-test-guard/verify_merchant_http_guard.py
+"${compose[@]}" up --detach --wait db
+"${compose[@]}" run --rm --entrypoint odoo odoo \
+    --database "$database_name" --db_host db --db_user odoo --db_password odoo \
+    --init pos_revolut --stop-after-init --workers 0 --max-cron-threads 0 --log-level warn
+"${compose[@]}" run --rm -T --env "ODOO_REVOLUT_COALESCED_PROBE=$coalesced" --entrypoint odoo odoo shell \
+    --database "$database_name" --db_host db --db_user odoo --db_password odoo \
+    --no-http --max-cron-threads 0 --shell-interface python --log-level warn \
+    < "$ODOO_REVOLUT_WORKER_FIXTURE_DIR/seed.py"
+"${compose[@]}" up --detach odoo
+"${compose[@]}" exec -T odoo python3 /opt/status-poll-probe/probe.py "${probe_args[@]}"

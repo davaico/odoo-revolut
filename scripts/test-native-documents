@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Render committed native documents through a normal Odoo HTTP/report process.
+set -euo pipefail
+
+repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$repository_root/scripts/odoo-runtime"
+project_name="${ODOO_REVOLUT_TEST_PROJECT:-odoo-revolut-native-documents}"
+database_name="odoo_revolut_native_documents"
+output_directory="${ODOO_REVOLUT_DOCUMENT_OUTPUT:-/tmp/odoo-revolut-native-documents}"
+compose=(docker compose --project-name "$project_name" --file "$repository_root/compose.yaml")
+report_container="$project_name-native-reports"
+reports_started=false
+
+cleanup() {
+    if [[ "$reports_started" == true ]]; then
+        docker rm --force "$report_container" >/dev/null 2>&1 || true
+    fi
+    "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+cleanup
+"${compose[@]}" build odoo
+installed_version="$("${compose[@]}" run --rm --no-deps --entrypoint dpkg-query odoo \
+    --show --showformat='${Version}' odoo)"
+[[ "$installed_version" == "$ODOO_REVOLUT_ODOO_VERSION" ]]
+"${compose[@]}" run --rm --no-deps --entrypoint python3 odoo \
+    /opt/odoo-test-guard/verify_merchant_http_guard.py
+# Missing/unpatched renderers fail; HTML fallback never establishes PDF acceptance.
+"${compose[@]}" run --rm --no-deps --entrypoint bash odoo -c \
+    'wkhtmltopdf --version | grep -F "with patched qt"'
+"${compose[@]}" up --detach --wait db
+"${compose[@]}" run --rm odoo --database "$database_name" --init pos_revolut \
+    --stop-after-init --workers 0 --max-cron-threads 0 --log-level warn
+
+shell_phase() {
+    "${compose[@]}" run --rm -T --entrypoint odoo odoo shell \
+        --database "$database_name" --db_host db --db_user odoo --db_password odoo \
+        --no-http --max-cron-threads 0 --shell-interface python --log-level warn \
+        < "$repository_root/addons/pos_revolut/tests/$1"
+}
+shell_phase native_documents_seed.py
+# Keep background reconciliation and unrelated cron writes out of document
+# invariance checks. This is a normal report server, not Odoo test mode.
+reports_started=true
+"${compose[@]}" run --rm --detach --use-aliases --name "$report_container" odoo     --database "$database_name" --workers 0 --max-cron-threads 0 --log-level warn
+verification_status=0
+shell_phase native_documents_verify.py || verification_status=$?
+mkdir -p -- "$output_directory"
+export_status=0
+docker cp "$report_container:/var/lib/odoo/native-documents/." "$output_directory/" || export_status=$?
+if ((verification_status)); then
+    echo "Native document verification failed" >&2
+    if ((export_status == 0)); then
+        echo "PDFs retained for diagnosis in $output_directory" >&2
+    fi
+    exit "$verification_status"
+fi
+if ((export_status)); then
+    exit "$export_status"
+fi
+echo "Native invoice and credit-note PDFs verified; inspect artifacts in $output_directory"

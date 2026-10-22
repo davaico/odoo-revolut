@@ -1,0 +1,247 @@
+#!/usr/bin/env bash
+# Own the disposable lifecycle; historical fixtures remain in addon tests.
+set -Eeuo pipefail
+
+repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ $# != 1 ]]; then
+    echo "Usage: $0 {cart-authority|credential-authority|evidence-retirement|external-native|receipt-retirement|register-access|return-rounding}" >&2
+    exit 2
+fi
+scenario="$1"
+export ODOO_REVOLUT_ODOO_MAJOR="${ODOO_REVOLUT_ODOO_MAJOR:-19}"
+source "$repository_root/scripts/odoo-runtime"
+if [[ "$ODOO_REVOLUT_ODOO_MAJOR" != 19 ]]; then
+    echo "Historical upgrades exercise Odoo 19 history; use ODOO_REVOLUT_ODOO_MAJOR=19 with the Odoo 19 addon" >&2
+    exit 2
+fi
+case "$scenario" in
+    cart-authority)
+        default_project="odoo-revolut-cart-upgrade"
+        database_name="odoo_revolut_cart_upgrade"
+        old_revision="719bae93390c3a326673af2d0e6b89aea0a84b65"
+        seed_fixture="upgrade_seed.py"
+        verify_fixture="upgrade_verify.py"
+        success_message="Historical cart-authority upgrade passed across old and new Odoo processes"
+        ;;
+    credential-authority)
+        default_project="odoo-revolut-credential-upgrade"
+        database_name="odoo_revolut_credential_upgrade"
+        old_revision="09c982d"
+        seed_fixture="credential_upgrade_seed.py"
+        verify_fixture="credential_upgrade_verify.py"
+        success_message="Company credential upgrade passed across old and new Odoo processes"
+        ;;
+    evidence-retirement)
+        default_project="odoo-revolut-evidence-retirement"
+        database_name="odoo_revolut_evidence_retirement"
+        old_revision="319407e1a47a37f1a7aa8c328c0d7f290301ce66"
+        seed_fixture="evidence_retirement_seed.py"
+        verify_fixture="evidence_retirement_verify.py"
+        success_message="Evidence page retirement upgrade preserves financial controls and denies user access"
+        ;;
+    external-native)
+        default_project="odoo-revolut-external-native-upgrade"
+        database_name="odoo_revolut_external_native_upgrade"
+        old_revision="354ca65"
+        seed_fixture="external_native_upgrade_seed.py"
+        verify_fixture="external_native_upgrade_verify.py"
+        success_message="External refund upgrade preserves historical assertions and pending reservations; native completion moves no money"
+        ;;
+    receipt-retirement)
+        default_project="odoo-revolut-receipt-retirement"
+        database_name="odoo_revolut_receipt_retirement"
+        old_revision="83a7b2484ee16adcacc16e336d1c6e53e8d5508d"
+        seed_fixture="receipt_retirement_seed.py"
+        verify_fixture="receipt_retirement_verify.py"
+        success_message="Receipt retirement upgrade preserves history and disables standalone documents"
+        ;;
+    register-access)
+        default_project="odoo-revolut-register-upgrade"
+        database_name="odoo_revolut_register_upgrade"
+        old_revision="d1124f4"
+        seed_fixture="register_upgrade_seed.py"
+        verify_fixture="register_upgrade_verify.py"
+        success_message="Register access upgrade passed across old and new Odoo processes"
+        ;;
+    return-rounding)
+        default_project="odoo-revolut-return-rounding-upgrade"
+        database_name="odoo_revolut_return_rounding_upgrade"
+        old_revision="7df76793d7bd772af69b1e3e5054c96d9c69b84b"
+        seed_fixture="return_rounding_upgrade_seed.py"
+        verify_fixture="return_rounding_upgrade_verify.py"
+        success_message="Return rounding upgrade preserves completed and uncertain financial history"
+        ;;
+
+    *)
+        echo "Unknown historical upgrade scenario: $scenario" >&2
+        exit 2
+        ;;
+esac
+
+project_name="${ODOO_REVOLUT_TEST_PROJECT:-$default_project}"
+if [[ ! "$project_name" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+    echo "Invalid Compose project name: $project_name" >&2
+    exit 2
+fi
+for fixture in "$seed_fixture" "$verify_fixture"; do
+    if [[ ! -f "$repository_root/addons/pos_revolut/tests/$fixture" ]]; then
+        echo "Missing historical upgrade fixture: $fixture" >&2
+        exit 2
+    fi
+done
+
+for dependency in flock setsid; do
+    if ! command -v "$dependency" >/dev/null; then
+        echo "Historical upgrade runner requires $dependency" >&2
+        exit 2
+    fi
+done
+
+# Keep the lock inode between runs. Removing it would let a third invocation
+# acquire a different inode while another process still holds the old one.
+# A shared location also protects runs from different repository worktrees.
+lock_directory="/tmp/odoo-revolut-upgrade-locks-$UID"
+(umask 077; mkdir -p -- "$lock_directory")
+exec 9>"$lock_directory/$project_name.lock"
+if ! flock --nonblock 9; then
+    echo "Historical upgrade project is already in use: $project_name" >&2
+    exit 2
+fi
+
+compose=(docker compose --project-name "$project_name" --file "$repository_root/compose.yaml")
+old_tree=""
+migration_addons_dir=""
+compose_started=false
+native_reports_started=false
+active_command=""
+phase="archive historical addons"
+
+cleanup() {
+    local status=$? cleanup_failed=false cleanup_interrupted=0
+    trap - EXIT ERR
+    # Finish teardown before honoring a signal received during cleanup.
+    # Separate sessions protect Docker teardown from process-group signals.
+    trap 'cleanup_interrupted=130; echo "Historical upgrade ($scenario): interrupted during cleanup" >&2' INT
+    trap 'cleanup_interrupted=143; echo "Historical upgrade ($scenario): interrupted during cleanup" >&2' TERM
+    if [[ "$native_reports_started" == true ]]; then
+        if ! setsid --wait docker rm --force "$project_name-native-reports" >/dev/null 2>&1; then
+            echo "Failed to remove native report process for $project_name" >&2
+            cleanup_failed=true
+        fi
+    fi
+    if [[ "$compose_started" == true ]]; then
+        if ! setsid --wait "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1; then
+            echo "Failed to clean up Compose project $project_name" >&2
+            cleanup_failed=true
+        fi
+    fi
+    for directory in "$migration_addons_dir" "$old_tree"; do
+        if [[ -n "$directory" ]] && ! setsid --wait rm -rf -- "$directory"; then
+            echo "Failed to remove historical upgrade directory $directory" >&2
+            cleanup_failed=true
+        fi
+    done
+    if [[ "$status" == 0 && "$cleanup_interrupted" != 0 ]]; then
+        status="$cleanup_interrupted"
+    fi
+    if [[ "$status" == 0 && "$cleanup_failed" == true ]]; then
+        status=1
+    fi
+    if [[ "$status" == 0 ]]; then
+        echo "$success_message"
+    fi
+    exit "$status"
+}
+trap cleanup EXIT
+interrupt() {
+    local status="$1"
+    trap '' INT TERM
+    # Waiting on an asynchronous child lets Bash handle runner-only signals
+    # promptly; synchronous foreground commands defer traps until they exit.
+    if [[ -n "$active_command" ]]; then
+        kill -TERM "$active_command" 2>/dev/null || true
+        wait "$active_command" 2>/dev/null || true
+    fi
+    echo "Historical upgrade ($scenario): interrupted during $phase" >&2
+    exit "$status"
+}
+trap 'interrupt 130' INT
+trap 'interrupt 143' TERM
+trap 'status=$?; echo "Historical upgrade ($scenario): $phase failed (exit $status)" >&2' ERR
+
+run_command() {
+    local status=0
+    # Explicit stdin preserves the shell fixture when job control is disabled.
+    "$@" <&0 &
+    active_command=$!
+    wait "$active_command" || status=$?
+    active_command=""
+    return "$status"
+}
+
+old_tree="$(mktemp -d)"
+run_command git -C "$repository_root" archive --format=tar --output="$old_tree/addons.tar" "$old_revision" addons
+run_command tar -xf "$old_tree/addons.tar" -C "$old_tree"
+export ODOO_REVOLUT_ADDONS_DIR="$old_tree/addons"
+phase="reset disposable project"
+compose_started=true
+run_command "${compose[@]}" down --volumes --remove-orphans
+phase="build pinned runtime"
+run_command "${compose[@]}" build odoo
+phase="verify pinned Odoo version"
+run_command "${compose[@]}" run --rm --no-deps --entrypoint dpkg-query odoo \
+    --show --showformat='${Version}' odoo > "$old_tree/installed-version"
+installed_version="$(cat "$old_tree/installed-version")"
+if [[ "$installed_version" != "$ODOO_REVOLUT_ODOO_VERSION" ]]; then
+    echo "Expected Odoo $ODOO_REVOLUT_ODOO_VERSION, found $installed_version" >&2
+    exit 1
+fi
+phase="verify Merchant HTTP guard"
+run_command "${compose[@]}" run --rm --no-deps --entrypoint python3 odoo \
+    /opt/odoo-test-guard/verify_merchant_http_guard.py
+phase="start disposable database"
+run_command "${compose[@]}" up --detach --wait db
+phase="install historical addon"
+run_command "${compose[@]}" run --rm odoo --database "$database_name" --init pos_revolut \
+    --stop-after-init --workers 0 --max-cron-threads 0 --log-level warn
+
+shell_phase() {
+    run_command "${compose[@]}" run --rm -T --entrypoint odoo odoo shell \
+        --database "$database_name" --db_host db --db_user odoo \
+        --db_password odoo --no-http --max-cron-threads 0 \
+        --shell-interface python --log-level warn \
+        < "$repository_root/addons/pos_revolut/tests/$1"
+}
+
+phase="seed historical scenario"
+shell_phase "$seed_fixture"
+export ODOO_REVOLUT_ADDONS_DIR="$repository_root/addons"
+if [[ -d "$old_tree/addons/pos_revolut_restaurant" ]]; then
+    phase="prepare legacy Restaurant addon overlay"
+    # Keep the legacy asset-only addon until the upgrade retires registration.
+    migration_addons_dir="$(mktemp -d /tmp/revolut-historical-upgrade-addons.XXXXXX)"
+    cp -R -- "$repository_root/addons/pos_revolut" "$migration_addons_dir/"
+    cp -R -- "$old_tree/addons/pos_revolut_restaurant" "$migration_addons_dir/"
+    chmod -R u+w "$migration_addons_dir"
+    chmod a+rx "$migration_addons_dir"
+    export ODOO_REVOLUT_ADDONS_DIR="$migration_addons_dir"
+fi
+phase="upgrade to candidate addon"
+run_command "${compose[@]}" run --rm odoo --database "$database_name" --update pos_revolut \
+    --stop-after-init --workers 0 --max-cron-threads 0 --log-level warn
+export ODOO_REVOLUT_ADDONS_DIR="$repository_root/addons"
+if [[ -n "$migration_addons_dir" ]]; then
+    phase="remove legacy Restaurant addon overlay"
+    rm -rf -- "$migration_addons_dir"
+    migration_addons_dir=""
+fi
+if [[ "$scenario" == receipt-retirement ]]; then
+    phase="start native report process"
+    # Normal HTTP serves PDF assets without sharing the verifier's test cursor.
+    native_reports_started=true
+    run_command "${compose[@]}" run --rm --detach --use-aliases \
+        --name "$project_name-native-reports" odoo \
+        --database "$database_name" --workers 0 --max-cron-threads 0 --log-level warn
+fi
+phase="verify preserved historical scenario"
+shell_phase "$verify_fixture"

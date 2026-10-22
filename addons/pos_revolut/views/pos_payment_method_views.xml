@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="pos_payment_method_view_form_inherit_revolut" model="ir.ui.view">
+        <field name="name">pos.payment.method.form.inherit.revolut</field>
+        <field name="model">pos.payment.method</field>
+        <field name="inherit_id" ref="point_of_sale.pos_payment_method_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='use_payment_terminal']" position="after">
+                <group
+                    string="Revolut"
+                    invisible="use_payment_terminal != 'revolut'"
+                    groups="point_of_sale.group_pos_manager"
+                >
+                    <field name="revolut_environment" required="use_payment_terminal == 'revolut'"/>
+                    <field name="revolut_location_id" required="use_payment_terminal == 'revolut'"/>
+                    <field name="revolut_terminal_id" required="use_payment_terminal == 'revolut'"/>
+                    <field
+                        name="revolut_fulfilment_type"
+                        required="use_payment_terminal == 'revolut'"
+                    />
+                    <field
+                        name="revolut_secret_reference"
+                        required="use_payment_terminal == 'revolut'"
+                        placeholder="ODOO_REVOLUT_SECRET_MAIN_TERMINAL"
+                    />
+                    <button
+                        name="action_revolut_check_connection"
+                        type="object"
+                        string="Check Connection"
+                        icon="fa-plug"
+                        class="btn-secondary"
+                    />
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

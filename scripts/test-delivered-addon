@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""Run disposable Odoo acceptance from an exact committed release artifact."""
+
+import argparse
+import importlib.machinery
+import importlib.util
+import os
+import re
+import subprocess
+import tarfile
+import tempfile
+from pathlib import Path
+
+
+REPOSITORY = Path(__file__).resolve().parents[1]
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--revision", required=True)
+    parser.add_argument("--scenario", choices=("retail", "populated", "migration"), required=True)
+    parser.add_argument("--test-tags", help="Override acceptance selection; populated defaults to /pos_revolut")
+    parser.add_argument("--migration-from", help="Full SHA of a legacy two-addon release")
+    parser.add_argument("--odoo-major", choices=("18", "19"),
+                        default=os.environ.get("ODOO_REVOLUT_ODOO_MAJOR", "18"))
+    args = parser.parse_args()
+    if args.odoo_major not in ("18", "19"):
+        parser.error("ODOO_REVOLUT_ODOO_MAJOR must be 18 or 19")
+    if args.scenario == "populated" and args.odoo_major != "18":
+        parser.error("Populated first-install acceptance currently requires --odoo-major 18")
+    if args.scenario == "migration" and args.odoo_major != "19":
+        parser.error("Migration acceptance exercises Odoo 19 history; select --odoo-major 19 with the Odoo 19 addon")
+    os.environ["ODOO_REVOLUT_ODOO_MAJOR"] = args.odoo_major
+    if args.scenario == "migration" and not args.migration_from:
+        parser.error("--scenario migration requires --migration-from")
+    if args.migration_from and not re.fullmatch(r"[0-9a-f]{40}", args.migration_from):
+        parser.error("--migration-from must be a full commit SHA")
+    if not re.fullmatch(r"[0-9a-f]{40}", args.revision):
+        parser.error("--revision must be a full commit SHA")
+    resolved = subprocess.check_output(
+        ["git", "rev-parse", "--verify", f"{args.revision}^{{commit}}"],
+        cwd=REPOSITORY, text=True,
+    ).strip()
+    if resolved != args.revision:
+        parser.error("--revision did not resolve to the exact commit")
+
+    with tempfile.TemporaryDirectory(prefix="pos-revolut-delivered-") as temporary:
+        root = Path(temporary)
+        archive = root / "release.tar.gz"
+        subprocess.run(
+            ["git", "archive", "--format=tar.gz", "--output", str(archive),
+             args.revision, "--", "addons/pos_revolut"],
+            cwd=REPOSITORY, check=True,
+        )
+        remote_source = subprocess.check_output(
+            ["git", "show", f"{args.revision}:scripts/deploy-addon-remote"],
+            cwd=REPOSITORY,
+        )
+        remote_path = root / "deploy-addon-remote"
+        remote_path.write_bytes(remote_source)
+        loader = importlib.machinery.SourceFileLoader("delivered_remote", str(remote_path))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        remote = importlib.util.module_from_spec(spec)
+        loader.exec_module(remote)
+        deployment = remote.RemoteDeployment(
+            runner=remote.CommandRunner(), root=root, archive=archive,
+            expected_sha256=remote.sha256(archive), revision=args.revision,
+            database="odoo_revolut_tests", customer="revolut", environment="test",
+            mode="install",
+        )
+        release = deployment._extract_release()
+        legacy_args = []
+        if args.scenario == "migration":
+            legacy_archive = root / "legacy.tar.gz"
+            subprocess.run(
+                ["git", "archive", "--format=tar.gz", "--output", str(legacy_archive),
+                 args.migration_from, "--", "addons/pos_revolut", "addons/pos_revolut_restaurant"],
+                cwd=REPOSITORY, check=True,
+            )
+            legacy_root = root / "legacy"
+            with tarfile.open(legacy_archive) as bundle:
+                bundle.extractall(legacy_root, filter="data")
+            legacy_args = ["--legacy-addons-dir", str(legacy_root / "addons")]
+        print(f"Artifact revision: {args.revision}", flush=True)
+        print(f"Artifact SHA256: {remote.sha256(archive)}", flush=True)
+        scenario_args = (["--verify-install-upgrade"] if args.scenario == "populated"
+                         else ["--delivered-scenario", args.scenario])
+        test_args = ["--test-tags", args.test_tags] if args.test_tags is not None else []
+        subprocess.run(
+            [str(REPOSITORY / "scripts" / "test-addon"),
+             "--addons-dir", str(release), *legacy_args, *scenario_args, *test_args],
+            cwd=REPOSITORY, check=True,
+        )
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$repository_root/scripts/odoo-runtime"
+project_name="${ODOO_REVOLUT_TEST_PROJECT:-odoo-revolut-restart-test}"
+database_name="odoo_revolut_restart_test"
+compose=(docker compose --project-name "$project_name" --file "$repository_root/compose.yaml")
+
+cleanup() {
+    "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+cleanup
+"${compose[@]}" build odoo
+installed_version="$(
+    "${compose[@]}" run --rm --no-deps --entrypoint dpkg-query odoo \
+        --show --showformat='${Version}' odoo
+)"
+if [[ "$installed_version" != "$ODOO_REVOLUT_ODOO_VERSION" ]]; then
+    echo "Expected Odoo $ODOO_REVOLUT_ODOO_VERSION, found $installed_version" >&2
+    exit 1
+fi
+"${compose[@]}" run --rm --no-deps --entrypoint python3 odoo \
+    /opt/odoo-test-guard/verify_merchant_http_guard.py
+"${compose[@]}" up --detach --wait db
+"${compose[@]}" run --rm odoo \
+    --database "$database_name" --init pos_revolut \
+    --stop-after-init --workers 0 --max-cron-threads 0 --log-level warn
+
+shell_phase() {
+    "${compose[@]}" run --rm -T --entrypoint odoo odoo shell \
+        --database "$database_name" --db_host db --db_user odoo \
+        --db_password odoo --no-http --max-cron-threads 0 \
+        --shell-interface python --log-level warn \
+        < "$repository_root/addons/pos_revolut/tests/$1"
+}
+
+shell_phase restart_seed.py
+shell_phase restart_wait.py
+shell_phase restart_verify.py
+
+echo "Restart recovery passed across three Odoo processes"

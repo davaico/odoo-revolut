@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+coverage.xml
+
+# Local environments and tooling
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+node_modules/
+build/
+dist/
+*.egg-info/
+.idea/
+.vscode/
+.npmrc
+.pypirc
+
+# Odoo runtime data
+*.log
+*.pid
+filestore/
+sessions/
+
+# Secrets and certificates
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.age
+*.agekey
+credentials.json
+*-credentials.json
+secrets/
+
+# Operating system files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="pos_revolut.ComboQuantities" t-inherit="point_of_sale.ComboConfiguratorPopup" t-inherit-mode="extension">
+        <xpath expr="//input[@type='radio']" position="attributes">
+            <attribute name="t-if">!revolutQuantityMode</attribute>
+        </xpath>
+        <xpath expr="//div[@t-foreach='getAvailableComboLines(combo)']" position="attributes">
+            <attribute name="t-att-class">{'ptav-not-available': isArchived(combo_item), 'revolut-combo-quantity': revolutQuantityMode}</attribute>
+        </xpath>
+        <xpath expr="//label" position="attributes">
+            <attribute name="class">combo-item d-block w-100 rounded cursor-pointer transition-base</attribute>
+            <attribute name="t-att-class">{'h-100': !revolutQuantityMode, 'border border-primary': revolutQuantityMode &amp;&amp; revolutSelectedQuantity(combo_item) &gt; 0}</attribute>
+        </xpath>
+        <xpath expr="//h3" position="after">
+            <p t-if="revolutQuantityMode" class="text-muted">
+                Included: <t t-esc="combo.qty_free"/>. Maximum: <t t-esc="combo.qty_max"/>.
+            </p>
+        </xpath>
+        <xpath expr="//label" position="after">
+            <div t-if="revolutQuantityMode" class="d-flex align-items-center justify-content-center gap-2 mt-2">
+                <button type="button" class="btn btn-lg btn-secondary revolut-combo-decrease"
+                    t-att-disabled="!revolutSelectedQuantity(combo_item)"
+                    t-att-aria-label="'Remove one ' + product.display_name"
+                    t-on-click.stop="() => this.revolutChangeQuantity(combo_item, -1)">−</button>
+                <span>Selected:</span>
+                <output t-att-aria-label="product.display_name + ' quantity'" t-esc="revolutSelectedQuantity(combo_item)"/>
+                <button type="button" class="btn btn-lg btn-secondary revolut-combo-increase"
+                    t-att-disabled="revolutComboQuantity(combo) &gt;= combo.qty_max"
+                    t-att-aria-label="'Add one ' + product.display_name"
+                    t-on-click.stop="() => this.revolutChangeQuantity(combo_item, 1)">+</button>
+            </div>
+        </xpath>
+        <xpath expr="//button[hasclass('confirm')]" position="after">
+            <span t-if="revolutQuantityMode" class="revolut-combo-total fw-bold align-self-center ms-3">
+                Total: <t t-esc="revolutComboTotal"/>
+            </span>
+        </xpath>
+    </t>
+</templates>

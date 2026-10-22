@@ -1,0 +1,838 @@
+#!/usr/bin/env python3
+"""Install one reviewed POS Revolut release on an existing Odoo host."""
+
+import argparse
+import configparser
+import fcntl
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+from datetime import UTC, datetime
+from decimal import Decimal
+from pathlib import Path
+
+
+class DeploymentError(RuntimeError):
+    """An expected safety refusal or remote command failure."""
+
+
+ADDONS = ("pos_revolut",)
+LEGACY_ADDON = "pos_revolut_restaurant"
+
+# No database, HTTP, provider credentials, or saved transaction data are used.
+PDF_PROBE = r"""
+import shutil
+import subprocess
+import tempfile
+from io import BytesIO
+from pathlib import Path
+
+
+class PDFProbeError(Exception):
+    pass
+
+
+def check():
+    executable = shutil.which("wkhtmltopdf")
+    if not executable:
+        raise PDFProbeError("renderer not found in the running Odoo service PATH")
+    version = subprocess.run([executable, "--version"], check=True, capture_output=True,
+                             text=True, timeout=5).stdout.strip()
+    if version != "wkhtmltopdf 0.12.6.1 (with patched qt)":
+        raise PDFProbeError("renderer incompatible; require wkhtmltopdf 0.12.6.1 with patched Qt")
+    from odoo.tools.pdf import PdfFileReader
+    with tempfile.TemporaryDirectory(prefix="odoo-pdf-preflight-") as directory:
+        root = Path(directory)
+        body, header, footer, output = [root / name for name in ("body.html", "header.html", "footer.html", "probe.pdf")]
+        for path, content in ((body, "ODOO PDF PREFLIGHT BODY"),
+                              (header, "ODOO PDF PREFLIGHT HEADER"),
+                              (footer, "ODOO PDF PREFLIGHT FOOTER")):
+            path.write_text("<html><body>" + content + "</body></html>")
+        subprocess.run([executable, "--quiet", "--disable-javascript", "--enable-local-file-access",
+                        "--margin-top", "25", "--margin-bottom", "25",
+                        "--header-html", str(header), "--footer-html", str(footer),
+                        str(body), str(output)], check=True, capture_output=True, timeout=20)
+        data = output.read_bytes()
+        if not data.startswith(b"%PDF-") or len(data) < 100:
+            raise PDFProbeError("renderer did not produce a nonempty PDF")
+        reader = PdfFileReader(BytesIO(data))
+        text = " ".join(" ".join(page.extractText() for page in reader.pages).split())
+        if not all("ODOO PDF PREFLIGHT " + part in text for part in ("BODY", "HEADER", "FOOTER")):
+            raise PDFProbeError("rendered PDF is unreadable or missing body/header/footer content")
+    print("ODOO_PDF_PREFLIGHT_OK")
+
+
+try:
+    check()
+except subprocess.TimeoutExpired:
+    raise SystemExit("PDF probe failed: renderer exceeded its deadline")
+except subprocess.CalledProcessError:
+    raise SystemExit("PDF probe failed: renderer could not execute or render the document")
+except Exception as error:
+    # Only our own diagnostic messages are safe to expose; do not print library exceptions.
+    detail = str(error) if type(error) is PDFProbeError else "cannot read or validate the rendered PDF"
+    raise SystemExit("PDF probe failed: " + detail)
+"""
+
+
+class CommandRunner:
+    """Run target-host commands without invoking a shell."""
+
+    def run(self, command, **kwargs):
+        return subprocess.run(command, check=True, text=True, **kwargs)
+
+
+def sha256(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def run_checked(runner, command, step, **kwargs):
+    try:
+        return runner.run(command, **kwargs)
+    except subprocess.CalledProcessError as error:
+        detail = (error.stderr or error.stdout or "").strip()
+        suffix = f": {detail}" if detail else ""
+        raise DeploymentError(
+            f"{step} failed with exit {error.returncode}{suffix}"
+        ) from error
+
+
+class RemoteDeployment:
+    def __init__(
+        self,
+        *,
+        runner,
+        root,
+        archive,
+        expected_sha256,
+        revision,
+        database,
+        customer,
+        environment,
+        mode,
+    ):
+        self.runner = runner
+        self.root = Path(root)
+        self.archive = Path(archive)
+        self.expected_sha256 = expected_sha256
+        self.revision = revision
+        self.database = database
+        self.customer = customer
+        self.environment = environment
+        self.mode = mode
+        self.financial_tables = []
+
+    def _rooted(self, path):
+        return self.root / Path(path).relative_to("/")
+
+    def _validate(self):
+        values = {
+            "revision": (self.revision, r"[0-9a-f]{40}"),
+            "expected checksum": (self.expected_sha256, r"[0-9a-f]{64}"),
+            "database": (self.database, r"[a-z][a-z0-9_]{0,62}"),
+            "customer": (self.customer, r"[a-z][a-z0-9-]{1,30}"),
+            "environment": (self.environment, r"[a-z][a-z0-9-]{1,30}"),
+        }
+        for label, (value, pattern) in values.items():
+            if not re.fullmatch(pattern, value):
+                raise DeploymentError(f"Invalid {label}.")
+        if self.mode not in {"install", "upgrade"}:
+            raise DeploymentError("Invalid deployment mode.")
+
+    def _psql(self, sql, step):
+        return run_checked(
+            self.runner,
+            [
+                "runuser",
+                "-u",
+                "postgres",
+                "--",
+                "psql",
+                "--dbname",
+                self.database,
+                "--no-align",
+                "--tuples-only",
+                "--set",
+                "ON_ERROR_STOP=1",
+                "--command",
+                sql,
+            ],
+            step,
+            capture_output=True,
+        ).stdout
+
+    def _financial_blockers(self):
+        tables = self._psql(
+            """
+SELECT table_name
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND (table_name LIKE 'pos_revolut_%_operation'
+       OR table_name = 'pos_revolut_external_refund_evidence')
+  AND column_name = 'deployment_blocking'
+ORDER BY table_name
+""".strip(),
+            "Financial preflight discovery",
+        ).splitlines()
+        tables = [table.strip() for table in tables if table.strip()]
+        self.financial_tables = list(tables)
+        blockers = []
+        for table in tables:
+            if (not re.fullmatch(r"pos_revolut_[a-z0-9_]+_operation", table)
+                    and table != "pos_revolut_external_refund_evidence"):
+                raise DeploymentError(
+                    "Financial preflight returned an unsafe table name."
+                )
+            if self.mode == "upgrade" and table == "pos_revolut_external_refund_evidence":
+                # Discovery is GET-only. Keep its refund-capacity protections,
+                # but do not require the whole Merchant account to settle.
+                continue
+            condition = "deployment_blocking"
+            if self.mode == "upgrade" and table == "pos_revolut_payment_operation":
+                captured = self._captured_report_upgrade_condition()
+                if captured:
+                    condition += captured
+                    # The allowance relies on persisted authority/dispatch
+                    # evidence, so preserve those records during the upgrade too.
+                    self.financial_tables.extend([
+                        "pos_revolut_cart_authorization", "pos_revolut_payment_dispatch",
+                    ])
+            if self.mode == "upgrade" and table == "pos_revolut_refund_operation":
+                # A saved provider refund can resume GET-only reconciliation.
+                # Missing identities and active dispatches still require review.
+                condition += """
+ AND NOT (state IN ('pending', 'unresolved')
+          AND COALESCE(revolut_order_id, '') ~*
+              '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+"""
+            count = self._psql(
+                f'SELECT count(*) FROM "{table}" operation WHERE {condition}',
+                "Financial preflight",
+            ).strip()
+            if not count.isdigit():
+                raise DeploymentError("Financial preflight returned an invalid count.")
+            if int(count):
+                blockers.append(f"{table}={count}")
+        if not tables:
+            legacy_table = self._psql(
+                "SELECT COALESCE("
+                "to_regclass('public.pos_revolut_payment_operation')::text, '')",
+                "Legacy financial preflight discovery",
+            ).strip()
+            if legacy_table:
+                self.financial_tables = [legacy_table]
+                count = self._psql(
+                    """
+SELECT count(*)
+FROM pos_revolut_payment_operation
+WHERE state IN (
+    'created', 'dispatching_order', 'order_created',
+    'dispatching_intent', 'pending', 'unresolved'
+)
+""".strip(),
+                    "Legacy financial preflight",
+                ).strip()
+                if not count.isdigit():
+                    raise DeploymentError(
+                        "Legacy financial preflight returned an invalid count."
+                    )
+                if int(count):
+                    blockers.append(f"pos_revolut_payment_operation={count}")
+        return blockers
+
+    def _captured_report_upgrade_condition(self):
+        required = {
+            "pos_revolut_payment_operation": {
+                "id", "state", "provider_state", "amount_minor", "captured_amount_minor",
+                "captured_payment_created_at", "retry_safe", "authorization_id",
+                "revolut_order_id", "revolut_payment_intent_id", "revolut_payment_id", "report_run_id",
+            },
+            "pos_revolut_payment_dispatch": {
+                "operation_id", "action", "completed_at", "outcome", "provider_reference",
+            },
+            "pos_revolut_cart_authorization": {"id"},
+        }
+        columns = set(self._psql(
+            """SELECT table_name || '.' || column_name
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name IN ('pos_revolut_payment_operation',
+                     'pos_revolut_payment_dispatch', 'pos_revolut_cart_authorization')""",
+            "Captured payment upgrade schema discovery",
+        ).splitlines())
+        if any(table + "." + column not in columns
+               for table, names in required.items() for column in names):
+            return ""
+        # Only report reconciliation remains after these persisted successful
+        # dispatches and capture. Do not release reservations or assume zero tip.
+        # Odoo's optional Boolean stores omitted retry_safe as SQL NULL (False).
+        uuid = "'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'"
+        return f"""
+ AND NOT COALESCE((state IN ('pending', 'unresolved')
+          AND provider_state IN ('captured', 'completed')
+          AND COALESCE(retry_safe, FALSE) IS FALSE
+          AND amount_minor > 0
+          AND captured_amount_minor > 0
+          AND captured_amount_minor >= amount_minor
+          AND captured_payment_created_at IS NOT NULL
+          AND revolut_order_id ~* {uuid}
+          AND revolut_payment_intent_id ~* {uuid}
+          AND revolut_payment_id ~* {uuid}
+          AND report_run_id ~* {uuid}
+          AND EXISTS (SELECT 1 FROM pos_revolut_cart_authorization authority
+                      WHERE authority.id = operation.authorization_id)
+          AND (SELECT count(*) FROM pos_revolut_payment_dispatch dispatch
+               WHERE dispatch.operation_id = operation.id) = 2
+          AND EXISTS (SELECT 1 FROM pos_revolut_payment_dispatch dispatch
+                      WHERE dispatch.operation_id = operation.id AND dispatch.action = 'create_order')
+          AND EXISTS (SELECT 1 FROM pos_revolut_payment_dispatch dispatch
+                      WHERE dispatch.operation_id = operation.id AND dispatch.action = 'create_intent')
+          AND NOT EXISTS (
+              SELECT 1 FROM pos_revolut_payment_dispatch dispatch
+              WHERE dispatch.operation_id = operation.id
+                AND NOT COALESCE((dispatch.completed_at IS NOT NULL
+                    AND dispatch.outcome = 'succeeded'
+                    AND ((dispatch.action = 'create_order'
+                          AND dispatch.provider_reference = operation.revolut_order_id)
+                         OR (dispatch.action = 'create_intent'
+                             AND dispatch.provider_reference = operation.revolut_payment_intent_id))), FALSE)
+          )), FALSE)
+"""
+
+    def _financial_snapshot(self):
+        snapshot = {}
+        # Preserve every stored value, including legacy evidence and dispatch
+        # protection. Only incidental ORM write bookkeeping may change.
+        for table in self.financial_tables:
+            value = self._psql(
+                f"""SELECT COALESCE(jsonb_agg(
+    to_jsonb(operation) - ARRAY['write_date', 'write_uid'] ORDER BY operation.id
+), '[]'::jsonb) FROM "{table}" operation""",
+                "Financial preservation snapshot",
+            )
+            try:
+                rows = json.loads(value, parse_float=Decimal)
+                if not isinstance(rows, list) or any(
+                    not isinstance(row, dict) or type(row.get("id")) is not int
+                    for row in rows
+                ):
+                    raise ValueError()
+            except (ValueError, TypeError) as error:
+                raise DeploymentError("Invalid financial preservation snapshot.") from error
+            snapshot[table] = rows
+        return snapshot
+
+    def _verify_financial_snapshot(self, before):
+        after = self._financial_snapshot()
+        for table, previous in before.items():
+            current = {row["id"]: row for row in after[table]}
+            # New schema defaults are allowed; every pre-existing value and
+            # row identity must remain intact, including unresolved evidence.
+            preserved = len(current) == len(previous) and all(
+                row["id"] in current
+                and all(key in current[row["id"]] and current[row["id"]][key] == value
+                        for key, value in row.items())
+                for row in previous
+            )
+            if not preserved:
+                raise DeploymentError(f"Financial records changed during upgrade: {table}; Odoo remains stopped.")
+
+    def _run(self, command, step, **kwargs):
+        return run_checked(self.runner, command, step, **kwargs)
+
+    def _verify_addons_path(self):
+        config_path = self._rooted("/etc/odoo/odoo.conf")
+        parser = configparser.ConfigParser(interpolation=None)
+        try:
+            with config_path.open() as stream:
+                parser.read_file(stream)
+            configured = {
+                item.strip()
+                for item in parser.get("options", "addons_path").split(",")
+                if item.strip()
+            }
+        except (OSError, configparser.Error, KeyError) as error:
+            raise DeploymentError(
+                "Cannot read the existing Odoo addons_path."
+            ) from error
+        required = "/opt/odoo-hosting/addons"
+        if required not in configured:
+            raise DeploymentError(
+                f"Existing addons_path does not contain {required}; "
+                "configuration was not changed."
+            )
+
+    def _pdf_preflight(self):
+        repair = (
+            "Follow odoo-hosting docs/PDF_RENDERING.md and run the reviewed python3 /usr/local/sbin/odoo-install-pdf repair, verify the Odoo "
+            "service PATH and renderer, then perform any authorized controlled "
+            "restart and retry deployment."
+        )
+        try:
+            service = self._run(
+                ["systemctl", "show", "odoo", "--property=User", "--property=MainPID"],
+                "PDF service environment lookup", capture_output=True, timeout=5,
+            ).stdout
+            properties = dict(line.split("=", 1) for line in service.splitlines() if "=" in line)
+            pid = properties.get("MainPID", "")
+            if properties.get("User") != "odoo" or not pid.isdigit() or int(pid) <= 0:
+                raise DeploymentError("PDF preflight requires a running service with User=odoo.")
+            raw = self._rooted(f"/proc/{pid}/environ").read_bytes()
+            # Keep only renderer/Python environment, never Merchant or other credentials.
+            allowed = {"PATH", "HOME", "LANG", "LANGUAGE", "PYTHONPATH", "VIRTUAL_ENV",
+                       "LD_LIBRARY_PATH", "FONTCONFIG_FILE", "FONTCONFIG_PATH", "QT_QPA_PLATFORM"}
+            environment = {}
+            for entry in raw.split(b"\0"):
+                name, separator, value = entry.partition(b"=")
+                key = os.fsdecode(name)
+                if separator and (key in allowed or key.startswith("LC_")):
+                    environment[key] = os.fsdecode(value)
+            if not environment.get("PATH"):
+                raise DeploymentError("PDF preflight cannot determine the running service PATH.")
+            python = "/usr/bin/python3"
+            venv = self._rooted("/opt/odoo-hosting/venv/bin/python")
+            if venv.is_file() and os.access(venv, os.X_OK):
+                python = "/opt/odoo-hosting/venv/bin/python"
+            result = self._run(
+                ["/usr/sbin/runuser", "--preserve-environment", "-u", "odoo", "--", python, "-"],
+                "PDF preflight",
+                # PAM may augment runuser's environment; restore only the captured allowlist.
+                input=f"import os\nos.environ.clear()\nos.environ.update({environment!r})\n" + PDF_PROBE,
+                env=environment,
+                capture_output=True, timeout=35,
+            )
+            if result.stdout.strip() != "ODOO_PDF_PREFLIGHT_OK":
+                raise DeploymentError("PDF preflight did not confirm readable body/header/footer output.")
+        except (DeploymentError, OSError, subprocess.TimeoutExpired) as error:
+            raise DeploymentError(f"PDF preflight refused deployment: {error}. {repair}") from error
+
+    def _backup_configuration(self):
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        backup = self._rooted(
+            f"/var/backups/odoo-revolut-deploy/{timestamp}-{self.revision[:12]}"
+        )
+        try:
+            backup.mkdir(parents=True, mode=0o700)
+            config_source = self._rooted("/etc/odoo/odoo.conf")
+            config_target = backup / "etc" / "odoo" / "odoo.conf"
+            config_target.parent.mkdir(parents=True)
+            shutil.copy2(config_source, config_target)
+            drop_in_source = self._rooted("/etc/systemd/system/odoo.service.d")
+            if drop_in_source.is_dir():
+                shutil.copytree(
+                    drop_in_source,
+                    backup / "etc" / "systemd" / "system" / "odoo.service.d",
+                )
+            secret_source = self._rooted("/etc/odoo-revolut")
+            if secret_source.is_dir():
+                shutil.copytree(
+                    secret_source,
+                    backup / "etc" / "odoo-revolut",
+                    symlinks=True,
+                )
+            previous_releases = {}
+            for addon in (*ADDONS, LEGACY_ADDON):
+                current = self._rooted(f"/opt/odoo-hosting/addons/{addon}")
+                if current.is_symlink():
+                    previous_releases[addon] = os.readlink(current)
+                elif os.path.lexists(current):
+                    previous_releases[addon] = "non-symlink"
+                else:
+                    previous_releases[addon] = None
+            manifest = {
+                "database": self.database,
+                "revision": self.revision,
+                "customer": self.customer,
+                "environment": self.environment,
+                "previous_releases": previous_releases,
+            }
+            manifest_path = backup / "deployment.json"
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+            manifest_path.chmod(0o600)
+        except OSError as error:
+            raise DeploymentError("Deployment configuration backup failed.") from error
+        return backup
+
+    def _release_tree_digest(self, directory, *, ignore_markers=False):
+        digest = hashlib.sha256()
+        for path in sorted(directory.rglob("*")):
+            relative = path.relative_to(directory)
+            if ignore_markers and relative.as_posix() in {
+                "ARTIFACT_SHA256",
+                "REVISION",
+            }:
+                continue
+            if path.is_symlink():
+                raise DeploymentError("Release contents include an unexpected symlink.")
+            if path.is_dir():
+                digest.update(f"directory\0{relative.as_posix()}\0".encode())
+                continue
+            if not path.is_file():
+                raise DeploymentError("Release contents include an unsupported file.")
+            executable = path.stat().st_mode & 0o111
+            digest.update(
+                f"file\0{relative.as_posix()}\0{executable:o}\0".encode()
+            )
+            with path.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+        return digest.hexdigest()
+
+    def _make_release_read_only(self, revision_root):
+        paths = sorted(
+            revision_root.rglob("*"), key=lambda path: len(path.parts), reverse=True
+        )
+        for path in paths:
+            mode = path.stat().st_mode & 0o777
+            path.chmod(mode & ~0o222)
+        revision_root.chmod(0o555)
+
+    def _extract_release(self):
+        releases = self._rooted(
+            f"/opt/odoo-releases/{self.customer}/{self.environment}"
+        )
+        revision_root = releases / self.revision
+        releases.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix=f".{self.revision[:12]}-", dir=releases
+        ) as temporary:
+            temporary_path = Path(temporary)
+            try:
+                with tarfile.open(self.archive, "r:gz") as bundle:
+                    members = bundle.getmembers()
+                    if not members or len(members) > 10000:
+                        raise DeploymentError(
+                            "Deployment artifact has an invalid file count."
+                        )
+                    total_size = 0
+                    for member in members:
+                        path = Path(member.name)
+                        is_addons_parent = (
+                            member.isdir() and path.parts == ("addons",)
+                        )
+                        is_addon_content = (
+                            len(path.parts) >= 2
+                            and path.parts[0] == "addons"
+                            and path.parts[1] in ADDONS
+                            and (len(path.parts) > 2 or member.isdir())
+                        )
+                        if (
+                            path.is_absolute()
+                            or ".." in path.parts
+                            or not (is_addons_parent or is_addon_content)
+                            or not (member.isfile() or member.isdir())
+                        ):
+                            raise DeploymentError(
+                                "Deployment artifact contains an unsafe path."
+                            )
+                        total_size += member.size
+                    if total_size > 100 * 1024 * 1024:
+                        raise DeploymentError(
+                            "Deployment artifact is unexpectedly large."
+                        )
+                    bundle.extractall(temporary_path, filter="data")
+            except (OSError, tarfile.TarError) as error:
+                raise DeploymentError(
+                    "Deployment artifact extraction failed."
+                ) from error
+            source = temporary_path / "addons"
+            if any(not (source / addon / "__manifest__.py").is_file() for addon in ADDONS):
+                raise DeploymentError(
+                    "Deployment artifact does not contain the POS Revolut addon manifest."
+                )
+            if revision_root.exists():
+                marker = revision_root / "REVISION"
+                if (
+                    not marker.is_file()
+                    or marker.read_text().strip() != self.revision
+                ):
+                    raise DeploymentError(
+                        "Existing release directory has the wrong revision marker."
+                    )
+                checksum_marker = revision_root / "ARTIFACT_SHA256"
+                if (
+                    not checksum_marker.is_file()
+                    or checksum_marker.read_text().strip() != self.expected_sha256
+                ):
+                    raise DeploymentError(
+                        "Existing release directory has no matching artifact "
+                        "checksum marker."
+                    )
+                if self._release_tree_digest(
+                    revision_root, ignore_markers=True
+                ) != self._release_tree_digest(source):
+                    raise DeploymentError(
+                        "Existing release contents do not match the uploaded artifact."
+                    )
+                self._make_release_read_only(revision_root)
+                return revision_root
+            staged = temporary_path / "release"
+            staged.mkdir()
+            published = False
+            try:
+                for addon in ADDONS:
+                    shutil.move(str(source / addon), staged / addon)
+                (staged / "REVISION").write_text(self.revision + "\n")
+                (staged / "ARTIFACT_SHA256").write_text(
+                    self.expected_sha256 + "\n"
+                )
+                os.replace(staged, revision_root)
+                published = True
+                self._make_release_read_only(revision_root)
+            except OSError as error:
+                cleanup = revision_root if published else staged
+                try:
+                    for path in sorted(cleanup.rglob("*"), key=lambda item: len(item.parts)):
+                        if path.is_dir():
+                            path.chmod(0o755)
+                    cleanup.chmod(0o755)
+                    if published:
+                        shutil.rmtree(cleanup)
+                except OSError as cleanup_error:
+                    raise DeploymentError(
+                        f"Deployment artifact extraction failed; remove incomplete "
+                        f"release {revision_root} while Odoo remains stopped."
+                    ) from cleanup_error
+                raise DeploymentError("Deployment artifact extraction failed.") from error
+        return revision_root
+
+    def _activate_release(self, release):
+        currents = [self._rooted(f"/opt/odoo-hosting/addons/{addon}") for addon in ADDONS]
+        currents[0].parent.mkdir(parents=True, exist_ok=True)
+        legacy = self._rooted(f"/opt/odoo-hosting/addons/{LEGACY_ADDON}")
+        for current in [*currents, legacy]:
+            if os.path.lexists(current) and not current.is_symlink():
+                raise DeploymentError(
+                    f"Existing {current.name} addon is not a release symlink; "
+                    "refusing to overwrite it."
+                )
+        temporaries = [current.with_name(f".{current.name}.{os.getpid()}") for current in currents]
+        try:
+            for temporary, addon in zip(temporaries, ADDONS):
+                temporary.unlink(missing_ok=True)
+                temporary.symlink_to(release / addon, target_is_directory=True)
+            for temporary, current in zip(temporaries, currents):
+                os.replace(temporary, current)
+        except OSError as error:
+            raise DeploymentError("Could not activate the reviewed release.") from error
+        finally:
+            for temporary in temporaries:
+                temporary.unlink(missing_ok=True)
+
+    def _update_module(self):
+        before = self._module_states()
+        if before.get(LEGACY_ADDON) in {"to install", "to upgrade", "to remove"}:
+            raise DeploymentError("Restaurant bridge has a pending module operation.")
+        if self.mode == "install":
+            operations = ["--init", "pos_revolut"]
+        else:
+            operations = ["--update", "pos_revolut"]
+        venv_python = self._rooted("/opt/odoo-hosting/venv/bin/python")
+        odoo_command = ["/usr/bin/odoo"]
+        if venv_python.is_file() and os.access(venv_python, os.X_OK):
+            odoo_command = [
+                "/opt/odoo-hosting/venv/bin/python",
+                "/usr/bin/odoo",
+            ]
+        self._run(
+            [
+                "runuser",
+                "-u",
+                "odoo",
+                "--",
+                *odoo_command,
+                "--config",
+                "/etc/odoo/odoo.conf",
+                "--database",
+                self.database,
+                *operations,
+                "--stop-after-init",
+                "--no-http",
+                "--workers=0",
+            ],
+            "Odoo module update",
+            capture_output=True,
+        )
+        after = self._module_states()
+        if after.get("pos_revolut") != "installed":
+            raise DeploymentError("POS Revolut base addon is not installed after update.")
+        if after.get("pos_restaurant") != "installed":
+            raise DeploymentError("Restaurant dependency is not installed after update.")
+        if after.get(LEGACY_ADDON) is not None:
+            raise DeploymentError("Restaurant bridge was not merged during update.")
+        legacy = self._rooted(f"/opt/odoo-hosting/addons/{LEGACY_ADDON}")
+        if legacy.is_symlink():
+            legacy.unlink()
+
+    def _module_states(self):
+        rows = self._psql(
+            "SELECT name || '|' || state FROM ir_module_module "
+            "WHERE name IN ('pos_revolut', 'pos_restaurant', "
+            "'pos_revolut_restaurant') ORDER BY name",
+            "Odoo module state check",
+        ).splitlines()
+        states = {}
+        for row in rows:
+            name, separator, state = row.strip().partition("|")
+            if not separator or name not in {*ADDONS, LEGACY_ADDON, "pos_restaurant"} or not state:
+                raise DeploymentError("Odoo module state check returned invalid data.")
+            states[name] = state
+        return states
+
+    def _health_check(self):
+        self._run(
+            ["systemctl", "is-active", "--quiet", "odoo"],
+            "Odoo service health check",
+            capture_output=True,
+        )
+        self._run(
+            [
+                "curl",
+                "--fail",
+                "--silent",
+                "--show-error",
+                "--retry",
+                "15",
+                "--retry-connrefused",
+                "--retry-delay",
+                "2",
+                "--retry-max-time",
+                "45",
+                "--max-time",
+                "15",
+                "http://127.0.0.1:8069/web/login",
+                "--output",
+                "/dev/null",
+            ],
+            "Odoo HTTP health check",
+            capture_output=True,
+        )
+
+    def execute(self):
+        self._validate()
+        if not self.archive.is_file():
+            raise DeploymentError("Deployment artifact is missing.")
+        if sha256(self.archive) != self.expected_sha256:
+            raise DeploymentError("Deployment artifact checksum mismatch.")
+        blockers = self._financial_blockers()
+        if blockers:
+            raise DeploymentError(
+                "A financial operation blocks deployment: " + ", ".join(blockers)
+            )
+        self._verify_addons_path()
+        self._pdf_preflight()
+        self._run(
+            ["systemctl", "start", "odoo-backup.service"],
+            "Database and filestore backup",
+            capture_output=True,
+        )
+        backup = self._backup_configuration()
+        self._run(
+            ["systemctl", "stop", "odoo"],
+            "Odoo service stop",
+            capture_output=True,
+        )
+        blockers = self._financial_blockers()
+        if blockers:
+            raise DeploymentError(
+                "A financial operation blocks deployment after checkout quiescence: "
+                + ", ".join(blockers)
+            )
+        financial_state = self._financial_snapshot()
+        try:
+            financial_path = backup / "financial-state.json"
+            financial_path.write_text(json.dumps(financial_state, sort_keys=True, default=str) + "\n")
+            financial_path.chmod(0o600)
+        except OSError as error:
+            raise DeploymentError("Financial preservation backup failed; Odoo remains stopped.") from error
+        release = self._extract_release()
+        self._activate_release(release)
+        self._update_module()
+        self._verify_financial_snapshot(financial_state)
+        self._run(
+            ["systemctl", "start", "odoo"],
+            "Odoo service restart",
+            capture_output=True,
+        )
+        self._health_check()
+        return (
+            f"Deployed POS Revolut revision {self.revision}\n"
+            f"Release: /opt/odoo-releases/{self.customer}/{self.environment}/"
+            f"{self.revision}/pos_revolut\n"
+            f"Configuration backup: /{backup.relative_to(self.root)}\n"
+            f"Financial state preserved: {sum(len(rows) for rows in financial_state.values())} records\n"
+        )
+
+
+def parse_arguments(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--archive", type=Path, required=True)
+    parser.add_argument("--expected-sha256", required=True)
+    parser.add_argument("--revision", required=True)
+    parser.add_argument("--database", required=True)
+    parser.add_argument("--customer", required=True)
+    parser.add_argument("--environment", required=True)
+    parser.add_argument("--mode", choices=("install", "upgrade"), required=True)
+    return parser.parse_args(argv)
+
+
+def main(
+    argv=None,
+    *,
+    runner=None,
+    stdout=None,
+    stderr=None,
+    root=None,
+    effective_uid=None,
+):
+    args = parse_arguments(argv)
+    stdout = stdout or sys.stdout
+    stderr = stderr or sys.stderr
+    root = Path("/") if root is None else Path(root)
+    effective_uid = os.geteuid() if effective_uid is None else effective_uid
+    if effective_uid != 0:
+        print("Deployment failed: the remote deployer must run as root.", file=stderr)
+        return 1
+    deployment = RemoteDeployment(
+        runner=runner or CommandRunner(),
+        root=root,
+        archive=args.archive,
+        expected_sha256=args.expected_sha256,
+        revision=args.revision,
+        database=args.database,
+        customer=args.customer,
+        environment=args.environment,
+        mode=args.mode,
+    )
+    lock_path = root / "run" / "lock" / "pos-revolut-deploy.lock"
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("w") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise DeploymentError(
+                    "Another POS Revolut deployment is running."
+                ) from error
+            report = deployment.execute()
+    except (DeploymentError, OSError) as error:
+        print(f"Deployment failed: {error}", file=stderr)
+        return 1
+    finally:
+        args.archive.unlink(missing_ok=True)
+    print(report, end="" if report.endswith("\n") else "\n", file=stdout)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

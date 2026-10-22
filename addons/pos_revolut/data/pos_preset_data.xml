@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <record id="pos_takein_preset" model="pos.preset">
+        <field name="name">Dine In</field>
+    </record>
+    <record id="pos_takeout_preset" model="pos.preset">
+        <field name="name">Takeout</field>
+    </record>
+    <record id="pos_delivery_preset" model="pos.preset">
+        <field name="name">Delivery</field>
+        <field name="identification">address</field>
+    </record>
+</odoo>

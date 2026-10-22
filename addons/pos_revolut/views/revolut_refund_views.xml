@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_revolut_refund_list" model="ir.ui.view">
+        <field name="name">pos.revolut.refund.operation.list</field>
+        <field name="model">pos.revolut.refund.operation</field>
+        <field name="arch" type="xml">
+            <list create="0" edit="0" delete="0" decoration-danger="state == 'failed'" decoration-warning="state in ('dispatching', 'pending', 'unresolved')">
+                <field name="create_date" string="Recorded On"/>
+                <field name="original_order_id"/>
+                <field name="display_return_id" context="{'revolut_return_display': True}"/>
+                <field name="amount"/>
+                <field name="currency_id" optional="hide"/>
+                <field name="state" string="Refund Status"/>
+                <field name="origin" string="Source"/><field name="native_completion_label"/>
+                <field name="revolut_order_id" string="Revolut Refund Reference" optional="hide"/>
+                <field name="related_order_id" string="Original Revolut Payment Reference" optional="hide"/>
+                <field name="company_id" groups="base.group_multi_company" optional="hide"/>
+            </list>
+        </field>
+    </record>
+    <record id="view_revolut_refund_form" model="ir.ui.view">
+        <field name="name">pos.revolut.refund.operation.form</field>
+        <field name="model">pos.revolut.refund.operation</field>
+        <field name="arch" type="xml">
+            <form create="0" edit="0" delete="0">
+                <header>
+                    <field name="pos_order_id" invisible="True"/>
+                    <field name="native_reconciliation_status" invisible="True"/>
+                    <button name="action_check_status" type="object" string="Check status" class="btn-primary" invisible="state in ('verified', 'failed')"/>
+                    <button name="action_recover_return" type="object" string="Restore missing return" class="btn-primary" groups="point_of_sale.group_pos_manager" invisible="origin != 'odoo' or state != 'verified' or pos_order_id"/>
+                <button name="action_open_native_completion" type="object" string="Complete native work" groups="point_of_sale.group_pos_manager" invisible="origin != 'external' or state == 'failed' or native_reconciliation_status in ('native_completed', 'financial_only')"/>
+                    <button name="action_validate_native_return" type="object" string="Validate confirmed return" groups="point_of_sale.group_pos_manager" invisible="origin != 'external' or not pos_order_id or state != 'verified' or native_reconciliation_status != 'native_draft'" confirm="Validate the selected native return with the already-issued card reimbursement. Native stock and accounting effects apply."/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="state" string="Refund Status"/>
+                            <field name="amount"/>
+                            <field name="currency_id" invisible="True"/>
+                            <field name="origin" string="Source"/><field name="native_completion_label"/>
+                        </group>
+                        <group>
+                            <field name="original_order_id"/>
+                            <field name="display_return_id" context="{'revolut_return_display': True}"/>
+                            <field name="payment_method_id"/>
+                        </group>
+                    </group>
+                    <p invisible="origin != 'external' or pos_order_id">No Odoo return is linked. Revolut confirms the refund amount, but does not identify which products or quantities were returned.</p>
+                    <p invisible="origin != 'odoo' or state != 'verified' or pos_order_id">The refund is completed, but its saved Odoo return is missing. Restore it, then review and validate it in the register. Restoring sends no new refund.</p>
+                    <p invisible="state not in ('dispatching', 'pending', 'unresolved')">This refund is awaiting confirmation. Check its status before issuing another refund or changing payment method.</p>
+                    <notebook>
+                        <page string="Details" name="refund_details">
+                            <group>
+                                <group string="Revolut References">
+                                    <field name="revolut_order_id" string="Refund Reference"/>
+                                    <field name="related_order_id" string="Original Payment Reference"/>
+                                    <field name="provider_state" string="Reported Status"/>
+                                    <field name="local_outcome" string="Status Detail"/>
+                                    <field name="original_purchase_at"/>
+                                    <field name="provider_initiated_at" invisible="origin != 'external'"/>
+                                    <p invisible="origin != 'external' or provider_initiated_at">Provider initiation time unavailable. Odoo import time is separate.</p>
+                                    <field name="create_date" string="Odoo imported / recorded at"/>
+                                    <field name="dispatched_at" string="Odoo first recorded at"/>
+                                    <field name="verified_at" string="Financial success verified at"/><field name="last_provider_observed_at" invisible="origin != 'external'"/>
+                                    <field name="next_reconcile_at" string="Next Status Check" invisible="state in ('verified', 'failed')"/>
+                                </group>
+                                <group string="Odoo References">
+                                    <field name="original_operation_id" string="Original Card Payment"/>
+                                    <field name="native_reconciled_by"/><field name="native_reconciled_at"/>
+                                    <field name="historical_acknowledged_by" invisible="not historical_acknowledged_at"/>
+                                    <field name="historical_acknowledged_at" invisible="not historical_acknowledged_at"/>
+                                    <field name="financial_only_reason" invisible="not financial_correction_move_id"/>
+                                    <field name="financial_correction_move_id" invisible="not financial_correction_move_id"/>
+                                    <field name="allocation_explicit" invisible="origin != 'external'"/>
+                                    <field name="base_amount_minor" invisible="not allocation_explicit"/>
+                                    <field name="tip_amount_minor" invisible="not allocation_explicit"/>
+                                    <field name="pos_session_id" string="POS Session"/>
+                                    <field name="order_uuid" string="Return Identifier" invisible="origin == 'external'"/>
+                                    <field name="payment_line_uuid" string="Return Payment Identifier" invisible="origin == 'external'"/>
+                                    <field name="idempotency_key" string="Refund Request Identifier" invisible="origin == 'external'"/>
+                                </group>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="action_revolut_refunds" model="ir.actions.act_window">
+        <field name="name">Revolut Refunds</field><field name="res_model">pos.revolut.refund.operation</field><field name="view_mode">list,form</field>
+    </record>
+    <menuitem id="menu_revolut_refunds" name="Revolut Refunds" parent="point_of_sale.menu_point_of_sale" action="action_revolut_refunds" groups="point_of_sale.group_pos_manager" sequence="41"/>
+</odoo>

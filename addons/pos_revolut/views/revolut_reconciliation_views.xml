@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_revolut_reconciliation_list" model="ir.ui.view">
+        <field name="name">pos.revolut.payment.operation.reconciliation.list</field>
+        <field name="model">pos.revolut.payment.operation</field>
+        <field name="arch" type="xml">
+            <list create="0" edit="0" delete="0">
+                <field name="create_date" string="Started"/>
+                <field name="age_minutes"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="pos_session_id"/>
+                <field name="pos_order_id"/>
+                <field name="order_uuid"/>
+                <field name="amount"/>
+                <field name="currency_id"/>
+                <field name="state"/>
+                <field name="local_outcome"/>
+                <field name="sanitized_error"/>
+                <field name="external_refund_review_required" optional="show"/>
+                <field name="revolut_order_id"/>
+                <field name="revolut_payment_intent_id"/>
+                <field name="revolut_payment_id"/>
+                <field name="support_explanation"/>
+            </list>
+        </field>
+    </record>
+    <record id="view_revolut_reconciliation_form" model="ir.ui.view">
+        <field name="name">pos.revolut.payment.operation.reconciliation.form</field>
+        <field name="model">pos.revolut.payment.operation</field>
+        <field name="arch" type="xml">
+            <form create="0" edit="0" delete="0">
+                <header>
+                    <button name="action_revolut_reconcile" type="object"
+                            string="Request Reconciliation" class="btn-primary"
+                            groups="point_of_sale.group_pos_manager"/>
+                    <button name="action_revolut_open_association" type="object"
+                            string="Associate References" class="btn-secondary"
+                            groups="point_of_sale.group_pos_manager"
+                            invisible="state == 'verified' or retry_safe"/>
+                    <field name="state" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group string="Original POS Payment">
+                            <field name="company_id"/>
+                            <field name="pos_config_id"/>
+                            <field name="pos_session_id"/>
+                            <field name="pos_order_id"/>
+                            <field name="order_uuid"/>
+                            <field name="payment_line_uuid"/>
+                            <field name="amount"/>
+                            <field name="currency_id"/>
+                            <field name="age_minutes"/>
+                        </group>
+                        <group string="Revolut Evidence">
+                            <field name="revolut_order_id"/>
+                            <field name="revolut_payment_intent_id"/>
+                            <field name="revolut_payment_id"/>
+                            <field name="local_outcome"/>
+                            <field name="sanitized_error"/>
+                            <field name="retry_safe"/>
+                            <field name="support_explanation"/>
+                            <field name="external_refund_review_note"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Audit Trail">
+                            <field name="audit_ids" readonly="1">
+                                <list create="0" edit="0" delete="0">
+                                    <field name="create_date"/>
+                                    <field name="actor_id"/>
+                                    <field name="action"/>
+                                    <field name="evidence_reference"/>
+                                    <field name="resulting_state"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    <record id="action_revolut_reconciliation" model="ir.actions.act_window">
+        <field name="name">Revolut Reconciliation</field>
+        <field name="res_model">pos.revolut.payment.operation</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">['|', ('state', 'in', ['created', 'dispatching_order', 'order_created', 'dispatching_intent', 'pending', 'unresolved']), '&amp;', ('state', 'in', ['declined', 'failed', 'cancelled']), ('retry_safe', '=', False)]</field>
+    </record>
+    <record id="action_revolut_reconciliation_list_view" model="ir.actions.act_window.view">
+        <field name="act_window_id" ref="action_revolut_reconciliation"/>
+        <field name="view_mode">list</field>
+        <field name="view_id" ref="view_revolut_reconciliation_list"/>
+        <field name="sequence">1</field>
+    </record>
+    <record id="action_revolut_reconciliation_form_view" model="ir.actions.act_window.view">
+        <field name="act_window_id" ref="action_revolut_reconciliation"/>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="view_revolut_reconciliation_form"/>
+        <field name="sequence">2</field>
+    </record>
+    <menuitem id="menu_revolut_reconciliation"
+              name="Revolut Reconciliation"
+              parent="point_of_sale.menu_point_of_sale"
+              action="action_revolut_reconciliation"
+              sequence="20"
+              groups="point_of_sale.group_pos_manager"/>
+    <record id="view_revolut_association_wizard" model="ir.ui.view">
+        <field name="name">pos.revolut.association.wizard.form</field>
+        <field name="model">pos.revolut.association.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Associate Revolut References">
+                <group>
+                    <field name="operation_id"/>
+                    <field name="order_reference"/>
+                    <field name="intent_reference"/>
+                </group>
+                <footer>
+                    <button name="action_associate" type="object"
+                            string="Validate and Associate" class="btn-primary"/>
+                    <button string="Cancel" special="cancel" class="btn-secondary"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>

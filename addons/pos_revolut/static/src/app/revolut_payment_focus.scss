@@ -1,0 +1,11 @@
+.payment-screen {
+    .paymentmethod:focus,
+    .revolut-choose-amount:focus,
+    .send_payment_request:focus,
+    .send_payment_cancel:focus,
+    .revolut_check_status:focus {
+        outline: 3px solid #111;
+        outline-offset: 2px;
+        box-shadow: 0 0 0 2px #fff;
+    }
+}
