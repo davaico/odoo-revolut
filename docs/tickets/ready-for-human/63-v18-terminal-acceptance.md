@@ -72,15 +72,17 @@ Aggregate criteria stay open when only a bounded subcase has passed.
 
 ## Next checks and blockers
 
-- [ ] Resolve [70 — completed-refund native recovery](../closed/70-recover-verified-refund-with-unprojected-native-tender.md)
-  with mocked regressions and a reviewed correction; coordinate with any agent
-  already working on it before starting duplicate implementation.
-- [ ] After authorized deployment, safely resume and complete the same two
+- [x] Resolve [70 — completed-refund native recovery](../closed/70-recover-verified-refund-with-unprojected-native-tender.md)
+  with mocked regressions and a reviewed correction. The owner-authorized local
+  deployment is complete on addon `18.0.1.0.2`, immutable source `2aeef4b`;
+  existing financial/native evidence is preserved.
+- [ ] On the deployed correction, safely resume and complete the same two
   native returns. Both remain draft despite card-refund completion. The mixed
   return's previously approved manual Cash portion remains outstanding.
 - [ ] Physically retest the unsent-tender reload sequence after deploying the
   reviewed [ticket 68 fix](../closed/68-investigate-duplicate-revolut-line-after-reload.md).
-  Its implementation is closed; deployment/physical acceptance is separate.
+  Its implementation is closed and is included in the deployed artifact;
+  physical acceptance remains separate.
 - [ ] Resolve or explicitly disposition the earlier candidate's full-suite
   busy-reload failure retained in private ticket 67. The later ticket-68
   candidate has a separate green full run; it does not rewrite earlier results.

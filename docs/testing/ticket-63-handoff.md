@@ -19,24 +19,24 @@ previously approved manual Cash portion; do not send another card refund.
 
 ## Resume in order
 
-1. Check ongoing [ticket 70](../tickets/closed/70-recover-verified-refund-with-unprojected-native-tender.md)
-   work before implementing. Recovery currently raises “The verified refund
-   payment link does not match its original allocation.” The matching saved
-   tender exists but lacks final native projection/references. The standalone
-   failure was reproduced through the actual action with provider HTTP
-   forbidden and rollback; the mixed case is operator/UI-confirmed. Require
-   mocked coverage of both, idempotent resumption and rejection of contradictory
-   evidence. Preserve identities and financial authority checks.
-2. After a reviewed correction and authorized deployment, resume the same
-   standalone return, then the same mixed return with its approved Cash
-   balance. Validate each once and verify receipts, references, stock and
-   accounting effects with no financial redispatch or duplicate native records.
+1. The reviewed [ticket 70 correction](../tickets/closed/70-recover-verified-refund-with-unprojected-native-tender.md)
+   is implemented and deployed to local acceptance on addon `18.0.1.0.2`,
+   immutable source `2aeef4b`. Its full mocked suite reports 778 tests with no
+   failures/errors and one optional employee-list skip. Read the
+   [deployment/preservation evidence](ticket-70-existing-waiting-refund-recovery.md#authorized-local-acceptance-deployment--2026-10-23).
+2. Refresh Odoo, then use **Recover return** on the existing standalone refund,
+   followed by the existing mixed refund. The agent performed no recovery or
+   validation during deployment. Retain the same return/tender/refund identities;
+   explicitly complete only the mixed return's already approved manual Cash
+   balance, then validate each return once. Verify receipts, references, stock
+   and accounting effects with no financial redispatch or duplicate records.
 3. Physically retest [ticket 68](../tickets/closed/68-investigate-duplicate-revolut-line-after-reload.md)'s
    cancelled-tender removal / new unsent allocation / refresh sequence.
    Implementation is closed on this branch: addon `18.0.1.0.2`, fix `44da485`,
    full mocked suite 771 passed / 1 optional skip / no failures or errors.
-   See its [validation record](ticket-68-draft-reload.md). This newer fix was
-   not deployed in the last acceptance observation (running addon `18.0.1.0.1`).
+   See its [validation record](ticket-68-draft-reload.md). This fix is included
+   in the newly deployed `18.0.1.0.2` artifact; physical reload retesting remains
+   open.
 4. Continue the checklist's remaining physical scenarios and reconcile all
    obligations before closure. Preserve the earlier candidate's full-suite
    busy-reload failure in private ticket 67; the later green run belongs to
@@ -55,6 +55,7 @@ Existing card collection and refund limits are fully consumed. Refunds do not
 replenish collection limits. New financial scenarios need fresh scope; the
 mixed return's already approved Cash portion needs no repeated approval.
 Guide the operator in several clear manual steps. No unattended monitor is
-scheduled. This publication authorizes no deployment, new payment/refund,
-Force done, live database repair or history deletion. Automated tests use
+scheduled. The owner separately authorized the recorded local deployment,
+which is now complete. No new payment/refund, Force done, live database repair or history
+deletion is authorized by this handoff. Automated tests use
 mocked Merchant HTTP only. Keep the full physical gate and parent scope open.

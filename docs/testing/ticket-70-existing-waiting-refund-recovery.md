@@ -135,3 +135,32 @@ adaptations. This change does not implement or claim Odoo 19 runtime parity.
 No real terminal/merchant request, live database repair, deployment, credential
 rotation or physical acceptance occurred. Protected manual-acceptance records
 remain intact; this work establishes synthetic Odoo 18 recovery correctness.
+
+
+## Authorized local acceptance deployment — 2026-10-23
+
+After implementation closure, the owner explicitly authorized local acceptance
+deployment and the push to origin, while forbidding financial operations.
+The reviewed addon was deployed from immutable sanitized revision
+`2aeef4ba326b67f4c9361b6c8a024e71a167bcd3`, archive SHA256
+`360998675aed5dc3b45a3d1f4d589386456f57022f21be1c26a8fedee3055d95`.
+Its addon tree exactly matches the fully tested `a868add` candidate.
+
+The worker was stopped; both existing database backups were restored in an
+isolated environment. A cloned-database module update passed with Merchant
+HTTP blocked and no outward network. The acceptance database was then updated
+with Merchant HTTP blocked and cron disabled. The prior configuration, addon,
+databases and filestore are retained in restricted backups.
+
+The resulting addon version is `18.0.1.0.2`; the loaded refund form contains
+**Recover return**. Every pre-existing business value across 64 records in
+17 snapshotted financial/native/configuration/stock/accounting tables was
+preserved (incidental ORM write bookkeeping excluded; new schema defaults
+allowed). All deployed tracked addon files match the immutable revision.
+The worker restarted, HTTP health passed, and cron remains disabled.
+
+Both existing card refunds remain verified and their native completion is
+still for the operator to perform. The agent did not invoke recovery, POS
+validation, manual Cash completion, provider status retrieval or any financial
+operation. This verifies deployment and preservation, not physical recovery
+acceptance. Full snapshots, logs and backup identities remain private.
