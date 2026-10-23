@@ -27,7 +27,7 @@ class TestExternalRefundManagerUi(TestPointOfSaleHttpCommon):
         result.json.return_value = payload if payload is not None else values
         return result
 
-    def _run_resume(self, *, external=True, split=False, existing=False):
+    def _run_resume(self, *, external=True, split=False, existing=False, completed_reload=False):
         self.source = TestRevolutNativePrinting._historical_sale(self, split=split)
         session = self.main_pos_config.current_session_id
         session.write({"update_stock_at_closing": False})
@@ -82,6 +82,8 @@ class TestExternalRefundManagerUi(TestPointOfSaleHttpCommon):
             tour = ("pos_revolut_external_resume_mixed" if split else "pos_revolut_external_resume") if external else "pos_revolut_manager_restore_return"
             if existing:
                 tour = "pos_revolut_manager_resume_mixed" if split else "pos_revolut_manager_resume_waiting"
+            if completed_reload:
+                tour = "pos_revolut_manager_completed_return_reload"
             self.start_tour(f"/odoo/action-{action.id}/{refund.id}?debug=tests", tour, login="pos_admin")
             if existing:
                 self.assertEqual([call.args[0] for call in provider.call_args_list], ["GET"])
@@ -127,6 +129,9 @@ class TestExternalRefundManagerUi(TestPointOfSaleHttpCommon):
 
     def test_manager_resumes_waiting_mixed_return_and_explicitly_completes_cash(self):
         self._run_resume(external=False, existing=True, split=True)
+
+    def test_completed_manager_return_reload_has_no_stale_recovery_warning(self):
+        self._run_resume(external=False, existing=True, completed_reload=True)
 
     def test_external_return_reprints_from_closed_session_without_financial_dispatch(self):
         self._run_resume()

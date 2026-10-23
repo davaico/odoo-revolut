@@ -5,7 +5,7 @@ import * as ReceiptScreen from "@pos_revolut/../tests/tours/receipt_screen_util"
 import { refresh } from "@point_of_sale/../tests/tours/utils/common";
 import { registry } from "@web/core/registry";
 
-function resumeSteps({ external = true, split = false, checkStatus = false } = {}) {
+function resumeSteps({ external = true, split = false, checkStatus = false, completedReload = false } = {}) {
     return [
         ...(checkStatus ? [{ trigger: ".o_form_view button[name='action_check_status']", run: "click" }] : []),
         ...(external ? [
@@ -57,6 +57,24 @@ function resumeSteps({ external = true, split = false, checkStatus = false } = {
         ReceiptScreen.totalAmountContains("-12.34"),
         ReceiptScreen.paymentLineContains("Revolut", split ? "-6.17" : "-12.34"),
         ...(split ? [ReceiptScreen.paymentLineContains("Cash", "-6.17")] : []),
+        ...(completedReload ? [
+            ReceiptScreen.clickNextOrder(),
+            { trigger: ".product-screen" },
+            refresh(),
+            {
+                content: "Reload after completing recovery must not warn about the already-paid return",
+                trigger: "body:has(.product-screen)",
+                run() {
+                    const warning = document.querySelector(".modal");
+                    if (warning) {
+                        throw new Error("Completed return recovery warned after reload: " + warning.textContent);
+                    }
+                    if (new URLSearchParams(window.location.search).has("revolut_return_uuid")) {
+                        throw new Error("Completed return recovery left its one-time resume URL behind");
+                    }
+                },
+            },
+        ] : []),
     ].flat();
 }
 
@@ -75,6 +93,10 @@ registry.category("web_tour.tours").add("pos_revolut_manager_resume_waiting", {
 });
 registry.category("web_tour.tours").add("pos_revolut_manager_resume_mixed", {
     steps: () => resumeSteps({ external: false, split: true, checkStatus: true }),
+});
+
+registry.category("web_tour.tours").add("pos_revolut_manager_completed_return_reload", {
+    steps: () => resumeSteps({ external: false, checkStatus: true, completedReload: true }),
 });
 
 registry.category("web_tour.tours").add("pos_revolut_external_historical_reprint", {
