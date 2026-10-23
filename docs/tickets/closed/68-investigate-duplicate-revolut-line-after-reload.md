@@ -186,4 +186,4 @@ idempotent server retirement; native refresh retains the pending allocation
 exactly once while original attempt and dispatch history remain intact.
 Final full-suite evidence and limitations are recorded in the linked report.
 The Odoo 19 source gap is tracked separately in
-[ticket 69](../ready-for-agents/69-port-durable-tender-removal-to-odoo-19.md).
+[ticket 69](../closed/69-port-durable-tender-removal-to-odoo-19.md).

@@ -2,7 +2,7 @@
 
 # 69 — Apply durable tender removal to Odoo 19
 
-**State:** claimed
+**State:** closed
 
 **Category:** bug
 
@@ -100,21 +100,21 @@ Editable local amounts, including zero, must not redefine saved tender identity.
   final Revolut tender is retired.
 
 **Acceptance criteria:**
-- [ ] Demonstrate a failing Odoo 19 native browser regression before correction:
+- [x] Demonstrate a failing Odoo 19 native browser regression before correction:
       start/cancel, remove, create an unsent allocation, edit zero/back and reload.
       Record UUIDs, saved identities and visible/model membership; minimise it.
-- [ ] Repeated refresh restores the pending allocation once without restoring
+- [x] Repeated refresh restores the pending allocation once without restoring
       the retired tender or creating financial dispatch or capture.
-- [ ] Retirement is idempotent for server-proven retry-safe history, preserves
+- [x] Retirement is idempotent for server-proven retry-safe history, preserves
       all operation/dispatch history and blocks uncertain/verified removal.
-- [ ] Canonical saved amounts survive local zero/back edits; saved zero-value
+- [x] Canonical saved amounts survive local zero/back edits; saved zero-value
       unstarted tenders may be removed but cannot start collection.
-- [ ] Offline/lost replies preserve recovery, and delayed cancelled foreground
+- [x] Offline/lost replies preserve recovery, and delayed cancelled foreground
       results cannot publish onto the removed tender.
-- [ ] Native cart edits survive retirement of the final Revolut tender; existing
+- [x] Native cart edits survive retirement of the final Revolut tender; existing
       saved-unstarted recovery, cancellation, distinct tenders and split checkout
       remain functional without deduplicating by method and amount.
-- [ ] Run focused Odoo 19 regressions, host checks and the full addon suite;
+- [x] Run focused Odoo 19 regressions, host checks and the full addon suite;
       record actual results and limitations, then complete Standards/Spec review.
 
 **Out of scope:**
@@ -130,3 +130,22 @@ only after confirming the failure using Odoo 19 native APIs and mocked HTTP.
 The agreed test seams are native browser persistence/rendered tender membership,
 the public server recovery/retirement and checkout interfaces, and existing
 payment-state lifecycle tests. No new test seam is required by this brief.
+
+
+## Resolution
+
+Closed on 2026-10-23 after native Odoo 19 failing reproduction, scoped correction
+and independent Standards/Spec reviews (zero findings each). Runtime commit:
+`8269e90fb6e26f2ca394ca09bb8e2535cd839cad`, addon `19.0.1.18.21`.
+Saved safe tender removal now uses durable server retirement, and restored
+local tender membership survives repeated Odoo 19 browser refresh. Original
+operation/dispatch history and unsafe/verified-payment guards remain intact.
+
+The [verification record](../../testing/ticket-69-durable-tender-removal.md)
+contains two baseline failing native cases, 65 focused Odoo checks, 145 host
+JavaScript checks, 65 host Python tests (three PDF skips), the complete addon
+suite's reported 687 tests with zero failures/errors and exit 0, test artifacts,
+review results and optional-test limitations. No typechecker is configured.
+No deployment, real Merchant request or protected acceptance mutation occurred.
+Odoo 19 `main` contains implementation `8269e90` and closure `2c10dda`; the sanitized Odoo 18 branch receives
+only this synthetic tracker/evidence closure, with no old history merge.

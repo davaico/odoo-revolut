@@ -125,7 +125,7 @@ An equivalent correction needs its own native browser regression and adapted
 Odoo 19 APIs. The Odoo 18 command-map key change must not be copied: Odoo 19
 already uses the different `payment_ids` map layout correctly. This is a source
 assessment, not an Odoo 19 rendered reproduction, test pass or backport. The adapted work is tracked in
-[ticket 69](../tickets/ready-for-agents/69-port-durable-tender-removal-to-odoo-19.md).
+[ticket 69](../tickets/closed/69-port-durable-tender-removal-to-odoo-19.md).
 No old private history has been merged into the sanitized branch.
 
 ## Standards
