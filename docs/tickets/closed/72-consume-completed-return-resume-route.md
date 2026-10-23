@@ -2,7 +2,7 @@
 
 **Work branch:** `codex/72-v18-return-resume` from `feat/v18_rev` at `6fd1757`.
 
-**State:** claimed
+**State:** closed
 
 **Triage:** ready-for-agent
 
@@ -62,3 +62,27 @@ duplicate collection, failure of ticket 68, or Odoo 19 runtime verification.
 The owner subsequently authorized fixing #72 and its final local retest, with
 no additional money movement. Exact references and original screenshots remain in
 the private ticket-63 evidence store. Published source/test changes must retain this sanitized scope.
+
+## Resolution — 2026-10-23
+
+Fixed in `fcb59c4` after the failing browser regression `da54b32`. Cleanup occurs
+only after successful native synchronization of the matching completed return
+in its own session. No financial/backend guards changed. Addon `18.0.1.0.3`.
+
+Focused evidence: nine real native browser tests passed, 144 JavaScript checks
+passed, no Standards/Spec review findings. Full and mixed completed-return
+reloads pass; unfinished-return reload and invalid-link/login guards remain.
+See [the focused verification record](../../testing/ticket-72-return-resume-reload.md).
+
+The owner-authorized local update passed isolated restore/update rehearsal and
+preserved every protected value across 68 rows in 17 financial/native/config
+collections. All 162 deployed addon files match the frozen candidate. Final
+original-instance browser smoke checks passed: two normal POS reloads, both
+existing paid returns refreshed with their original tenders, no warning or new
+financial/native effects. Merchant HTTP was blocked and remains blocked locally.
+The original session and all original drafts remain open. Exact identities and
+backup/snapshot artifacts stay in restricted acceptance records.
+
+Exact recovery/validation/completion/reload was exercised with synthetic
+records only; originals were reviewed, not financially revalidated. Ticket 63's
+full physical/parity release gate and separate Odoo 19 ticket 71 remain open.

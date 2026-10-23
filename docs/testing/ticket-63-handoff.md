@@ -1,5 +1,19 @@
 # Ticket 63 — sanitized continuation handoff
 
+## Latest bounded result — 2026-10-23
+
+Ticket 72's Odoo 18 completed-return reload fix is implemented, independently
+reviewed, locally deployed (`18.0.1.0.3`) and retested without money movement.
+Nine focused native browser tests and 144 JavaScript checks pass. Original
+normal-route reloads and saved paid-return reviews pass with all financial
+records/drafts preserved; exact completion/reload regression uses synthetic
+records. Merchant requests remain blocked locally. No more repetitive manual
+recovery checks are needed for today's bounded campaign. Full release gates
+and Odoo 19 ticket 71 remain separate/open. See
+[ticket 72's verification](ticket-72-return-resume-reload.md).
+
+Earlier checkpoints below retain their original candidate/time scope.
+
 Checkpoint: 2026-10-23. **Open / ready-for-human.**
 Base and integration target: latest sanitized **`feat/v18_rev`**.
 Read root AGENTS.md, ADR 0002 and the

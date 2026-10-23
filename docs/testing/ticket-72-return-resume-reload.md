@@ -88,3 +88,33 @@ log. Standards: no findings. Spec: no findings. It confirmed that awaited parent
 synchronization prevents cleanup on failure, matching UUID/session/state gates
 preserve unrelated navigation, and existing unfinished-return and invalid-link
 behavior remains intact. This review did not access acceptance data or providers.
+
+## Authorized local deployment and final retest
+
+The owner requested the fix and final retest without further money movement.
+Frozen candidate `fcb59c40921eaf347fbf5f36583e7b0cefb3f878`, addon tree
+`5f66efa252b2215a38c41f8ebc8b99e889769d9a`, archive SHA256
+`6c39239d879ae9a97db11ffba1d44a5e98d2e93ea5fc8db6ab73f4d41763ce8c`.
+Local deployment completed at 14:01 UTC on 2026-10-23. It restored both backups
+in isolation, rehearsed the addon update with Merchant HTTP blocked, then
+updated the local acceptance database. Protected pre-existing values across
+68 rows in 17 financial/native/configuration tables stayed exact. All 162
+mounted addon files match the frozen candidate; HTTP health and cron-disabled
+configuration verified. Original configuration/addon/database/filestore backups
+are retained privately. Merchant HTTP blocking remains enabled on the local
+worker; no new financial scope is granted by finishing this test.
+
+Final original-instance smoke: two ordinary POS reloads showed no recovery
+warning (native cashier login on the first), the original three drafts remained,
+and both existing paid returns refreshed with their exact original tender
+amounts and zero balance difference. The actually loaded browser asset contains
+the correction. All six financial/native campaign collections match before and
+after. Zero financial actions invoked; original session stayed open. No new
+refund, validation, terminal request or dispatch was made on protected records.
+The complete recovery → validation → receipt → reload regression was synthetic;
+the original records were reviewed without repeating financial completion.
+Disposable synthetic/restore resources removed. Exact references, logs and
+backup identities remain in the restricted acceptance evidence store.
+
+Implementation ticket 72 is closed. Ticket 63 and its broad release criteria
+remain open; today’s owner-requested bounded recovery/reload testing is complete.
