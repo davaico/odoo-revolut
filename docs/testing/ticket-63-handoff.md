@@ -1,75 +1,64 @@
 # Ticket 63 — sanitized continuation handoff
 
-## Latest bounded result — 2026-10-23
+Checkpoint: 2026-10-23. **Open / ready-for-human.** Base and integration target:
+**feat/v18_rev**. Preserve the original private acceptance checkout and its data;
+never merge its older ancestry. Read AGENTS.md and ADR 0002 before changes.
 
-Ticket 72's Odoo 18 completed-return reload fix is implemented, independently
-reviewed, locally deployed (`18.0.1.0.3`) and retested without money movement.
-Nine focused native browser tests and 144 JavaScript checks pass. Original
-normal-route reloads and saved paid-return reviews pass with all financial
-records/drafts preserved; exact completion/reload regression uses synthetic
-records. Merchant requests remain blocked locally. No more repetitive manual
-recovery checks are needed for today's bounded campaign. Full release gates
-and Odoo 19 ticket 71 remain separate/open. See
-[ticket 72's verification](ticket-72-return-resume-reload.md).
+## Current result
 
-Earlier checkpoints below retain their original candidate/time scope.
+The bounded Odoo 18 recovery campaign has passed. Both existing card refunds
+are verified and their original native returns are now paid, with matching saved
+receipts. The mixed return's approved manual Cash portion was completed; Cash
+was fictional test bookkeeping, not a physical exchange. Do not recover or
+validate those completed returns again as unfinished work.
 
-Checkpoint: 2026-10-23. **Open / ready-for-human.**
-Base and integration target: latest sanitized **`feat/v18_rev`**.
-Read root AGENTS.md, ADR 0002 and the
-[updated checklist](../tickets/ready-for-human/63-v18-terminal-acceptance.md).
+The ticket-68 unsent-tender removal/repeated-reload check passed. Ticket 70's
+existing-tender recovery is fixed and physically retested. Ticket 72's completed
+return reload warning is fixed, independently reviewed and locally deployed as
+**18.0.1.0.3**, frozen source **fcb59c4**. Its nine focused native browser tests and
+144 JavaScript checks passed. Original normal-route reloads and saved paid-return
+reviews passed without new provider attempts, dispatches, native records or
+changed financial proof. Original register/drafts remain open and preserved.
 
-## What is complete
+Native accounting closure/posting/reopening also passed on a disposable populated
+copy, including the fictional Cash difference. This did not close or cancel
+anything in the original register. Refund duplicate/replay protection, access
+and closing guards have bounded isolated evidence; original receipts/reprints
+and X-report matching already passed. Do not repeat these as new manual batches.
 
-Recorded bounded acceptance includes original-payment recovery with one native
-completion, Cash control and Cash/card sales, zero-tip evidence, POS/terminal
-cancellation, unavailable-terminal rejection, cancelled-order reloads, POS
-receipt PDFs, session X totals and manager navigation/audit checks. These are
-individual observations, not a completed physical release matrix.
+See [ticket 72's focused verification](ticket-72-return-resume-reload.md) and the
+[acceptance checklist](../tickets/ready-for-human/63-v18-terminal-acceptance.md).
+Exact private operation references, screenshots, backups and authorizations stay
+with the acceptance custodian; obtain them before touching protected records.
 
-Both issued card refunds are now financially completed and verified. Their
-original native returns remain draft. The mixed return still needs its
-previously approved manual Cash portion; do not send another card refund.
+## Current continuation
 
-## Resume in order
+The owner requested publication of #72 and resumption of necessary testing,
+with no further money movement. The three reviewed #72 commits were pushed to
+origin/feat/v18_rev through **4369c4d** and the remote tip was independently read
+back. The local runtime remains the same frozen reviewed addon.
 
-1. The reviewed [ticket 70 correction](../tickets/closed/70-recover-verified-refund-with-unprojected-native-tender.md)
-   is implemented and deployed to local acceptance on addon `18.0.1.0.2`,
-   immutable source `2aeef4b`. Its full mocked suite reports 778 tests with no
-   failures/errors and one optional employee-list skip. Read the
-   [deployment/preservation evidence](ticket-70-existing-waiting-refund-recovery.md#authorized-local-acceptance-deployment--2026-10-23).
-2. Refresh Odoo, then use **Recover return** on the existing standalone refund,
-   followed by the existing mixed refund. The agent performed no recovery or
-   validation during deployment. Retain the same return/tender/refund identities;
-   explicitly complete only the mixed return's already approved manual Cash
-   balance, then validate each return once. Verify receipts, references, stock
-   and accounting effects with no financial redispatch or duplicate records.
-3. Physically retest [ticket 68](../tickets/closed/68-investigate-duplicate-revolut-line-after-reload.md)'s
-   cancelled-tender removal / new unsent allocation / refresh sequence.
-   Implementation is closed on this branch: addon `18.0.1.0.2`, fix `44da485`,
-   full mocked suite 771 passed / 1 optional skip / no failures or errors.
-   See its [validation record](ticket-68-draft-reload.md). This fix is included
-   in the newly deployed `18.0.1.0.2` artifact; physical reload retesting remains
-   open.
-4. Continue the checklist's remaining physical scenarios and reconcile all
-   obligations before closure. Preserve the earlier candidate's full-suite
-   busy-reload failure in private ticket 67; the later green run belongs to
-   the newer ticket-68 candidate. Track Odoo 19 parity separately in
-   [ticket 69](../tickets/closed/69-port-durable-tender-removal-to-odoo-19.md).
+The resumed bounded batch PASSED all three existing regressions: lost native
+paid-sync response, lost refund response followed by reload, and simultaneous
+same-return refund dispatch. Two real browser tours retain original identities;
+two racing refund RPCs create one operation and one mocked dispatch. All ran
+against the frozen deployed addon in a fresh internal-only disposable database
+with real Merchant HTTP blocked. No protected acceptance record participated.
+The copy was removed. See [the focused results](ticket-63-final-no-money-recovery.md).
 
 ## Operating boundaries
 
-Exact runtime/artifact identity, access details, transaction mappings, original
-screenshots/PDFs and authorizations remain in restricted local acceptance
-records. Obtain them from the owner before touching the live environment;
-do not guess order IDs from screenshots or substitute a moving branch tip for
-the deployed artifact. Preserve other agents' checkouts and unfinished work.
+Real Merchant requests remain blocked on the local acceptance worker, and cron
+is disabled. Existing card collection/refund caps are fully consumed; refunds
+do not replenish collection limits. New financial tests need fresh explicit
+scope and budget. Do not press Send, initiate a new refund, use Force done,
+repair live financial history, cancel original drafts or close the original
+register under this handoff.
 
-Existing card collection and refund limits are fully consumed. Refunds do not
-replenish collection limits. New financial scenarios need fresh scope; the
-mixed return's already approved Cash portion needs no repeated approval.
-Guide the operator in several clear manual steps. No unattended monitor is
-scheduled. The owner separately authorized the recorded local deployment,
-which is now complete. No new payment/refund, Force done, live database repair or history
-deletion is authorized by this handoff. Automated tests use
-mocked Merchant HTTP only. Keep the full physical gate and parent scope open.
+Today's bounded recovery evidence does not close the broad physical/parity
+release gate or private parent ticket 50. Nonzero/split tips, Restaurant,
+partial/tip-related refunds and remaining physical interruption cases remain
+separate unpassed release scenarios. Odoo 19 ticket 71 is separate and open.
+The older candidate's full-suite busy-reload failure remains retained privately;
+later green candidates do not rewrite that historical result. No unattended
+monitor or extra live financial scope is authorized.

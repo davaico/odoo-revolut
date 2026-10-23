@@ -17,7 +17,8 @@ Keep Odoo 18 acceptance separate from the maintained Odoo 19 campaign.
 
 This is the sanitized continuation of the existing private acceptance ticket.
 The checkpoint below summarizes recorded operator observations and bounded
-read-only verification as of 2026-10-23; this publication reran no live tests.
+verification as of 2026-10-23. Exact completion/reload regressions use synthetic
+records; protected completed records are reviewed without financial revalidation.
 Exact candidate artifacts, approvals, transaction mappings and originals remain
 with the acceptance custodian. Obtain that private context before operating the
 existing environment. Do not import old private Git ancestry or publish its
@@ -70,19 +71,30 @@ Aggregate criteria stay open when only a bounded subcase has passed.
 - [x] Preserve failure reports for the unsent-tender reload defect and native
   completed-refund recovery defect in sanitized tickets 68 and 70.
 
+- [x] Resume three high-risk synthetic checks on the frozen deployed addon:
+  lost paid-sync response, lost refund response/reload, and simultaneous
+  same-return refund dispatch. All passed with mocked/blocked Merchant HTTP;
+  protected records untouched. See [the result](../../testing/ticket-63-final-no-money-recovery.md).
+
 ## Next checks and blockers
 
 - [x] Resolve [70 — completed-refund native recovery](../closed/70-recover-verified-refund-with-unprojected-native-tender.md)
   with mocked regressions and a reviewed correction. The owner-authorized local
   deployment is complete on addon `18.0.1.0.2`, immutable source `2aeef4b`;
   existing financial/native evidence is preserved.
-- [ ] On the deployed correction, safely resume and complete the same two
-  native returns. Both remain draft despite card-refund completion. The mixed
-  return's previously approved manual Cash portion remains outstanding.
-- [ ] Physically retest the unsent-tender reload sequence after deploying the
-  reviewed [ticket 68 fix](../closed/68-investigate-duplicate-revolut-line-after-reload.md).
-  Its implementation is closed and is included in the deployed artifact;
-  physical acceptance remains separate.
+- [x] Complete the same two original native returns on the reviewed correction,
+  preserving their refund/tender identities and receipts without card redispatch.
+  Both are paid; the mixed return's approved manual Cash portion was completed
+  as fictional test bookkeeping. Do not repeat this completed step.
+- [x] Retest the bounded unsent-tender removal/repeated-reload sequence on the
+  reviewed [ticket 68 fix](../closed/68-investigate-duplicate-revolut-line-after-reload.md),
+  preserving the original cancelled-operation history and one unsent tender.
+- [x] Fix and retest [ticket 72](../closed/72-consume-completed-return-resume-route.md):
+  nine native browser tests and 144 JavaScript checks passed; local 18.0.1.0.3
+  deployment and no-money original-record smoke/preservation verified.
+- [x] Exercise native accounting close/posting/reopen on a disposable populated
+  copy only, including fictional Cash difference; original register/drafts
+  remain open. This does not complete original-register closure.
 - [ ] Resolve or explicitly disposition the earlier candidate's full-suite
   busy-reload failure retained in private ticket 67. The later ticket-68
   candidate has a separate green full run; it does not rewrite earlier results.
