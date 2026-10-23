@@ -4,7 +4,34 @@ Checkpoint: 2026-10-23. **Open / ready-for-human.** Base and integration target:
 **feat/v18_rev**. Preserve the original private acceptance checkout and its data;
 never merge its older ancestry. Read AGENTS.md and ADR 0002 before changes.
 
-## Current result
+## Latest same-day checkpoint (supersedes older operating boundaries below)
+
+See [the additional acceptance results](ticket-63-finish-20261023.md). The owner
+subsequently authorized disposal of the three original test drafts, original
+register close/reopen and two separate GBP 0.05 live budgets. Original closure,
+posting and reopening passed. Dine-in, timed Takeout, nonzero terminal tips,
+split tip balance and pending-attempt browser reload passed. The first budget
+used GBP 0.05; the second used GBP 0.03, leaving GBP 0.02 unused. No new payment
+is needed for the completed checks. Physical Odoo printing is not applicable;
+the owner has no printer. Native PDFs were generated and visually inspected.
+
+Five newly submitted refunds remain unresolved across the two batches. Their
+native returns remain drafts. One additional GBP 0.01 refund against the first
+batch's other split source remains unsubmitted, blocked until the same return's
+existing refund is reconciled. Do not replay any existing refund, force a return
+paid or infer provider completion from a wait timeout. The owner deferred
+waiting/monitoring; no automation was created. Merchant HTTP is again blocked
+and the guard verification passed; cron stays disabled.
+
+Isolated native document/restart checks, 76 selected tests and actual separate
+cashier/manager access checks passed. Full detail and limitations are in the
+linked report. The [reload investigation](ticket-67-busy-reload-disposition.md) dispositions
+the strict immediate-Resume test assumption; only tests changed. The owner
+selected recording distinct-card split and issuer-decline cases as untested
+release limitations. No further card tests are planned. Broad release
+acceptance remains open pending obligation disposition and native completion.
+
+## Earlier checkpoint (historical)
 
 The bounded Odoo 18 recovery campaign has passed. Both existing card refunds
 are verified and their original native returns are now paid, with matching saved

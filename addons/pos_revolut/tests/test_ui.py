@@ -1721,6 +1721,9 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
     def test_terminal_busy_recovers_after_release_and_reload_without_duplicate_charge(self):
         self._run_terminal_busy_checkout("pos_revolut_busy_recovery", resume=True)
 
+    def test_terminal_busy_inflight_snapshot_reconciles_after_reload_without_duplicate_charge(self):
+        self._run_terminal_busy_checkout("pos_revolut_busy_inflight_reload", resume=True)
+
     def test_terminal_busy_line_can_be_removed_for_cash_without_second_dispatch(self):
         self._run_terminal_busy_checkout("pos_revolut_busy_cash_alternative", resume=False)
 

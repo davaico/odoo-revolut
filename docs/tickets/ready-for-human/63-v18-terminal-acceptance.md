@@ -95,7 +95,7 @@ Aggregate criteria stay open when only a bounded subcase has passed.
 - [x] Exercise native accounting close/posting/reopen on a disposable populated
   copy only, including fictional Cash difference; original register/drafts
   remain open. This does not complete original-register closure.
-- [ ] Resolve or explicitly disposition the earlier candidate's full-suite
+- [x] Resolve or explicitly disposition the earlier candidate's full-suite
   busy-reload failure retained in private ticket 67. The later ticket-68
   candidate has a separate green full run; it does not rewrite earlier results.
 - [ ] Complete outstanding decline/transport/interruption, two-card split,
@@ -114,3 +114,35 @@ Force done or repair live records by bypassing verification/allocation checks.
 Keep credentials on the server and mock all Merchant HTTP in automated tests.
 The [Odoo 19 durable-removal follow-up](../closed/69-port-durable-tender-removal-to-odoo-19.md)
 remains separate maintenance work under ADR 0002.
+
+
+## Same-day additional acceptance checkpoint
+
+See [2026-10-23 additional checks](../../testing/ticket-63-finish-20261023.md)
+for the current result; earlier outstanding lists above are historical.
+
+- [x] Original drafts disposed with explicit approval; original register
+  closed, posted balanced accounting and reopened with zero cash.
+- [x] Live Dine-in and scheduled Takeout completed, including missing-slot
+  rejection without dispatch, UTC/local pickup persistence and receipt.
+- [x] Live nonzero terminal tip and split-tip remaining balance verified;
+  pending-attempt browser reload preserved identity without duplicate send.
+- [x] Native document PDFs rendered and visually checked; no physical Odoo
+  printer exists in the owner's setup, so that hardware check is not applicable.
+- [x] Isolated process restart, 76 selected tests and authenticated cashier/
+  manager recovery/credential boundary checks passed within documented scope.
+- [x] Fresh financial scope recorded: two separate GBP 0.05 budgets, GBP 0.08
+  total collected across them. Latest budget has GBP 0.02 unused.
+- [ ] Five new refunds still unresolved; finish original native returns and
+  remaining GBP 0.01 split-source refund only after verified reconciliation.
+  Waiting/monitoring explicitly deferred by owner; no automation.
+- [x] Disposition the historical busy-reload test through a reproduced stale
+  snapshot and safe Check-status recovery. See [ticket 67 evidence](../../testing/ticket-67-busy-reload-disposition.md); the historical failure is retained.
+- [x] Owner disposition: record remaining physical coverage limits (actual issuer decline, distinct-card
+  split; other unobserved interruption variants remain explicit limitations).
+  The owner selected recording issuer-decline/distinct-card cases as untested.
+  Do not represent mocked cases
+  as physical passes or require recollection of already covered scenarios.
+
+Merchant HTTP is blocked again and the guard passed. These results do not close
+the refund/native accounting or overall release gate.

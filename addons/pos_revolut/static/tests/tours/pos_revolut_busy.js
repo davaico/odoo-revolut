@@ -24,6 +24,32 @@ function starts() {
         call.orderUuid === identity().orderUuid);
 }
 
+async function preserveInflightSnapshot(pos) {
+    // Model reload before the next native 200ms persistence debounce. Save
+    // actual in-flight state, never manufacture financial/recovery flags.
+    pos.data._debouncedSync.cancel();
+    await pos.data.indexedDB.delete("pos.payment", [identity().lineUuid]);
+    const writes = [];
+    const create = pos.data.indexedDB.create.bind(pos.data.indexedDB);
+    pos.data.indexedDB.create = (...args) => {
+        const write = create(...args);
+        writes.push(write);
+        return write;
+    };
+    pos.data.syncDataWithIndexedDB(pos.data.records);
+    await Promise.all(writes);
+    pos.data._debouncedSync.cancel();
+    pos.data.indexedDB.create = async () => [];
+    pos.data.syncDataWithIndexedDB = () => {};
+    const stored = (await pos.data.indexedDB.readAll(["pos.payment"]))["pos.payment"]
+        .find((line) => line.uuid === identity().lineUuid);
+    const state = JSON.parse(stored?.JSONuiState || "{}");
+    if (stored?.payment_status !== "waiting" || state.revolutStarted !== true ||
+        state.revolutStarting !== true || state.revolutUndispatched !== false) {
+        throw new Error("The reload fixture did not persist the actual in-flight payment");
+    }
+}
+
 function observeRpc() {
     const pos = window.posmodel;
     const call = pos.data.call.bind(pos.data);
@@ -44,7 +70,11 @@ function observeRpc() {
             sessionStorage.setItem(IDENTITY_KEY, JSON.stringify({ ...saved, lineUuid }));
         }
         let tracked;
-        tracked = call(model, method, args, ...rest).then((result) => {
+        tracked = call(model, method, args, ...rest).then(async (result) => {
+            if (start && orderUuid === identity().orderUuid &&
+                identity().persistInflight && starts().length === 1) {
+                await preserveInflightSnapshot(pos);
+            }
             sessionStorage.setItem(CALLS_KEY, JSON.stringify([
                 ...calls(), { method, orderUuid, lineUuid, result },
             ]));
@@ -107,7 +137,7 @@ function checkStatusTwice() {
     };
 }
 
-function busySaleSteps() {
+function busySaleSteps(persistInflight = false) {
     return [
         Chrome.startPoS(),
         {
@@ -136,6 +166,7 @@ function busySaleSteps() {
                     paymentMethod.use_payment_terminal === "revolut"
                 );
                 const saved = {
+                    persistInflight,
                     orderUuid: order.uuid,
                     // Native 18 persists the incoming order name as its
                     // receipt number when the new draft is first saved.
@@ -182,9 +213,9 @@ function busySaleSteps() {
     ].flat();
 }
 
-registry.category("web_tour.tours").add("pos_revolut_busy_recovery", {
-    steps: () => [
-        ...busySaleSteps(),
+function busyRecoverySteps(persistInflight = false) {
+    return [
+        ...busySaleSteps(persistInflight),
         checkStatusTwice(),
         {
             content: "Repeated explicit Resume attempts cannot bypass another order's terminal lock",
@@ -212,10 +243,31 @@ registry.category("web_tour.tours").add("pos_revolut_busy_recovery", {
             },
         },
         {
+            content: "Reconcile a possibly stale in-flight browser snapshot without a new start",
+            trigger: ".payment-screen .send_payment_request:contains('Resume'), .payment-screen .send_payment_request:contains('Check status')",
+            run() {
+                observeRpc();
+                window.revolutBusyReloadStartCount = starts().length;
+                window.revolutBusyReloadChecked = this.anchor.textContent.trim() === "Check status";
+                if (identity().persistInflight && !window.revolutBusyReloadChecked) {
+                    throw new Error("An in-flight snapshot must require reconciliation before Resume");
+                }
+                if (window.revolutBusyReloadChecked) {
+                    this.anchor.click();
+                }
+            },
+        },
+        {
             content: "Reload preserves definite rejection and editable payment identity",
             trigger: ".payment-screen .send_payment_request:contains('Resume')",
             run() {
-                observeRpc();
+                if (starts().length !== window.revolutBusyReloadStartCount) {
+                    throw new Error("Reload reconciliation dispatched a new payment start");
+                }
+                const line = window.posmodel.get_order().get_paymentline_by_uuid(identity().lineUuid);
+                if (window.revolutBusyReloadChecked && !line.uiState.revolutRecoveredUnstarted) {
+                    throw new Error("Resume after uncertain reload requires server non-dispatch proof");
+                }
                 checkUndispatchedLine();
             },
         },
@@ -264,7 +316,14 @@ registry.category("web_tour.tours").add("pos_revolut_busy_recovery", {
                 sessionStorage.removeItem(CALLS_KEY);
             },
         },
-    ].flat(),
+    ].flat();
+}
+
+registry.category("web_tour.tours").add("pos_revolut_busy_recovery", {
+    steps: () => busyRecoverySteps(),
+});
+registry.category("web_tour.tours").add("pos_revolut_busy_inflight_reload", {
+    steps: () => busyRecoverySteps(true),
 });
 
 registry.category("web_tour.tours").add("pos_revolut_busy_cash_alternative", {
