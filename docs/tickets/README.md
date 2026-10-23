@@ -14,3 +14,4 @@ private host details and credentials in restricted records.
 | Ticket | Category | Triage | State | Blocked by |
 | --- | --- | --- | --- | --- |
 | [68 — Investigate an extra Revolut line after draft reload](ready-for-agents/68-investigate-duplicate-revolut-line-after-reload.md) | `bug` | `ready-for-agent` | Open | None to start; reproduce before choosing a fix |
+| [70 — Recover a completed refund whose existing tender is not yet projected](needs-triage/70-recover-verified-refund-with-unprojected-native-tender.md) | `bug` | `needs-triage` | Open | Triage and portable mocked recovery regression |
