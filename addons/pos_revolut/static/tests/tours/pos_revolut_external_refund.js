@@ -52,12 +52,40 @@ function resumeSteps({ external = true, split = false, checkStatus = false, comp
             },
             PaymentScreen.clickPaymentMethod("Cash"),
         ] : []),
+        ...(completedReload ? [{
+            content: "Preserve ordinary register navigation while consuming completed recovery",
+            trigger: ".payment-screen",
+            run() {
+                const url = new URL(window.location.href);
+                url.searchParams.append("resume_test", "first");
+                url.searchParams.append("resume_test", "second");
+                url.hash = "retained-register-fragment";
+                window.history.replaceState({ resumeTest: "retained" }, "", url);
+                sessionStorage.setItem("revolutManagerNavigation", JSON.stringify({
+                    query: [...url.searchParams].filter(([name]) => name !== "revolut_return_uuid"),
+                    path: url.pathname, length: window.history.length,
+                }));
+            },
+        }] : []),
         PaymentScreen.clickValidate(),
         ReceiptScreen.isShown(),
         ReceiptScreen.totalAmountContains("-12.34"),
         ReceiptScreen.paymentLineContains("Revolut", split ? "-6.17" : "-12.34"),
         ...(split ? [ReceiptScreen.paymentLineContains("Cash", "-6.17")] : []),
         ...(completedReload ? [
+            {
+                trigger: ".receipt-screen",
+                run() {
+                    const url = new URL(window.location.href);
+                    const before = JSON.parse(sessionStorage.getItem("revolutManagerNavigation"));
+                    if (url.searchParams.has("revolut_return_uuid") ||
+                            JSON.stringify([...url.searchParams]) !== JSON.stringify(before.query) ||
+                            url.pathname !== before.path || url.hash !== "#retained-register-fragment" ||
+                            window.history.state?.resumeTest !== "retained" || window.history.length !== before.length) {
+                        throw new Error("Completed recovery must consume only its resume parameter and replace history in place");
+                    }
+                },
+            },
             ReceiptScreen.clickNextOrder(),
             { trigger: ".product-screen" },
             refresh(),
@@ -97,6 +125,35 @@ registry.category("web_tour.tours").add("pos_revolut_manager_resume_mixed", {
 
 registry.category("web_tour.tours").add("pos_revolut_manager_completed_return_reload", {
     steps: () => resumeSteps({ external: false, checkStatus: true, completedReload: true }),
+});
+
+registry.category("web_tour.tours").add("pos_revolut_manager_completed_mixed_return_reload", {
+    steps: () => resumeSteps({ external: false, split: true, checkStatus: true, completedReload: true }),
+});
+
+registry.category("web_tour.tours").add("pos_revolut_invalid_return_resume", {
+    steps: () => [
+        {
+            content: "Recovery waits for native cashier login without consuming its navigation",
+            trigger: ".screen-login .btn.open-register-btn",
+            run() {
+                if (document.querySelector(".modal") ||
+                        !new URLSearchParams(window.location.search).has("revolut_return_uuid")) {
+                    throw new Error("Return recovery bypassed native cashier login");
+                }
+            },
+        },
+        Chrome.startPoS(),
+        {
+            content: "An invalid recovery target keeps its explicit warning and does not consume navigation",
+            trigger: ".modal:contains('Revolut return unavailable')",
+            run() {
+                if (!new URLSearchParams(window.location.search).has("revolut_return_uuid")) {
+                    throw new Error("Invalid return recovery was silently consumed");
+                }
+            },
+        },
+    ].flat(),
 });
 
 registry.category("web_tour.tours").add("pos_revolut_external_historical_reprint", {

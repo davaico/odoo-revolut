@@ -6,6 +6,21 @@ import { PosStore } from "@point_of_sale/app/store/pos_store";
 // Odoo 18 has no payment/<uuid> route. Manager actions open the native
 // register, then select its already-saved return after shared drafts load.
 patch(PosStore.prototype, {
+    async postSyncAllOrders(orders) {
+        const result = await super.postSyncAllOrders(...arguments);
+        const url = new URL(window.location.href);
+        const uuid = url.searchParams.get("revolut_return_uuid");
+        // Keep unfinished returns resumable across reloads. Consume only the
+        // navigation for this return after native synchronization confirms it.
+        if (uuid && orders.some((order) => order.uuid === uuid &&
+                order.session_id?.id === this.session.id &&
+                ["paid", "done", "invoiced"].includes(order.state))) {
+            url.searchParams.delete("revolut_return_uuid");
+            window.history.replaceState(window.history.state, "", url);
+        }
+        return result;
+    },
+
     async afterProcessServerData() {
         const result = await super.afterProcessServerData(...arguments);
         this.revolutReturnResumeReady = true;
