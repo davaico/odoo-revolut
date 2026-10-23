@@ -4,7 +4,7 @@
 
 **Work branch:** `feat/v18_rev` (owner selected the existing sanitized checkout).
 
-**State:** claimed
+**State:** closed
 
 **Category:** bug
 
@@ -38,8 +38,9 @@ never copy them into publishable history.
 
 ## Reproduction status
 
-One operator-observed occurrence; no deterministic mocked reproduction or root
-cause established. Preserve the preceding cancellation and unsent allocation
+The initial report contained one operator-observed occurrence. A deterministic
+mocked native-browser reproduction and minimised variant now establish the
+restored cancelled-tender identity and lost in-memory deletion command. Preserve the preceding cancellation and unsent allocation
 sequence when building the initial disposable browser regression. Use mocked
 Merchant responses only; do not reproduce by sending new live requests.
 
@@ -129,27 +130,27 @@ be merged merely because their method and amount match.
   tender ownership, uncertain outcomes and retained financial references.
 
 **Acceptance criteria:**
-- [ ] Build and run a deterministic failing reproduction using real native
+- [x] Build and run a deterministic failing reproduction using real native
       browser/model persistence and mocked Merchant responses before fixing.
       Start with the reported cancellation, unsent allocation, zero/back amount
       edits and refresh; minimise without losing the duplicate-row symptom.
-- [ ] Record visible-row UUIDs, persisted identities, model membership and
+- [x] Record visible-row UUIDs, persisted identities, model membership and
       relevant sync/startup ordering before and after refresh. Establish whether
       the extra row is an existing cancelled tender, a client duplicate or an
       incorrectly recreated/synchronised tender before choosing a correction.
-- [ ] Reload restores the legitimate pending allocation exactly once and adds
+- [x] Reload restores the legitimate pending allocation exactly once and adds
       no unintended visible or persisted tender. Repeat refresh remains stable.
-- [ ] Reload and amount editing create no additional provider order, intent,
+- [x] Reload and amount editing create no additional provider order, intent,
       payment or cancellation dispatch. The sale remains unpaid until a
       separately authorized successful payment is verified.
-- [ ] The regression exercises the actual failing native merge/render seam,
+- [x] The regression exercises the actual failing native merge/render seam,
       rather than only a handcrafted per-line state object. Include the manual
       extra-line removal sequence if it is needed to reproduce or prevent
       recurrence; preserve all retained operation/dispatch history.
-- [ ] Existing saved-unstarted recovery, cancelled-payment recovery and valid
+- [x] Existing saved-unstarted recovery, cancelled-payment recovery and valid
       multiple-tender flows remain functional. Do not deduplicate by method
       and amount or weaken server authority/uncertain-payment safeguards.
-- [ ] Run the narrow relevant Odoo 18 regressions and deliberately assess the
+- [x] Run the narrow relevant Odoo 18 regressions and deliberately assess the
       maintained Odoo 19 counterpart under ADR 0002. Record actual outcomes and
       limitations; a passing unrelated test is not reproduction evidence.
 
@@ -171,6 +172,18 @@ A deterministic native browser reproduction and minimised variant now identify
 the extra row as the original removed cancelled tender, restored from the
 server after its in-memory deletion command is lost on refresh. See the
 [synthetic investigation and validation record](../../testing/ticket-68-draft-reload.md).
-The scoped correction is under validation; no deployment or physical acceptance
-claim is made. Odoo 19 has an analogous source gap and requires an adapted
+The scoped correction passed 771 full-addon tests (1 optional test skipped), 144 JavaScript tests and
+70 host Python tests (3 PDF checks skipped), plus compilation/syntax checks.
+Both independent review axes report zero findings. No deployment or physical
+acceptance claim is made. Odoo 19 has an analogous source gap and requires an adapted
 regression/backport before claiming that version corrected.
+
+## Resolution
+
+Closed on 2026-10-23. Fix commit: `44da485b8c65e2e01eb850e027b41cfdeed2992a`,
+addon version `18.0.1.0.2`. Saved sale-tender removal now requires durable,
+idempotent server retirement; native refresh retains the pending allocation
+exactly once while original attempt and dispatch history remain intact.
+Final full-suite evidence and limitations are recorded in the linked report.
+The Odoo 19 source gap is tracked separately in
+[ticket 69](../needs-triage/69-port-durable-tender-removal-to-odoo-19.md).

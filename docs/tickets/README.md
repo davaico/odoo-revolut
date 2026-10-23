@@ -13,4 +13,10 @@ private host details and credentials in restricted records.
 
 | Ticket | Category | Triage | State | Blocked by |
 | --- | --- | --- | --- | --- |
-| [68 — Investigate an extra Revolut line after draft reload](ready-for-agents/68-investigate-duplicate-revolut-line-after-reload.md) | `bug` | `ready-for-agent` | Claimed | None to start; reproduce before choosing a fix |
+| [69 — Apply durable tender removal to Odoo 19](needs-triage/69-port-durable-tender-removal-to-odoo-19.md) | `bug` | `needs-triage` | Open | Native Odoo 19 failing reproduction before correction |
+
+## Closed tickets
+
+| Ticket | Resolution |
+| --- | --- |
+| [68 — Investigate an extra Revolut line after draft reload](closed/68-investigate-duplicate-revolut-line-after-reload.md) | Fixed on `feat/v18_rev`; 771 full-addon tests passed (1 optional test skipped). Odoo 19 follow-up: #69. |
