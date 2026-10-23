@@ -14,6 +14,7 @@ private host details and credentials in restricted records.
 | Ticket | Category | Triage | State | Blocked by |
 | --- | --- | --- | --- | --- |
 | [69 — Apply durable tender removal to Odoo 19](needs-triage/69-port-durable-tender-removal-to-odoo-19.md) | `bug` | `needs-triage` | Open | Native Odoo 19 failing reproduction before correction |
+| [70 — Recover a completed refund whose existing tender is not yet projected](needs-triage/70-recover-verified-refund-with-unprojected-native-tender.md) | `bug` | `needs-triage` | Open | Triage and portable mocked recovery regression |
 
 ## Closed tickets
 
