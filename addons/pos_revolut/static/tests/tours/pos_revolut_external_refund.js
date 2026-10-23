@@ -5,8 +5,9 @@ import * as ReceiptScreen from "@pos_revolut/../tests/tours/receipt_screen_util"
 import { refresh } from "@point_of_sale/../tests/tours/utils/common";
 import { registry } from "@web/core/registry";
 
-function resumeSteps({ external = true, split = false } = {}) {
+function resumeSteps({ external = true, split = false, checkStatus = false } = {}) {
     return [
+        ...(checkStatus ? [{ trigger: ".o_form_view button[name='action_check_status']", run: "click" }] : []),
         ...(external ? [
             { trigger: ".o_form_view button[name='action_open_native_completion']", run: "click" },
             { trigger: ".modal .o_data_cell[name='quantity']", run: "click" },
@@ -38,7 +39,19 @@ function resumeSteps({ external = true, split = false } = {}) {
                 }
             },
         },
-        ...(split ? [PaymentScreen.clickPaymentMethod("Cash")] : []),
+        ...(split ? [
+            {
+                trigger: ".payment-screen",
+                run() {
+                    const order = window.posmodel.get_order();
+                    if (order.get_due() !== -6.17 || order.payment_ids.length !== 1 ||
+                            order.payment_ids[0].payment_method_id.is_cash_count) {
+                        throw new Error("Recovered card refund must leave its manual Cash share outstanding");
+                    }
+                },
+            },
+            PaymentScreen.clickPaymentMethod("Cash"),
+        ] : []),
         PaymentScreen.clickValidate(),
         ReceiptScreen.isShown(),
         ReceiptScreen.totalAmountContains("-12.34"),
@@ -55,6 +68,13 @@ registry.category("web_tour.tours").add("pos_revolut_external_resume_mixed", {
 });
 registry.category("web_tour.tours").add("pos_revolut_manager_restore_return", {
     steps: () => resumeSteps({ external: false }),
+});
+
+registry.category("web_tour.tours").add("pos_revolut_manager_resume_waiting", {
+    steps: () => resumeSteps({ external: false, checkStatus: true }),
+});
+registry.category("web_tour.tours").add("pos_revolut_manager_resume_mixed", {
+    steps: () => resumeSteps({ external: false, split: true, checkStatus: true }),
 });
 
 registry.category("web_tour.tours").add("pos_revolut_external_historical_reprint", {
