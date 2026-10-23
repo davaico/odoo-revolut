@@ -1,0 +1,102 @@
+# 63 — Perform controlled Odoo 18 terminal acceptance
+
+**Work branch:** `feat/v18_rev`.
+
+**State:** open
+
+**Triage:** ready-for-human
+
+**Base and integration target:** latest sanitized `feat/v18_rev`, not `main`.
+Read root AGENTS.md and ADR 0002 before implementation or review.
+
+## Purpose and evidence boundary
+
+Establish physical-terminal release evidence for Odoo Community 18, including
+payment verification, native completion, recovery, tips, Restaurant and refunds.
+Keep Odoo 18 acceptance separate from the maintained Odoo 19 campaign.
+
+This is the sanitized continuation of the existing private acceptance ticket.
+The checkpoint below summarizes recorded operator observations and bounded
+read-only verification as of 2026-10-23; this publication reran no live tests.
+Exact candidate artifacts, approvals, transaction mappings and originals remain
+with the acceptance custodian. Obtain that private context before operating the
+existing environment. Do not import old private Git ancestry or publish its
+evidence. This ticket does not itself authorize deployment or financial actions.
+
+## Acceptance criteria
+
+- [x] Record the reviewed candidate, runtime/addon version, environment,
+  terminal/location, operator and preserved records in restricted evidence.
+- [x] Record explicit deployment and financial authorization for the bounded
+  campaign, with separate Odoo 18 scope and limits.
+- [ ] Complete all environment, installation, retained-data and safe recovery
+  prerequisites for the candidate ultimately proposed for release.
+- [ ] Complete required single and split collection checks, native automatic
+  completion, references and customer documents without duplicate collection.
+- [ ] Complete required unsuccessful-payment, interruption and recovery
+  checks, including uncertain outcomes and safe retry.
+- [ ] Verify zero/nonzero terminal-selected tips, report finality, native
+  projection, split balance and documents on the physical terminal.
+- [ ] Verify dine-in and timed Takeout checkout and approved recovery.
+- [ ] Verify full/partial and tip-related refunds, provider finality, native
+  return completion and accounting reconciliation.
+- [ ] Verify receipts, PDFs/printing, session closure, posting and reopening.
+- [x] Preserve completed observations, failures and remaining obligations in
+  restricted evidence; provide concrete fix/retest handoffs for failed gates.
+- [ ] Close only after required physical checks and obligation dispositions
+  are complete. Keep parent scope ticket 50 independently open in its private
+  tracker; do not infer Odoo 19 acceptance from this campaign.
+
+Aggregate criteria stay open when only a bounded subcase has passed.
+
+## Completed bounded checks — 2026-10-23
+
+- [x] Identify the deployed replacement candidate and reopen the same local
+  environment while preserving records and the frozen addon.
+- [x] Recover the original verified zero-tip card payment and automatically
+  complete its original native sale once without recollecting.
+- [x] Complete a Cash control sale with the terminal idle and no increase in
+  Revolut operations or financial dispatches.
+- [x] Complete a Cash/card sale with the correct split, zero tip/change,
+  saved references and a native receipt.
+- [x] Observe POS cancellation, terminal cancellation and unavailable-terminal
+  rejection. Isolated cancelled-order reloads do not start another request.
+- [x] Verify authenticated zero-tip evidence, historical POS receipts/browser
+  PDFs and the session X report against the bounded sales.
+- [x] Verify both original-linked card refunds reached provider Completed /
+  local verified. This establishes financial finality only.
+- [x] Observe manager reference navigation and a reconciliation audit row on
+  an already verified payment. Uncertain-payment reconciliation remains open.
+- [x] Preserve failure reports for the unsent-tender reload defect and native
+  completed-refund recovery defect in sanitized tickets 68 and 70.
+
+## Next checks and blockers
+
+- [ ] Resolve [70 — completed-refund native recovery](../closed/70-recover-verified-refund-with-unprojected-native-tender.md)
+  with mocked regressions and a reviewed correction; coordinate with any agent
+  already working on it before starting duplicate implementation.
+- [ ] After authorized deployment, safely resume and complete the same two
+  native returns. Both remain draft despite card-refund completion. The mixed
+  return's previously approved manual Cash portion remains outstanding.
+- [ ] Physically retest the unsent-tender reload sequence after deploying the
+  reviewed [ticket 68 fix](../closed/68-investigate-duplicate-revolut-line-after-reload.md).
+  Its implementation is closed; deployment/physical acceptance is separate.
+- [ ] Resolve or explicitly disposition the earlier candidate's full-suite
+  busy-reload failure retained in private ticket 67. The later ticket-68
+  candidate has a separate green full run; it does not rewrite earlier results.
+- [ ] Complete outstanding decline/transport/interruption, two-card split,
+  nonzero/split tips, Restaurant, partial/tip returns, browser credential-boundary,
+  physical/terminal documents, colleague recovery and session checks.
+- [ ] Agree fresh scope before additional card collection/refund scenarios:
+  existing campaign card limits are fully used. Refunds do not replenish them.
+- [ ] Reconcile native stock/accounting and manual Cash obligations, then
+  record the release decision. Do not mark this gate green from mocked tests.
+
+## Continuation
+
+Use the [short agent handoff](../../testing/ticket-63-handoff.md). Preserve the
+original financial/native identities; do not replace completed refunds, use
+Force done or repair live records by bypassing verification/allocation checks.
+Keep credentials on the server and mock all Merchant HTTP in automated tests.
+The [Odoo 19 durable-removal follow-up](../closed/69-port-durable-tender-removal-to-odoo-19.md)
+remains separate maintenance work under ADR 0002.
