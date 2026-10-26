@@ -108,6 +108,13 @@ network. Do not prune or stop other environments to make tests pass.
 
 ## Release continuation
 
+Ticket status reviewed after the owner's closure request: **#74 remains open**.
+Implementation and targeted regression verification are complete in published
+commit `f121796` on `codex/74-v19-refund-refresh`. The ticket also requires the
+versioned upgrade rehearsal and coordinated release validation with #71, which
+have not been completed. Closing the ticket would incorrectly mark those gates
+complete. No PR, production merge or deployment is authorized by this update.
+
 1. The final candidate passes single/two-refund refresh, pending recovery and
    ordinary Cash/bank browser checks; the refund tours also make a normal
    Revolut sale first. Repeat affected checks on any combined release candidate.
