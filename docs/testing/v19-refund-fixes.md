@@ -54,3 +54,26 @@ HTTP. Never seed a deployment database. Retain actual exit codes and logs.
 
 The PR is a draft for review of this bounded patch. It does not claim the
 combined native or upgrade gates have passed.
+
+## Combo rounding regression fix
+
+The Odoo 19 configurator's `getSelectedComboItems()` enumerates numeric
+combo/item keys by ID before `computeComboItems()` allocates the parent price.
+The server instead iterated combo groups in their default `sequence, id` order.
+Sort groups by ID so a display-sequence change cannot move the rounding cent
+between tax rates or classify native prices as a restricted manual override.
+
+Two native regressions persist selections in reversed display order for a
+0.05 combo with equal bases and 20%/0% taxes. Odoo allocates 0.03/0.02,
+producing a 0.06 total. Before the fix, the unrestricted cart rejected that
+tender against a 0.05 authorized balance, and the restricted cart wrongly
+required manager approval. Both fail before the fix and pass afterward.
+
+Validation on the pinned Odoo 19 image: `TestRevolutCartPricing`, all 19 tests
+passed (0 failures, 0 errors), including existing extra-selection and genuine
+manual-override coverage. Run via `scripts/test-addon --test-tags
+/pos_revolut:TestRevolutCartPricing`; a temporary Compose override supplied an
+unused internal subnet because Docker's default pools were exhausted. Provider
+HTTP stayed mocked and guarded. No configuration or credential change is
+needed. This targeted run does not replace the outstanding combined refund,
+browser and upgrade checks above.
