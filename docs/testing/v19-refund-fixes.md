@@ -21,7 +21,8 @@ request metadata, and aligns the retained upgrade fixture with that version.
   the test environment changed. Do not treat the run as passing.
 - The versioned production-base upgrade rehearsal has not run. Native tests
   and upgrade preservation remain required before marking the PR ready.
-- Spec review is pending.
+- Spec review of `440f1a8...f41b9bf`: zero actionable findings. Both
+  independent reviews were static and did not execute tests.
 - The first native runner attempt stopped before tests because Docker's
   default address pools were exhausted. A second attempt used an explicit
   unused internal subnet. Docker is now inaccessible from the execution
