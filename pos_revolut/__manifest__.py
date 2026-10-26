@@ -1,6 +1,6 @@
 {
     "name": "POS Revolut",
-    "version": "19.0.1.18.15",
+    "version": "19.0.1.18.16",
     "category": "Sales/Point of Sale",
     "summary": "Configure a Revolut payment terminal for Point of Sale",
     "description": """
@@ -19,7 +19,7 @@ have not been verified.
 External service and data: the server contacts the Revolut Merchant API for
 terminal discovery, payments, refunds, status checks and payment reports. It
 sends amounts, currency, location and terminal identifiers, fulfilment type,
-the POS register name, technical order/payment-line identifiers, provider
+the integration partner identifier, technical order/payment-line identifiers, provider
 transaction references, refund/idempotency references and report filters/options.
 Merchant credentials authenticate server-side calls. Card details are handled
 by the terminal and Revolut; this addon does not send customer contact details

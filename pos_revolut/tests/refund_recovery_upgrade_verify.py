@@ -6,7 +6,7 @@ from odoo.exceptions import UserError
 from odoo.service.model import call_kw
 
 fixture = json.loads(env['ir.config_parameter'].get_param('pos_revolut.refund_recovery_upgrade'))
-assert env['ir.module.module'].search([('name', '=', 'pos_revolut')]).latest_version == '19.0.1.18.15'
+assert env['ir.module.module'].search([('name', '=', 'pos_revolut')]).latest_version == '19.0.1.18.16'
 with patch('odoo.addons.pos_revolut.models.pos_payment_method.requests.request',
            side_effect=AssertionError('Upgrade verification must not contact Revolut')) as provider:
     for row in fixture['records']:

@@ -91,3 +91,26 @@ Restore the complete pre-update database, filestore and addon together only
 while financial activity remains stopped. After new provider or native financial
 activity, reconcile first: reverting only the source code or restoring an older
 database can lose subsequent operations.
+
+### Combined V19 refund recovery and refresh — 19.0.1.18.16
+
+This release combines existing waiting-refund recovery (#71), restoration of
+verified refund references after native POS refresh (#74), and the fixed
+Revolut partner metadata from PR #87. It is assembled directly from published
+`19.0` at `440f1a8`; it includes no Odoo 18 changes or divergent `main` history.
+
+Upgrade directly from `19.0.1.18.14` using the backup, stopped-worker module
+update and POS reopen procedure above. The module update loads the refund form
+action, and reopening POS loads the updated JavaScript. No schema migration,
+credential rotation or automatic historical-record repair is required. Payment
+and refund requests identify the integration as `davai-akae-integration`.
+
+Manager recovery reuses the original verified refund and waiting tender. POS
+validation restores verified refund references lost by native record loading,
+while retaining explicit Check status after an earlier restoration failure.
+Pending or unresolved refunds remain blocked, and Cash still requires explicit
+completion. Neither recovery path sends another charge or refund request.
+
+See [combined candidate verification](testing/v19-refund-fixes.md) for current
+test results and limitations. Opening the PR does not deploy it or authorize
+production financial operations; the rollback limits above continue to apply.
