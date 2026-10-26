@@ -220,3 +220,82 @@ registry.category("web_tour.tours").add("pos_revolut_pending_refund_server_recov
         },
     ].flat(),
 });
+
+
+registry.category("web_tour.tours").add("pos_revolut_refund_stale_native_recovery", {
+    steps: () => {
+        const steps = registry.category("web_tour.tours").get("pos_revolut_refund_server_recovery").steps();
+        const index = steps.findIndex((step) => step.content ===
+            "Recover the native return from server data with its completed refund");
+        const recovered = steps[index].run;
+        steps[index].run = async function () {
+            recovered();
+            const { payment } = savedReturn();
+            // Use actual native loading, not fabricated payment/UI state: the
+            // saved return still carries the pre-verification waiting tender.
+            await window.posmodel.data.read("pos.payment", [payment.id]);
+            if (payment.transaction_id || payment.payment_ref_no) {
+                throw new Error("The stale native draft did not replace recovered references");
+            }
+        };
+        // The native refresh also replaces the displayed payment status.
+        steps.splice(index + 1, 1);
+        return steps;
+    },
+});
+
+registry.category("web_tour.tours").add("pos_revolut_two_refunds_stale_native_recovery", {
+    steps: () => {
+        const steps = registry.category("web_tour.tours").get("pos_revolut_refund_server_recovery").steps();
+        const confirm = steps.findIndex((step) => step.trigger === ".revolut-refund-confirm");
+        steps.splice(confirm, 0, { trigger: ".revolut-refund-amount", run() {
+            this.anchor.value = "6.17";
+            this.anchor.dispatchEvent(new Event("input", { bubbles: true }));
+        } });
+        const forget = steps.findIndex((step) => step.content ===
+            "Forget browser data after completion and retain only the recovery identities");
+        steps[forget].run = async function () {
+            const order = window.posmodel.get_order();
+            const payment = order.payment_ids.find((line) =>
+                line.uiState.revolutSnapshot?.payment_id === REFUND_REFERENCE);
+            if (!Number.isInteger(order.id) || !Number.isInteger(payment?.id) ||
+                order.payment_ids.length !== 2 || order.payment_ids.some((line) =>
+                    line.uiState.revolutSnapshot?.state !== "verified")) {
+                throw new Error("Expected two committed refund allocations on the saved return");
+            }
+            await forgetBrowserData(order, payment);
+        };
+        steps.splice(forget, 0,
+            { content: "First partial refund completed", trigger: ".payment-screen .electronic_status:contains('Refund Successful')" },
+            PaymentScreen.clickPaymentMethod("Revolut"),
+            { trigger: ".payment-screen .send_payment_request", run: "click" },
+            { trigger: ".revolut-refund-confirm", run: "click" },
+            { content: "Second partial refund completed", trigger: ".payment-screen .paymentline:contains('6c2f3842-c34d-4cc3-a0fc-9ae40b04dfb0') .electronic_status:contains('Refund Successful')" },
+        );
+        const index = steps.findIndex((step) => step.content ===
+            "Recover the native return from server data with its completed refund");
+        steps[index].run = async function () {
+            const { order } = savedReturn();
+            if (order.payment_ids.length !== 2) {
+                throw new Error("Expected two distinct completed refund tenders");
+            }
+            await window.posmodel.data.read("pos.payment", order.payment_ids.map((line) => line.id));
+            const second = order.payment_ids.find((line) => !line.transaction_id);
+            if (!second) {
+                throw new Error("Expected the second saved waiting refund to replace its restored references");
+            }
+        };
+        steps.splice(index + 1, 1);
+        const settled = steps.findIndex((step, stepIndex) => stepIndex > index &&
+            step.trigger === ".pos .receipt-screen");
+        steps[settled] = { trigger: ".modal, .receipt-screen", run() {
+            const modal = document.querySelector(".modal");
+            if (modal) throw new Error("Two-refund checkout rejected: " + modal.textContent);
+        } };
+        const receipt = steps.findIndex((step) => step.trigger?.includes("-12.34"));
+        if (receipt >= 0) {
+            steps[receipt] = ReceiptScreen.paymentLineContains("Revolut", "-6.17");
+        }
+        return steps.flat();
+    },
+});

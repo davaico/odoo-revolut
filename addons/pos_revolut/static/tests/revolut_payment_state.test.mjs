@@ -2396,3 +2396,22 @@ test("preparation fenced by concurrent recovery requires Check status before sam
     assert.equal(preparations, 2);
     assert.equal(calls.filter(({ method }) => method === "revolut_start_payment").length, 1);
 });
+
+
+test("native saved refund sync must not report completion after losing verified references", async () => {
+    const { state, order, line } = fixture({ refund: true });
+    state.remember(line, { operation_id: 81, kind: "refund", state: "verified",
+        payment_id: "refund-81", order_id: "refund-81", return_total_minor: 1234 });
+    await state.setVerified(line);
+    line.handle_payment_response(true);
+    // A native saved-draft refresh carries the pre-verification references.
+    line.transaction_id = false;
+    line.payment_ref_no = false;
+    line.payment_status = "waiting";
+    state.afterSync(order, line);
+    assert.equal(line.get_payment_status(), "retry");
+    assert.equal(paymentResponseSuccessful(line, true), false);
+    assert.equal(await state.setVerified(line), true);
+    assert.equal(line.transaction_id, "refund-81");
+    assert.equal(line.payment_ref_no, "refund-81");
+});

@@ -1,6 +1,6 @@
 {
     "name": "POS Revolut",
-    "version": "18.0.1.0.3",
+    "version": "18.0.1.0.4",
     "category": "Sales/Point of Sale",
     "summary": "Configure a Revolut payment terminal for Point of Sale",
     "author": "Davai",

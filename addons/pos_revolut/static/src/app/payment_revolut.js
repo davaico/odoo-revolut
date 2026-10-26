@@ -348,6 +348,10 @@ export class PaymentRevolut extends PaymentInterface {
         if (!isCurrent()) {
             return;
         }
+        this._setVerifiedReferences(line, result);
+    }
+
+    _setVerifiedReferences(line, result) {
         line.transaction_id = result.payment_id;
         line.payment_ref_no = result.order_id;
         this._setReceipt(line, result);
@@ -798,15 +802,49 @@ patch(PaymentScreen.prototype, {
         return super.addNewPaymentLine(...arguments);
     },
     async validateOrder() {
+        const order = this.currentOrder;
+        const refunds = order.payment_ids.filter(isRevolutRefund);
+        if (refunds.length) {
+            await restoreRefundOriginals(this.pos, order);
+            if (this.currentOrder !== order || order.state !== "draft") {
+                return false;
+            }
+            const restored = [];
+            // Loading original/related records can replace locally restored
+            // references with the saved waiting draft. Recover committed refund
+            // evidence after those reads, before native checkout serializes it.
+            for (const line of refunds) {
+                await line.payment_method_id.payment_terminal.paymentState.restore(order, line);
+                if (this.currentOrder !== order || order.state !== "draft" ||
+                    !order.payment_ids.includes(line) || line.pos_order_id !== order) {
+                    return false;
+                }
+                const snapshot = line.uiState.revolutSnapshot;
+                if (snapshot?.state === "verified" && snapshot.payment_id && snapshot.order_id &&
+                    snapshot.operation_id === line.uiState.revolutOperationId &&
+                    line.uiState.revolutCheckoutRestored === true) {
+                    restored.push({ line, snapshot });
+                }
+            }
+            // Each canonical refresh includes every tender. Only after the last
+            // refresh, project all successfully restored refund references so a
+            // later tender cannot erase an earlier tender's verified metadata.
+            for (const { line, snapshot } of restored) {
+                if (order.payment_ids.includes(line) && line.pos_order_id === order &&
+                    line.uiState.revolutSnapshot === snapshot &&
+                    snapshot.operation_id === line.uiState.revolutOperationId) {
+                    line.payment_method_id.payment_terminal._setVerifiedReferences(line, snapshot);
+                    line.uiState.revolutCheckoutRestored = true;
+                    line.set_payment_status("done");
+                }
+            }
+        }
         if (orderActions(this.currentOrder).blocksCheckout) {
             this.dialog.add(AlertDialog, {
                 title: _t("Revolut reconciliation required"),
                 body: _t("This order has an unresolved Revolut payment. Check its status before completing checkout."),
             });
             return false;
-        }
-        if (this.currentOrder.payment_ids.some(isRevolutRefund)) {
-            await restoreRefundOriginals(this.pos, this.currentOrder);
         }
         const sale = this.currentOrder.payment_ids.find((line) => isRevolut(line) && !isRevolutRefund(line));
         if (sale && this.currentOrder.revolut_has_authority_exposure &&
