@@ -15,7 +15,7 @@ private host details and credentials in restricted records.
 | Ticket | Category | Triage | State | Blocked by |
 | --- | --- | --- | --- | --- |
 | [63 — Perform controlled Odoo 18 terminal acceptance](ready-for-human/63-v18-terminal-acceptance.md) | Release gate | `ready-for-human` | Open | Bounded recovery/reload checks passed; broader physical/parity release scope remains separate |
-| [71 — Recover existing waiting refund tenders on Odoo 19](needs-triage/71-port-existing-waiting-refund-recovery-to-odoo-19.md) | `bug` | `needs-triage` | Open | Native Odoo 19 failing regression before correction |
+| [71 — Recover existing waiting refund tenders on Odoo 19](ready-for-agents/71-port-existing-waiting-refund-recovery-to-odoo-19.md) | `bug` | `ready-for-agent` | Claimed | Local production-19.0 candidate; native red/green gate; no push |
 
 ## Closed tickets
 
