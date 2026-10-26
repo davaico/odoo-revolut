@@ -192,7 +192,7 @@ findings; a minor index-formatting observation was corrected.
 
 [Verification evidence](../../testing/ticket-70-existing-waiting-refund-recovery.md)
 records the red/green gate, exact candidate, focused/full results, native browser
-flows and physical limitations. [Ticket 71](../needs-triage/71-port-existing-waiting-refund-recovery-to-odoo-19.md)
+flows and physical limitations. [Ticket 71](../ready-for-agents/71-port-existing-waiting-refund-recovery-to-odoo-19.md)
 tracks the same source finding on maintained Odoo 19 with its own runtime gate.
 
 This closes the implementation ticket on sanitized `feat/v18_rev`. Protected
