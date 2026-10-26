@@ -13,6 +13,7 @@ from odoo.tools.misc import format_amount
 
 from .return_allocation import ReturnAllocation
 from .financial_snapshot import FinancialSnapshotError
+from .pos_payment_method import REVOLUT_POS_PARTNER_NAME
 
 
 _logger = logging.getLogger(__name__)
@@ -404,6 +405,7 @@ class PosPaymentMethod(models.Model):
                 operation, "POST", f"/api/orders/{operation['original_order_id']}/refund",
                 idempotency_key=operation["idempotency_key"],
                 json={"amount": minor, "currency": operation["currency_code"],
+                      "metadata": {"pos_partner_name": REVOLUT_POS_PARTNER_NAME},
                       "merchant_order_data": {"reference": operation["idempotency_key"]}},
             )
             self._validate_refund_response(operation, result)

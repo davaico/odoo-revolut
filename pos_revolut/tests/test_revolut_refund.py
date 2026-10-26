@@ -115,6 +115,9 @@ class TestRevolutRefund(CommonPosTest):
         self.assertEqual(started["state"], "pending")
         self.assertEqual(self._rpc_refund(manager, "pos.payment.method", "revolut_start_refund", args), started)
         self.assertEqual([call.args[0] for call in self.request.call_args_list], ["GET", "POST"])
+        self.assertEqual(self.request.call_args.kwargs["json"]["metadata"], {
+            "pos_partner_name": "davai-akae-integration",
+        })
         native = self._rpc_refund(manager, "pos.order", "read", [[native_id], ["uuid", "state"]])[0]
         self.assertEqual((native["uuid"], native["state"]), (draft["uuid"], "draft"))
 
