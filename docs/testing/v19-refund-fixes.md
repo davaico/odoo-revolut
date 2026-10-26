@@ -10,50 +10,93 @@ commit, V18 addon path, or divergent `main` history is included. The final
 release commit assigns the combined version, corrects the description of
 request metadata, and aligns the retained upgrade fixture with that version.
 
-## Current verification
+## Completed DEV verification — 2026-10-26
 
-- JavaScript state and checkout suite: 159 passed.
-- Portable tooling suite: 23 passed.
-- Whitespace and original-patch scope checks pass.
-- Standards review of `440f1a8...f41b9bf`: zero actionable findings.
-- Combined native payment/refund/browser verification has no recoverable final
-  outcome: the terminal session and temporary logs became unavailable after
-  the test environment changed. Do not treat the run as passing.
-- The versioned production-base upgrade rehearsal has not run. Native tests
-  and upgrade preservation remain required before marking the PR ready.
-- Spec review of `440f1a8...f41b9bf`: zero actionable findings. Both
-  independent reviews were static and did not execute tests.
-- The first native runner attempt stopped before tests because Docker's
-  default address pools were exhausted. A second attempt used an explicit
-  unused internal subnet. Docker is now inaccessible from the execution
-  environment; existing environments were not pruned or changed.
+Tested code: `1e8afa26467d0452e1b56b3dcae9588bd5536d79`, addon
+`19.0.1.18.16`, against base `440f1a8`. The subsequent evidence commit changes
+only this report. All remaining DEV release gates passed; this candidate is
+ready for merge on the evidence below. No merge or deployment was performed.
 
-Source-branch histories and earlier failed/timing checkpoints remain in
-[ticket 71](ticket-71-refund-recovery.md) and
-[ticket 74](ticket-74-refund-refresh.md). Those independent runs do not prove
-the assembled candidate. This report records the combined candidate separately.
+- Combined native payment/refund and browser run: **112 tests, 0 failures,
+  0 errors**, exit 0. All nine selected browser tours reported success.
+- Versioned upgrade rehearsal: **passed**, exit 0. Installed archived base
+  `19.0.1.18.14`, seeded synthetic records, stopped the old process, updated to
+  candidate `19.0.1.18.16`, then verified all **37 record snapshots** unchanged.
+  Pending/unresolved refunds still reject recovery; verified waiting refunds
+  recover onto the existing tender; repeat recovery is idempotent; four refund
+  records remain. SQL confirms the installed candidate version.
+- JavaScript tests rerun: **159 passed** (142 state, 14 checkout-refresh,
+  3 allowance tests). Portable tooling tests: **23 passed**.
+- Native combo pricing suite on the same code: **19 passed**, including the
+  two red/green rounding regressions described below.
+- Whitespace check passed. Previous Standards and Spec reviews of
+  `440f1a8...f41b9bf` found no actionable issues; these were static reviews.
+- No GitHub workflow runs or commit statuses were returned for the tested
+  commit; merge readiness relies on the local DEV evidence recorded here.
 
-No deployment, real Merchant API request, live financial operation or physical
-terminal acceptance is performed. PR publication leaves `19.0` unchanged.
+The native runner verified Odoo `19.0.20260908`, browser transport and the
+Merchant HTTP guard. Both runs used separate disposable Docker projects with
+internal networks, fake credentials and mocked provider calls. Explicit unused
+subnets avoided exhausted Docker default pools. Only their own resources were
+removed afterward. No production access or physical-terminal acceptance is
+claimed. This is targeted combined-release validation, not a rerun of every
+addon test.
 
-## Remaining checks before release review
+### Native/browser coverage and reproduction
 
-Run the combined `TestRevolutPayment`, `TestRevolutRefund` and
-`TestRevolutRefundRecoveryUi` classes, plus the single/two-refund native
-refresh, verified-refund rejection/timeout/offline loader, pending-refund
-recovery and ordinary Cash/bank browser cases in `TestRevolutVerifiedCheckout`.
-Use the pinned Odoo 19 runner, mocked provider HTTP and Merchant guard.
+Run `scripts/test-addon --test-tags` with the comma-separated selectors below:
 
-In a separate disposable database, install the archived `440f1a8` addon, run
+```text
+/pos_revolut:TestRevolutPayment
+/pos_revolut:TestRevolutRefund
+/pos_revolut:TestRevolutRefundRecoveryUi
+/pos_revolut:TestRevolutVerifiedCheckout.test_cash_and_bank_still_checkout_without_revolut_dispatch
+/pos_revolut:TestRevolutVerifiedCheckout.test_completed_refund_native_refresh_recovers_without_second_refund
+/pos_revolut:TestRevolutVerifiedCheckout.test_two_completed_refunds_native_refresh_recovers_without_replay
+/pos_revolut:TestRevolutVerifiedCheckout.test_pending_refund_recovers_from_saved_return_without_browser_state
+/pos_revolut:TestRevolutVerifiedCheckout.test_verified_saved_refund_checkout_offline_loader_recovers_without_second_refund
+/pos_revolut:TestRevolutVerifiedCheckout.test_verified_saved_refund_checkout_rejection_recovers_without_second_refund
+/pos_revolut:TestRevolutVerifiedCheckout.test_verified_saved_refund_checkout_timeout_recovers_without_second_refund
+```
+
+The two manager recovery tours include a mixed return requiring explicit Cash
+completion. The refresh/recovery fixtures assert original refund identities and
+provider request counts, exercising recovery without duplicate financial dispatch.
+
+### Upgrade reproduction and retained evidence
+
+In a disposable database, install the `pos_revolut` tree archived from
+`440f1a8`, execute the candidate's
 `pos_revolut/tests/refund_recovery_upgrade_seed.py` in an Odoo shell, stop the
-old process, update to this candidate, then run
-`pos_revolut/tests/refund_recovery_upgrade_verify.py`. The fixture expects
-`19.0.1.18.14` before and `19.0.1.18.16` after, preserves all snapshotted records,
-and verifies uncertain-refund blocking and repeat recovery without provider
-HTTP. Never seed a deployment database. Retain actual exit codes and logs.
+old process, update `pos_revolut` using the candidate tree, then execute
+`pos_revolut/tests/refund_recovery_upgrade_verify.py` in a new Odoo shell.
+Keep the Merchant HTTP guard enabled throughout. Never seed a deployment DB.
+The run printed `REFUND_RECOVERY_UPGRADE_SEED_OK 37` and
+`REFUND_RECOVERY_UPGRADE_VERIFY_OK 37`.
 
-The PR is a draft for review of this bounded patch. It does not claim the
-combined native or upgrade gates have passed.
+Local evidence retained for this run:
+
+- `/tmp/v19-remaining-native.log` and `/tmp/v19-remaining-tags`;
+  temporary runner `/tmp/v19-remaining-test` uses project
+  `v19-remaining-checks`, internal subnet `10.245.188.0/24`.
+- `/tmp/v19-upgrade-check-20261026/`: version, guard, install, seed, upgrade,
+  verify, database-state and cleanup logs. Runner
+  `/tmp/v19-upgrade-check.sh` used project `v19-upgrade-check`, internal subnet
+  `10.245.189.0/24`.
+- `/tmp/v19-js-direct.log`, `/tmp/v19-js-refresh.log`,
+  `/tmp/v19-js-allowances.log`, `/tmp/v19-remaining-tooling.log`.
+
+Earlier combined runs had no recoverable passing result; this completed run
+supersedes that evidence gap. The first upgrade runner attempt omitted the
+`odoo` executable from its shell invocation and exited 127. It was corrected
+and the complete rehearsal rerun from a fresh database. The pre-existing
+missing-access-rules warning for `pos.revolut.external.refund.evidence` appears
+on both old installation and candidate update; the final upgrade has no errors
+or tracebacks. No application changes were needed for these checks.
+
+Source histories and earlier failures remain in
+[ticket 71](ticket-71-refund-recovery.md) and
+[ticket 74](ticket-74-refund-refresh.md).
 
 ## Combo rounding regression fix
 
@@ -75,5 +118,5 @@ manual-override coverage. Run via `scripts/test-addon --test-tags
 /pos_revolut:TestRevolutCartPricing`; a temporary Compose override supplied an
 unused internal subnet because Docker's default pools were exhausted. Provider
 HTTP stayed mocked and guarded. No configuration or credential change is
-needed. This targeted run does not replace the outstanding combined refund,
-browser and upgrade checks above.
+needed. The combined refund, browser and upgrade checks are now also complete, as
+recorded above.
