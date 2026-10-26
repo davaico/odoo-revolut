@@ -146,3 +146,20 @@ for the current result; earlier outstanding lists above are historical.
 
 Merchant HTTP is blocked again and the guard passed. These results do not close
 the refund/native accounting or overall release gate.
+
+
+## Refund continuation — 2026-10-26
+
+- [x] Reconcile all five older refunds to provider Completed / local verified.
+- [x] Resolve [73](../closed/73-restore-refund-reference-after-native-refresh.md),
+  deploy local 18.0.1.0.4 / `334c8a8`, and retest both affected original returns
+  through normal validation with preserved references and no financial replay.
+- [x] Finalize the four Restaurant returns and close/post both fully refunded
+  sessions with balanced GBP 0.03 debit/credit and zero net card totals.
+- [x] Submit the remaining authorized GBP 0.01 split-leg refund exactly once.
+- [ ] Reconcile that last refund (still processing), finish its existing split
+  return, close/post the remaining session and record final release decision.
+
+See [full evidence and test limitations](../../testing/ticket-63-refund-completion-20261026.md).
+Earlier outstanding lists are superseded by this checkpoint. No additional
+physical test is required beyond the previously recorded owner dispositions.

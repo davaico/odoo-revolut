@@ -4,6 +4,24 @@ Checkpoint: 2026-10-23. **Open / ready-for-human.** Base and integration target:
 **feat/v18_rev**. Preserve the original private acceptance checkout and its data;
 never merge its older ancestry. Read AGENTS.md and ADR 0002 before changes.
 
+## Latest checkpoint — 2026-10-26
+
+See [refund completion and fix evidence](ticket-63-refund-completion-20261026.md).
+All five prior pending refunds are provider Completed / locally verified.
+Two native returns exposed a reference-loss recovery bug; ticket 73 is fixed,
+reviewed and retested locally on addon **18.0.1.0.4**, immutable **334c8a8**.
+All four returns from the fully refunded Restaurant sessions are now finalized;
+both sessions are closed with balanced posted accounting and zero net card total.
+
+The previously unsubmitted final GBP 0.01 split-leg refund was sent once and is
+still processing. Its original return and session remain open. Reconcile that
+same refund, finish the same return and close/post its session after finality.
+Do not replay it, create another return or force completion. No new collection
+occurred. Merchant HTTP is blocked and verified; cron is disabled. No monitor.
+
+The fix is committed locally but not pushed. Earlier checkpoints below are
+historical; they do not reopen completed tests or override this remaining scope.
+
 ## Latest same-day checkpoint (supersedes older operating boundaries below)
 
 See [the additional acceptance results](ticket-63-finish-20261023.md). The owner
