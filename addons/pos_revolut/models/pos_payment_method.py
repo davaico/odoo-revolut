@@ -18,6 +18,7 @@ REVOLUT_UUID_PATTERN = re.compile(
     r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
 REVOLUT_API_VERSION = "2026-08-17"
+REVOLUT_POS_PARTNER_NAME = "davai-akae-integration"
 REVOLUT_API_HOSTS = {
     "sandbox": "https://sandbox-merchant.revolut.com",
     "production": "https://merchant.revolut.com",
@@ -798,7 +799,7 @@ class PosPaymentMethod(models.Model):
                     "fulfilment_type": operation["fulfilment_type"],
                     "capture_mode": "manual",
                     "metadata": {
-                        "pos_partner_name": operation["config_name"],
+                        "pos_partner_name": REVOLUT_POS_PARTNER_NAME,
                         "pos_order_uuid": order_uuid,
                         "pos_payment_line_uuid": payment_line_uuid,
                     },
