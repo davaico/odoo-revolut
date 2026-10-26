@@ -267,6 +267,16 @@ class PosRevolutRefundOperation(models.Model):
                     existing = self.env["pos.order"].browse(next(
                         item["id"] for item in saved["pos.order"] if item["uuid"] == self.order_uuid
                     ))
+                else:
+                    from .pos_order import _revolut_mutation
+                    # Project the checked siblings together; native validation
+                    # binds their references or rolls back the entire projection.
+                    with _revolut_mutation(self.env):
+                        for refund in recovery.refunds:
+                            payment = existing.payment_ids.filtered(
+                                lambda item: item.uuid == refund.payment_line_uuid)
+                            payment.write({"payment_status": "done", "transaction_id": refund.revolut_order_id,
+                                           "payment_ref_no": refund.revolut_order_id})
                 if session.state != "opened":
                     raise UserError(_("Reopen the original return's session before continuing in POS."))
                 return {"type": "ir.actions.act_url", "target": "self",
