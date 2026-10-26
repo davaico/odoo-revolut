@@ -7,10 +7,11 @@ production `19.0` at `440f1a8`; addon `19.0.1.18.15`. Final complete suite:
 **664 cases, zero failures/errors, one optional skip, container exit 0**.
 Upgrade preserved 37 synthetic records; independent Standards/Spec reviews: 0/0.
 Earlier browser timing failures and both revision comparisons remain recorded.
-**Nothing has been pushed or deployed.** Production publication requires the
-maintainer's separate approval and normal controlled upgrade procedure.
+**Task branch published to origin; #71 is closed.** Production `19.0` and
+deployment remain unchanged. Production rollout requires separate approval and
+the normal controlled upgrade procedure.
 
-**State:** claimed
+**State:** closed
 
 **Category:** bug
 
@@ -291,8 +292,9 @@ matching reviewed code commit `e114589`. Subsequent handoff changes are docs onl
 The remote production `19.0` tip was re-read during final verification and still
 matched `440f1a8c89048e5c2170425a4684ed23cbb0e261`.
 
-The implementation is complete locally. Keep the tracker claimed until the
-maintainer decides integration/publication; no release branch was updated.
+The implementation is complete and its task branch is published to origin.
+The maintainer subsequently authorized closing #71; the authoritative tracker
+now records it closed. No production release branch was updated.
 Review the production-based branch diff, then use the normal backup, cloned-data
 rehearsal, stopped-worker module update and POS reopen procedure in
 [Upgrading](../upgrading.md#existing-waiting-refund-recovery--19011815).
@@ -302,3 +304,14 @@ schema migration, credential change or automatic live-record repair.
 No push, PR publication, production deployment, real provider request, financial
 operation, live repair or physical terminal acceptance occurred. Physical and
 deployed-data verification remain separate from these guarded synthetic checks.
+
+
+## Authorized task-branch publication and ticket closure
+
+After the original no-push handoff, the maintainer explicitly authorized pushing
+`codex/71-v19-refund-recovery` to origin and closing completed tickets. The task
+branch was published at `e21127b`; this later update records closure only and
+does not change the tested addon. Earlier no-push statements are historical
+handoff boundaries, superseded for this task branch by that authorization.
+Production `19.0`, deployment and live financial records remain untouched.
+#74 remains open because its own full verification is still in progress.
