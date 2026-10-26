@@ -2,6 +2,14 @@
 
 # 71 — Recover existing waiting refund tenders on Odoo 19
 
+**Local result:** Implemented on `codex/71-v19-refund-recovery`, directly from
+production `19.0` at `440f1a8`; addon `19.0.1.18.15`. Final complete suite:
+**664 cases, zero failures/errors, one optional skip, container exit 0**.
+Upgrade preserved 37 synthetic records; independent Standards/Spec reviews: 0/0.
+Earlier browser timing failures and both revision comparisons remain recorded.
+**Nothing has been pushed or deployed.** Production publication requires the
+maintainer's separate approval and normal controlled upgrade procedure.
+
 **State:** claimed
 
 **Category:** bug
@@ -10,8 +18,9 @@
 
 **Work branch:** `codex/71-v19-refund-recovery`, based on production `19.0`.
 
-**Base and integration target:** Odoo 19 `main`. Transplant reviewed changes;
-do not merge older private ancestry into sanitized `feat/v18_rev`.
+**Base and release target:** production Odoo 19 `19.0`, fetched base
+`440f1a8`. Prepare the candidate on `codex/71-v19-refund-recovery`. Do not merge
+older divergent local `main` or private ancestry. No push or deployment.
 
 ## Source finding
 
@@ -87,16 +96,16 @@ owns stock/accounting, and manual Cash remains outstanding until explicitly paid
 - `pos.order.sync_from_ui()`: complete the same native return exactly once.
 
 **Acceptance criteria:**
-- [ ] Reproduce the exact sequence with native Odoo 19 persistence and mocked
+- [x] Reproduce the exact sequence with native Odoo 19 persistence and mocked
   Merchant HTTP before changing production code; record red then green.
-- [ ] Preserve original identities and canonical references, reject populated
+- [x] Preserve original identities and canonical references, reject populated
   conflicts, wrong method/amount/ownership, duplicate identity and uncertainty.
-- [ ] Standalone and mixed Cash/card flows resume through the manager UI and
+- [x] Standalone and mixed Cash/card flows resume through the manager UI and
   native POS route; manual Cash remains outstanding until explicit completion.
-- [ ] Missing and repeated recovery, stock and accounting remain exactly once;
+- [x] Missing and repeated recovery, stock and accounting remain exactly once;
   recovery/validation dispatch no provider request.
-- [ ] Run focused and full tests and independent Standards/Spec reviews.
-- [ ] Document production-base diff, release version, upgrade verification and
+- [x] Run focused and full tests and independent Standards/Spec reviews.
+- [x] Document production-base diff, release version, upgrade verification and
   rollback limits. Commit locally; do not push or deploy.
 
 **Out of scope:** Real Merchant/terminal calls, live repair, new financial
@@ -172,4 +181,124 @@ guarded image `sha256:42594cb2d56aaa3790302a3dd0677fd561084e581899669d8da407df6d
 Tests use only the internal-network Compose project `revolut-ticket71`.
 The provider guard passed before testing. No live environment was used.
 
-Full-suite and independent review results will be recorded below before handoff.
+Full-suite and independent review results are recorded below.
+
+## Independent review
+
+Fixed review diff: `440f1a8...e114589`. The review axes ran independently and
+read both changed code and its surrounding allocation/settlement boundaries.
+Both reviews were static; runtime results are recorded separately.
+
+### Standards
+
+**0 findings** against contributing, architecture, security and repository
+guidance. The correction reuses existing allocation and native mutation guards,
+preserves server authority, original identities, compatible references and
+explicit Cash completion. It introduces no provider request. Fixtures use
+synthetic data and mocks; release documentation states upgrade/rollback limits.
+No actionable baseline code smells were identified. The shared native-payment
+eligibility helper preserves its prior external-association behavior.
+
+### Spec
+
+**0 actionable findings**. Existing-draft recovery projects verified sibling
+allocations atomically after identity, ownership, amount, uncertainty and
+reference checks. Normal validation owns native stock/accounting completion.
+Backend and browser regressions preserve original identities and outstanding
+Cash, and forbid financial redispatch. Existing missing-return tests remain;
+new repeat recovery/validation checks assert one stock return and credit note.
+The production-based patch version, preservation rehearsal and release steps
+meet the approved scope. No unrelated behavior or scope creep was found.
+The full-suite result remains the final completion gate.
+
+Review summary: Standards **0**; Spec **0**. Neither reviewer executed tests.
+
+## First full-suite run and comparisons
+
+The complete frozen candidate ran in fresh database `ticket71_full`:
+**664 tests, 7 failures, 0 errors**, plus one optional employee-list skip because
+`pos_hr` is absent. All new #71 tests passed within that full run. The Odoo
+statistics line counts 752 entries including fixture work; the terminal test
+result is 664 cases. Runtime was about 20.6 minutes. The failed checkpoint is
+retained in `/tmp/t71-full.log` and ignored `build/ticket71/logs/`.
+
+The seven failures were native browser deadlines:
+
+- Both `TestNativeAdjustmentBrowser` methods: native Open register button
+  absent while the startup loading screen remained visible.
+- `test_lost_refund_response_recovers_after_reload_without_second_refund`:
+  receipt visibility deadline; the captured screenshot already shows the correct
+  completed refund receipt and canonical references.
+- `test_pending_refund_recovers_from_saved_return_without_browser_state`:
+  receipt deadline near the third provider poll's completion.
+- `test_refund_discovery_failure_recovers_after_reload_with_one_start`:
+  receipt deadline after two polls; its completion fixture requires three.
+- `test_reload_recovers_late_success_without_new_charge`: native IndexedDB
+  draining deadline before reloaded verification.
+- `test_successful_payment_is_verified_before_automatic_checkout`: receipt
+  deadline while the deliberately long processing fixture was still polling.
+
+Read-only source review found none of these tours invokes manager recovery or
+external refund association, the two entry points using the changed code.
+That bounds the changed paths; it does not by itself explain a failed suite.
+The host had roughly 1 GiB available memory and nearly exhausted swap during
+that run, making timing pressure plausible, without establishing causation.
+
+All seven exact cases were then run in fresh databases on both revisions,
+sequentially, using the same pinned image, Merchant guard, test selection,
+provider mocks and unchanged deadlines:
+
+| Addon | Database | Result |
+| --- | --- | --- |
+| Unchanged production `440f1a8`, `19.0.1.18.14` | `ticket71_compare_base` | 7 passed, zero failures/errors |
+| Candidate `e114589`, `19.0.1.18.15` | `ticket71_compare_candidate` | 7 passed, zero failures/errors |
+
+Logs: `/tmp/t71-baseline-comparison.log` and
+`/tmp/t71-candidate-comparison.log`, also copied under ignored
+`build/ticket71/logs/`. These passes do not erase the full-run failure or prove
+its cause. No test expectations, provider fixtures or timeouts were weakened.
+
+The now-idle disposable comparison project was removed. A second complete run
+uses only fresh project `revolut-ticket71-final`, database `ticket71_final`.
+The global Merchant guard passed again. Addon tree is unchanged from reviewed
+`e114589`: `746b627c21ec64fe6d9e8951836022acf7d8be58`.
+The final full result and release disposition are recorded below.
+
+
+## Final complete run and handoff
+
+The unchanged reviewed addon passed the second fresh full installation run:
+**664 test cases, zero failures, zero errors**, container exit **0**.
+One optional employee-list characterization is skipped because `pos_hr` is not
+installed. The Odoo statistics line reports 752 entries including fixture work;
+579 cases run post-install. The combined post-install phase took 1050 seconds.
+
+All seven cases that failed in the first combined run passed in this combined
+rerun. The exact cause of the earlier timing failures remains unproven; the
+first run, screenshots, comparison outcomes and rerun are retained rather than
+replacing the failed checkpoint with an isolated pass. No source, assertions,
+provider fixture, polling interval or timeout changed between these full runs.
+
+A chat interruption disconnected the original terminal session mid-run. The
+same live container continued; its complete Docker log was recovered, and a
+separate `docker wait` captured its actual exit code. This was one continuous
+final run, not a partial run presented as complete. Final log:
+`/tmp/t71-full-final-recovered.log`; exit code: `/tmp/t71-final-exit-code`.
+Copies are retained under ignored `build/ticket71/logs/`.
+
+The tested addon tree remains `746b627c21ec64fe6d9e8951836022acf7d8be58`,
+matching reviewed code commit `e114589`. Subsequent handoff changes are docs only.
+The remote production `19.0` tip was re-read during final verification and still
+matched `440f1a8c89048e5c2170425a4684ed23cbb0e261`.
+
+The implementation is complete locally. Keep the tracker claimed until the
+maintainer decides integration/publication; no release branch was updated.
+Review the production-based branch diff, then use the normal backup, cloned-data
+rehearsal, stopped-worker module update and POS reopen procedure in
+[Upgrading](../upgrading.md#existing-waiting-refund-recovery--19011815).
+Do not merge the old divergent local main history. This patch requires no
+schema migration, credential change or automatic live-record repair.
+
+No push, PR publication, production deployment, real provider request, financial
+operation, live repair or physical terminal acceptance occurred. Physical and
+deployed-data verification remain separate from these guarded synthetic checks.
