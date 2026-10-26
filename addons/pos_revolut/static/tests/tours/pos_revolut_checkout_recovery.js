@@ -162,6 +162,13 @@ for (const refund of [false, true]) {
                 PaymentScreen.clickValidate(),
                 { trigger: ".modal:contains('Revolut reconciliation required')" },
                 Dialog.confirm(),
+                ...(refund && ["reject", "timeout"].includes(kind) ? [
+                    {
+                        content: "Dismiss the checkout recovery popup with the normal OK button",
+                        trigger: ".modal:not(.o_inactive_modal):contains('Revolut checkout recovery')",
+                    },
+                    Dialog.confirm(),
+                ] : []),
                 {
                     content: "Double Check status remains one bounded read-only restoration attempt",
                     trigger: ".payment-screen .send_payment_request:contains('Check status')",
