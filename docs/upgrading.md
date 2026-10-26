@@ -66,3 +66,28 @@ Custom receipt screens were replaced by native POS receipts/invoices; financial 
 The internal refund-discovery evidence screen and user access were removed. Matched refunds remain in **Revolut Refunds**. Administrators investigate retained server evidence privately; do not restore broad access to merchant-wide observations.
 
 Missing or inconsistent evidence requires [reconciliation](user-guide.md#reconcile-an-uncertain-payment), not database edits or replacement financial operations.
+
+### Existing waiting refund recovery — 19.0.1.18.15
+
+This patch is based directly on the production `19.0` branch at `440f1a8`.
+It changes manager recovery of an already-verified refund and its form action;
+there is no schema migration, credential rotation or automatic financial repair.
+Use the normal backup, stopped-worker module update and POS reopen procedure
+above. The addon update is necessary to load **Recover return** in the form.
+
+After checking the original refund's status, use **Recover return** to resume
+its original waiting tender. Review and validate the same return in POS, and
+explicitly complete any outstanding Cash portion. Recovery never issues another
+refund. Conflicting references or uncertain sibling allocations require review.
+
+Prepare the release from this production-based patch; do not merge the older,
+divergent local `main` history into `19.0`. Review any newer production commits
+before applying it. Publication, pushing `19.0`, deployment and real-terminal
+acceptance remain separate maintainer steps. Before real acceptance, rehearse on
+a backed-up database copy with Merchant HTTP blocked; synthetic tests cannot
+establish the condition of a deployed database or physical device.
+
+Restore the complete pre-update database, filestore and addon together only
+while financial activity remains stopped. After new provider or native financial
+activity, reconcile first: reverting only the source code or restoring an older
+database can lose subsequent operations.

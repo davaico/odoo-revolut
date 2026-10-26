@@ -27,7 +27,7 @@
                     <field name="pos_order_id" invisible="True"/>
                     <field name="native_reconciliation_status" invisible="True"/>
                     <button name="action_check_status" type="object" string="Check status" class="btn-primary" invisible="state in ('verified', 'failed')"/>
-                    <button name="action_recover_return" type="object" string="Restore missing return" class="btn-primary" groups="point_of_sale.group_pos_manager" invisible="origin != 'odoo' or state != 'verified' or pos_order_id"/>
+                    <button name="action_recover_return" type="object" string="Recover return" class="btn-primary" groups="point_of_sale.group_pos_manager" invisible="origin != 'odoo' or state != 'verified'"/>
                 <button name="action_open_native_completion" type="object" string="Complete native work" groups="point_of_sale.group_pos_manager" invisible="origin != 'external' or state == 'failed' or native_reconciliation_status in ('native_completed', 'financial_only')"/>
                     <button name="action_validate_native_return" type="object" string="Validate confirmed return" groups="point_of_sale.group_pos_manager" invisible="origin != 'external' or not pos_order_id or state != 'verified' or native_reconciliation_status != 'native_draft'" confirm="Validate the selected native return with the already-issued card reimbursement. Native stock and accounting effects apply."/>
                 </header>
@@ -46,7 +46,7 @@
                         </group>
                     </group>
                     <p invisible="origin != 'external' or pos_order_id">No Odoo return is linked. Revolut confirms the refund amount, but does not identify which products or quantities were returned.</p>
-                    <p invisible="origin != 'odoo' or state != 'verified' or pos_order_id">The refund is completed, but its saved Odoo return is missing. Restore it, then review and validate it in the register. Restoring sends no new refund.</p>
+                    <p invisible="origin != 'odoo' or state != 'verified'">The refund is completed. Recover its original Odoo return, then review and complete it in the register. Recovery sends no new refund.</p>
                     <p invisible="state not in ('dispatching', 'pending', 'unresolved')">This refund is awaiting confirmation. Check its status before issuing another refund or changing payment method.</p>
                     <notebook>
                         <page string="Details" name="refund_details">

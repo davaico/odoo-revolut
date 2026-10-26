@@ -241,14 +241,7 @@ class ReturnAllocation:
                                                          and not item.revolut_refund_operation_id):
                 raise UserError(_("Select the existing card reimbursement explicitly; do not duplicate its payment line."))
             if payment:
-                if (payment.id in used_payments or payment.pos_order_id != order
-                        or payment.payment_method_id != refund.payment_method_id
-                        or normalize(refund.currency_id, payment.amount)[1] != -refund.amount_minor
-                        or payment.revolut_refund_operation_id not in (refund.browse(), refund)
-                        or payment.revolut_operation_id
-                        or payment.transaction_id not in (False, refund.revolut_order_id)
-                        or payment.payment_ref_no not in (False, refund.revolut_order_id)
-                        or order.state != "draft" and (refund.state != "verified" or payment.transaction_id != refund.revolut_order_id)):
+                if payment.id in used_payments or not self._native_payment_matches(payment, refund, order):
                     raise UserError(_("The native payment is unrelated, ambiguous, or already used by another refund."))
                 used_payments.add(payment.id)
             prospective.append((refund, payment, base, tip))
@@ -299,6 +292,18 @@ class ReturnAllocation:
             for refund in refunds:
                 refund._complete_native_return()
         return order
+
+    def _native_payment_matches(self, payment, refund, order):
+        normalize = self.env["pos.revolut.payment.operation"].normalize_amount
+        return (payment.pos_order_id == order
+                and payment.payment_method_id == refund.payment_method_id
+                and normalize(refund.currency_id, payment.amount)[1] == -refund.amount_minor
+                and payment.revolut_refund_operation_id in (refund.browse(), refund)
+                and not payment.revolut_operation_id
+                and payment.transaction_id in (False, refund.revolut_order_id)
+                and payment.payment_ref_no in (False, refund.revolut_order_id)
+                and (order.state == "draft" or refund.state == "verified"
+                     and payment.transaction_id == refund.revolut_order_id))
 
     def _normalize_return(self, data, *, native_order=False):
         snapshot = self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(
@@ -837,13 +842,13 @@ class ReturnAllocation:
             for sibling in refunds:
                 matching = payments.filtered(lambda payment: payment.uuid == sibling.payment_line_uuid)
                 if (len(matching) != 1 or sibling.pos_payment_id and sibling.pos_payment_id != matching
-                        or matching.payment_method_id != sibling.payment_method_id
-                        or normalize(session.currency_id, matching.amount)[1] != -sibling.amount_minor
-                        or matching.transaction_id != sibling.revolut_order_id
-                        or matching.revolut_refund_operation_id
-                        and matching.revolut_refund_operation_id != sibling):
+                        or not self._native_payment_matches(matching, sibling, existing)):
                     raise UserError(_("The verified refund payment link does not match its original allocation."))
-            existing._check_revolut_order()
+            # Check populated evidence before projecting absent draft references.
+            existing._validate_revolut_payment_references(existing._revolut_payment_values(
+                existing._revolut_order_values(), existing))
+            if existing.state != "draft":
+                existing._check_revolut_order()
         elif any(original.lines.filtered(lambda line: line.id == row["refunded_orderline_id"])
                  .product_id.tracking != "none" for row in snapshot["lines"]):
             raise UserError(_("The lost return has tracked products. A manager must recover its original lot details first."))
