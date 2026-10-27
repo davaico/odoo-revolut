@@ -48,7 +48,7 @@ Preserve original prices, discounts, taxes and currency. Refund limits include o
 
 After a timeout/reload, keep the saved return and **Check status** on the same line. Replace only a confirmed failed allocation when permitted; never repeat completed or uncertain refunds.
 
-In **Point of Sale → Revolut Refunds**, **Refund Status** describes the money and **Odoo Return** links the native return. **Restore missing return** reconstructs a missing older return without refunding again: review and validate its draft. Closed-session recovery uses a new session on the same authorized register. Uncertain refunds and unfinished returns can block register closure.
+In **Point of Sale → Revolut Refunds**, **Refund Status** describes the money and **Odoo Return** links the native return. **Recover return** resumes the original saved return or reconstructs a genuinely missing older return without refunding again. After backend status verification, recovery applies the completed card refund to its original waiting tender. Review and validate the same draft in the register; complete any outstanding Cash portion explicitly. A completed return opens for review. Closed-session recovery uses a new session on the same authorized register. Uncertain refunds and unfinished returns can block register closure.
 
 ## Refunds issued from Revolut
 

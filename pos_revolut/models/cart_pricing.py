@@ -116,7 +116,10 @@ class PosOrderCartPricing(models.Model):
         for parent in self.lines.filtered(lambda line: line.product_id.type == "combo"):
             if parent.combo_parent_id or not parent.qty or not parent.combo_line_ids:
                 raise UserError(_("The combo parent and selected items are incomplete."))
-            combos = parent.product_id.combo_ids
+            # The configurator enumerates integer keys in state.qty by ID.
+            # product.combo's default sequence order is only for display; using
+            # it here moves the rounding remainder between differently taxed items.
+            combos = parent.product_id.combo_ids.sorted("id")
             children = parent.combo_line_ids.sorted(lambda line: (line.combo_item_id.combo_id.id, line.combo_item_id.id, line.id))
             included, additional = [], []
             for combo in combos:

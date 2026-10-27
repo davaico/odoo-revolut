@@ -5,6 +5,24 @@ import {
     paymentOutcome, paymentResponseSuccessful, restorePaymentLine,
 } from "../src/app/revolut_payment_state.js";
 
+test("native saved refund sync must not report completion after losing verified references", async () => {
+    const { state, order, line, calls } = fixture({ refund: true });
+    state.remember(line, { operation_id: 81, kind: "refund", state: "verified",
+        payment_id: "refund-81", order_id: "refund-81", return_total_minor: 1234 });
+    await state.setVerified(line);
+    line.handlePaymentResponse(true);
+    line.transaction_id = false;
+    line.payment_ref_no = false;
+    line.payment_status = "waiting";
+    state.afterSync(order, line);
+    assert.equal(line.getPaymentStatus(), "retry");
+    assert.equal(paymentResponseSuccessful(line, true), false);
+    assert.equal(await state.setVerified(line), true);
+    assert.equal(line.transaction_id, "refund-81");
+    assert.equal(line.payment_ref_no, "refund-81");
+    assert.deepEqual(calls, []);
+});
+
 function deferred() {
     let resolve;
     let reject;

@@ -307,6 +307,10 @@ export class PaymentRevolut extends PaymentInterface {
         if (!isCurrent()) {
             return;
         }
+        this._setVerifiedReferences(line, result);
+    }
+
+    _setVerifiedReferences(line, result) {
         line.transaction_id = result.payment_id;
         line.payment_ref_no = result.order_id;
         const receipt = isRevolutRefund(line)
@@ -654,15 +658,49 @@ patch(PosOrder.prototype, {
 
 patch(PaymentScreen.prototype, {
     async validateOrder() {
+        const order = this.currentOrder;
+        const refunds = order.payment_ids.filter(isRevolutRefund);
+        const unresolved = order.payment_ids.some((line) => paymentActions(line).blocksCheckout &&
+            (!isRevolutRefund(line) || line.uiState.revolutSnapshot?.state !== "verified" ||
+                line.uiState.revolutLocalOutcome === "checkout_restore_failed"));
+        if (refunds.length && !unresolved) {
+            await restoreRefundOriginals(this.pos, order);
+            if (this.currentOrder !== order || order.state !== "draft") {
+                return false;
+            }
+            const restored = [];
+            for (const line of refunds) {
+                if (line.uiState.revolutSnapshot?.state !== "verified") {
+                    continue;
+                }
+                await line.payment_method_id.payment_terminal.paymentState.restore(order, line);
+                if (this.currentOrder !== order || order.state !== "draft" ||
+                    !order.payment_ids.includes(line) || line.pos_order_id !== order) {
+                    return false;
+                }
+                const snapshot = line.uiState.revolutSnapshot;
+                if (snapshot?.state === "verified" && snapshot.payment_id && snapshot.order_id &&
+                    snapshot.operation_id === line.uiState.revolutOperationId &&
+                    line.uiState.revolutCheckoutRestored === true) {
+                    restored.push({ line, snapshot });
+                }
+            }
+            for (const { line, snapshot } of restored) {
+                if (order.payment_ids.includes(line) && line.pos_order_id === order &&
+                    line.uiState.revolutSnapshot === snapshot &&
+                    snapshot.operation_id === line.uiState.revolutOperationId) {
+                    line.payment_method_id.payment_terminal._setVerifiedReferences(line, snapshot);
+                    line.uiState.revolutCheckoutRestored = true;
+                    line.setPaymentStatus("done");
+                }
+            }
+        }
         if (orderActions(this.currentOrder).blocksCheckout) {
             this.dialog.add(AlertDialog, {
                 title: _t("Revolut reconciliation required"),
                 body: _t("This order has an unresolved Revolut payment. Check its status before completing checkout."),
             });
             return false;
-        }
-        if (this.currentOrder.payment_ids.some(isRevolutRefund)) {
-            await restoreRefundOriginals(this.pos, this.currentOrder);
         }
         return super.validateOrder(...arguments);
     },

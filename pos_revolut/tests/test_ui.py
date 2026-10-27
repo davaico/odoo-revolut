@@ -1453,7 +1453,8 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
 
     REFUND_ID = "6c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf"
 
-    def _run_full_refund(self, tour, outcome="completed", *, amount_minor=1234, next_sale=False):
+    def _run_full_refund(self, tour, outcome="completed", *, amount_minor=1234,
+                         next_sale=False, refund_parts=1):
         self._configure_revolut_checkout()
         calls = []
         refund_polls = 0
@@ -1463,6 +1464,8 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         sale_intent_id = self.INTENT_ID
         sale_payment_id = self.PAYMENT_ID
         sale_amount = amount_minor
+        refund_amount = amount_minor // refund_parts
+        refund_ids = [self.REFUND_ID, "6c2f3842-c34d-4cc3-a0fc-9ae40b04dfb0"][:refund_parts]
 
         def request(method, url, **kwargs):
             nonlocal refund_polls, sale_count, sale_order_id, sale_intent_id, sale_payment_id, sale_amount
@@ -1496,11 +1499,12 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                 })
             if method == "POST" and url.endswith("/refund"):
                 refund_posts.append(kwargs)
+                self.assertEqual(kwargs["json"]["amount"], refund_amount)
                 if outcome == "lost_response":
                     raise requests.ConnectionError("Refund accepted but response lost")
                 return self._response({
-                    "id": self.REFUND_ID, "state": "pending", "type": "refund",
-                    "amount": amount_minor, "currency": self.main_pos_config.currency_id.name,
+                    "id": refund_ids[len(refund_posts) - 1], "state": "pending", "type": "refund",
+                    "amount": refund_amount, "currency": self.main_pos_config.currency_id.name,
                     "related_order_id": self.ORDER_ID,
                 })
             if method == "GET" and url.endswith(f"/orders/{self.ORDER_ID}"):
@@ -1516,12 +1520,12 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                     "related_order_id": self.ORDER_ID,
                     "merchant_order_data": refund_posts[0]["json"]["merchant_order_data"],
                 }]})
-            if method == "GET" and url.endswith(f"/orders/{self.REFUND_ID}"):
+            if method == "GET" and any(url.endswith(f"/orders/{reference}") for reference in refund_ids):
                 refund_polls += 1
                 return self._response({
-                    "id": self.REFUND_ID, "type": "refund",
+                    "id": url.rsplit("/", 1)[-1], "type": "refund",
                     "state": "pending" if refund_polls < 3 else ("failed" if outcome == "failed" else "completed"),
-                    "amount": amount_minor, "currency": self.main_pos_config.currency_id.name,
+                    "amount": refund_amount, "currency": self.main_pos_config.currency_id.name,
                     "related_order_id": self.ORDER_ID,
                 })
             raise AssertionError(f"Unexpected Revolut request: {method} {url}")
@@ -1532,7 +1536,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         ) as provider:
             install_zero_reports(self.env, provider)
             self.start_pos_tour(tour, login="pos_admin")
-        self.assertEqual(len(refund_posts), 0 if outcome == "undispatched" else 1)
+        self.assertEqual(len(refund_posts), 0 if outcome == "undispatched" else refund_parts)
         self.assertEqual(sale_count, 2 if next_sale else 1)
         return calls
 
@@ -1648,6 +1652,31 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.assertEqual(refunds.pos_payment_id.uuid, refunds.payment_line_uuid)
         self.assertEqual(refunds.pos_payment_id.transaction_id, self.REFUND_ID)
         self.assertEqual(refunds.pos_payment_id.payment_ref_no, self.REFUND_ID)
+
+    def test_completed_refund_native_refresh_recovers_without_second_refund(self):
+        self._run_full_refund("pos_revolut_refund_stale_native_recovery")
+        self.env.invalidate_all()
+        refunds = self.env["pos.revolut.refund.operation"].search([])
+        self.assertEqual(len(refunds), 1)
+        self.assertEqual(refunds.state, "verified")
+        self.assertEqual(refunds.pos_order_id.state, "paid")
+        self.assertEqual(refunds.pos_payment_id.payment_status, "done")
+        self.assertEqual(refunds.pos_payment_id.transaction_id, self.REFUND_ID)
+        self.assertEqual(refunds.pos_payment_id.payment_ref_no, self.REFUND_ID)
+
+    def test_two_completed_refunds_native_refresh_recovers_without_replay(self):
+        self._run_full_refund("pos_revolut_two_refunds_stale_native_recovery", refund_parts=2)
+        self.env.invalidate_all()
+        refunds = self.env["pos.revolut.refund.operation"].search([])
+        self.assertEqual(len(refunds), 2)
+        self.assertEqual(set(refunds.mapped("state")), {"verified"})
+        self.assertEqual(len(refunds.pos_order_id), 1)
+        self.assertEqual(refunds.pos_order_id.state, "paid")
+        self.assertEqual(len(refunds.pos_payment_id), 2)
+        for refund in refunds:
+            self.assertEqual(refund.pos_payment_id.payment_status, "done")
+            self.assertEqual(refund.pos_payment_id.transaction_id, refund.revolut_order_id)
+            self.assertEqual(refund.pos_payment_id.payment_ref_no, refund.revolut_order_id)
 
     def test_pending_refund_recovers_from_saved_return_without_browser_state(self):
         calls = self._run_full_refund("pos_revolut_pending_refund_server_recovery")

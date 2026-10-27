@@ -251,6 +251,60 @@ class TestRevolutCartPricing(CommonPosTest):
         self.assertEqual(result["canonical"]["total_minor"], 2100)
         self.assertEqual(result["status"], "review_required")
 
+    def _native_combo_rounding_order(self):
+        tax = self.env["account.tax"].create({
+            "name": "Combo 20 percent", "amount": 20, "amount_type": "percent",
+            "company_id": self.company.id,
+        })
+        products = self.env["product.product"].create([
+            {"name": "Taxed combo item", "list_price": 1, "available_in_pos": True,
+             "taxes_id": [Command.set(tax.ids)]},
+            {"name": "Untaxed combo item", "list_price": 1, "available_in_pos": True,
+             "taxes_id": [Command.clear()]},
+        ])
+        # Native configurator enumerates numeric combo IDs, even when display
+        # sequence is reversed. The last numeric ID receives the rounding cent.
+        combos = self.env["product.combo"].create([
+            {"name": "First numeric choice", "sequence": 20,
+             "combo_item_ids": [Command.create({"product_id": products[0].id})]},
+            {"name": "Last numeric choice", "sequence": 10,
+             "combo_item_ids": [Command.create({"product_id": products[1].id})]},
+        ])
+        parent = self.env["product.product"].create({
+            "name": "Rounding combo", "type": "combo", "list_price": 0.05,
+            "available_in_pos": True, "taxes_id": [Command.clear()],
+            "combo_ids": [Command.set(combos.ids)],
+        })
+        order = self._order(price=0, product_id=parent.id)
+        parent_line = order.lines
+        # Deliberately persist in display order, not allocation order.
+        for combo, price in ((combos[1], 0.02), (combos[0], 0.03)):
+            item = combo.combo_item_ids
+            order.write({"lines": [Command.create({
+                "product_id": item.product_id.id, "qty": 1, "price_unit": price,
+                "price_subtotal": price,
+                "price_subtotal_incl": price + (0.01 if combo == combos[0] else 0),
+                "tax_ids": [Command.set(item.product_id.taxes_id.ids)],
+                "combo_parent_id": parent_line.id, "combo_item_id": item.id,
+            })]})
+        return order, combos
+
+    def test_native_combo_rounding_ignores_display_sequence(self):
+        order, combos = self._native_combo_rounding_order()
+        result = self._prepare(order, amount=0.06)
+        self.assertEqual(result["canonical"]["total_minor"], 6)
+        for combo, price in zip(combos, (0.03, 0.02)):
+            line = order.lines.filtered(lambda line: line.combo_item_id.combo_id == combo)
+            self.assertAlmostEqual(line.price_unit, price)
+        self.assertFalse(result["canonical"]["approval_required"])
+
+    def test_native_combo_rounding_does_not_require_manager(self):
+        self.pos_config_usd.restrict_price_control = True
+        order, _combos = self._native_combo_rounding_order()
+        result = self._prepare(order, amount=0.06)
+        self.assertFalse(result["canonical"]["approval_required"])
+        self.assertEqual(result["canonical"]["total_minor"], 6)
+
     def test_terminal_tip_precision_preflight_rejects_unrepresentable_tax(self):
         tax = self.env["account.tax"].create({
             "name": "Tip twenty", "amount": 20, "amount_type": "percent", "company_id": self.company.id,

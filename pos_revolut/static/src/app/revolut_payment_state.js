@@ -89,7 +89,16 @@ export function paymentOutcome(line) {
         : line.uiState?.revolutLocalOutcome || snapshot?.local_outcome || snapshot?.state;
 }
 
+function invalidateRefundCheckout(line) {
+    const verified = line.uiState.revolutSnapshot;
+    if (isRevolutRefund(line) && verified?.state === "verified" && verified.payment_id &&
+        (line.transaction_id !== verified.payment_id || line.payment_ref_no !== verified.order_id)) {
+        line.uiState.revolutCheckoutRestored = false;
+    }
+}
+
 export function restorePaymentLine(line) {
+    invalidateRefundCheckout(line);
     if (line.uiState.revolutRecoveredUnstarted || line.uiState.revolutRecoveredRetired) {
         // Recovery actions consume current server authority. A restored or
         // merged browser snapshot cannot know whether another cashier started.
@@ -211,6 +220,7 @@ export class RevolutPaymentState {
         if (owner.restoration) {
             return owner.restoration;
         }
+        invalidateRefundCheckout(line);
         if (line.uiState.revolutCheckoutRestored === true) {
             return true;
         }

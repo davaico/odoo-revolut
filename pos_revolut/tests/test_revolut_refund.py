@@ -6,12 +6,14 @@ from unittest import TestCase
 from uuid import uuid4
 
 import requests
+from psycopg2 import IntegrityError
 
 from odoo import Command
 from odoo.addons.point_of_sale.tests.common import CommonPosTest
 from odoo.tests.common import tagged, new_test_user
 from odoo.service.model import call_kw
 from odoo.exceptions import AccessError, UserError, ValidationError
+from odoo.tools import mute_logger
 
 from odoo.addons.pos_revolut.models.financial_snapshot import FinancialSnapshotError
 
@@ -113,6 +115,9 @@ class TestRevolutRefund(CommonPosTest):
         self.assertEqual(started["state"], "pending")
         self.assertEqual(self._rpc_refund(manager, "pos.payment.method", "revolut_start_refund", args), started)
         self.assertEqual([call.args[0] for call in self.request.call_args_list], ["GET", "POST"])
+        self.assertEqual(self.request.call_args.kwargs["json"]["metadata"], {
+            "pos_partner_name": "davai-akae-integration",
+        })
         native = self._rpc_refund(manager, "pos.order", "read", [[native_id], ["uuid", "state"]])[0]
         self.assertEqual((native["uuid"], native["state"]), (draft["uuid"], "draft"))
 
@@ -561,6 +566,245 @@ class TestRevolutRefund(CommonPosTest):
         self.assertEqual(refund.pos_session_id, original_session)
         self.assertEqual(refund.pos_order_id, order)
         self.assertEqual(refund.pos_payment_id, order.payment_ids)
+        self.request.assert_not_called()
+
+    def test_manager_recovers_existing_waiting_return_after_backend_verification(self):
+        manager = self._mutation_actor()
+        self.product = self.env["product.product"].create({
+            "name": "Recoverable return stock", "type": "consu", "is_storable": True,
+            "available_in_pos": True, "list_price": 12.34, "taxes_id": [Command.clear()],
+        })
+        original = self._order_payload(str(uuid4()), str(uuid4()))
+        self.source = self._operation(
+            original["uuid"], original["payment_ids"][0][2]["uuid"],
+            financial_snapshot=self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(original),
+        )
+        original["payment_ids"][0][2]["transaction_id"] = self.source.revolut_payment_id
+        self.env["pos.order"].sync_from_ui([original])
+        self.original = self.source.pos_order_id
+        self.payload["lines"][0][2].update(product_id=self.product.id, refunded_orderline_id=self.original.lines.id)
+        self.payload["partner_id"] = self.env["res.partner"].create({"name": "Recovered return customer"}).id
+        self.request.side_effect = [
+            self._response(id=self.source.revolut_order_id, state="completed",
+                           amount=1234, currency=self.session.currency_id.name, refunded_amount=0),
+            self._refund_response("processing"),
+        ]
+        started = self._rpc_start_refund(manager)
+        self.assertEqual(started["state"], "pending")
+        refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
+        order = self.env["pos.order"].browse(self.payload["id"])
+        tender = order.payment_ids
+        identity = (order.id, order.lines.ids, tender.id, refund.idempotency_key)
+        self.assertEqual(tender.payment_status, "waiting")
+        self.assertFalse(tender.transaction_id)
+        self.assertFalse(refund.pos_order_id)
+        self.assertFalse(refund.pos_payment_id)
+
+        self.request.side_effect = [self._refund_response("completed")]
+        self._rpc_refund(manager, "pos.revolut.refund.operation", "action_check_status", [[refund.id]])
+        self.env.invalidate_all()
+        self.assertEqual(refund.state, "verified")
+        self.assertEqual(tender.payment_status, "waiting")
+        self.assertFalse(tender.revolut_refund_operation_id)
+        self.request.reset_mock(side_effect=True)
+        self.request.side_effect = AssertionError("Recovery must not contact the provider")
+
+        action = self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refund.id]])
+        self.assertEqual(action["url"], f"/pos/ui/{self.pos_config_usd.id}/payment/{order.uuid}")
+        self.assertEqual((order.id, order.lines.ids, order.payment_ids.id, refund.idempotency_key), identity)
+        self.assertEqual(order.state, "draft")
+        self.assertEqual(tender.payment_status, "done")
+        self.assertEqual(tender.transaction_id, self.refund_id)
+        self.assertEqual(tender.payment_ref_no, self.refund_id)
+        self.assertEqual(tender.revolut_order_id, self.refund_id)
+        self.assertEqual(tender.revolut_refund_operation_id, refund)
+        self.assertEqual(refund.pos_order_id, order)
+        self.assertEqual(refund.pos_payment_id, tender)
+        self.assertFalse(order.picking_ids)
+        self.assertFalse(order.account_move)
+        self.assertEqual(self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refund.id]]), action)
+
+        checkout = deepcopy(self.payload)
+        checkout.update(state="paid", amount_paid=-12.34)
+        checkout["payment_ids"][0][2].update(payment_status="done", transaction_id=self.refund_id)
+        self._rpc_refund(manager, "pos.order", "sync_from_ui", [[deepcopy(checkout)]])
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(len(order.picking_ids), 1)
+        self.assertEqual(order.picking_ids.state, "done")
+        self.assertEqual(order.picking_ids.move_ids.quantity, 1)
+        picking = order.picking_ids
+        invoice = order.with_user(manager).with_context(generate_pdf=False).action_pos_order_invoice()
+        move = self.env["account.move"].browse(invoice["res_id"])
+        self.assertEqual((move.state, move.move_type, move.amount_total), ("posted", "out_refund", 12.34))
+        self._rpc_refund(manager, "pos.order", "sync_from_ui", [[deepcopy(checkout)]])
+        repeated = self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refund.id]])
+        self.assertEqual(repeated["res_id"], order.id)
+        self.assertEqual(order.picking_ids, picking)
+        self.assertEqual(order.account_move, move)
+        self.assertEqual(order.payment_ids, tender)
+        self.assertEqual(self.env["pos.revolut.refund.operation"].search_count([("order_uuid", "=", order.uuid)]), 1)
+        self.request.assert_not_called()
+
+    def test_manager_recovers_waiting_card_without_completing_cash_share(self):
+        self._split_original()
+        manager = self._mutation_actor()
+        self.payload["payment_ids"][0][2]["amount"] = -6.17
+        self.payload["amount_paid"] = -6.17
+        self.request.side_effect = [
+            self._response(id=self.source.revolut_order_id, state="completed",
+                           amount=617, currency=self.session.currency_id.name, refunded_amount=0),
+            self._refund_response("processing", amount=617),
+        ]
+        started = self._rpc_start_refund(manager)
+        refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
+        order = self.env["pos.order"].browse(self.payload["id"])
+        tender = order.payment_ids
+        self.request.side_effect = [self._refund_response("completed", amount=617)]
+        self._rpc_refund(manager, "pos.revolut.refund.operation", "action_check_status", [[refund.id]])
+        self.env.invalidate_all()
+        self.assertEqual(refund.state, "verified")
+        self.request.reset_mock(side_effect=True)
+        self.request.side_effect = AssertionError("Recover the card allocation without another refund")
+
+        action = self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refund.id]])
+        self.assertEqual(refund.pos_order_id, order)
+        self.assertEqual(order.payment_ids, tender)
+        self.assertEqual((order.state, order.amount_total, order.amount_paid), ("draft", -12.34, -6.17))
+        self.assertEqual((tender.payment_status, tender.transaction_id), ("done", self.refund_id))
+        self.assertFalse(order.account_move)
+        self.assertFalse(order.picking_ids)
+        self.assertEqual(self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refund.id]]), action)
+        with self.assertRaises(UserError):
+            self._rpc_refund(manager, "pos.order", "action_pos_order_paid", [[order.id]])
+        self.assertEqual(order.state, "draft")
+        self.assertEqual(order.payment_ids, tender)
+
+        checkout = deepcopy(self.payload)
+        checkout.update(state="paid", amount_paid=-12.34)
+        checkout["payment_ids"][0][2].update(payment_status="done", transaction_id=self.refund_id)
+        cash_uuid = str(uuid4())
+        checkout["payment_ids"].append(Command.create({
+            "uuid": cash_uuid, "payment_method_id": self.cash_payment_method.id,
+            "amount": -6.17, "name": tender.payment_date,
+        }))
+        self._rpc_refund(manager, "pos.order", "sync_from_ui", [[deepcopy(checkout)]])
+        cash = order.payment_ids - tender
+        self.assertEqual(len(cash), 1)
+        self.assertEqual((order.state, cash.amount, cash.uuid), ("paid", -6.17, cash_uuid))
+        self.assertEqual(refund.pos_payment_id, tender)
+        repeated = self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refund.id]])
+        self.assertEqual(repeated["res_id"], order.id)
+        self.assertEqual(order.payment_ids, tender | cash)
+        self.request.assert_not_called()
+
+    def test_existing_waiting_return_recovers_all_verified_siblings_together(self):
+        sources = self._split_original(second_revolut=True)
+        manager = self._mutation_actor()
+        first = self.payload["payment_ids"][0][2]
+        first["amount"] = -6.17
+        self.payload["payment_ids"].append(Command.create(dict(first, uuid=str(uuid4()))))
+        self._save_return_draft(actor=manager)
+        refunds = self.env["pos.revolut.refund.operation"].browse()
+        for source, command in zip(sources, self.payload["payment_ids"]):
+            self.refund_id = str(uuid4())
+            payment = command[2]
+            self.request.side_effect = [
+                self._response(id=source.revolut_order_id, state="completed", amount=617,
+                               currency=self.session.currency_id.name, refunded_amount=0),
+                self._refund_response("processing", amount=617, source=source),
+            ]
+            started = self._rpc_refund(manager, "pos.payment.method", "revolut_start_refund", [
+                [self.revolut_method.id], self.session.id, self.payload["uuid"], payment["uuid"],
+                -6.17, self.session.currency_id.id, self.payload, source.id,
+            ])
+            refunds |= self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
+        order = self.env["pos.order"].browse(self.payload["id"])
+        tenders = order.payment_ids
+        for index, refund in enumerate(refunds):
+            self.refund_id = refund.revolut_order_id
+            self.request.side_effect = [self._refund_response("completed", amount=617, source=sources[index])]
+            self._rpc_refund(manager, "pos.revolut.refund.operation", "action_check_status", [[refund.id]])
+            self.env.invalidate_all()
+            if index == 0:
+                self.request.reset_mock(side_effect=True)
+                self.request.side_effect = AssertionError("Reconcile the uncertain sibling first")
+                with self.assertRaisesRegex(UserError, "Reconcile every refund allocation"):
+                    self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refund.id]])
+                self.assertEqual(set(tenders.mapped("payment_status")), {"waiting"})
+                self.assertFalse(any(tenders.mapped("transaction_id")))
+                self.assertFalse(refunds.pos_order_id)
+                self.request.assert_not_called()
+        # Retain a compatible preexisting reference while filling missing proof.
+        self.env.cr.execute("UPDATE pos_payment SET payment_ref_no = %s WHERE id = %s",
+                            [refunds[1].revolut_order_id, tenders.filtered(lambda item: item.uuid == refunds[1].payment_line_uuid).id])
+        self.env.invalidate_all()
+        self.request.reset_mock(side_effect=True)
+        self.request.side_effect = AssertionError("Recover all original allocations without dispatch")
+        action = self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refunds[0].id]])
+        self.assertEqual(order.payment_ids, tenders)
+        self.assertEqual(refunds.pos_order_id, order)
+        self.assertEqual(set(tenders.mapped("payment_status")), {"done"})
+        self.assertEqual(set(tenders.mapped("transaction_id")), set(refunds.mapped("revolut_order_id")))
+        self.assertEqual(set(tenders.mapped("revolut_refund_operation_id").ids), set(refunds.ids))
+        self.assertEqual(self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refunds[1].id]]), action)
+        self.request.assert_not_called()
+
+    def test_waiting_return_recovery_rejects_conflicting_evidence_atomically(self):
+        manager = self._mutation_actor()
+        started = self._pending()
+        refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
+        self.request.side_effect = [self._refund_response("completed")]
+        self._rpc_refund(manager, "pos.revolut.refund.operation", "action_check_status", [[refund.id]])
+        self.env.invalidate_all()
+        order = self.env["pos.order"].browse(self.payload["id"])
+        tender = order.payment_ids
+        self.request.reset_mock(side_effect=True)
+        self.request.side_effect = AssertionError("Conflicting evidence must not contact Revolut")
+        # Ordinary ORM writes already forbid these contradictions. Seed legacy
+        # inconsistent rows to exercise the manager recovery boundary itself.
+        cases = [
+            ("pos_payment", tender.id, "payment_method_id", self.cash_payment_method.id, self.revolut_method.id),
+            ("pos_payment", tender.id, "amount", -6.17, -12.34),
+            ("pos_payment", tender.id, "pos_order_id", self.original.id, order.id),
+            ("pos_payment", tender.id, "transaction_id", str(uuid4()), None),
+            ("pos_payment", tender.id, "payment_ref_no", str(uuid4()), None),
+            ("pos_payment", tender.id, "revolut_order_id", str(uuid4()), None),
+            ("pos_payment", tender.id, "revolut_payment_intent_id", str(uuid4()), None),
+            ("pos_payment", tender.id, "revolut_operation_id", self.source.id, None),
+            ("pos_revolut_refund_operation", refund.id, "pos_order_id", self.original.id, None),
+            ("pos_revolut_refund_operation", refund.id, "pos_payment_id", self.original.payment_ids.id, None),
+            ("pos_order_line", order.lines.id, "qty", -0.5, -1),
+            ("pos_revolut_refund_operation", refund.id, "state", "pending", "verified"),
+            ("pos_revolut_refund_operation", refund.id, "state", "unresolved", "verified"),
+        ]
+        proof_fields = ["payment_status", "transaction_id", "payment_ref_no", "revolut_order_id",
+                        "revolut_payment_intent_id", "revolut_operation_id", "revolut_refund_operation_id"]
+        for table, identifier, column, value, original in cases:
+            with self.subTest(table=table, column=column, value=value):
+                self.env.flush_all()
+                self.env.cr.execute(f'UPDATE {table} SET {column} = %s WHERE id = %s', [value, identifier])
+                self.env.invalidate_all()
+                before = deepcopy(tender.read(proof_fields))
+                refund_before = deepcopy(refund.read(["pos_order_id", "pos_payment_id", "state", "revolut_order_id"]))
+                try:
+                    with self.assertRaises(UserError):
+                        self._rpc_refund(manager, "pos.revolut.refund.operation", "action_recover_return", [[refund.id]])
+                    self.env.invalidate_all()
+                    self.assertEqual(tender.read(proof_fields), before)
+                    self.assertEqual(refund.read(["pos_order_id", "pos_payment_id", "state", "revolut_order_id"]), refund_before)
+                    self.assertEqual(order.state, "draft")
+                    self.assertFalse(order.picking_ids)
+                    self.assertFalse(order.account_move)
+                    self.request.assert_not_called()
+                finally:
+                    self.env.cr.execute(f'UPDATE {table} SET {column} = %s WHERE id = %s', [original, identifier])
+                    self.env.invalidate_all()
+
+        # Native persistence rejects a second saved tender with this identity.
+        with mute_logger("odoo.sql_db"), self.assertRaises(IntegrityError), self.env.cr.savepoint():
+            self.env.cr.execute("UPDATE pos_payment SET uuid = %s WHERE id = %s",
+                                [tender.uuid, self.original.payment_ids.id])
+        self.assertEqual(order.payment_ids, tender)
         self.request.assert_not_called()
 
     def test_manager_recovers_lost_return_without_another_refund(self):
