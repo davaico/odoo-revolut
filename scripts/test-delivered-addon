@@ -15,6 +15,25 @@ from pathlib import Path
 REPOSITORY = Path(__file__).resolve().parents[1]
 
 
+def archive_addons(revision, archive, *, legacy_restaurant=False):
+    candidates = ("pos_revolut/__manifest__.py", "addons/pos_revolut/__manifest__.py")
+    paths = set(subprocess.check_output(
+        ["git", "ls-tree", "-r", "--name-only", revision, "--", *candidates],
+        cwd=REPOSITORY, text=True,
+    ).splitlines())
+    if len(paths.intersection(candidates)) != 1:
+        raise ValueError("Revision must contain exactly one POS Revolut addon layout")
+    root_layout = candidates[0] in paths
+    addon_paths = ["pos_revolut" if root_layout else "addons/pos_revolut"]
+    if legacy_restaurant:
+        addon_paths.append("pos_revolut_restaurant" if root_layout else "addons/pos_revolut_restaurant")
+    subprocess.run(
+        ["git", "archive", "--format=tar.gz", "--output", str(archive),
+         *(["--prefix=addons/"] if root_layout else []), revision, "--", *addon_paths],
+        cwd=REPOSITORY, check=True,
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--revision", required=True)
@@ -47,11 +66,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="pos-revolut-delivered-") as temporary:
         root = Path(temporary)
         archive = root / "release.tar.gz"
-        subprocess.run(
-            ["git", "archive", "--format=tar.gz", "--output", str(archive),
-             args.revision, "--", "addons/pos_revolut"],
-            cwd=REPOSITORY, check=True,
-        )
+        archive_addons(args.revision, archive)
         remote_source = subprocess.check_output(
             ["git", "show", f"{args.revision}:scripts/deploy-addon-remote"],
             cwd=REPOSITORY,
@@ -72,11 +87,7 @@ def main():
         legacy_args = []
         if args.scenario == "migration":
             legacy_archive = root / "legacy.tar.gz"
-            subprocess.run(
-                ["git", "archive", "--format=tar.gz", "--output", str(legacy_archive),
-                 args.migration_from, "--", "addons/pos_revolut", "addons/pos_revolut_restaurant"],
-                cwd=REPOSITORY, check=True,
-            )
+            archive_addons(args.migration_from, legacy_archive, legacy_restaurant=True)
             legacy_root = root / "legacy"
             with tarfile.open(legacy_archive) as bundle:
                 bundle.extractall(legacy_root, filter="data")

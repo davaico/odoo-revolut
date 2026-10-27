@@ -13,7 +13,7 @@ Maintain separate version branches in this repository, retaining the
 `pos_revolut` addon name. The owner selected `feat/v18_rev` for Odoo 18; the existing
 Odoo 19 line remains on `main`. Odoo 18 task branches and agent worktrees start
 from the latest `feat/v18_rev` and integrate back there. The operational agent rule
-is recorded in root `AGENTS.md`.
+was originally recorded in root `AGENTS.md`; current release instructions are in `CONTRIBUTING.md`.
 
 Exact feature parity is required, including behavior currently built on Odoo
 19 presets and scheduling. Using native Odoo 18 workflows must not silently

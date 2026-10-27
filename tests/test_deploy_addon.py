@@ -40,17 +40,21 @@ def load_script(name):
 class FakeRunner:
     def __init__(self, responses, *, pdf_response="ODOO_PDF_PREFLIGHT_OK\n",
                  service_response="User=odoo\nMainPID=123\n", financial_responses=(),
-                 captured_schema=CAPTURED_PAYMENT_SCHEMA):
+                 captured_schema=CAPTURED_PAYMENT_SCHEMA,
+                 addon_manifest_paths="pos_revolut/__manifest__.py\n"):
         self.pdf_response = pdf_response
         self.service_response = service_response
         self.responses = list(responses)
         self.financial_responses = list(financial_responses)
         self.calls = []
         self.captured_schema = captured_schema
+        self.addon_manifest_paths = addon_manifest_paths
 
     def run(self, command, **kwargs):
         self.calls.append((command, kwargs))
-        if command[0] == "runuser" and command[-1].startswith("SELECT COALESCE(jsonb_agg"):
+        if command[:2] == ["git", "ls-tree"]:
+            response = self.addon_manifest_paths
+        elif command[0] == "runuser" and command[-1].startswith("SELECT COALESCE(jsonb_agg"):
             response = self.financial_responses.pop(0) if self.financial_responses else "[]"
         elif command[0] == "runuser" and command[-1].startswith("SELECT table_name || '.' || column_name"):
             response = self.captured_schema
@@ -190,31 +194,32 @@ class TestLocalDeploymentCli(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(stderr.getvalue(), "")
         self.assertIn(f"Deployed POS Revolut revision {revision}", stdout.getvalue())
-        commands = [call[0] for call in runner.calls]
+        commands = [call[0] for call in runner.calls if call[0][:2] != ["git", "ls-tree"]]
         self.assertEqual(
             commands[1], ["git", "rev-parse", "--verify", f"{revision}^{{commit}}"]
         )
         self.assertEqual(
             commands[3],
-            ["git", "merge-base", "--is-ancestor", revision, "origin/main"],
+            ["git", "merge-base", "--is-ancestor", revision, "origin/18.0"],
         )
         self.assertEqual(commands[4][:3], ["git", "archive", "--format=tar.gz"])
         self.assertIn(revision, commands[4])
         self.assertEqual(
-            commands[4][-1:], ["addons/pos_revolut"]
+            commands[4][-1:], ["pos_revolut"]
         )
+        self.assertIn("--prefix=addons/", commands[4])
         self.assertEqual(commands[6][0], "scp")
         self.assertEqual(commands[7][0], "ssh")
         self.assertIn("root@staging.example.test", commands[7])
         self.assertIn("--expected-sha256", commands[7])
-        self.assertIn("#!/usr/bin/env python3", runner.calls[7][1]["input"])
+        self.assertIn("#!/usr/bin/env python3", runner.calls[8][1]["input"])
 
     def test_revision_outside_reviewed_ref_is_rejected_before_upload(self):
         deploy_addon = load_script("deploy-addon")
         revision = "5" * 40
         not_reviewed = subprocess.CalledProcessError(
             1,
-            ["git", "merge-base", "--is-ancestor", revision, "origin/main"],
+            ["git", "merge-base", "--is-ancestor", revision, "origin/18.0"],
         )
         runner = FakeRunner(["", revision + "\n", "6" * 40 + "\n", not_reviewed])
         stderr = io.StringIO()
@@ -244,7 +249,7 @@ class TestLocalDeploymentCli(unittest.TestCase):
             )
 
         self.assertEqual(exit_code, 1)
-        self.assertIn("not contained in reviewed ref origin/main", stderr.getvalue())
+        self.assertIn("not contained in reviewed ref origin/18.0", stderr.getvalue())
         self.assertFalse(any(call[0][0] in {"scp", "ssh"} for call in runner.calls))
 
 
@@ -260,7 +265,7 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             subprocess.run(
                 [
                     "git", "archive", "--format=tar.gz", "--output", str(archive),
-                    revision, "--", "addons/pos_revolut",
+                    "--prefix=addons/", revision, "--", "pos_revolut",
                 ],
                 cwd=REPOSITORY_ROOT,
                 check=True,

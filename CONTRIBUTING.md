@@ -1,7 +1,8 @@
 # Contributing
 
-Odoo 18 work starts from and integrates into `feat/v18_rev`; Odoo 19 uses `main`.
-Keep integration code in `addons/pos_revolut` and follow Odoo conventions. Read
+Odoo 18 releases use `18.0`; development PRs target this version branch. Odoo 19
+uses `main` and its separate published `19.0` branch.
+Keep integration code in `pos_revolut` and follow Odoo conventions. Read
 [Architecture](docs/architecture.md) before changing payment boundaries.
 
 ## Development setup
@@ -12,7 +13,7 @@ image targets Linux amd64. From the repository root:
 
 ```bash
 python3 -m unittest discover -s tests -v
-node --test addons/pos_revolut/static/tests/*.test.mjs
+node --test pos_revolut/static/tests/*.test.mjs
 ./scripts/test-addon
 ```
 
