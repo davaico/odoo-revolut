@@ -31,9 +31,9 @@ payment are unsupported. This addon provides Dine In/Takeout presets and pickup 
 Timed Takeout requires a pickup slot before payment.
 Retail currently maps fulfilment to Eat In. Internet access is required.
 
-Free and open source under LGPL-3, maintained by Davai. Independent integration,
-not an official or certified Revolut or Odoo product. Revolut hardware, account
-and processing charges are separate from the free addon.
+Free and open source under LGPL-3. Developed and maintained by Davai.
+This integration has been validated by Revolut. It is not an official Odoo product.
+Revolut hardware, account and processing charges are separate from the free addon.
 """,
     "author": "Davai",
     "images": ["static/description/revolut-terminal.jpg"],
