@@ -4,9 +4,8 @@ Connect Odoo Community 18 Point of Sale to a Revolut terminal. Send the amount,
 let the customer pay, and complete the sale after Odoo verifies the underlying
 payment. Credentials and authenticated Revolut calls stay on the server.
 
-This branch, `18.0`, contains the Odoo 18 implementation in a fresh Git
-history. Odoo 19 is maintained on `main`. Use the branch matching the server's
-Odoo major version.
+Use `18.0` for Odoo 18 and `19.0` for Odoo 19. Each version is maintained
+separately; install the branch matching the server's Odoo major version.
 
 Supports retail and Restaurant registers, split payments, terminal-selected
 tips, full and partial refunds, interrupted-payment recovery, external refund
@@ -14,8 +13,8 @@ reconciliation, shared-register access, native receipts, invoices and accounting
 Odoo 18 preset and pickup controls provide dine-in and timed Takeout workflows.
 
 Test runtime: **Odoo Community 18.0.20261015** and **PostgreSQL 16.14**.
-Physical-terminal acceptance remains pending; automated tests do not establish
-production readiness. Installing into an existing Odoo 18 database preserves
+See [Validation](docs/validation.md) for recorded automated coverage and device
+testing limitations. Installing into an existing Odoo 18 database preserves
 native business data; importing another integration's payment history is outside
 the initial installation scope.
 
@@ -39,10 +38,11 @@ retail registers can remain in retail mode.
 | Update an existing installation | [Upgrading](docs/upgrading.md) |
 | Run tests and contribute | [Contributing](CONTRIBUTING.md) |
 | Understand payment boundaries | [Architecture](docs/architecture.md) |
+| Check tested scope and limitations | [Validation](docs/validation.md) |
 | Report a vulnerability privately | [Security](SECURITY.md) |
 
-Internal deployment records and live financial acceptance notes are kept outside
-this public snapshot. Use synthetic data in shared reports and test fixtures.
+Use synthetic data in shared reports and test fixtures. Keep credentials and
+live financial evidence in restricted storage.
 
 ## License
 
