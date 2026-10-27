@@ -4,7 +4,7 @@ Connect Odoo Community 18 Point of Sale to a Revolut terminal. Send the amount,
 let the customer pay, and complete the sale after Odoo verifies the underlying
 payment. Credentials and authenticated Revolut calls stay on the server.
 
-This branch, `feat/v18_rev`, contains the Odoo 18 implementation in a fresh Git
+This branch, `18.0`, contains the Odoo 18 implementation in a fresh Git
 history. Odoo 19 is maintained on `main`. Use the branch matching the server's
 Odoo major version.
 
@@ -21,12 +21,12 @@ the initial installation scope.
 
 ## Repository structure
 
-- `addons/pos_revolut/`: installable addon, migrations, Odoo and browser tests.
+- `pos_revolut/`: installable addon, migrations, Odoo and browser tests.
 - `docs/`: installation, usage, upgrade and architecture guides.
 - `scripts/`, `docker/`, `compose.yaml`: guarded disposable development runners.
 - `tests/`: tests for the development and deployment tooling.
 
-For a full clone, include the repository's `addons` directory in Odoo's
+For a full clone, include the repository root in Odoo's
 `addons_path`. The addon depends on standard `point_of_sale` and `pos_restaurant`;
 retail registers can remain in retail mode.
 
