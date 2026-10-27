@@ -69,8 +69,7 @@ Missing or inconsistent evidence requires [reconciliation](user-guide.md#reconci
 
 ### Existing waiting refund recovery — 19.0.1.18.15
 
-This patch is based directly on the production `19.0` branch at `440f1a8`.
-It changes manager recovery of an already-verified refund and its form action;
+This release changes manager recovery of an already-verified refund and its form action;
 there is no schema migration, credential rotation or automatic financial repair.
 Use the normal backup, stopped-worker module update and POS reopen procedure
 above. The addon update is necessary to load **Recover return** in the form.
@@ -80,12 +79,9 @@ its original waiting tender. Review and validate the same return in POS, and
 explicitly complete any outstanding Cash portion. Recovery never issues another
 refund. Conflicting references or uncertain sibling allocations require review.
 
-Prepare the release from this production-based patch; do not merge the older,
-divergent local `main` history into `19.0`. Review any newer production commits
-before applying it. Publication, pushing `19.0`, deployment and real-terminal
-acceptance remain separate maintainer steps. Before real acceptance, rehearse on
-a backed-up database copy with Merchant HTTP blocked; synthetic tests cannot
-establish the condition of a deployed database or physical device.
+Before rollout, rehearse on a backed-up database copy with Merchant HTTP
+blocked. Synthetic tests cannot establish the condition of a deployed database
+or physical device.
 
 Restore the complete pre-update database, filestore and addon together only
 while financial activity remains stopped. After new provider or native financial
@@ -94,10 +90,9 @@ database can lose subsequent operations.
 
 ### Combined V19 refund recovery and refresh — 19.0.1.18.16
 
-This release combines existing waiting-refund recovery (#71), restoration of
-verified refund references after native POS refresh (#74), and the fixed
-Revolut partner metadata from PR #87. It is assembled directly from published
-`19.0` at `440f1a8`; it includes no Odoo 18 changes or divergent `main` history.
+This release combines recovery of existing waiting refunds, restoration of
+verified refund references after native POS refresh, and the fixed Revolut
+integration partner metadata.
 
 Upgrade directly from `19.0.1.18.14` using the backup, stopped-worker module
 update and POS reopen procedure above. The module update loads the refund form
@@ -111,6 +106,5 @@ while retaining explicit Check status after an earlier restoration failure.
 Pending or unresolved refunds remain blocked, and Cash still requires explicit
 completion. Neither recovery path sends another charge or refund request.
 
-See [combined candidate verification](testing/v19-refund-fixes.md) for current
-test results and limitations. Opening the PR does not deploy it or authorize
-production financial operations; the rollback limits above continue to apply.
+See [Release validation](validation.md) for test results and limitations.
+The rollback limits above continue to apply.
