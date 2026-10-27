@@ -297,8 +297,21 @@ class TestSharedPosSessionAccess(TransactionCase):
         for role in ('opener', 'colleague', 'excluded'):
             employees[role] = self.env['hr.employee'].create({'name': f'Ticket 30 {role}',
                 'user_id': self.users[role].id, 'company_id': self.company.id})
-        self.config.write({'module_pos_hr': True,
-            'basic_employee_ids': [Command.set([employees['opener'].id, employees['colleague'].id])]})
+        # Native Odoo forbids changing employee settings while a register is
+        # open. Configure this test's register before opening its own session.
+        self.config = self.env['pos.config'].create({
+            'name': 'Ticket 30 employee register', 'auto_validate_terminal_payment': True,
+            'payment_method_ids': [Command.link(self.method.id)],
+            'revolut_user_ids': [Command.set(self.config.revolut_user_ids.ids)],
+            'module_pos_hr': True,
+            'basic_employee_ids': [Command.set([employees['opener'].id, employees['colleague'].id])],
+        })
+        self.product = native_products(self.env, self.config)
+        self.config.with_user(self.users['opener']).open_ui()
+        self.session = self.config.current_session_id
+        self.session.set_opening_control(0, '')
+        self.assertEqual(self.session.state, 'opened')
+        self.assertEqual(self.session.user_id, self.users['opener'])
         selectable = self.env['hr.employee'].search(self.config._employee_domain(self.users['opener'].id))
         self.assertIn(employees['colleague'], selectable)
         self.assertNotIn(employees['excluded'], selectable)

@@ -952,12 +952,35 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.assertEqual(len([call for call in calls if call[0] == "POST"]), 2)
 
     def test_pending_cancellation_preserves_unpaid_order(self):
+        self._run_pending_cancellation("pos_revolut_pending_cancel")
+
+    def test_cancelled_payment_then_unsent_allocation_reload(self):
+        self._run_pending_cancellation("pos_revolut_cancelled_unsent_reload_synced")
+
+    def test_cancelled_payment_then_local_unsent_allocation_reload(self):
+        self._run_pending_cancellation("pos_revolut_cancelled_unsent_reload_local")
+
+    def test_cancelled_payment_then_minimal_unsent_allocation_reload(self):
+        self._run_pending_cancellation("pos_revolut_cancelled_unsent_reload_minimal")
+
+    def test_cancelled_payment_removal_offline_keeps_original_tender(self):
+        self._run_pending_cancellation("pos_revolut_cancelled_unsent_reload_offline")
+
+    def test_cancelled_payment_removal_lost_response_is_retryable(self):
+        self._run_pending_cancellation("pos_revolut_cancelled_unsent_reload_lost_response")
+
+    def test_saved_unsent_allocation_remains_removable_after_zero_edit(self):
+        self._run_pending_cancellation("pos_revolut_cancelled_unsent_reload_zero_before_remove")
+
+    def _run_pending_cancellation(self, tour):
         revolut_method = self._configure_revolut_checkout()
         cancelled = False
         cancel_calls = 0
+        calls = []
 
         def request(method, url, **kwargs):
             nonlocal cancelled, cancel_calls
+            calls.append((method, url))
             if method == "GET" and url.endswith("/api/terminals"):
                 return self._response(
                     {"terminals": [{
@@ -990,7 +1013,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
             side_effect=request,
         ) as provider:
             install_zero_reports(self.env, provider)
-            self.start_pos_tour("pos_revolut_pending_cancel")
+            self.start_pos_tour(tour)
 
         self.env.invalidate_all()
         operation = self.env["pos.revolut.payment.operation"].search(
@@ -999,6 +1022,17 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.assertEqual(operation.state, "cancelled")
         self.assertNotEqual(operation.pos_order_id.state, "paid")
         self.assertEqual(cancel_calls, 1)
+        self.assertEqual(len([call for call in calls if call[0] == "POST"]), 3)
+        self.assertEqual(operation.revolut_order_id, self.ORDER_ID)
+        self.assertEqual(operation.revolut_payment_intent_id, self.INTENT_ID)
+        self.assertFalse(operation.revolut_payment_id)
+        if tour != "pos_revolut_pending_cancel":
+            self.assertFalse(operation.pos_payment_id)
+            self.assertFalse(operation.pos_order_id.payment_ids)
+            dispatches = self.env["pos.revolut.payment.dispatch"].sudo().search([
+                ("operation_id", "=", operation.id),
+            ])
+            self.assertEqual(len(dispatches), 3)
 
     def _run_unclaimed_worker_recovery(self, stage):
         revolut_method = self._configure_revolut_checkout()
@@ -1687,13 +1721,16 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
     def test_terminal_busy_recovers_after_release_and_reload_without_duplicate_charge(self):
         self._run_terminal_busy_checkout("pos_revolut_busy_recovery", resume=True)
 
+    def test_terminal_busy_inflight_snapshot_reconciles_after_reload_without_duplicate_charge(self):
+        self._run_terminal_busy_checkout("pos_revolut_busy_inflight_reload", resume=True)
+
     def test_terminal_busy_line_can_be_removed_for_cash_without_second_dispatch(self):
         self._run_terminal_busy_checkout("pos_revolut_busy_cash_alternative", resume=False)
 
     REFUND_ID = "6c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf"
 
     def _run_full_refund(self, tour, outcome="completed", *, amount_minor=1234,
-                         charge_minor=None, refund_minor=None, next_sale=False):
+                         charge_minor=None, refund_minor=None, next_sale=False, refund_parts=1):
         self._configure_revolut_checkout()
         calls = []
         refund_polls = 0
@@ -1705,6 +1742,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         original_amount = amount_minor if charge_minor is None else charge_minor
         expected_refund = original_amount if refund_minor is None else refund_minor
         sale_amount = original_amount
+        refund_ids = [self.REFUND_ID, "6c2f3842-c34d-4cc3-a0fc-9ae40b04dfb0"][:refund_parts]
 
         def request(method, url, **kwargs):
             nonlocal refund_polls, sale_count, sale_order_id, sale_intent_id, sale_payment_id, sale_amount
@@ -1742,7 +1780,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                 if outcome == "lost_response":
                     raise requests.ConnectionError("Refund accepted but response lost")
                 return self._response({
-                    "id": self.REFUND_ID, "state": "pending", "type": "refund",
+                    "id": refund_ids[len(refund_posts) - 1], "state": "pending", "type": "refund",
                     "amount": expected_refund, "currency": self.main_pos_config.currency_id.name,
                     "related_order_id": self.ORDER_ID,
                 })
@@ -1759,10 +1797,10 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                     "related_order_id": self.ORDER_ID,
                     "merchant_order_data": refund_posts[0]["json"]["merchant_order_data"],
                 }]})
-            if method == "GET" and url.endswith(f"/orders/{self.REFUND_ID}"):
+            if method == "GET" and any(url.endswith(f"/orders/{reference}") for reference in refund_ids):
                 refund_polls += 1
                 return self._response({
-                    "id": self.REFUND_ID, "type": "refund",
+                    "id": url.rsplit("/", 1)[-1], "type": "refund",
                     "state": "pending" if refund_polls < 3 else ("failed" if outcome == "failed" else "completed"),
                     "amount": expected_refund, "currency": self.main_pos_config.currency_id.name,
                     "related_order_id": self.ORDER_ID,
@@ -1775,7 +1813,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         ) as provider:
             install_zero_reports(self.env, provider)
             self.start_pos_tour(tour, login="pos_admin")
-        self.assertEqual(len(refund_posts), 0 if outcome == "undispatched" else 1)
+        self.assertEqual(len(refund_posts), 0 if outcome == "undispatched" else refund_parts)
         self.assertEqual(sale_count, 2 if next_sale else 1)
         return calls
 
@@ -1891,6 +1929,30 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.assertEqual(refunds.pos_order_id.state, "paid")
         self.assertEqual(refunds.pos_order_id.uuid, refunds.order_uuid)
         self.assertEqual(refunds.pos_payment_id.uuid, refunds.payment_line_uuid)
+        self.assertEqual(refunds.pos_payment_id.transaction_id, self.REFUND_ID)
+        self.assertEqual(refunds.pos_payment_id.payment_ref_no, self.REFUND_ID)
+
+    def test_two_completed_refunds_native_refresh_recovers_without_replay(self):
+        self._run_full_refund("pos_revolut_two_refunds_stale_native_recovery",
+                              refund_minor=617, refund_parts=2)
+        self.env.invalidate_all()
+        refunds = self.env["pos.revolut.refund.operation"].search([])
+        self.assertEqual(len(refunds), 2)
+        self.assertEqual(set(refunds.mapped("state")), {"verified"})
+        self.assertEqual(len(refunds.pos_order_id), 1)
+        self.assertEqual(refunds.pos_order_id.state, "paid")
+        for refund in refunds:
+            self.assertEqual(refund.pos_payment_id.payment_status, "done")
+            self.assertEqual(refund.pos_payment_id.transaction_id, refund.revolut_order_id)
+            self.assertEqual(refund.pos_payment_id.payment_ref_no, refund.revolut_order_id)
+
+    def test_completed_refund_native_refresh_recovers_without_second_refund(self):
+        self._run_full_refund("pos_revolut_refund_stale_native_recovery")
+        self.env.invalidate_all()
+        refunds = self.env["pos.revolut.refund.operation"].search([])
+        self.assertEqual(len(refunds), 1)
+        self.assertEqual(refunds.state, "verified")
+        self.assertEqual(refunds.pos_order_id.state, "paid")
         self.assertEqual(refunds.pos_payment_id.transaction_id, self.REFUND_ID)
         self.assertEqual(refunds.pos_payment_id.payment_ref_no, self.REFUND_ID)
 

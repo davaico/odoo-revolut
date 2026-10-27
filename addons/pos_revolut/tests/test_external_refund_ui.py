@@ -27,12 +27,13 @@ class TestExternalRefundManagerUi(TestPointOfSaleHttpCommon):
         result.json.return_value = payload if payload is not None else values
         return result
 
-    def _run_resume(self, *, external=True, split=False):
+    def _run_resume(self, *, external=True, split=False, existing=False, completed_reload=False):
         self.source = TestRevolutNativePrinting._historical_sale(self, split=split)
         session = self.main_pos_config.current_session_id
         session.write({"update_stock_at_closing": False})
         reference = str(uuid4())
         minor = 617 if split else 1234
+        saved_order = saved_tender = None
         with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request") as provider:
             self.request = provider
             if external:
@@ -49,25 +50,56 @@ class TestExternalRefundManagerUi(TestPointOfSaleHttpCommon):
                     TestRevolutOrderSettlement._order_payload, str(uuid4()), str(uuid4()),
                 )
                 payload.update(session_id=session.id, amount_total=-12.34, amount_paid=-12.34)
-                payload["lines"][0][2].update(qty=-1, refunded_orderline_id=self.original.lines.id)
+                payload["lines"][0][2].update(qty=-1, price_subtotal=-12.34, price_subtotal_incl=-12.34,
+                                                  refunded_orderline_id=self.original.lines.id)
+                if existing:
+                    payload.update(state="draft", amount_paid=-minor / 100)
+                    payload["payment_ids"][0][2].update(
+                        amount=-minor / 100, payment_status="waiting", transaction_id=False)
+                    saved = self.env["pos.order"].sync_from_ui([payload])
+                    saved_order = self.env["pos.order"].browse(next(
+                        row["id"] for row in saved["pos.order"] if row["uuid"] == payload["uuid"]))
+                    saved_tender = saved_order.payment_ids
                 refund = self.env["pos.revolut.refund.operation"].sudo().create({
                     "original_operation_id": self.source.id, "pos_session_id": session.id,
                     "order_uuid": payload["uuid"], "payment_line_uuid": payload["payment_ids"][0][2]["uuid"],
-                    "amount": 12.34, "amount_minor": 1234, "return_total_minor": 1234,
-                    "currency_id": session.currency_id.id, "state": "verified",
-                    "provider_state": "completed", "verified_at": fields.Datetime.now(),
+                    "amount": minor / 100, "amount_minor": minor, "return_total_minor": 1234,
+                    "currency_id": session.currency_id.id, "state": "pending" if existing else "verified",
+                    "provider_state": "processing" if existing else "completed",
+                    "verified_at": False if existing else fields.Datetime.now(),
                     "revolut_order_id": reference,
                     "financial_snapshot": self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(payload),
                 })
             provider.reset_mock()
-            provider.side_effect = AssertionError("Resuming an existing reimbursement must not contact Revolut")
+            def provider_request(method, url, **kwargs):
+                if existing and method == "GET" and url.endswith(f"/orders/{reference}"):
+                    return self._response(id=reference, type="refund", state="completed", amount=minor,
+                                          currency=session.currency_id.name, related_order_id=self.source.revolut_order_id)
+                raise AssertionError("Resuming an existing reimbursement must not dispatch a financial request")
+
+            provider.side_effect = provider_request
             action = self.env.ref("pos_revolut.action_revolut_refunds")
             tour = ("pos_revolut_external_resume_mixed" if split else "pos_revolut_external_resume") if external else "pos_revolut_manager_restore_return"
+            if existing:
+                tour = "pos_revolut_manager_resume_mixed" if split else "pos_revolut_manager_resume_waiting"
+            if completed_reload:
+                tour = "pos_revolut_manager_completed_mixed_return_reload" if split else "pos_revolut_manager_completed_return_reload"
+            evidence_counts = {model: self.env[model].search_count([]) for model in (
+                "pos.revolut.payment.operation", "pos.revolut.refund.operation", "pos.revolut.payment.dispatch",
+            )}
             self.start_tour(f"/odoo/action-{action.id}/{refund.id}?debug=tests", tour, login="pos_admin")
-            provider.assert_not_called()
+            if existing:
+                self.assertEqual([call.args[0] for call in provider.call_args_list], ["GET"])
+            else:
+                provider.assert_not_called()
+            for model, count in evidence_counts.items():
+                self.assertEqual(self.env[model].search_count([]), count, model)
         self.env.invalidate_all()
         native = refund.pos_order_id
         self.assertEqual(native.state, "paid")
+        if existing:
+            self.assertEqual(native, saved_order)
+            self.assertEqual(refund.pos_payment_id, saved_tender)
         self.assertEqual(native.session_id, session)
         self.assertEqual(native.amount_total, -12.34)
         self.assertEqual(native.amount_paid, -12.34)
@@ -96,6 +128,34 @@ class TestExternalRefundManagerUi(TestPointOfSaleHttpCommon):
 
     def test_manager_restores_missing_odoo_return_in_native_register(self):
         self._run_resume(external=False)
+
+    def test_manager_resumes_existing_waiting_return_after_backend_check(self):
+        self._run_resume(external=False, existing=True)
+
+    def test_manager_resumes_waiting_mixed_return_and_explicitly_completes_cash(self):
+        self._run_resume(external=False, existing=True, split=True)
+
+    def test_completed_manager_return_reload_has_no_stale_recovery_warning(self):
+        self._run_resume(external=False, existing=True, completed_reload=True)
+
+    def test_completed_mixed_manager_return_reload_has_no_stale_recovery_warning(self):
+        self._run_resume(external=False, existing=True, split=True, completed_reload=True)
+
+    def test_invalid_manager_resume_target_still_warns_without_provider_calls(self):
+        self._configure_revolut_checkout()
+        before = {model: self.env[model].search_count([]) for model in (
+            "pos.order", "pos.payment", "pos.revolut.payment.operation",
+            "pos.revolut.refund.operation", "pos.revolut.payment.dispatch",
+        )}
+        with patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request",
+                   side_effect=AssertionError("Invalid recovery must not contact Revolut")) as provider:
+            self.start_tour(
+                f"/pos/ui?config_id={self.main_pos_config.id}&revolut_return_uuid={uuid4()}&debug=tests",
+                "pos_revolut_invalid_return_resume", login="pos_admin",
+            )
+            provider.assert_not_called()
+        for model, count in before.items():
+            self.assertEqual(self.env[model].search_count([]), count, model)
 
     def test_external_return_reprints_from_closed_session_without_financial_dispatch(self):
         self._run_resume()

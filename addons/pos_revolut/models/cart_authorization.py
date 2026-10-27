@@ -380,7 +380,7 @@ class PosOrder(models.Model):
                     payment.check_access('write')
                     method = payment.payment_method_id
                     minor = _tender_amount(order.currency_id, amount)[1]
-                    if method.id != payment_method_id or method not in order.config_id.payment_method_ids or method.company_id != order.company_id or method.use_payment_terminal != 'revolut' or currency_id != order.currency_id.id or minor <= 0 or _tender_amount(order.currency_id, payment.amount)[1] != minor:
+                    if method.id != payment_method_id or method not in order.config_id.payment_method_ids or method.company_id != order.company_id or method.use_payment_terminal != 'revolut' or currency_id != order.currency_id.id or minor < 0 or (not remove and minor == 0) or _tender_amount(order.currency_id, payment.amount)[1] != minor:
                         raise UserError(_('Recovery must match the original tender ownership and amount.'))
                     # Include global UUID matches: a conflicting historical
                     # owner must never disappear behind the caller's company.
@@ -391,9 +391,12 @@ class PosOrder(models.Model):
                             if operation.company_id != order.company_id or operation.order_uuid != order.uuid or operation.pos_session_id != order.session_id or operation.payment_method_id != method or operation.currency_id != order.currency_id or operation.amount_minor != minor or (operation.pos_order_id and operation.pos_order_id != order) or (operation.pos_payment_id and operation.pos_payment_id != payment):
                                 raise UserError(_('The retained payment history does not match this tender.'))
                             operation.with_env(env)._check_revolut_register_access()
+                    if operations and not (remove and all(operation.retry_safe for operation in operations)):
                         result = {**operations.operation_snapshot(operations[0]), 'recovery_status': 'existing_operation'}
                     else:
-                        order._revolut_assert_unstarted_payment(payment)
+                        # Explicit removal may retire proven safe attempts;
+                        # ordinary recovery must still expose their history.
+                        order._revolut_assert_unstarted_payment(payment, allow_retry_safe_operations=bool(operations))
                         identity = {'payment_id': payment.id, 'method_id': method.id, 'minor': minor, 'state': 'unstarted'}
                         if previous and previous.get('state') == 'retired':
                             raise UserError(_('The original tender has already been removed.'))

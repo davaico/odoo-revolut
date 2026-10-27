@@ -504,7 +504,7 @@ class PosOrder(models.Model):
         """
         if not existing_order:
             return order
-        if not (existing_order._revolut_has_exposure() or existing_order._revolut_return_source()
+        if not (existing_order.revolut_recovered_tenders or existing_order._revolut_has_exposure() or existing_order._revolut_return_source()
                 or any(payment.payment_method_id.use_payment_terminal == 'revolut' for payment in existing_order.payment_ids)):
             return order
         commands = order.get('lines', [])

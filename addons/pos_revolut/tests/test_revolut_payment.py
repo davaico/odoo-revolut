@@ -675,6 +675,11 @@ class TestRevolutPayment(TransactionCase):
         self.assertEqual(len(posts), 2)
         self.assertEqual(posts[0].kwargs["json"]["amount"], 1234)
         self.assertEqual(posts[1].kwargs["json"]["amount"], 1234)
+        self.assertEqual(posts[0].kwargs["json"]["metadata"], {
+            "pos_partner_name": "davai-akae-integration",
+            "pos_order_uuid": order_uuid,
+            "pos_payment_line_uuid": payment_line_uuid,
+        })
 
     @patch.dict(
         os.environ,

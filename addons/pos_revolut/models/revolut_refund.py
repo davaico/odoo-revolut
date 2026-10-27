@@ -13,6 +13,7 @@ from odoo.tools.misc import format_amount
 
 from .return_allocation import ReturnAllocation
 from .financial_snapshot import FinancialSnapshotError
+from .pos_payment_method import REVOLUT_POS_PARTNER_NAME
 
 
 _logger = logging.getLogger(__name__)
@@ -267,6 +268,17 @@ class PosRevolutRefundOperation(models.Model):
                     existing = self.env["pos.order"].browse(next(
                         item["id"] for item in saved["pos.order"] if item["uuid"] == self.order_uuid
                     ))
+                else:
+                    from .pos_order import _revolut_mutation
+                    # Project all checked siblings together. Native validation
+                    # binds their canonical references and rolls back the whole
+                    # projection if the saved return conflicts with its proof.
+                    with _revolut_mutation(self.env):
+                        for refund in recovery.refunds:
+                            payment = existing.payment_ids.filtered(
+                                lambda item: item.uuid == refund.payment_line_uuid)
+                            payment.write({"payment_status": "done", "transaction_id": refund.revolut_order_id,
+                                           "payment_ref_no": refund.revolut_order_id})
                 if session.state != "opened":
                     raise UserError(_("Reopen the original return's session before continuing in POS."))
                 return {"type": "ir.actions.act_url", "target": "self",
@@ -396,6 +408,7 @@ class PosPaymentMethod(models.Model):
                 operation, "POST", f"/api/orders/{operation['original_order_id']}/refund",
                 idempotency_key=operation["idempotency_key"],
                 json={"amount": minor, "currency": operation["currency_code"],
+                      "metadata": {"pos_partner_name": REVOLUT_POS_PARTNER_NAME},
                       "merchant_order_data": {"reference": operation["idempotency_key"]}},
             )
             self._validate_refund_response(operation, result)

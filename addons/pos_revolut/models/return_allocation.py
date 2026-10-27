@@ -846,13 +846,14 @@ class ReturnAllocation:
             for sibling in refunds:
                 matching = payments.filtered(lambda payment: payment.uuid == sibling.payment_line_uuid)
                 if (len(matching) != 1 or sibling.pos_payment_id and sibling.pos_payment_id != matching
-                        or matching.payment_method_id != sibling.payment_method_id
-                        or normalize(session.currency_id, matching.amount)[1] != -sibling.amount_minor
-                        or matching.transaction_id != sibling.revolut_order_id
-                        or matching.revolut_refund_operation_id
-                        and matching.revolut_refund_operation_id != sibling):
+                        or not self._native_payment_matches(matching, sibling, existing)):
                     raise UserError(_("The verified refund payment link does not match its original allocation."))
-            existing._check_revolut_order()
+            # Missing draft references can be projected by the caller, but
+            # populated evidence must agree before any native write occurs.
+            existing._validate_revolut_payment_references(existing._revolut_payment_values(
+                existing._revolut_order_values(), existing))
+            if existing.state != "draft":
+                existing._check_revolut_order()
         elif any(original.lines.filtered(lambda line: line.id == row["refunded_orderline_id"])
                  .product_id.tracking != "none" for row in snapshot["lines"]):
             raise UserError(_("The lost return has tracked products. A manager must recover its original lot details first."))
