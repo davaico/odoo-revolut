@@ -24,6 +24,7 @@ For a full clone, include the repository root in Odoo's `addons_path`. Docker Co
 | Install, configure credentials and grant access | [Installation](docs/installation.md) |
 | Take payments, refund, recover and print | [User guide](docs/user-guide.md) |
 | Preserve financial history during an update | [Upgrading](docs/upgrading.md) |
+| Review tested behavior and limitations | [Release validation](docs/validation.md) |
 | Run tests and contribute | [Contributing](CONTRIBUTING.md) |
 | Understand the lifecycle, code and vocabulary | [Architecture](docs/architecture.md) |
 | Report a vulnerability privately | [Security](SECURITY.md) |

@@ -10,7 +10,7 @@ From the repository root:
 
 ```bash
 python3 -m unittest discover -s tests -v
-node --test pos_revolut/static/tests/*.test.mjs
+node --test --test-isolation=none pos_revolut/static/tests/*.test.mjs
 ./scripts/test-addon
 ```
 
@@ -24,7 +24,7 @@ ODOO_REVOLUT_TEST_PROJECT=pos-revolut-my-change ./scripts/test-addon
 
 ## Choose checks
 
-Run the narrowest checks that exercise the changed behavior. Record skipped checks; installation alone does not verify recovery, concurrency or physical-terminal behavior.
+Run the narrowest checks that exercise the changed behavior. Record skipped checks; installation alone does not verify recovery, concurrency or physical-terminal behavior. See [Release validation](docs/validation.md) for the current release's tested scope.
 
 ```bash
 # One Odoo test class
@@ -84,5 +84,3 @@ Follow the [submission instructions](https://apps.odoo.com/apps/upload) and [Ven
 - Explain data sent to Revolut in the manifest, store description and application, with explicit agreement before transmission. Follow the store's restrictions on external links, image formats, HTML and JavaScript; a privacy policy is recommended.
 - Keep installation and upgrade instructions available. The store can display module documentation from `doc/index.rst`; the repository's Markdown guides remain the maintainer documentation.
 - Verify the exact candidate's installation, upgrades and affected behavior with mocked Revolut HTTP and the Merchant guard enabled. Review code and security findings; document skipped checks and obtain device acceptance separately before claiming production readiness.
-
-Do not register or publish a repository, or push a preparation branch, without an explicit request.
