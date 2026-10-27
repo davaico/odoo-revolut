@@ -24,7 +24,7 @@ External discovery records refunds against known payments but cannot infer retur
 
 ## Source map
 
-Paths below are relative to `addons/pos_revolut`, the addon directory.
+Paths below are relative to `pos_revolut`, the addon directory.
 
 | Area | Files |
 | --- | --- |

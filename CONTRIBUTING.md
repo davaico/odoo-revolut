@@ -1,7 +1,8 @@
 # Contributing
 
-Odoo 18 releases use `18.0`; development PRs target this version branch. Odoo 19
-uses `main` and its separate published `19.0` branch.
+Target `18.0` for Odoo 18 changes and `19.0` for Odoo 19 changes. Keep
+equivalent payment and refund behavior across versions, adapting to each
+version's native APIs and testing relevant fixes on both.
 Keep integration code in `pos_revolut` and follow Odoo conventions. Read
 [Architecture](docs/architecture.md) before changing payment boundaries.
 
@@ -32,6 +33,7 @@ ODOO_REVOLUT_TEST_PROJECT=pos-revolut-my-change ./scripts/test-addon
 
 Run the narrowest checks that exercise the change and record any skipped checks.
 Installation alone does not establish recovery, concurrency or device behavior.
+See [Validation](docs/validation.md) for recorded release coverage and limitations.
 
 ```bash
 ./scripts/test-addon --test-tags '/pos_revolut:TestRevolutPaymentMethod'
