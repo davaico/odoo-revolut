@@ -5,7 +5,7 @@
 **Work branch:** `codex/74-v19-refund-refresh` in `../worktree/ticket74`, based on production
 `19.0` at `440f1a8`. Release target: `19.0`; do not merge divergent `main`.
 
-**State:** open
+**State:** closed
 
 **Category:** bug
 
@@ -30,6 +30,22 @@ of the Odoo 18 result.
 
 Coordinate with ticket 71's existing waiting-refund recovery work. This is a
 separate version-maintenance check; it does not reopen passed V18 physical tests.
+
+## Closure — 2026-10-30
+
+The previously outstanding combined release and versioned-upgrade gates passed
+on the final Odoo 19 candidate `1e8afa2`, version `19.0.1.18.16`.
+[Final combined evidence](https://github.com/davaico/odoo-revolut/blob/97444fc/docs/testing/v19-refund-fixes.md)
+records 112 native/payment/refund/browser checks including nine tours, 159
+JavaScript checks, 23 portable tooling checks, and a `.14` to `.16` upgrade
+preserving 37 record snapshots. PR #89 merged the candidate into `19.0` at
+`47046ee` on 2026-10-27; that merge is an ancestor of the fetched production
+branch. The owner requested closure of completed tickets.
+
+This evidence supersedes the pending release gates in the historical comments
+below. It is targeted combined validation, not a claim that the earlier full
+660-test failing run was repeated successfully. No new production or live
+financial operation was performed in this closure review.
 
 ## Comments
 
@@ -82,10 +98,10 @@ uncertain/active-refund checkout blocks and all server validation.
   stays blocked; changed order/tender/snapshot identities are not projected.
 - [x] Run relevant ordinary-payment/recovery regressions, independent review,
   and document the exact evidence and any remaining release gates.
-- [ ] Rehearse the final versioned upgrade on disposable data with provider
+- [x] Rehearse the final versioned upgrade on disposable data with provider
   access blocked. Preserve root addon packaging, financial history and current
   production behavior; no whole-branch merge from private development lines.
-- [ ] Coordinate final integration/version with #71; re-test the combined
+- [x] Coordinate final integration/version with #71; re-test the combined
   candidate if both fixes are selected. Owner approval remains required for
   publication and deployment.
 

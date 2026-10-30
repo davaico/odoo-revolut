@@ -2,12 +2,36 @@
 
 **Work branch:** `feat/v18_rev`.
 
-**State:** open
+**State:** closed
 
 **Triage:** ready-for-human
 
 **Base and integration target:** latest sanitized `feat/v18_rev`, not `main`.
 Read root AGENTS.md and ADR 0002 before implementation or review.
+
+## Closure — 2026-10-30
+
+The accepted Community 18 release campaign is complete. The corrected candidate
+`ed82c90` / `18.0.1.0.4` was declared READY with no remaining blockers within
+the agreed release scope, and was integrated into `18.0` by PR #88 at
+`194e5f4` on 2026-10-27. The owner requested closure of completed tickets.
+
+[Final corrected validation](https://github.com/davaico/odoo-revolut/blob/61b98c2/docs/testing/final-v18-rc-corrected-20261026.md)
+records 784 passing addon tests, populated installation and update preservation,
+and the previously accepted physical-test limitations. Earlier bounded device
+observations and native completion evidence remain in the historical sections
+below and the acceptance handoff. This closure does not claim new live checks.
+
+The remaining original refund/return/session obligation is explicitly transferred
+to [ticket 83](../ready-for-human/83-finish-deferred-v18-refund-return-session.md).
+It remains unverified and non-blocking under the owner's existing disposition;
+closure does not turn a processing refund into a successful one. Two distinct
+cards, a genuine issuer decline and unobserved interruption variants remain
+accepted limitations; physical printing remains not applicable to the intended
+setup. Earlier open checklists are historical and superseded by this disposition.
+
+Enterprise/Odoo.sh acceptance remains separate in tickets 75–82. No live
+operation or production deployment was performed by this closure review.
 
 ## Purpose and evidence boundary
 

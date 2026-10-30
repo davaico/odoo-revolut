@@ -1,9 +1,10 @@
 # Tickets
 
 Internal tickets and live acceptance evidence remain in restricted records.
-Ticket 63 publishes only a sanitized progress checklist and continuation brief;
-physical-terminal acceptance remains open. Other private ticket statuses are
-unchanged by this snapshot.
+Ticket 63's accepted Community 18 release campaign is closed; its deferred
+refund/return/session obligation remains open in ticket 83. Ticket 74's combined
+Odoo 19 release and upgrade gates passed. Other private ticket statuses are
+unchanged by this review.
 
 New public tickets use synthetic data and follow
 [the tracker rules](../agents/issue-tracker.md) and
@@ -14,8 +15,6 @@ private host details and credentials in restricted records.
 
 | Ticket | Category | Triage | State | Blocked by |
 | --- | --- | --- | --- | --- |
-| [63 — Perform controlled Odoo 18 terminal acceptance](ready-for-human/63-v18-terminal-acceptance.md) | Release gate | `ready-for-human` | Open | Bounded recovery/reload checks passed; broader physical/parity release scope remains separate |
-| [74 — Restore Odoo 19 refund references after native refresh](ready-for-agents/74-check-odoo19-refund-reference-refresh.md) | `bug` | `ready-for-agent` | Open | Full run exposed 2 recovery regressions, corrected; 5 targeted browser cases and 159 JS checks pass; release/upgrade gates remain; no push/PR |
 | [75 — Adapt Revolut to Odoo.sh Enterprise 18](ready-for-agents/75-adapt-revolut-to-odoo-sh.md) | Deployment compatibility | `ready-for-agent` | Open | No local implementation blocker; hosted access/registration and staging evidence gate release; bounded live check follows production deployment |
 | [76 — Block real Revolut access on Odoo.sh test environments](ready-for-agents/76-block-live-revolut-on-odoo-sh-test-builds.md) | Deployment compatibility | `ready-for-agent` | Open | None |
 | [77 — Manage company credentials through Odoo](ready-for-agents/77-manage-company-revolut-credentials-in-odoo.md) | Deployment compatibility | `ready-for-agent` | Open | None |
@@ -24,11 +23,14 @@ private host details and credentials in restricted records.
 | [80 — Install and verify the integration on Odoo.sh staging](ready-for-agents/80-verify-odoo-sh-staging-lifecycle.md) | Hosted acceptance | `ready-for-agent` | Open | #78; hosted access and registration information |
 | [81 — Validate the release candidate and prepare the production PR](ready-for-agents/81-prepare-odoo-sh-production-release-pr.md) | Release preparation | `ready-for-agent` | Open | #79, #80; PR access |
 | [82 — Activate production and verify one payment and refund](ready-for-human/82-activate-odoo-sh-and-check-payment-refund.md) | Live acceptance | `ready-for-human` | Open | #81; release approval and owner/terminal participation |
+| [83 — Finish the deferred Odoo 18 refund, return and session](ready-for-human/83-finish-deferred-v18-refund-return-session.md) | Deferred acceptance follow-up | `ready-for-human` | Open | Original provider finality and authorised custodian; non-blocking for release |
 
 ## Closed tickets
 
 | Ticket | Resolution |
 | --- | --- |
+| [63 — Perform controlled Odoo 18 terminal acceptance](closed/63-v18-terminal-acceptance.md) | Accepted Community 18 campaign complete; corrected `.4` READY report and PR #88 integration. Deferred original refund/native completion remains open in #83. |
+| [74 — Restore Odoo 19 refund references after native refresh](closed/74-check-odoo19-refund-reference-refresh.md) | Combined `.16` candidate passed targeted native/browser, JS, tooling and versioned-upgrade gates; merged into `19.0` by PR #89. Earlier failing full-suite evidence remains historical. |
 | [71 — Recover existing waiting refund tenders on Odoo 19](closed/71-port-existing-waiting-refund-recovery-to-odoo-19.md) | Completed and published on `codex/71-v19-refund-recovery`; 664 full cases, upgrade preservation and 0/0 reviews passed. Production rollout remains separate. |
 | [73 — Restore verified refund references after native refresh](closed/73-restore-refund-reference-after-native-refresh.md) | Fixed on V18 18.0.1.0.4; original returns validated, balanced session posting. Odoo 19 follow-up: #74. |
 | [68 — Investigate an extra Revolut line after draft reload](closed/68-investigate-duplicate-revolut-line-after-reload.md) | Fixed on `feat/v18_rev`; 771 full-addon tests passed (1 optional test skipped). Odoo 19 follow-up: #69. |

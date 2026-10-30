@@ -1,8 +1,16 @@
 # Ticket 63 — sanitized continuation handoff
 
-Checkpoint: 2026-10-23. **Open / ready-for-human.** Base and integration target:
+Checkpoint: 2026-10-30. **Accepted release scope closed.** Base and integration target:
 **feat/v18_rev**. Preserve the original private acceptance checkout and its data;
 never merge its older ancestry. Read AGENTS.md and ADR 0002 before changes.
+
+The accepted Community 18 campaign is archived as
+[ticket 63](../tickets/closed/63-v18-terminal-acceptance.md), following the
+corrected READY report and integration into `18.0` through PR #88. The original
+pending refund/return/session remains unresolved and is now tracked by
+[ticket 83](../tickets/ready-for-human/83-finish-deferred-v18-refund-return-session.md).
+The historical checkpoints below remain evidence, not a claim of fresh live
+verification. Odoo.sh acceptance is separate in tickets 75–82.
 
 ## Owner release disposition — 2026-10-26
 
@@ -86,7 +94,7 @@ and closing guards have bounded isolated evidence; original receipts/reprints
 and X-report matching already passed. Do not repeat these as new manual batches.
 
 See [ticket 72's focused verification](ticket-72-return-resume-reload.md) and the
-[acceptance checklist](../tickets/ready-for-human/63-v18-terminal-acceptance.md).
+[acceptance checklist](../tickets/closed/63-v18-terminal-acceptance.md).
 Exact private operation references, screenshots, backups and authorizations stay
 with the acceptance custodian; obtain them before touching protected records.
 
