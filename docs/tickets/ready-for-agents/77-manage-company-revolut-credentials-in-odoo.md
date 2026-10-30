@@ -1,6 +1,6 @@
 # 77 — Manage company credentials through Odoo
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 

@@ -1,5 +1,6 @@
 """Administrator-owned company authority for server-side Merchant credentials."""
 
+import os
 import re
 
 from odoo import _, api, fields, models
@@ -18,6 +19,12 @@ class PosRevolutMerchantCredential(models.Model):
         [("sandbox", "Sandbox"), ("production", "Production")], required=True
     )
     secret_reference = fields.Char(required=True, copy=False)
+    source = fields.Selection(
+        [("environment", "Environment variable"), ("database", "Database")],
+        required=True, default="environment", copy=False,
+    )
+    secret_key = fields.Char(copy=False, groups="base.group_system")
+    revoked = fields.Boolean(default=False, copy=False)
 
     _sql_constraints = [
         ("unique_reference",
@@ -32,6 +39,31 @@ class PosRevolutMerchantCredential(models.Model):
             if not REFERENCE_PATTERN.fullmatch(credential.secret_reference or ""):
                 raise ValidationError(_("The Revolut credential reference is invalid."))
 
+    @api.constrains("source", "secret_key")
+    def _check_secret_source(self):
+        for credential in self:
+            key = credential.secret_key
+            if credential.source == "database":
+                if not key or not key.strip() or "\r" in key or "\n" in key:
+                    raise ValidationError(_("Enter a valid Revolut Merchant key for the database source."))
+            elif key:
+                raise ValidationError(_("An environment authority cannot store a database key."))
+
+    def _resolve_secret(self):
+        """Private server boundary; never expose this method through RPC."""
+        self.ensure_one()
+        credential = self.sudo()
+        if credential.revoked:
+            raise UserError(_(
+                "The original Revolut credential has been revoked. "
+                "Ask a system administrator to reconcile this Merchant account."
+            ))
+        secret = (credential.secret_key if credential.source == "database"
+                  else os.environ.get(credential.secret_reference))
+        if not secret:
+            raise UserError(_("The Revolut credential is not available on the Odoo server."))
+        return secret
+
     @api.model_create_multi
     def create(self, vals_list):
         if not self.env.user.has_group("base.group_system"):
@@ -41,9 +73,27 @@ class PosRevolutMerchantCredential(models.Model):
     def write(self, values):
         if not self.env.user.has_group("base.group_system"):
             raise AccessError(_("Only a system administrator can authorize Revolut credentials."))
-        if {"company_id", "environment", "secret_reference"}.intersection(values):
+        if {"company_id", "environment", "secret_reference", "source", "secret_key"}.intersection(values):
             raise ValidationError(_("Revolut credential authority is immutable. Create a new authority for rotation."))
         return super().write(values)
+
+    def action_rotate(self):
+        self.ensure_one()
+        if not self.env.user.has_group("base.group_system"):
+            raise AccessError(_("Only a system administrator can authorize Revolut credentials."))
+        self.check_access("read")
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Rotate Revolut Merchant Credential"),
+            "res_model": self._name,
+            "view_mode": "form",
+            "target": "current",
+            "context": {
+                "default_company_id": self.company_id.id,
+                "default_environment": self.environment,
+                "default_source": self.source,
+            },
+        }
 
     def unlink(self):
         if not self.env.user.has_group("base.group_system"):

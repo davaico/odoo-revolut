@@ -8,6 +8,7 @@ from uuid import uuid4
 import requests
 
 from odoo import Command
+from odoo.api import call_kw
 from odoo.exceptions import AccessError
 from odoo.addons.point_of_sale.tests.test_frontend import (
     TestPointOfSaleHttpCommon,
@@ -22,6 +23,71 @@ from .test_revolut_terminal_tip import TerminalTipFixtures
 class TestRevolutManagerUi(TestPointOfSaleHttpCommon):
     LOCATION_ID = "123e4567-e89b-12d3-a456-426614174000"
     TERMINAL_ID = "0e53f673-7705-473a-a263-89a3e7647c3d"
+
+    def test_administrator_configures_and_rotates_database_credentials_in_browser(self):
+        self.env.company.name = "Browser Revolut Company"
+        system_group = self.env.ref("base.group_system")
+        self.pos_admin.groups_id += system_group
+        credentials = self.env["pos.revolut.merchant.credential"]
+        reference = "ODOO_REVOLUT_SECRET_BROWSER_DATABASE"
+        authority_action = self.env.ref("pos_revolut.action_revolut_merchant_credential")
+        self.start_tour(
+            f"/odoo/action-{authority_action.id}?debug=tests",
+            "pos_revolut_admin_database_credential", login="pos_admin",
+        )
+        credential = credentials.search([("secret_reference", "=", reference)])
+        self.assertRecordValues(credential, [{
+            "company_id": self.env.company.id, "environment": "sandbox",
+            "source": "database", "secret_reference": reference,
+        }])
+        method = self.env["pos.payment.method"].create({
+            "name": "Browser database Revolut", "journal_id": self.bank_journal.id,
+            "payment_method_type": "terminal", "use_payment_terminal": "revolut",
+            "revolut_environment": "sandbox", "revolut_location_id": self.LOCATION_ID,
+            "revolut_terminal_id": self.TERMINAL_ID, "revolut_fulfilment_type": "eat_in",
+            "revolut_secret_reference": reference,
+        })
+        # An ordinary POS manager configures the reference and checks the
+        # terminal, while model/RPC access to the key remains unavailable.
+        self.pos_admin.groups_id -= system_group
+        self.assertFalse(self.pos_admin.has_group("base.group_system"))
+        method.with_user(self.pos_admin).write({"revolut_secret_reference": reference})
+        response = Mock(status_code=200)
+        response.json.return_value = {"terminals": [{"id": self.TERMINAL_ID, "online": True}]}
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.get", return_value=response,
+        ) as provider:
+            notification = method.with_user(self.pos_admin).action_revolut_check_connection()
+        self.assertEqual(provider.call_args.kwargs["headers"]["Authorization"],
+                         "Bearer synthetic-browser-database-key")
+        self.assertNotIn("synthetic-browser-database-key", repr(notification))
+        for user in (self.pos_admin, self.pos_user):
+            user.groups_id += self.env.ref("base.group_allow_export")
+            restricted = credentials.with_user(user)
+            with self.subTest(user=user.login), self.assertRaises(AccessError):
+                call_kw(restricted, "read", [[credential.id], ["secret_key"]], {})
+            with self.subTest(user=user.login, operation="export"), self.assertRaises(AccessError):
+                call_kw(restricted, "export_data", [[credential.id], ["secret_key"]], {})
+
+        self.pos_admin.groups_id += system_group
+        self.start_tour(
+            f"/odoo/action-{authority_action.id}/{credential.id}?debug=tests",
+            "pos_revolut_admin_rotate_database_credential", login="pos_admin",
+        )
+        rotated = credentials.search([("secret_reference", "=", f"{reference}_ROTATED")])
+        self.assertRecordValues(rotated, [{
+            "company_id": self.env.company.id, "environment": "sandbox", "source": "database",
+        }])
+        self.assertNotEqual(rotated, credential)
+        self.assertEqual(method.revolut_secret_reference, reference)
+        self.assertFalse(credential.revoked)
+        method.with_user(self.pos_admin).write({"revolut_secret_reference": rotated.secret_reference})
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.get", return_value=response,
+        ) as provider:
+            method.with_user(self.pos_admin).action_revolut_check_connection()
+        self.assertEqual(provider.call_args.kwargs["headers"]["Authorization"],
+                         "Bearer synthetic-browser-rotated-key")
 
     def test_manager_configures_and_checks_terminal_in_browser(self):
         # Only the ordinary company/user/register/method fixture exists before

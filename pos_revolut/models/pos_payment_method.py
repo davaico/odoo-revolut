@@ -65,8 +65,9 @@ class PosPaymentMethod(models.Model):
         copy=False,
         groups="point_of_sale.group_pos_manager",
         help=(
-            "Name of a server environment variable in the "
-            "ODOO_REVOLUT_SECRET_ namespace. The secret itself is never stored."
+            "Administrator-authorized credential reference in the "
+            "ODOO_REVOLUT_SECRET_ namespace, backed by a server environment "
+            "variable or an administrator-managed database key."
         ),
     )
 
@@ -130,7 +131,7 @@ class PosPaymentMethod(models.Model):
             ):
                 raise ValidationError(
                     _(
-                        "The Revolut secret reference must name a variable in the "
+                        "The Revolut credential reference must use the "
                         "ODOO_REVOLUT_SECRET_ namespace."
                     )
                 )
@@ -191,11 +192,7 @@ class PosPaymentMethod(models.Model):
 
         self._revolut_check_environment_access(self.revolut_environment)
         credential = self._revolut_configuration_credential()
-        secret = os.environ.get(credential.secret_reference)
-        if not secret:
-            raise UserError(
-                _("The Revolut credential is not available on the Odoo server.")
-            )
+        secret = credential._resolve_secret()
 
         try:
             response = requests.get(
@@ -289,8 +286,7 @@ class PosPaymentMethod(models.Model):
             raise UserError(_("The POS payment identifiers are invalid.")) from None
         if require_current_credential:
             credential = self._revolut_configuration_credential()
-            if not os.environ.get(credential.secret_reference):
-                raise UserError(_("The Revolut credential is not available on the Odoo server."))
+            credential._resolve_secret()
         amount_decimal = self.env["pos.revolut.payment.operation"].normalize_amount(
             currency, amount
         )[0]
@@ -622,7 +618,7 @@ class PosPaymentMethod(models.Model):
         self.ensure_one()
         self._revolut_check_environment_access(operation.get("environment"))
         operation_id = operation.get("credential_operation_id")
-        def authorized_reference(source):
+        def authorized_secret(source):
             credential = source.credential_id if source else False
             if (not source or source.payment_method_id.id != self.id
                     or source.company_id != self.company_id or not credential
@@ -636,13 +632,13 @@ class PosPaymentMethod(models.Model):
                     "Revolut credential authority for this attempt is unverified. "
                     "Ask a system administrator to review and authorize its original Merchant account."
                 ))
-            return credential.secret_reference
+            return credential._resolve_secret()
 
         source = self.env["pos.revolut.payment.operation"].sudo().browse(
             operation_id if type(operation_id) is int else 0
         ).exists()
         if source:
-            reference = authorized_reference(source)
+            secret = authorized_secret(source)
         else:
             # A payment/refund reservation commits through an owned cursor.
             # The caller's repeatable-read snapshot may predate that commit.
@@ -651,12 +647,9 @@ class PosPaymentMethod(models.Model):
                 source = owned_env["pos.revolut.payment.operation"].sudo().browse(
                     operation_id if type(operation_id) is int else 0
                 ).exists()
-                reference = authorized_reference(source)
+                secret = authorized_secret(source)
         # The mapping can only be created or changed by a system administrator;
         # the frozen operation never follows edits to the current POS method.
-        secret = os.environ.get(reference)
-        if not secret:
-            raise UserError(_("The Revolut credential is not available on the Odoo server."))
         return secret
 
     def _revolut_api_request(self, operation, method, path, **kwargs):

@@ -25,6 +25,7 @@ from . import test_revolut_terminal_tip
 from . import test_revolut_cart_authority_concurrency
 from . import test_revolut_restaurant_authority
 from . import test_revolut_credential_authority
+from . import test_revolut_database_credentials
 
 from . import test_revolut_register_refund
 from . import test_register_worklists

@@ -23,6 +23,27 @@ history from an Odoo 19 installation or another integration.
    register grants, cron jobs, terminal connectivity and existing unresolved
    attempts before permitting further payments.
 
+Existing authorities retain the **Environment variable** source when upgrading
+to the version that adds database credentials. The update preserves their
+company/environment/reference bindings and the authority IDs frozen on payment
+and refund history. It does not copy environment keys into the database or
+silently select a replacement authority. Keep the original variables available
+on all workers, including workers running scheduled reconciliation.
+
+For an explicit move to Database storage, create a new authority/reference as
+described in [Installation](installation.md#authorize-credentials). Retain the
+old environment authority and variable for pending and historical operations.
+Database-backed keys are included in database backups; masking does not encrypt
+them. The same backup and database-copy access controls apply as on production.
+
+The disposable Odoo 18 regression runner
+`./scripts/test-company-credential-upgrade` installs pinned revision
+`bcc2f9395a931fae9f90e3d8979165ae2272e293`, seeds an environment authority with
+completed/pending payment and pending refund history, updates to the working
+candidate and checks unchanged bindings and GET-only mocked recovery. Use a
+unique disposable `ODOO_REVOLUT_TEST_PROJECT`; the runner removes that project's
+containers and volumes. It does not contact Revolut or validate a live device.
+
 Never uninstall the addon, delete uncertain attempts or force a payment paid to
 make an upgrade pass. Retain the original order and tender during recovery.
 Changing this repository's branch or history does not migrate database records.
