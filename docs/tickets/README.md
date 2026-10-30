@@ -16,6 +16,14 @@ private host details and credentials in restricted records.
 | --- | --- | --- | --- | --- |
 | [63 — Perform controlled Odoo 18 terminal acceptance](ready-for-human/63-v18-terminal-acceptance.md) | Release gate | `ready-for-human` | Open | Bounded recovery/reload checks passed; broader physical/parity release scope remains separate |
 | [74 — Check Odoo 19 refund references after native refresh](needs-triage/74-check-odoo19-refund-reference-refresh.md) | `bug investigation` | `needs-triage` | Open | Native Odoo 19 reproduction; coordinate with #71 |
+| [75 — Adapt Revolut to Odoo.sh Enterprise 18](ready-for-agents/75-adapt-revolut-to-odoo-sh.md) | Deployment compatibility | `ready-for-agent` | Open | No local implementation blocker; hosted access/registration and staging evidence gate release; bounded live check follows production deployment |
+| [76 — Block real Revolut access on Odoo.sh test environments](ready-for-agents/76-block-live-revolut-on-odoo-sh-test-builds.md) | Deployment compatibility | `ready-for-agent` | Open | None |
+| [77 — Manage company credentials through Odoo](ready-for-agents/77-manage-company-revolut-credentials-in-odoo.md) | Deployment compatibility | `ready-for-agent` | Open | None |
+| [78 — Make database copies safe](ready-for-agents/78-neutralize-revolut-database-copies.md) | Deployment compatibility | `ready-for-agent` | Open | #76, #77 |
+| [79 — Clarify the Revolut configuration workflow](ready-for-agents/79-clarify-revolut-configuration-workflow.md) | Configuration | `ready-for-agent` | Open | #77 |
+| [80 — Install and verify the integration on Odoo.sh staging](ready-for-agents/80-verify-odoo-sh-staging-lifecycle.md) | Hosted acceptance | `ready-for-agent` | Open | #78; hosted access and registration information |
+| [81 — Validate the release candidate and prepare the production PR](ready-for-agents/81-prepare-odoo-sh-production-release-pr.md) | Release preparation | `ready-for-agent` | Open | #79, #80; PR access |
+| [82 — Activate production and verify one payment and refund](ready-for-human/82-activate-odoo-sh-and-check-payment-refund.md) | Live acceptance | `ready-for-human` | Open | #81; release approval and owner/terminal participation |
 
 ## Closed tickets
 
