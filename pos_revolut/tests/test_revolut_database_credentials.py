@@ -415,7 +415,12 @@ class TestRevolutDatabaseCredentialFlow(TestPointOfSaleCommon):
         )
 
     def _finish_return(self, started, amount, *, scheduled=False):
-        self.request.side_effect = [self._refund_response("completed", amount=round(amount * 100))]
+        responses = [self._refund_response("completed", amount=round(amount * 100))]
+        if scheduled:
+            # The refund cron also discovers external refunds on the original
+            # Merchant account after observing our pending return.
+            responses.append(self._response(orders=[]))
+        self.request.side_effect = responses
         install_zero_reports(self.env, self.request)
         if scheduled:
             self.env["pos.revolut.refund.operation"].sudo().browse(started["operation_id"]).write({
