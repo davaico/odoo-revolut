@@ -3,6 +3,8 @@
 import os
 import re
 
+from psycopg2 import Error as DatabaseError
+
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, UserError, ValidationError
 
@@ -39,16 +41,6 @@ class PosRevolutMerchantCredential(models.Model):
             if not REFERENCE_PATTERN.fullmatch(credential.secret_reference or ""):
                 raise ValidationError(_("The Revolut credential reference is invalid."))
 
-    @api.constrains("source", "secret_key")
-    def _check_secret_source(self):
-        for credential in self:
-            key = credential.secret_key
-            if credential.source == "database":
-                if not key or not key.strip() or "\r" in key or "\n" in key:
-                    raise ValidationError(_("Enter a valid Revolut Merchant key for the database source."))
-            elif key:
-                raise ValidationError(_("An environment authority cannot store a database key."))
-
     def _resolve_secret(self):
         """Private server boundary; never expose this method through RPC."""
         self.ensure_one()
@@ -68,7 +60,40 @@ class PosRevolutMerchantCredential(models.Model):
     def create(self, vals_list):
         if not self.env.user.has_group("base.group_system"):
             raise AccessError(_("Only a system administrator can authorize Revolut credentials."))
-        return super().create(vals_list)
+        defaults = self.default_get(["source", "secret_key"])
+        metadata, keys = [], []
+        for values in vals_list:
+            values = dict(values)
+            source = values.setdefault("source", defaults.get("source"))
+            key = values.pop("secret_key", defaults.get("secret_key"))
+            # Source and key are immutable after creation, so validate before
+            # storing metadata. Never let a key enter ORM INSERT/error logging.
+            if source == "database":
+                if not isinstance(key, str) or not key.strip() or "\r" in key or "\n" in key:
+                    raise ValidationError(_("Enter a valid Revolut Merchant key for the database source."))
+            elif key:
+                raise ValidationError(_("An environment authority cannot store a database key."))
+            values["secret_key"] = False
+            metadata.append(values)
+            keys.append(key)
+        credentials = super(PosRevolutMerchantCredential, self.with_context(
+            default_secret_key=False,
+        )).create(metadata)
+        # A sibling psycopg2 cursor shares this transaction but bypasses Odoo's
+        # SQL logger (including DEBUG and failed-query text). Keeping it separate
+        # also prevents a key lingering in the logged cursor's last query.
+        try:
+            with self.env.cr._cnx.cursor() as secret_cursor:
+                for credential, key in zip(credentials, keys):
+                    if key:
+                        secret_cursor.execute(
+                            "UPDATE pos_revolut_merchant_credential SET secret_key = %s WHERE id = %s",
+                            [key, credential.id],
+                        )
+        except DatabaseError:
+            raise ValidationError(_("The Revolut Merchant key could not be stored.")) from None
+        credentials.invalidate_recordset(["secret_key"])
+        return credentials
 
     def write(self, values):
         if not self.env.user.has_group("base.group_system"):

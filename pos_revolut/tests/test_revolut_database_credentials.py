@@ -1,13 +1,17 @@
 """Database Merchant keys exercise the real authority and mocked HTTP boundary."""
 
+import io
+import logging
 import os
+from contextlib import contextmanager
 from copy import deepcopy
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
 import requests
+from psycopg2 import IntegrityError
 
-from odoo import Command, fields
+from odoo import Command, api, fields
 from odoo.api import call_kw
 from odoo.addons.point_of_sale.tests.common import TestPointOfSaleCommon
 from odoo.exceptions import AccessError, UserError, ValidationError
@@ -19,6 +23,26 @@ from .test_revolut_refund import TestRevolutRefund as _RefundFixtures
 
 
 class TestRevolutDatabaseCredentials(TransactionCase):
+    @contextmanager
+    def _capture_sql_logs(self):
+        logger = logging.getLogger("odoo.sql_db")
+        output = io.StringIO()
+        handler = logging.StreamHandler(output)
+        previous_level = logger.level
+        logger.addHandler(handler)
+        logger.setLevel(logging.DEBUG)
+        try:
+            # Cursor logging settings are captured at construction. A fresh,
+            # rollback-only cursor exercises real SQL debug/error logging.
+            with self.registry.cursor() as cursor:
+                env = api.Environment(cursor, self.env.uid, dict(self.env.context))
+                cursor.execute("SELECT %s", ["synthetic-sql-log-control"])
+                yield env, output
+        finally:
+            logger.setLevel(previous_level)
+            logger.removeHandler(handler)
+            handler.close()
+
     def _authority(self, company=None, **overrides):
         return self.env["pos.revolut.merchant.credential"].create({
             "company_id": (company or self.env.company).id,
@@ -66,6 +90,44 @@ class TestRevolutDatabaseCredentials(TransactionCase):
         self.assertEqual(provider.call_args.kwargs["headers"]["Authorization"],
                          "Bearer synthetic-database-merchant-key")
         self.assertNotIn("synthetic-database-merchant-key", repr(result))
+
+    def test_database_creation_keeps_key_out_of_debug_sql_logs(self):
+        secret = "synthetic-debug-key-must-never-be-logged"
+        with self._capture_sql_logs() as (env, output):
+            call_kw(env["pos.revolut.merchant.credential"], "create", [{
+                "company_id": env.company.id, "environment": "sandbox",
+                "secret_reference": f"ODOO_REVOLUT_SECRET_SQL_{uuid4().hex.upper()}",
+                "source": "database", "secret_key": secret,
+            }], {})
+            call_kw(env["pos.revolut.merchant.credential"].with_context(
+                default_source="database", default_secret_key=secret,
+            ), "create", [{
+                "company_id": env.company.id, "environment": "sandbox",
+                "secret_reference": f"ODOO_REVOLUT_SECRET_SQL_DEFAULT_{uuid4().hex.upper()}",
+            }], {})
+            env.flush_all()
+        logs = output.getvalue()
+        self.assertIn("synthetic-sql-log-control", logs)
+        self.assertNotIn(secret, logs)
+
+    def test_duplicate_database_reference_keeps_key_out_of_sql_error_logs(self):
+        secret = "synthetic-duplicate-key-must-never-be-logged"
+        with self._capture_sql_logs() as (env, output):
+            target = env["pos.revolut.merchant.credential"]
+            values = {
+                "company_id": env.company.id, "environment": "sandbox",
+                "secret_reference": f"ODOO_REVOLUT_SECRET_SQL_{uuid4().hex.upper()}",
+                "source": "database", "secret_key": secret,
+            }
+            call_kw(target, "create", [values], {})
+            env.flush_all()
+            with self.assertRaises(IntegrityError) as error, env.cr.savepoint():
+                call_kw(target, "create", [values], {})
+                env.flush_all()
+        logs = output.getvalue()
+        self.assertIn("synthetic-sql-log-control", logs)
+        self.assertNotIn(secret, logs)
+        self.assertNotIn(secret, str(error.exception))
 
     def test_database_key_access_is_denied_through_rpc_and_exports(self):
         credential = self._authority()
@@ -300,9 +362,13 @@ class TestRevolutDatabaseCredentialFlow(TestPointOfSaleCommon):
             "secret_reference": "ODOO_REVOLUT_SECRET_SYNTHETIC_DATABASE_ROTATED",
             "source": "database", "secret_key": "synthetic-new-shop-key",
         })
-        # Native Odoo freezes methods while a session is open. Simulate an
-        # administrator reconfiguring it after the originating register closes.
-        self.session.write({"state": "closed"})
+        # Test-only legacy/copy fixture: closure normally rejects pending
+        # payments and native Odoo freezes open-session method configuration.
+        # Bypass those guards only to exercise frozen authority recovery after
+        # historical configuration changes; this is not an operational flow.
+        self.env.flush_all()
+        self.cr.execute("UPDATE pos_session SET state = 'closed' WHERE id = %s", [self.session.id])
+        self.session.invalidate_recordset()
         self.revolut_method.write({"revolut_secret_reference": replacement.secret_reference})
         self.session.write({"state": "opened"})
         return replacement
