@@ -37,7 +37,10 @@ class TestRevolutDatabaseCredentials(TransactionCase):
             with self.registry.cursor() as cursor:
                 env = api.Environment(cursor, self.env.uid, dict(self.env.context))
                 cursor.execute("SELECT %s", ["synthetic-sql-log-control"])
-                yield env, output
+                try:
+                    yield env, output
+                finally:
+                    cursor.rollback()
         finally:
             logger.setLevel(previous_level)
             logger.removeHandler(handler)
@@ -154,6 +157,24 @@ class TestRevolutDatabaseCredentials(TransactionCase):
         loaded = self.env["pos.payment.method"]._load_pos_data_fields(self.env["pos.config"])
         self.assertNotIn("secret_key", loaded)
         self.assertNotIn("revolut_secret_reference", loaded)
+
+    def test_credential_rpc_arguments_are_redacted_before_debug_logging(self):
+        secret = "synthetic-rpc-key-must-never-be-logged"
+        credentials = self.env["pos.revolut.merchant.credential"]
+        with self.assertLogs("odoo.api", level="DEBUG") as captured:
+            credential_id = call_kw(credentials, "create", [{
+                "company_id": self.env.company.id, "environment": "sandbox",
+                "secret_reference": f"ODOO_REVOLUT_SECRET_RPC_{uuid4().hex.upper()}",
+                "source": "database", "secret_key": secret,
+            }], {})
+            with self.assertRaises(ValidationError):
+                call_kw(credentials, "write", [[credential_id], {"secret_key": secret}], {})
+            call_kw(self.env["res.company"], "read", [[self.env.company.id], ["name"]], {})
+        messages = "\n".join(captured.output)
+        self.assertIn(".create(", messages)
+        self.assertIn(".write(", messages)
+        self.assertIn("res.company", messages)
+        self.assertNotIn(secret, messages)
 
     def test_rotation_cannot_replace_immutable_database_key_or_binding(self):
         credential = self._authority()
@@ -389,6 +410,8 @@ class TestRevolutDatabaseCredentialFlow(TestPointOfSaleCommon):
         return self.revolut_method.revolut_start_refund(
             self.session.id, self.payload["uuid"], payment["uuid"], payment["amount"],
             self.session.currency_id.id, self.payload,
+            original_operation_id=self.source.id,
+            base_amount_minor=round(-payment["amount"] * 100), tip_amount_minor=0,
         )
 
     def _finish_return(self, started, amount, *, scheduled=False):

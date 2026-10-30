@@ -1,5 +1,6 @@
 """Administrator-owned company authority for server-side Merchant credentials."""
 
+import logging
 import os
 import re
 
@@ -10,6 +11,21 @@ from odoo.exceptions import AccessError, UserError, ValidationError
 
 
 REFERENCE_PATTERN = re.compile(r"ODOO_REVOLUT_SECRET_[A-Z0-9_]+\Z")
+
+
+class _CredentialRpcLogFilter(logging.Filter):
+    def filter(self, record):
+        # call_kw logs before invoking model methods, including web_save and
+        # rejected RPCs. Redact this model's arguments at that boundary, without
+        # changing caller values or suppressing unrelated API debug logging.
+        if (record.msg == "call %s.%s(%s)" and isinstance(record.args, tuple)
+                and len(record.args) == 3
+                and getattr(record.args[0], "_name", None) == "pos.revolut.merchant.credential"):
+            record.args = (*record.args[:2], "[credential arguments redacted]")
+        return True
+
+
+logging.getLogger("odoo.api").addFilter(_CredentialRpcLogFilter())
 
 
 class PosRevolutMerchantCredential(models.Model):
