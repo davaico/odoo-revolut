@@ -12,6 +12,11 @@ pending refund/return/session remains unresolved and is now tracked by
 The historical checkpoints below remain evidence, not a claim of fresh live
 verification. Odoo.sh acceptance is separate in tickets 75–82.
 
+The [legacy-work audit](legacy-v18-work-audit-20261030.md) accounts for all nine
+remaining files in the original checkout. It restores the initial failed release
+report and preserves additional bounded evidence without importing private
+records or obsolete operating instructions.
+
 ## Owner release disposition — 2026-10-26
 
 The owner accepts the last GBP 0.01 refund's provider-processing delay and
@@ -26,7 +31,7 @@ balanced accounting. No financial replay, forced completion, new collection,
 monitor or live operation is authorized by this documentation disposition.
 Earlier statements requiring this item to finish before sign-off are superseded.
 
-## Latest checkpoint — 2026-10-26
+## Historical checkpoint — 2026-10-26
 
 See [refund completion and fix evidence](ticket-63-refund-completion-20261026.md).
 All five prior pending refunds are provider Completed / locally verified.
@@ -41,10 +46,15 @@ same refund, finish the same return and close/post its session after finality.
 Do not replay it, create another return or force completion. No new collection
 occurred. Merchant HTTP is blocked and verified; cron is disabled. No monitor.
 
-The fix is committed locally but not pushed. Earlier checkpoints below are
-historical; they do not reopen completed tests or override this remaining scope.
+At that checkpoint, the fix was committed locally but not yet pushed. Subsequent
+publication and release disposition are recorded at the top of this handoff.
+Earlier checkpoints do not reopen completed tests or override ticket 83's scope.
 
-## Latest same-day checkpoint (supersedes older operating boundaries below)
+## Historical finish-up checkpoint — 2026-10-23
+
+This checkpoint superseded the earlier same-day operating boundaries at the
+time. Its pending states and release instructions were subsequently superseded
+by the 2026-10-26 observations and 2026-10-30 closure above.
 
 See [the additional acceptance results](ticket-63-finish-20261023.md). The owner
 subsequently authorized disposal of the three original test drafts, original
@@ -98,7 +108,7 @@ See [ticket 72's focused verification](ticket-72-return-resume-reload.md) and th
 Exact private operation references, screenshots, backups and authorizations stay
 with the acceptance custodian; obtain them before touching protected records.
 
-## Current continuation
+## Historical no-money continuation — 2026-10-23
 
 The owner requested publication of #72 and resumption of necessary testing,
 with no further money movement. The three reviewed #72 commits were pushed to
@@ -113,7 +123,12 @@ against the frozen deployed addon in a fresh internal-only disposable database
 with real Merchant HTTP blocked. No protected acceptance record participated.
 The copy was removed. See [the focused results](ticket-63-final-no-money-recovery.md).
 
-## Operating boundaries
+## Historical operating boundaries — earlier 2026-10-23 checkpoint
+
+These instructions describe the earlier bounded campaign only. Later recorded
+authorisations and outcomes superseded them; they are not current directions
+to repeat testing or reopen closed tickets. Current work is tracked in tickets
+75–83, with the preserved-record obligation specifically in ticket 83.
 
 Real Merchant requests remain blocked on the local acceptance worker, and cron
 is disabled. Existing card collection/refund caps are fully consumed; refunds

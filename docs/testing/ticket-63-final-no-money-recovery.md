@@ -54,3 +54,53 @@ campaign snapshots were checked separately for preservation. No money moved.
 No new live payment/refund attempt was made, and no original draft was cancelled
 or session closed.
 The broader physical release gate and separate Odoo 19 work remain open.
+
+## Supplemental earlier bounded evidence — recovered 2026-10-30
+
+The original private chronology contains the following earlier 2026-10-23
+checks. These are separate from the three `fcb59c4` regressions above and are
+not new test runs. They preceded ticket 72's `.3` deployment and used the
+then-deployed `.2` candidate. They must not be attributed to the later corrected `ed82c90`
+release candidate. Exact per-check frozen artifacts and original record
+mappings remain with the acceptance custodian; this table preserves the tested
+boundaries and limitations without publishing private records.
+
+| Check | Recorded result | Boundary and limitation |
+| --- | --- | --- |
+| Existing operator/public-user authority | Four allowed and eight denied checks in a read-only, HTTP-blocked transaction | Covers existing-user public server-method access, not an internal colleague's browser login or all POS employee roles. |
+| Cashier/manager register grants | Twenty public-method probes across excluded, granted and revoked states on a disposable populated copy | Granted managers reopen the same existing paid returns; cashiers cannot recover refunds, and excluded/revoked users are denied. This is server authorization evidence, not a physical colleague workflow. |
+| Completed-refund replay and excessive returns | Eight sequential public refund-start probes: exact replays return the original operation, changed replay details are refused, and fresh excessive returns are rejected | Excessive returns were rejected by original-quantity conservation; this does not prove that a later refund-capacity branch executed. These probes are sequential, distinct from the later concurrency test above. |
+| Closing-state and native immutability guards | Twenty-seven public closing-state probes: 24 refusals and three allowed controls, plus two native paid-to-draft refusals | Allowed transitions do not establish actual accounting posting or reopening. The separate native accounting and original-register results are recorded in the handoff and finish-up report. |
+
+These server-method probes recorded zero provider/HTTP calls. Mutable fixtures
+were confined to disposable copies, and original financial/native records and
+user/grant configuration were checked for preservation. Copy resources were
+removed. Failed fixture/harness attempts remain in private evidence; successful
+retries do not relabel those attempts as passing.
+
+### Bounded browser and device observations
+
+- During observed POS bootstrap and backend Check Connection, browser traffic
+  used local Odoo RPCs, with no Merchant-host browser requests or Revolut key
+  fields in the inspected responses. Native Odoo access-token fields were
+  classified separately. This does not establish every payment/refund-time
+  browser boundary; raw response bodies were not retained as project or hosting
+  evidence.
+- Terminal payment/refund receipt and reprint results were confirmed by the
+  operator. No photos or receipt files were supplied for independent inspection,
+  and exact zero-tip-line presentation was not established. These observations
+  do not establish physical Odoo POS printing.
+- Check Connection initially reported online after the terminal was powered
+  off, then later reported offline. Neither the delay nor its cause was measured,
+  and no raw provider response was retained for diagnosis. Treat the observed
+  status as provider-reported information, not proof of instantaneous physical
+  reachability. This is a historical limitation, not a diagnosed new regression
+  or release blocker.
+- The chronology distinguishes explicit operator Retry/ambiguous navigation
+  from automatic redispatch. Recorded cancelled/no-capture outcomes do not
+  establish an open automatic-send defect.
+
+The accepted Community 18 campaign subsequently closed in
+[ticket 63](../tickets/closed/63-v18-terminal-acceptance.md). Its only retained
+financial/native obligation is [ticket 83](../tickets/ready-for-human/83-finish-deferred-v18-refund-return-session.md).
+These additions authorise no new test, live request or replay.
