@@ -418,7 +418,7 @@ class TestRevolutDatabaseCredentialFlow(TestPointOfSaleCommon):
         self.request.side_effect = [self._refund_response("completed", amount=round(amount * 100))]
         install_zero_reports(self.env, self.request)
         if scheduled:
-            self.env["pos.revolut.refund.operation"].browse(started["operation_id"]).write({
+            self.env["pos.revolut.refund.operation"].sudo().browse(started["operation_id"]).write({
                 "next_reconcile_at": fields.Datetime.now(),
             })
             self.env.ref("pos_revolut.ir_cron_reconcile_refunds").method_direct_trigger()
