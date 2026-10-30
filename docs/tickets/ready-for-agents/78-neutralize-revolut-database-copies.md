@@ -9,8 +9,9 @@ reviewed revision and integrate back there. Do not push to `18.0`.
 
 **Parent:** [75 — Adapt Revolut to Odoo.sh Enterprise 18](75-adapt-revolut-to-odoo-sh.md)
 
-**Blocked by:**
-- [77 — Manage company credentials through Odoo](77-manage-company-revolut-credentials-in-odoo.md)
+**Blocked by:** None.
+
+**Completed prerequisite:** [77 — Manage company credentials through Odoo](../closed/77-manage-company-revolut-credentials-in-odoo.md).
 
 **Completed prerequisite:** [76 — Block real Revolut access on Odoo.sh test environments](../closed/76-block-live-revolut-on-odoo-sh-test-builds.md).
 
