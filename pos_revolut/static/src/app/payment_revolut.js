@@ -391,6 +391,13 @@ export class PaymentRevolut extends PaymentInterface {
     }
 
     _showResultError(line, state) {
+        if (state === "environment_blocked") {
+            this.env.services.dialog.add(AlertDialog, {
+                title: _t("Revolut test environment"),
+                body: _t("Production Revolut access is disabled in this Odoo.sh test environment. Use a sandbox terminal for testing. Reconcile existing production payments and refunds in the production environment."),
+            });
+            return;
+        }
         if (state === "register_access_denied") {
             this.env.services.dialog.add(AlertDialog, {
                 title: _t("Revolut register access required"),

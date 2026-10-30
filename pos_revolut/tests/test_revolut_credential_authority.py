@@ -93,6 +93,41 @@ class TestRevolutCredentialAuthority(TransactionCase):
             })
             self.env.flush_all()
 
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_odoo_sh_transport_uses_frozen_environment_for_all_live_requests(self, request):
+        reference = "ODOO_REVOLUT_SECRET_FROZEN_LIVE_TEST"
+        self.env["pos.revolut.merchant.credential"].create({
+            "company_id": self.company.id, "environment": "production",
+            "secret_reference": reference,
+        })
+        # A historical production operation remains live even when its current
+        # payment method is configured for sandbox after copying the database.
+        operation = self._operation(self.own_method, environment="production", secret_reference=reference)
+        authority = {"credential_operation_id": operation.id,
+                     "environment": operation.environment, "secret_reference": reference}
+        before = operation.read()[0]
+        for stage in ("staging", "dev", "support", ""):
+            with self.subTest(stage=stage), patch.dict(os.environ, {"ODOO_STAGE": stage, reference: "test-only"}):
+                method = self.own_method.with_context(ODOO_STAGE="production", revolut_environment="sandbox")
+                for verb, path in (
+                    ("POST", "/api/orders"), ("POST", "/api/payment-intents"),
+                    ("POST", "/api/payment-intents/original/cancel"),
+                    ("POST", "/api/orders/original/refund"),
+                    ("GET", "/api/orders/original"), ("GET", "/api/payments/original"),
+                ):
+                    with self.assertRaisesRegex(UserError, "Production Revolut access is disabled"):
+                        method._revolut_api_request(authority, verb, path)
+                for verb, path in (("POST", "/api/report-runs"),
+                                   ("GET", "/api/report-runs/original"),
+                                   ("GET", "/api/report-runs/original/file")):
+                    with self.assertRaisesRegex(UserError, "Production Revolut access is disabled"):
+                        method._revolut_report_request(authority, verb, path)
+                with self.assertRaisesRegex(UserError, "Production Revolut access is disabled"):
+                    operation.with_user(self.manager).action_revolut_associate(str(uuid4()))
+                operation.invalidate_recordset()
+                self.assertEqual(operation.read()[0], before)
+        request.assert_not_called()
+
     def test_native_register_rules_protect_search_and_known_operation_ids(self):
         draft = self.env["pos.order"].create({
             "session_id": self.session.id, "uuid": str(uuid4()),

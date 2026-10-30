@@ -1,3 +1,4 @@
+import os
 from unittest.mock import Mock, patch
 
 from lxml import etree
@@ -33,6 +34,42 @@ class TestRevolutPaymentMethod(TransactionCase):
         )
 
         self.assertEqual(selection["revolut"], "Revolut")
+
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.get")
+    def test_odoo_sh_test_stages_block_production_connection_check(self, request_get):
+        method = self._create_revolut_payment_method(revolut_environment="production")
+        for stage in ("staging", "dev", "support", "", "Production"):
+            with self.subTest(stage=stage), patch.dict(os.environ, {"ODOO_STAGE": stage}):
+                with self.assertRaisesRegex(UserError, "Production Revolut access is disabled"):
+                    method.with_context(ODOO_STAGE="production").action_revolut_check_connection()
+        request_get.assert_not_called()
+
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.get")
+    def test_deployment_policy_allows_self_hosted_production_and_sandbox_checks(self, request_get):
+        request_get.return_value = Mock(status_code=200)
+        request_get.return_value.json.return_value = {
+            "terminals": [{"id": self.TERMINAL_ID, "online": True}],
+        }
+        for environment, stages in (
+            ("production", (None, "production")),
+            ("sandbox", (None, "production", "staging", "dev", "support", "")),
+        ):
+            reference = f"ODOO_REVOLUT_SECRET_ALLOWED_{environment.upper()}"
+            method = self._create_revolut_payment_method(
+                revolut_environment=environment, revolut_secret_reference=reference,
+            )
+            for stage in stages:
+                with self.subTest(environment=environment, stage=stage), patch.dict(os.environ):
+                    os.environ[reference] = self.SECRET_VALUE
+                    if stage is None:
+                        os.environ.pop("ODOO_STAGE", None)
+                    else:
+                        os.environ["ODOO_STAGE"] = stage
+                    request_get.reset_mock()
+                    self.assertEqual(method.action_revolut_check_connection()["tag"], "display_notification")
+                    request_get.assert_called_once()
+                    host = "merchant" if environment == "production" else "sandbox-merchant"
+                    self.assertEqual(request_get.call_args.args[0], f"https://{host}.revolut.com/api/terminals")
 
     def test_manager_can_configure_one_terminal(self):
         payment_method = self._create_revolut_payment_method()

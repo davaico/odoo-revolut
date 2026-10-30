@@ -11,6 +11,36 @@ For an existing database, use [Upgrading](upgrading.md). Tested runtime: Odoo Co
 
 The addon uses fixed Sandbox/Production Merchant hosts and API version `2026-08-17`. Their credentials and devices are separate; sandbox simulation does not prove production readiness.
 
+## Odoo.sh test environments
+
+Production Revolut HTTP is disabled when the server's `ODOO_STAGE` is present
+and is anything other than exactly `production`. This includes `staging`, `dev`,
+empty values and unknown internal stages. Odoo.sh documents this variable in its
+[platform FAQ](https://www.odoo.sh/faq). Sandbox remains available on these builds
+with sandbox credentials and devices.
+
+The server enforces this policy for payments, refunds, cancellation, status
+checks, **Check Connection**, payment reports and scheduled reconciliation.
+It applies on first installation, including installation into a neutralized
+database with valid environment credentials, without requiring database-copy
+cleanup or disabled scheduled actions. POS settings, RPC context and changing
+the current method to Sandbox cannot turn an original Production attempt into
+a sandbox transaction.
+
+Blocked operations retain their original references, uncertain states and
+reservations. Reconcile live attempts in the production environment; a staging
+restriction does not prove that a payment failed or a refund was cancelled.
+POS and manager actions explain the restriction, while scheduled jobs skip
+blocked live operations without changing their evidence. Do not change or
+remove the platform's stage variable to enable testing against live terminals.
+
+On a supported self-hosted server without `ODOO_STAGE`, the configured
+Sandbox/Production behavior continues to work. Absence of that variable is
+self-hosted compatibility, rather than evidence of Odoo.sh production. A present
+`production` value permits configured production access; ordinary credential,
+company and register checks still apply. No secret rotation is required for
+this policy change.
+
 ## Install
 
 1. Place the reviewed `pos_revolut` directory on the server. Add its parent to `addons_path`, preserving existing entries. The module lives at the repository root; when using a full clone, add the repository root to `addons_path`.

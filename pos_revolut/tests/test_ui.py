@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import os
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
@@ -310,14 +311,14 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         response.json.return_value = payload
         return response
 
-    def _configure_revolut_checkout(self, include_bank=False):
+    def _configure_revolut_checkout(self, include_bank=False, environment="sandbox"):
         revolut_method = self.env["pos.payment.method"].create(
             {
                 "name": "Revolut",
                 "journal_id": self.bank_journal.id,
                 "payment_method_type": "terminal",
                 "use_payment_terminal": "revolut",
-                "revolut_environment": "sandbox",
+                "revolut_environment": environment,
                 "revolut_location_id": self.LOCATION_ID,
                 "revolut_terminal_id": self.TERMINAL_ID,
                 "revolut_fulfilment_type": "eat_in",
@@ -344,6 +345,17 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.main_pos_config.with_user(self.pos_user).open_ui()
         self.main_pos_config.current_session_id.set_opening_control(0, "")
         return revolut_method
+
+    def test_odoo_sh_restriction_is_explained_without_terminal_or_secret_errors(self):
+        method = self._configure_revolut_checkout(environment="production")
+        with patch.dict(os.environ, {"ODOO_STAGE": "staging"}), patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request"
+        ) as provider:
+            self.start_pos_tour("pos_revolut_environment_blocked")
+            provider.assert_not_called()
+        self.assertFalse(self.env["pos.revolut.payment.operation"].search([
+            ("payment_method_id", "=", method.id),
+        ]))
 
     def test_stale_draft_sync_preserves_payment_recovery(self):
         self._configure_revolut_checkout()

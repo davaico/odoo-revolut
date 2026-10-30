@@ -11,6 +11,30 @@ import { reopenRevolutOrder } from "./recovery_order_util";
 const PAYMENT_REFERENCE = "2c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf";
 const REFUND_REFERENCE = "6c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf";
 
+registry.category("web_tour.tours").add("pos_revolut_environment_blocked", {
+    steps: () => [
+        Chrome.startPoS(),
+        ProductScreen.addOrderline("Desk Pad"),
+        ProductScreen.clickPayButton(),
+        PaymentScreen.clickPaymentMethod("Revolut"),
+        {
+            trigger: ".modal:contains('Revolut test environment'):contains('Production Revolut access is disabled')",
+            run() {
+                const text = this.anchor.textContent;
+                if (!text.includes("sandbox terminal") || !text.includes("production environment") ||
+                    /ODOO_REVOLUT_SECRET_|Bearer|test-only-not-a-credential/.test(text)) {
+                    throw new Error("Deployment feedback must explain safe testing without credentials");
+                }
+                if (document.querySelector(".receipt-screen")) {
+                    throw new Error("A restricted production payment cannot complete checkout");
+                }
+            },
+        },
+        Dialog.confirm(),
+        { trigger: ".payment-screen" },
+    ].flat(),
+});
+
 function focusPaymentControl(selector) {
     return {
         content: "Payment controls are keyboard reachable with a visible focus indicator",

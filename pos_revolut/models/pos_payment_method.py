@@ -26,6 +26,10 @@ REVOLUT_API_HOSTS = {
 REVOLUT_REQUEST_TIMEOUT_SECONDS = 10
 
 
+class RevolutEnvironmentError(UserError):
+    """A server deployment restriction, rather than a terminal failure."""
+
+
 class PosPaymentMethod(models.Model):
     _inherit = "pos.payment.method"
 
@@ -185,6 +189,7 @@ class PosPaymentMethod(models.Model):
         if self.use_payment_terminal != "revolut":
             raise UserError(_("This payment method does not use Revolut."))
 
+        self._revolut_check_environment_access(self.revolut_environment)
         credential = self._revolut_configuration_credential()
         secret = os.environ.get(credential.secret_reference)
         if not secret:
@@ -596,9 +601,26 @@ class PosPaymentMethod(models.Model):
             return True
         return False
 
+    @api.model
+    def _revolut_environment_blocked(self, environment):
+        # Missing metadata supports self-hosted deployments; it does not attest
+        # Odoo.sh production. Empty and unknown stages fail closed for live API.
+        stage = os.environ.get("ODOO_STAGE")
+        return environment != "sandbox" and stage is not None and stage != "production"
+
+    @api.model
+    def _revolut_check_environment_access(self, environment):
+        if self._revolut_environment_blocked(environment):
+            raise RevolutEnvironmentError(_(
+                "Production Revolut access is disabled in this Odoo.sh test environment. "
+                "Use a sandbox terminal for testing. Reconcile existing production "
+                "payments and refunds in the production environment."
+            ))
+
     def _revolut_authorized_operation_secret(self, operation):
         """Resolve the frozen operation authority before every provider request."""
         self.ensure_one()
+        self._revolut_check_environment_access(operation.get("environment"))
         operation_id = operation.get("credential_operation_id")
         def authorized_reference(source):
             credential = source.credential_id if source else False
@@ -736,6 +758,7 @@ class PosPaymentMethod(models.Model):
         ) = self._validate_revolut_pos_request(
             session_id, order_uuid, payment_line_uuid, amount, currency_id
         )
+        self._revolut_check_environment_access(self.sudo().revolut_environment)
         if not authorization_id or type(authorization_id) is not int:
             raise UserError(_("Prepare a server-authorized persisted cart before Revolut payment."))
         authority = self.env["pos.revolut.cart.authorization"].sudo().browse(authorization_id).exists()

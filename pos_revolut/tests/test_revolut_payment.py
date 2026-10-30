@@ -116,6 +116,81 @@ class TestRevolutPayment(TransactionCase):
             self._response({"id": self.revolut_intent_id, "state": "pending"}),
         ]
 
+    def _configure_production(self):
+        reference = "ODOO_REVOLUT_SECRET_PAYMENT_LIVE_TEST"
+        self.env["pos.revolut.merchant.credential"].create({
+            "company_id": self.env.company.id, "environment": "production",
+            "secret_reference": reference,
+        })
+        self.session.write({"state": "closed"})
+        self.payment_method.write({
+            "revolut_environment": "production", "revolut_secret_reference": reference,
+        })
+        self.session.write({"state": "opened"})
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_LIVE_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_self_hosted_production_checkout_remains_available(self, request):
+        self._configure_production()
+        request.side_effect = self._start_responses()
+        with patch.dict(os.environ):
+            os.environ.pop("ODOO_STAGE", None)
+            result = self._start(str(uuid4()), str(uuid4()))
+        self.assertEqual(result["state"], "pending")
+        self.assertEqual(request.call_count, 3)
+        self.assertTrue(all(call.args[1].startswith("https://merchant.revolut.com/")
+                            for call in request.call_args_list))
+
+    @patch.dict(os.environ, {"ODOO_STAGE": "dev", "ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_odoo_sh_sandbox_checkout_remains_available(self, request):
+        request.side_effect = self._start_responses()
+        result = self._start(str(uuid4()), str(uuid4()))
+        self.assertEqual(result["state"], "pending")
+        self.assertEqual(request.call_count, 3)
+        self.assertTrue(all(call.args[1].startswith("https://sandbox-merchant.revolut.com/")
+                            for call in request.call_args_list))
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_LIVE_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_odoo_sh_blocks_new_production_payment_before_reservation(self, request):
+        self._configure_production()
+        self.env["ir.config_parameter"].sudo().set_param("database.is_neutralized", True)
+        for stage in ("staging", "dev", "support", ""):
+            with self.subTest(stage=stage), patch.dict(os.environ, {"ODOO_STAGE": stage}):
+                order_uuid, line_uuid = str(uuid4()), str(uuid4())
+                with self.assertRaisesRegex(UserError, "Production Revolut access is disabled"):
+                    self._start(order_uuid, line_uuid)
+                self.assertFalse(self.payment_method.revolut_find_payment(order_uuid, line_uuid))
+        request.assert_not_called()
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_LIVE_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_odoo_sh_preserves_production_attempt_during_poll_cancel_and_reconcile(self, request):
+        self._configure_production()
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        request.side_effect = self._start_responses()
+        with patch.dict(os.environ, {"ODOO_STAGE": "production"}):
+            started = self._start(order_uuid, line_uuid)
+        self.assertEqual(started["state"], "pending")
+        request.reset_mock()
+        operation = self.env["pos.revolut.payment.operation"].browse(started["operation_id"])
+        operation.invalidate_recordset()
+        operation.write({"state": "unresolved", "local_outcome": "interrupted"})
+        before = operation.read()[0]
+        for stage in ("staging", "dev", "support", ""):
+            with self.subTest(stage=stage), patch.dict(os.environ, {"ODOO_STAGE": stage}):
+                for action in (self.payment_method.revolut_poll_payment,
+                               self.payment_method.revolut_cancel_payment):
+                    with self.assertRaisesRegex(UserError, "Production Revolut access is disabled"):
+                        action(operation.id, order_uuid, line_uuid)
+                with self.assertRaisesRegex(UserError, "Production Revolut access is disabled"):
+                    operation.action_revolut_reconcile()
+                self.env.ref("pos_revolut.ir_cron_reconcile_payments").method_direct_trigger()
+                operation.invalidate_recordset()
+                self.assertEqual(operation.read()[0], before)
+        request.assert_not_called()
+
     @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
     @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
     def test_new_payment_requires_original_financial_contents(self, request):
