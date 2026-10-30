@@ -4,6 +4,20 @@ Checkpoint: 2026-10-23. **Open / ready-for-human.** Base and integration target:
 **feat/v18_rev**. Preserve the original private acceptance checkout and its data;
 never merge its older ancestry. Read AGENTS.md and ADR 0002 before changes.
 
+## Owner release disposition — 2026-10-26
+
+The owner accepts the last GBP 0.01 refund's provider-processing delay and
+defers its reconciliation, existing return completion and session posting.
+This waiting item no longer blocks release preparation or release sign-off;
+other release checks and approval remain separate. It is accepted outstanding
+work, not a verified refund or completed native accounting result.
+
+Keep the original refund, return and session pending until provider finality
+is verified. Then resume the same return and close/post its session, checking
+balanced accounting. No financial replay, forced completion, new collection,
+monitor or live operation is authorized by this documentation disposition.
+Earlier statements requiring this item to finish before sign-off are superseded.
+
 ## Latest checkpoint — 2026-10-26
 
 See [refund completion and fix evidence](ticket-63-refund-completion-20261026.md).

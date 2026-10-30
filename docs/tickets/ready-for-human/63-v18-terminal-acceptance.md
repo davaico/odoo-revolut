@@ -160,6 +160,21 @@ the refund/native accounting or overall release gate.
 - [ ] Reconcile that last refund (still processing), finish its existing split
   return, close/post the remaining session and record final release decision.
 
+## Owner release disposition — 2026-10-26
+
+- [x] Accept the last GBP 0.01 refund's processing delay and defer its existing
+  return/session completion as non-blocking follow-up. This item no longer
+  gates release preparation or release sign-off; other release checks and
+  approval remain separate.
+- [ ] After provider finality is verified, reconcile the original refund,
+  finish the same native return and close/post its session with balanced
+  accounting. The financial/native work remains pending, not passed.
+
+This owner disposition supersedes the preceding requirement to finish that
+item before the release decision. It does not authorize a new refund, forced
+completion, live operation or monitor. Ticket 63 remains open for final release
+sign-off; the pending provider delay alone is no longer its release blocker.
+
 See [full evidence and test limitations](../../testing/ticket-63-refund-completion-20261026.md).
 Earlier outstanding lists are superseded by this checkpoint. No additional
 physical test is required beyond the previously recorded owner dispositions.

@@ -15,7 +15,7 @@ private host details and credentials in restricted records.
 | Ticket | Category | Triage | State | Blocked by |
 | --- | --- | --- | --- | --- |
 | [63 — Perform controlled Odoo 18 terminal acceptance](ready-for-human/63-v18-terminal-acceptance.md) | Release gate | `ready-for-human` | Open | Bounded recovery/reload checks passed; broader physical/parity release scope remains separate |
-| [74 — Check Odoo 19 refund references after native refresh](needs-triage/74-check-odoo19-refund-reference-refresh.md) | `bug investigation` | `needs-triage` | Open | Native Odoo 19 reproduction; coordinate with #71 |
+| [74 — Restore Odoo 19 refund references after native refresh](ready-for-agents/74-check-odoo19-refund-reference-refresh.md) | `bug` | `ready-for-agent` | Open | Full run exposed 2 recovery regressions, corrected; 5 targeted browser cases and 159 JS checks pass; release/upgrade gates remain; no push/PR |
 | [75 — Adapt Revolut to Odoo.sh Enterprise 18](ready-for-agents/75-adapt-revolut-to-odoo-sh.md) | Deployment compatibility | `ready-for-agent` | Open | No local implementation blocker; hosted access/registration and staging evidence gate release; bounded live check follows production deployment |
 | [76 — Block real Revolut access on Odoo.sh test environments](ready-for-agents/76-block-live-revolut-on-odoo-sh-test-builds.md) | Deployment compatibility | `ready-for-agent` | Open | None |
 | [77 — Manage company credentials through Odoo](ready-for-agents/77-manage-company-revolut-credentials-in-odoo.md) | Deployment compatibility | `ready-for-agent` | Open | None |
