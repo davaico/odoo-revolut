@@ -1,7 +1,11 @@
 # Contributing
 
-Odoo 18 work starts from and integrates into `feat/v18_rev`; Odoo 19 uses `main`.
-Keep integration code in `addons/pos_revolut` and follow Odoo conventions. Read
+Develop Odoo 18 changes on `feat/v18_rev` and validate hosted changes on
+`staging/18-enterprise`. Target `18.0` only with a production-ready PR; it
+automatically deploys production. Odoo 19 releases target `19.0`. Keep
+equivalent payment and refund behavior across versions, adapting to each
+version's native APIs and testing relevant fixes on both.
+Keep integration code in `pos_revolut` and follow Odoo conventions. Read
 [Architecture](docs/architecture.md) before changing payment boundaries.
 
 ## Development setup
@@ -12,7 +16,7 @@ image targets Linux amd64. From the repository root:
 
 ```bash
 python3 -m unittest discover -s tests -v
-node --test addons/pos_revolut/static/tests/*.test.mjs
+node --test pos_revolut/static/tests/*.test.mjs
 ./scripts/test-addon
 ```
 
@@ -31,6 +35,7 @@ ODOO_REVOLUT_TEST_PROJECT=pos-revolut-my-change ./scripts/test-addon
 
 Run the narrowest checks that exercise the change and record any skipped checks.
 Installation alone does not establish recovery, concurrency or device behavior.
+See [Validation](docs/validation.md) for recorded release coverage and limitations.
 
 ```bash
 ./scripts/test-addon --test-tags '/pos_revolut:TestRevolutPaymentMethod'

@@ -27,7 +27,7 @@ def parse_arguments(argv):
     deploy = subparsers.add_parser("deploy")
     deploy.add_argument("--repository", type=Path, default=Path(__file__).parents[1])
     deploy.add_argument("--revision", required=True)
-    deploy.add_argument("--reviewed-ref", default="origin/main")
+    deploy.add_argument("--reviewed-ref", default="origin/18.0")
     deploy.add_argument("--ssh-target", required=True)
     deploy.add_argument("--database", required=True)
     deploy.add_argument("--customer", required=True)
@@ -125,6 +125,15 @@ def deploy(args, runner):
 
     with tempfile.TemporaryDirectory(prefix="pos-revolut-deploy-") as directory:
         archive = Path(directory) / f"pos-revolut-{args.revision}.tar.gz"
+        candidates = ("pos_revolut/__manifest__.py", "addons/pos_revolut/__manifest__.py")
+        paths = set(run_checked(
+            runner,
+            ["git", "ls-tree", "-r", "--name-only", args.revision, "--", *candidates],
+            "Addon layout lookup", cwd=args.repository, capture_output=True,
+        ).stdout.splitlines())
+        if len(paths.intersection(candidates)) != 1:
+            raise DeploymentError("Revision must contain exactly one POS Revolut addon layout.")
+        root_layout = candidates[0] in paths
         run_checked(
             runner,
             [
@@ -133,9 +142,10 @@ def deploy(args, runner):
                 "--format=tar.gz",
                 "--output",
                 str(archive),
+                *(["--prefix=addons/"] if root_layout else []),
                 args.revision,
                 "--",
-                "addons/pos_revolut",
+                "pos_revolut" if root_layout else "addons/pos_revolut",
             ],
             "Revision archive",
             cwd=args.repository,

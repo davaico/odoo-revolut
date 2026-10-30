@@ -99,7 +99,7 @@ native_install_phase() {
         --database "$database_name" --db_host db --db_user odoo \
         --db_password odoo --no-http --max-cron-threads 0 \
         --shell-interface python --log-level warn \
-        < "${ODOO_REVOLUT_ADDONS_DIR:-$repository_root/addons}/pos_revolut/tests/$1"
+        < "${ODOO_REVOLUT_ADDONS_DIR:-$repository_root}/pos_revolut/tests/$1"
 }
 
 module_state() {

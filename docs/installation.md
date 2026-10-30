@@ -13,7 +13,7 @@ The addon uses fixed Sandbox/Production Merchant hosts and API version `2026-08-
 
 ## Install
 
-1. Place the reviewed `pos_revolut` directory on the server. Add its parent to `addons_path`, preserving existing entries. The module lives under `addons/`; when using a full clone, add the repository’s `addons` directory to `addons_path`.
+1. Place the reviewed `pos_revolut` directory on the server. Add its parent to `addons_path`, preserving existing entries. The module lives at the repository root; when using a full clone, add the repository root to `addons_path`.
 2. Back up the database and filestore, stop Odoo, then install using the service's configuration and environment. Replace the placeholders:
 
    ```bash

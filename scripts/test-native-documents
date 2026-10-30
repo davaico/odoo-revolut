@@ -36,7 +36,7 @@ shell_phase() {
     "${compose[@]}" run --rm -T --entrypoint odoo odoo shell \
         --database "$database_name" --db_host db --db_user odoo --db_password odoo \
         --no-http --max-cron-threads 0 --shell-interface python --log-level warn \
-        < "$repository_root/addons/pos_revolut/tests/$1"
+        < "$repository_root/pos_revolut/tests/$1"
 }
 shell_phase native_documents_seed.py
 # Keep background reconciliation and unrelated cron writes out of document

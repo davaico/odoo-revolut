@@ -10,7 +10,7 @@ history from an Odoo 19 installation or another integration.
    keep secret values and live financial evidence in restricted storage.
 3. Test the reviewed candidate on a disposable copy with provider traffic disabled.
    See [Contributing](../CONTRIBUTING.md#choose-checks).
-4. Stop all Odoo workers. Install the reviewed `addons/pos_revolut` directory,
+4. Stop all Odoo workers. Install the reviewed `pos_revolut` directory,
    preserving the configured `addons_path` and existing runtime environment.
 5. Update using the service's configuration and environment:
 

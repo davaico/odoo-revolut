@@ -373,7 +373,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--legacy-addons-dir", type=Path)
     args = parser.parse_args()
-    candidate_addons = os.environ.get("ODOO_REVOLUT_ADDONS_DIR", str(ROOT / "addons"))
+    candidate_addons = os.environ.get("ODOO_REVOLUT_ADDONS_DIR", str(ROOT))
     if args.legacy_addons_dir:
         legacy = args.legacy_addons_dir.resolve()
         if not (legacy / "pos_revolut/__manifest__.py").is_file():

@@ -139,7 +139,7 @@ class TestHistoricalUpgradeRunner(unittest.TestCase):
 
     def assert_temporaries_removed(self, calls):
         for row in calls:
-            if row["mount"] != str(REPOSITORY_ROOT / "addons"):
+            if row["mount"] != str(REPOSITORY_ROOT):
                 self.assertFalse(Path(row["mount"]).exists(), row)
 
     def test_all_historical_scenarios_preserve_revisions_fixtures_and_processes(self):
@@ -164,11 +164,11 @@ class TestHistoricalUpgradeRunner(unittest.TestCase):
                 self.assertEqual(by_phase["install"]["manifest"], digest(old_manifest))
                 self.assertEqual(by_phase["seed"]["mount"], by_phase["install"]["mount"])
                 for phase, suffix in (("seed", "seed"), ("verify", "verify")):
-                    fixture = REPOSITORY_ROOT / "addons/pos_revolut/tests" / f"{prefix}_{suffix}.py"
+                    fixture = REPOSITORY_ROOT / "pos_revolut/tests" / f"{prefix}_{suffix}.py"
                     self.assertEqual(by_phase[phase]["stdin"], digest(fixture.read_bytes()))
                     self.assertIn("--no-http", by_phase[phase]["args"])
                     self.assertIn("--shell-interface", by_phase[phase]["args"])
-                current = str(REPOSITORY_ROOT / "addons")
+                current = str(REPOSITORY_ROOT)
                 self.assertEqual(by_phase["verify"]["mount"], current)
                 for phase in ("install", "seed", "upgrade", "verify"):
                     args = by_phase[phase]["args"]
@@ -188,7 +188,7 @@ class TestHistoricalUpgradeRunner(unittest.TestCase):
                     self.assertIn("--use-aliases", by_phase["reports"]["args"])
                     self.assertIn(f"{project}-native-reports", by_phase["reports-cleanup"]["args"])
                 self.assertEqual(by_phase["upgrade"]["manifest"], digest(
-                    (REPOSITORY_ROOT / "addons/pos_revolut/__manifest__.py").read_bytes()
+                    (REPOSITORY_ROOT / "pos_revolut/__manifest__.py").read_bytes()
                 ))
                 self.assert_temporaries_removed(calls)
                 self.assertTrue(result.stdout.strip())
