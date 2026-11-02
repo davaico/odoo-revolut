@@ -99,7 +99,7 @@ enables test progress/statistics logging. No repository network defaults changed
   held response while restoration allows five seconds; the combined assertion
   does not identify which condition failed. Host load above 100 and full swap
   were observed during investigation, but root cause is **not established**.
-  [Ticket 84](../tickets/ready-for-agents/84-investigate-checkout-browser-full-suite-failures.md)
+  [Ticket 84](../tickets/closed/84-investigate-checkout-browser-full-suite-failures.md)
   retains the follow-up. Isolated successes do not make the original full run
   green; obtain clean release-candidate evidence before release.
 - `node --test --test-isolation=none pos_revolut/static/tests/*.test.mjs`:

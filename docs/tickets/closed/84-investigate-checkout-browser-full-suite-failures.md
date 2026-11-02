@@ -2,7 +2,7 @@
 
 # 84 — Investigate full-suite checkout browser failures
 
-**State:** claimed
+**State:** closed
 
 **Category:** bug
 
@@ -16,8 +16,29 @@ and [81 — Release validation](../ready-for-agents/81-prepare-odoo-sh-productio
 
 **Blocked by:** None.
 
-**External blockers:** Reproduction needs a controlled host with available CPU,
-memory and swap headroom. No live Merchant account or terminal is needed.
+**External blockers:** None for the completed local investigation. Validation
+used CPU/RAM admission checks and bounded containers with swapping disabled.
+Hosted Enterprise/Odoo.sh acceptance remains in #80.
+
+## Resolution — 2026-11-02
+
+Implemented the scoped fixture correction in `fccfd12`, based on reviewed
+`staging/18-enterprise` at `fdfa745` and integrated back there. The tour now waits
+for the actual held canonical response or native request completion, retaining
+the five-second restoration deadline and all financial/native assertions.
+
+The new native delayed-response regression reproduced the false assertion on
+both baseline and uncorrected candidate, then passed after correction. The
+corrected full suite ran **816 cases, zero failures/errors, one optional
+`pos_hr` skip**, exit 0. All ten affected browser cases succeeded without a
+Chrome connection skip. Six unchanged baseline cases, seven corrected candidate
+cases and 146 JavaScript checks also passed.
+
+The original red runs retain their results. The fixture defect is established;
+the exact causes of the earlier broader browser stalls remain unestablished.
+The clean full candidate evidence satisfies this local release gate. #81 remains
+blocked by #80 and its other release requirements; this is not hosted acceptance
+or production readiness. [Final evidence](../../testing/ticket-84-checkout-browser-triage.md).
 
 ## Observation
 
@@ -49,17 +70,17 @@ five seconds. The combined assertion does not reveal which condition failed.
 
 ## Investigation and acceptance
 
-- [ ] Reproduce the affected tests under controlled resources on the candidate
+- [x] Reproduce the affected tests under controlled resources on the candidate
   and a temporary `bcc2f9395a931fae9f90e3d8979165ae2272e293` addon snapshot with
   the same pinned Odoo image and mocked provider HTTP.
-- [ ] If the restoration assertion repeats, capture identical temporary
+- [x] If the restoration assertion repeats, capture identical temporary
   diagnostics on both revisions: response-release presence, attempt counts,
   payment-line status, order state, receipt presence and elapsed time.
-- [ ] Distinguish a runtime defect from fixture/timing or environment effects;
+- [x] Distinguish a runtime defect from fixture/timing or environment effects;
   retain financial finality and duplicate-operation assertions.
-- [ ] Include ticket 79's historical-refund and Takeout failures and the retail
+- [x] Include ticket 79's historical-refund and Takeout failures and the retail
   Chrome connection skip in the comparison and final validation.
-- [ ] Resolve the full-suite failures and obtain clean full release-candidate
+- [x] Resolve the full-suite failures and obtain clean full release-candidate
   evidence with the affected browser cases executed. Document any unresolved
   defect and keep #84 open and #81 blocked. Isolated successes do not turn the
   original full run green.
@@ -157,29 +178,30 @@ without another charge/refund. An unresolved defect leaves the release blocked.
 
 **Acceptance criteria:**
 
-- [ ] Base implementation work on the latest reviewed `staging/18-enterprise`
+- [x] Base implementation work on the latest reviewed `staging/18-enterprise`
   and integrate there. Record exact candidate/baseline identities, Odoo/Chrome/
   PostgreSQL pins, test selection/order, resource measurements and exit statuses.
-- [ ] Obtain CPU, memory and swap headroom before the comparison and full run.
+- [x] Obtain CPU/memory headroom and record the swap policy before comparison
+  and the full run: available swap headroom or explicit no-swap test containers.
   Repeat the affected cases on the candidate and `bcc2f93` addon snapshot with
   the same pinned runtime, fresh disposable data and mocked provider HTTP.
-- [ ] Reproduce the original full-suite symptoms or record unsuccessful
+- [x] Reproduce the original full-suite symptoms or record unsuccessful
   attempts accurately. Compare full-run behavior with isolated runs; establish
   whether an application defect, fixture/timing issue or environment effect
   explains each failure/skip before asserting a cause.
-- [ ] If the restoration assertion repeats, collect equivalent temporary
+- [x] If the restoration assertion repeats, collect equivalent temporary
   diagnostics on both snapshots: response-release presence, attempt counts,
   payment-line status, order state, receipt presence and elapsed time. Identify
   the failing condition without weakening the financial invariant.
-- [ ] For an established defect, verify its scoped correction against the
+- [x] For an established defect, verify its scoped correction against the
   original failing scenario. Retain original operation/order/tender identity,
   underlying successful-payment verification, and exact-once financial/native
   effects. Remove temporary instrumentation after recording the evidence.
-- [ ] Obtain a clean full suite on the exact assembled release candidate,
+- [x] Obtain a clean full suite on the exact assembled release candidate,
   including all five reported failing cases and retail startup with no browser
   connection skip. Record any permitted optional dependency skips separately.
   Isolated passes, a build, or triage completion cannot satisfy this criterion.
-- [ ] Keep #84 open and #81 blocked while full-suite failures remain unresolved
+- [x] Keep #84 open and #81 blocked while full-suite failures remain unresolved
   or clean full candidate evidence is missing. Preserve the historical red results.
 
 **Out of scope:**
@@ -218,3 +240,30 @@ measured host headroom, using bounded no-swap containers. The owner selected
 waiting for this host. Keep #84 claimed/open and #81 blocked until the full-suite
 failures are resolved and clean full candidate evidence is recorded.
 [Evidence and remaining validation](../../testing/ticket-84-checkout-browser-triage.md).
+
+
+> *This was generated by AI during triage.*
+
+### 2026-11-02 — Verified resolution
+
+The native delayed-response tracer failed on both original lineages with one
+restoration attempt, payment status `waiting`, draft order, no receipt and a
+verified financial snapshot, at 3,006/3,007 ms. The corrected saved-refund case
+passes its original financial, native identity and duplicate-operation checks.
+Resource control used CPU/RAM/pressure admission checks and explicit cgroup
+no-swap limits, avoiding reliance on the shared host's changing free swap.
+
+The exact corrected addon tree `0210304b5bdde70956001e78d03d4485c8cff420`
+completed one fresh full run: **816 cases, zero failures, zero errors**, exit 0,
+with only the optional `pos_hr` characterization skip. All ten browser cases
+covering the original reports, the additional red run and the new regression
+succeeded. Native comparisons and 146 JavaScript checks passed; syntax,
+compilation and documentation links were checked. Test deadlines and financial
+assertions were not weakened. Temporary diagnostics are absent from the addon.
+
+#84 is closed on that verified candidate. Its full-suite prerequisite for #81
+is satisfied; #81 remains open and blocked by hosted ticket #80 and its remaining
+release work. Earlier red results and unknown broader-stall causes are retained,
+with no claim that those historical runs were green or that a credential
+regression caused them. The report records runtime pins, commands, resource
+limits, result artifacts and the independent review outcome.

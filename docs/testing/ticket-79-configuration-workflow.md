@@ -116,9 +116,11 @@ docker compose -p odoo-revolut-ticket79 -f /tmp/ticket79-runner/compose.yaml run
     --test-tags /pos_revolut:TestRevolutRefundHistory.test_saved_return_recovers_unavailable_closed_original_without_duplicate_refund,/pos_revolut:TestRevolutTakeoutReadinessUi.test_captured_tender_finishes_after_native_scheduling_correction
   ```
 
-  These isolated successes do **not** make the full run green. The follow-up
-  remains [ticket 84](../tickets/ready-for-agents/84-investigate-checkout-browser-full-suite-failures.md)
-  and a release-candidate validation gate under #81.
+  These isolated successes do **not** make this original full run green.
+  Follow-up [ticket 84](../tickets/closed/84-investigate-checkout-browser-full-suite-failures.md)
+  subsequently closed after the corrected candidate completed 816 full cases
+  with zero failures/errors and only the optional skip. #81 retains hosted #80
+  and its remaining release requirements.
 - Retail startup skipped by the full run: **one test passed**, zero
   failures/errors/skips, exit 0 (`/tmp/ticket79-retail-recheck.log`). Same
   invocation with container name `odoo-revolut-ticket79-retail-recheck` and
