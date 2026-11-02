@@ -73,7 +73,7 @@ findings. SQL and RPC debug-log key exposure was reproduced and fixed.
 The full addon run completed **811 cases: three failures, zero errors, one
 optional `pos_hr` skip**. Its three existing checkout browser failures passed
 unchanged on isolated reruns. Their cause remains unestablished and is retained
-in [ticket 84](../needs-triage/84-investigate-checkout-browser-full-suite-failures.md).
+in [ticket 84](../ready-for-agents/84-investigate-checkout-browser-full-suite-failures.md).
 This is not a green full-suite or hosted release claim. No hosted deployment,
 live credential change or real financial operation was performed.
 

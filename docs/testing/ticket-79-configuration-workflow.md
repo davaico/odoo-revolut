@@ -117,7 +117,7 @@ docker compose -p odoo-revolut-ticket79 -f /tmp/ticket79-runner/compose.yaml run
   ```
 
   These isolated successes do **not** make the full run green. The follow-up
-  remains [ticket 84](../tickets/needs-triage/84-investigate-checkout-browser-full-suite-failures.md)
+  remains [ticket 84](../tickets/ready-for-agents/84-investigate-checkout-browser-full-suite-failures.md)
   and a release-candidate validation gate under #81.
 - Retail startup skipped by the full run: **one test passed**, zero
   failures/errors/skips, exit 0 (`/tmp/ticket79-retail-recheck.log`). Same

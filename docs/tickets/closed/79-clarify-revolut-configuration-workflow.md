@@ -59,7 +59,7 @@ remaining findings each.
 The full suite ran 815 cases with two existing-tour failures, zero errors and
 two skips. Both failures and the browser-startup skip passed unchanged on
 isolated reruns. This does not make the full run green or establish its cause;
-[ticket 84](../needs-triage/84-investigate-checkout-browser-full-suite-failures.md)
+[ticket 84](../ready-for-agents/84-investigate-checkout-browser-full-suite-failures.md)
 remains open and gates release validation under #81. Ticket 79's focused workflow
 criteria are complete; hosted lifecycle and production acceptance remain #80
 and #82. No production push or live financial request was performed.
