@@ -1,10 +1,12 @@
 # 81 — Validate the release candidate and prepare the production PR
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 
-**Work branch:** `staging/18-enterprise`; the production-ready PR targets
+**Work branch:** `codex/81-release-validation`, based on reviewed
+`staging/18-enterprise` at `d5d13d3943c7eadff4a0bdd44d0d1bdc19e8fc49`;
+integration target: `staging/18-enterprise`. The production-ready PR targets
 `18.0` only after acceptance gates pass. Do not merge the PR or push directly
 to `18.0`.
 

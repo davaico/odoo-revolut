@@ -3,7 +3,8 @@
 Enterprise work starts from and returns to `staging/18-enterprise`. Keep
 `18.0` for the reviewed production release: pushing there deploys production.
 Use this runbook with [Installation](installation.md), not instead of it.
-Record results separately in [ticket 80's evidence](testing/ticket-80-odoo-sh-staging.md).
+Record results separately with the exact source revision, addon version, build,
+commands, results and limitations. See [Validation](validation.md).
 
 ## Identify the database and registration gate
 
