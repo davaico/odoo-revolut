@@ -137,14 +137,14 @@ registry.category("web_tour.tours").add("pos_revolut_manager_rejects_foreign_aut
         { trigger: ".o_form_button_save", run: "click" },
         {
             content: "A foreign authority is rejected without revealing a key",
-            trigger: ".o_dialog:contains('credential authority is not configured for this company')",
+            trigger: ".o_dialog .modal-body:contains('credential authority is not configured for this company')",
             run() {
                 if (document.body.textContent.includes("synthetic-foreign-browser-key")) {
                     throw new Error("The rejected configuration exposes a Merchant API key");
                 }
             },
         },
-        { trigger: ".o_dialog .btn-close", run: "click" },
+        { trigger: ".o_dialog .modal-footer button", run: "click" },
         {
             trigger: ".o_field_widget[name=revolut_secret_reference] input",
             run: "edit ODOO_REVOLUT_SECRET_TEST_TERMINAL",

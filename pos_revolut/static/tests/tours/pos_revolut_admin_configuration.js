@@ -73,6 +73,13 @@ registry.category("web_tour.tours").add("pos_revolut_admin_database_credential",
     ],
 });
 
+registry.category("web_tour.tours").add("pos_revolut_admin_database_credential_french", {
+    steps: () => [
+        { content: "Native controls use French", trigger: ".o_list_button_add:contains('Nouveau')" },
+        ...registry.category("web_tour.tours").get("pos_revolut_admin_database_credential").steps(),
+    ],
+});
+
 registry.category("web_tour.tours").add("pos_revolut_admin_rotate_database_credential", {
     steps: () => [
         { trigger: "button[name=action_rotate]", run: "click" },

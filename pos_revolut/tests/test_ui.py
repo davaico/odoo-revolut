@@ -25,7 +25,7 @@ class TestRevolutManagerUi(TestPointOfSaleHttpCommon):
     TERMINAL_ID = "0e53f673-7705-473a-a263-89a3e7647c3d"
 
     def test_administrator_configures_database_credentials_in_french_browser(self):
-        self.env["res.lang"]._activate_lang("fr_FR")
+        self.env["res.lang"]._activate_and_install_lang("fr_FR")
         self.env.company.name = "Browser Revolut Company"
         self.pos_admin.write({
             "lang": "fr_FR",
@@ -36,7 +36,7 @@ class TestRevolutManagerUi(TestPointOfSaleHttpCommon):
         # translated. Literal references and saved configuration stay identical.
         self.start_tour(
             f"/odoo/action-{action.id}?debug=tests",
-            "pos_revolut_admin_database_credential", login="pos_admin",
+            "pos_revolut_admin_database_credential_french", login="pos_admin",
         )
         credential = self.env["pos.revolut.merchant.credential"].search([
             ("secret_reference", "=", "ODOO_REVOLUT_SECRET_BROWSER_DATABASE"),
