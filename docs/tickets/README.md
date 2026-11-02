@@ -2,9 +2,10 @@
 
 **Enterprise/Odoo.sh base and integration target:** `staging/18-enterprise`
 (owner decision, 2026-11-02). Tickets 75–82 and related follow-up 84 are maintained
-here. T76–81 and T84 are completed on this development branch; client activation
-remains in T82. T81's production PR #96 comes directly from
-`staging/18-enterprise` and remains unmerged at the owner's request.
+here. T76–81 and T84 are completed on this development branch; T82 is closed as
+out of scope. Delivery uses trial-based testing and does not require permanent
+Enterprise activation or a client rollout. T81's production PR #96 comes directly
+from `staging/18-enterprise` and remains unmerged at the owner's request.
 Remaining Enterprise work must not be integrated into Community `feat/v18_rev`.
 Community acceptance records below are retained as context; deferred ticket 83
 is owned by the Community branch. Historical branch names in evidence are not
@@ -25,15 +26,15 @@ private host details and credentials in restricted records.
 
 | Ticket | Category | Triage | State | Blocked by |
 | --- | --- | --- | --- | --- |
-| [75 — Adapt Revolut to Odoo.sh Enterprise 18](ready-for-agents/75-adapt-revolut-to-odoo-sh.md) | Deployment compatibility | `ready-for-agent` | Open | No local implementation blocker; release PR #96 prepared and unmerged; permanent client registration and bounded live check belong to live activation |
-| [82 — Activate production and verify one payment and refund](ready-for-human/82-activate-odoo-sh-and-check-payment-refund.md) | Client live acceptance | `ready-for-human` | Open | Identified client environment, release approval and client/terminal participation; PR #96 remains unmerged and current Odoo.sh project remains test-only |
-| [83 — Finish the deferred Odoo 18 refund, return and session](ready-for-human/83-finish-deferred-v18-refund-return-session.md) | Deferred acceptance follow-up | `ready-for-human` | Open | Original provider finality and authorised custodian; non-blocking for release |
+| [75 — Adapt Revolut to Odoo.sh Enterprise 18](ready-for-agents/75-adapt-revolut-to-odoo-sh.md) | Deployment compatibility | `ready-for-agent` | Open | No local implementation blocker; release PR #96 prepared and unmerged; trial-only testing, no client activation gate |
+| [83 — Finish the deferred Odoo 18 refund, return and session](ready-for-human/83-finish-deferred-v18-refund-return-session.md) | Enhancement / deferred acceptance follow-up | `ready-for-human` | Open | Original provider finality and authorised custodian; non-blocking for release, independent of Enterprise activation |
 
 ## Closed tickets
 
 | Ticket | Resolution |
 | --- | --- |
-| [81 — Validate the release candidate and prepare the production PR](closed/81-prepare-odoo-sh-production-release-pr.md) | Validated `.8` assembly, populated/versioned upgrades and copy guards; retained clean full evidence plus current full/four-case completion with honest Chrome-skip limits. PR #96 is ready, open and unmerged; 0/0 reviews. Dev work is integrated into `staging/18-enterprise`; the owner requested no production PR merge. #82 activation remains separate. |
+| [82 — Activate production and verify one payment and refund](wontfix/82-activate-odoo-sh-and-check-payment-refund.md) | Enhancement / `wontfix`: owner confirmed reusable addon delivery with trial-only testing; permanent activation and client rollout are outside scope. No live acceptance claimed; #83 remains open and non-blocking. |
+| [81 — Validate the release candidate and prepare the production PR](closed/81-prepare-odoo-sh-production-release-pr.md) | Validated `.8` assembly, populated/versioned upgrades and copy guards; retained clean full evidence plus current full/four-case completion with honest Chrome-skip limits. PR #96 is ready, open and unmerged; 0/0 reviews. Dev work is integrated into `staging/18-enterprise`; the owner requested no production PR merge. #82 subsequently closed as out of scope. |
 | [80 — Install and verify the integration on Odoo.sh staging](closed/80-verify-odoo-sh-staging-lifecycle.md) | Installed `.8` on hosted staging; permissions, native preservation, copies, HTTP recovery and actual native cron-worker SIGKILL/replacement recovery passed with mocked HTTP. Recorded trial accepted for test-only scope; 0/0 reviews. Platform-managed restart limitation remains explicit; later #84 regression completion is preserved. |
 | [84 — Investigate full-suite checkout browser failures](closed/84-investigate-checkout-browser-full-suite-failures.md) | Corrected the held-response fixture race; native red/green proof, 816 full cases with zero failures/errors (one optional skip), all ten affected browser cases and 146 JS checks passed. Hosted #80 is also complete; release assembly remains #81. |
 | [79 — Clarify the Revolut configuration workflow](closed/79-clarify-revolut-configuration-workflow.md) | Corrected native labels/layout, authority/source/role help and instructions in `.8`; focused/UI checks and 0/0 reviews passed. Full-run browser follow-up resolved in #84. |

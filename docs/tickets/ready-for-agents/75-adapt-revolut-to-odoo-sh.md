@@ -17,18 +17,19 @@ Do not change the status of other acceptance or Odoo 19 tickets as part of this
 specification.
 
 **External gates:** Hosted acceptance requires authenticated Odoo.sh access,
-verification of the Enterprise subscription/database registration, and a usable
-staging build. Production release requires the staging evidence and a reviewed
-production-ready PR. Final live acceptance requires the owner's terminal and
-credentials. These gate the corresponding deployment steps, not local work.
+verified active-trial status, and a usable staging build. Production release
+requires the staging evidence, a reviewed production-ready PR and separate
+release approval. Permanent Enterprise registration and client live activation
+are not delivery gates for this reusable addon.
 
 **Test-only clarification, 2026-11-02:** The owner is evaluating deployment, not
 operating this project live. Verified active-trial status is sufficient for
 ticket 80. The owner further clarified that the deliverable is a reusable addon
 for clients, not an owner-operated hosting service. The current Odoo.sh project
 will remain test-only: do not activate a paid Enterprise production plan here.
-Any future ticket 82 live acceptance belongs to an identified client environment
-under that client's hosting/subscription arrangements and separate approval.
+T82 is closed as `wontfix`: neither permanent activation of this database nor
+execution of a client rollout is part of this delivery. Customers retain the
+installation and operating instructions for their own separately approved use.
 This clarification does not extend trial limits or authorize live operations.
 
 **Specification agreed:** 2026-10-30. The owner confirmed scope and the testing
@@ -40,7 +41,7 @@ implementation or hosted verification.
 The client has created an Odoo 18 Enterprise project on Odoo.sh with production
 and staging branches. The client reports that the instance starts and the
 Revolut addon is available but remains to be installed. They need to finish
-Enterprise registration, install and validate the addon on staging, correct
+trial-status verification, install and validate the addon on staging, correct
 Payment Method labels and documentation, and make credential handling work
 reliably on this hosting platform.
 
@@ -59,7 +60,7 @@ This is not a one-company or one-terminal product.
 
 Deliver the client's four requested outcomes within the existing addon:
 
-1. Verify the appropriate Enterprise database registration and install the
+1. Verify the Enterprise trial status and install the
    addon on staging with repeatable instructions.
 2. Correct Revolut labels/help in the Payment Method form and update the
    installation and operating documentation for Odoo.sh.
@@ -70,13 +71,14 @@ Deliver the client's four requested outcomes within the existing addon:
    database copies on Enterprise/Odoo.sh, then prepare the production-ready PR
    into `18.0`.
 
-After production deployment, perform the agreed small payment and refund before
-opening Revolut payments to cashiers. Reuse existing accepted physical-terminal
-evidence; do not repeat the entire hardware acceptance campaign.
+Provide customer deployment and bounded payment/refund acceptance instructions.
+Executing a client rollout is outside this adaptation's delivery scope. Reuse
+existing accepted physical-terminal evidence with its recorded limitations;
+do not repeat the entire hardware acceptance campaign.
 
 ## User Stories
 
-1. As a deployment administrator, I want to verify the Enterprise subscription and database registration, so that the intended database is registered correctly without incorrectly registering a staging copy as another production database.
+1. As a deployment administrator, I want to verify Enterprise trial status and limits, so that hosted testing does not require permanent registration or incorrectly register a staging copy as another production database.
 2. As a deployment administrator, I want to install the addon on Odoo.sh staging, so that I can validate the hosted integration before production deployment.
 3. As a deployment administrator, I want repeatable staging setup instructions, so that a new staging build does not depend on undocumented manual configuration.
 4. As an existing Odoo customer, I want installation to preserve native business data, so that adding Revolut does not disrupt my existing POS operations.
@@ -104,7 +106,7 @@ evidence; do not repeat the entire hardware acceptance campaign.
 26. As a support operator, I want useful transaction references and sanitised errors, so that I can investigate problems without exposing keys or sensitive cardholder information.
 27. As a maintainer, I want mocked regression tests and actual hosted lifecycle evidence, so that a successful build is not mistaken for proof that the risky behavior works.
 28. As a release owner, I want development and staging changes kept away from `18.0` until ready, so that automatic deployment cannot publish unfinished work.
-29. As a release owner, I want a small production payment and refund after deployment, so that the actual hosted credential and terminal path is verified with limited live activity.
+29. As an independent customer, I want bounded payment/refund acceptance instructions, so that I can verify my own deployment before enabling cashiers without making my rollout a gate for delivering the addon.
 30. As an existing Community 18 or 19 customer, I want the current supported features preserved, so that adding Enterprise/Odoo.sh support does not reduce my integration's capabilities.
 
 ## Implementation Decisions
@@ -181,8 +183,8 @@ evidence; do not repeat the entire hardware acceptance campaign.
 
 - The owner explicitly confirmed these test boundaries on 2026-10-30: existing
   Odoo payment/refund and credential tests with mocked Revolut HTTP, focused UI
-  checks, hosted staging lifecycle verification, and the small production
-  payment/refund after deployment.
+  checks and hosted staging lifecycle verification. The 2026-11-02 trial-only
+  clarification removes the earlier post-deployment live payment/refund gate.
 - Prefer the highest existing application boundary: invoke real Odoo model/RPC
   operations as representative users, with the external HTTP transport mocked.
   Assert observable permissions, operation states, persisted references,
@@ -233,11 +235,10 @@ evidence; do not repeat the entire hardware acceptance campaign.
   staging does not automatically run the unit suite, and a green build alone
   is not acceptance. Test delayed reconciliation rather than assuming the
   addon's one-minute schedule is guaranteed by Odoo.sh.
-- After production deployment, the owner performs or coordinates the agreed
-  small real payment and refund on the intended company/terminal. Record
-  verified final provider outcomes and matching Odoo records. A pending refund
-  remains pending evidence; do not create another refund to make the check pass.
-  Keep live financial references in restricted acceptance records.
+- Retain customer instructions for verifying final provider outcomes and
+  matching Odoo records before enabling cashiers in a future client deployment.
+  Executing those live checks is not an acceptance requirement for this delivery.
+  Trial testing does not establish a live Enterprise payment/refund pass.
 - Run the narrowest meaningful regressions during implementation, followed by
   the applicable integration and hosted release gates. Record exact commands,
   results, artifact identity and limitations. Reuse earlier accepted hardware
@@ -245,7 +246,7 @@ evidence; do not repeat the entire hardware acceptance campaign.
 
 ### Acceptance criteria
 
-- [ ] The intended Enterprise database registration is verified and staging
+- [ ] The Enterprise trial status and limits are verified and staging
   installation is demonstrated with repeatable setup instructions.
 - [ ] Payment Method labels/help and Odoo.sh documentation are corrected against
   the actual interface; installation preserves native business data.
@@ -263,11 +264,14 @@ evidence; do not repeat the entire hardware acceptance campaign.
   candidate; supported-version impact and remaining limitations are recorded.
 - [ ] A production-ready PR into `18.0` includes staging evidence and explicit
   configuration, upgrade and recovery instructions; no premature production push.
-- [ ] After release, the bounded production payment and refund reach verified
-  final outcomes, or any pending/failed outcome remains explicitly unresolved.
+- [ ] Customer deployment and payment/refund acceptance instructions are
+  available; delivery does not depend on permanent registration or a client
+  live payment/refund. Existing hardware limitations remain explicit.
 
 ## Out of Scope
 
+- Permanent activation of the owner's Enterprise database, obtaining its
+  activation code, and executing a client production rollout (T82 disposition).
 - An Enterprise-only fork, a new payment provider architecture, a separate
   hosted multi-tenant service, or hard-coded customer/company/terminal settings.
 - Replacing the existing financial state model, weakening payment verification,
@@ -289,14 +293,15 @@ evidence; do not repeat the entire hardware acceptance campaign.
 
 - Keep the work limited to the client's four requests. The owner approved the
   scope, administrator-managed database keys, separate customer databases,
-  multi-company support, the production branch boundary and limited live
-  acceptance. The final Enterprise branch choice is `staging/18-enterprise`
+  multi-company support and the production branch boundary. The later trial-only
+  decision supersedes the original live activation requirement. The final
+  Enterprise branch choice is `staging/18-enterprise`
   following the owner's 2026-11-02 correction; Community work stays separate.
 - The local corrected baseline is `18.0.1.0.4`; hosted build identity and
   subscription state have not been verified during specification work.
   Existing accepted physical-test limitations remain accepted, and unrelated
-  historical pending operations must not be retried as part of the new smoke
-  test. Keep private evidence separate from this public specification.
+  historical pending operations must not be retried as part of this adaptation.
+  Keep private evidence separate from this public specification.
 - Odoo.sh custom persistent environment-variable injection across all workers
   and rebuilds was not established from the official material inspected. This
   is an unverified hosting capability, not a claim that it is forbidden.
@@ -312,3 +317,16 @@ evidence; do not repeat the entire hardware acceptance campaign.
 - Verification at specification publication is limited to ticket structure,
   index consistency and patch hygiene. No addon test, live request, hosted
   registration, deployment or production operation is claimed by this ticket.
+
+## Comments
+
+> *This was generated by AI during triage.*
+
+### 2026-11-02 — Trial-only delivery scope confirmed
+
+The owner approved closing T82 as out of scope and removing client activation
+as a delivery gate. The current Enterprise account is a trial test harness;
+the goal is reusable Enterprise/Odoo.sh compatibility for independent users.
+The requirements above reflect that decision. Hosted validation remains in
+T80 and release preparation in T81; separate release approval is still required.
+T83 remains an open, non-blocking Community acceptance-record follow-up.

@@ -5,7 +5,10 @@ prepares the reviewed addon for distribution and automatically builds the refere
 Odoo.sh project's Production branch. It does not install or configure a client
 system. The reference project is test-only; do not activate a paid production
 plan or perform live payments there. Obtain approval for the concrete release
-and identify the intended client environment before activation.
+before merging. This adaptation's delivery scope is reusable addon compatibility
+validated on the trial database; it requires no permanent activation code or
+executed client rollout. The client sections below are instructions for a future,
+separately approved operational deployment, not gates for delivering the addon.
 
 ## Before approving the release
 
@@ -19,6 +22,9 @@ and identify the intended client environment before activation.
 - Compare hosted and assembled application bytes. Revalidate changed payment,
   credential, data, view or POS behavior on staging. Attribute earlier lifecycle
   results to their actual build; do not claim an untested exact revision was hosted.
+
+## Before a future client activation
+
 - Back up the client database, filestore, addon and runtime configuration and
   verify restoration. Inventory unresolved attempts, returns and original
   credential authorities in restricted records. Keep a tested rollback artifact.

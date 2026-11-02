@@ -30,6 +30,10 @@ production database binding.
 
 For a test-only evaluation, an active trial is sufficient: record its status and
 expiry without treating permanent registration as a staging-test prerequisite.
+The owner's current project is used only for trial testing of the reusable
+addon; no permanent activation code or client rollout is required for delivery.
+The production registration instructions below apply only to a future operational
+deployment, not this test campaign.
 Odoo.sh trial projects are time-limited and may be deleted after expiry; retain
 test evidence outside the build. Continued hosting beyond the trial and actual
 operational deployment require the appropriate entitlement. Keep a reference
