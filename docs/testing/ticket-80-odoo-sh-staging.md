@@ -37,6 +37,9 @@ activation and the intended production binding remain externally unverified;
 an expiration date is not sufficient proof. A later read-only production check
 showed Contacts installed, the first-app message absent, and expiration
 **2026-12-03**. No staging copy was registered.
+The project Settings already contains a masked Subscription Code; only its
+presence was recorded. This does not establish the production database's
+binding or distinguish trial/project entitlement from active registration.
 
 ## Hosted focused tests
 
@@ -47,7 +50,7 @@ provider traffic; no real Merchant API or terminal is part of these checks.
 | Run | Result and interpretation |
 | --- | --- |
 | `/tmp/ticket80-focused.log` | Exit 1; 17 selected tests, zero failures, two errors (Odoo stats: 27 including setup). The two pre-copy Production payment/refund fixtures could not construct their source transaction on an already neutralized staging database. The intended runtime guard rejected them before HTTP. This run remains failed. |
-| `/tmp/ticket80-sandbox.log` | Exit 1; 18 selected tests, one failure, zero errors (stats: 26). Pending database-key payment/partial-refund recovery hit `SerializationFailure` in native cron `_try_lock`; another worker updated the cron row. |
+| `/tmp/ticket80-sandbox.log` | Exit 1; 18 selected tests, one failure, zero errors (stats: 26). Pending database-key payment/partial-refund recovery hit `SerializationFailure` in native cron `_try_lock`; a concurrent transaction updated the cron row. |
 | `/tmp/ticket80-controlled.log` | Exit 0; same 18 selected tests, zero failures/errors (stats: 26). Deactivated only the two addon crons, committed that setup, then reran the same selection. Fixtures invoke both jobs explicitly through `method_direct_trigger()`. No assertion or timeout changed. |
 
 The passing selection exercises administrator-only database-key RPC/export,
@@ -159,7 +162,7 @@ ran the existing `native_install_seed.py`. It commits a synthetic company,
 manager, customer, product, register, paid native sale and posted invoice,
 retaining exact snapshots. Installed the candidate with `--init=pos_revolut`.
 A separate shell running `native_install_verify.py` preserved every snapshotted
-native value, including stock/accounting-related document lines and tenders.
+native value, including POS sale lines/tenders and posted invoice lines.
 All commands exited zero. Logs: `/tmp/ticket80-native-install.log`,
 `/tmp/ticket80-native-seed.log`, `/tmp/ticket80-reinstall.log` and
 `/tmp/ticket80-native-verify.log` on build 41044597.
@@ -185,17 +188,76 @@ The two installation commands used the same guard/environment and
 the respective `--init` argument above. These commands run in dependency order,
 each in a fresh process on the selected staging database.
 
-The final shell rechecked installed `.8`, neutralization and both addon cron
+The rebuilt Odoo and Enterprise Git revisions matched those recorded for build
+40905864. The final shell rechecked installed `.8`, neutralization and both addon cron
 states. Left the rebuilt staging database installed, with native fixture history
 preserved and both Revolut jobs **inactive**. The first-install guard's synthetic
 keys/methods were rollback-only. Screenshot:
 `/tmp/ticket80-rebuilt-verification.jpg` (outside Git). Hosted logs/screenshots
 can contain private build context; do not publish them unredacted.
 
+## Local regression and review
+
+Pinned Odoo Community `18.0.20261015`, PostgreSQL `16.14`, candidate `fdfa745`,
+internal Compose network `10.237.180.0/24`, project
+`odoo-revolut-ticket80-local`. Real Merchant HTTP blocked; synthetic credentials
+and mocked provider responses only. These results support the hosted checks;
+they do not establish Enterprise/platform behavior by themselves.
+
+- Host tooling: **75 tests, zero failures/errors, three PDF-dependency skips**,
+  exit 0. `/tmp/ticket80-local/host.log`.
+- JavaScript: **146 passed**, zero failures/skips, exit 0.
+  `/tmp/ticket80-local/js.log`.
+- Full addon suite: **815 cases, two failures, zero errors, two skips**, actual
+  container exit **1**. `/tmp/ticket80-local/full.log`,
+  `/tmp/ticket80-local/full-exit`; retained browser artifacts in
+  `/tmp/ticket80-local/browser-artifacts`.
+- Existing restart fixture: **passed**, exit 0 across three Odoo processes,
+  including the original environment-key source, stable identities, zero/nonzero
+  tip report recovery and no financial replay. `/tmp/ticket80-local/restart.log`
+  and `/tmp/ticket80-local/restart-exit`; temporary runner preserves the source
+  assertions and uses internal subnet `10.237.181.0/24`. Disposable projects
+  were cleaned; logs/artifacts remain. No additional local first-install runner
+  was needed after the hosted fixture passed.
+
+Exact local command record: `/tmp/ticket80-local/commands.txt`. Full suite:
+
+```bash
+docker compose -p odoo-revolut-ticket80-local -f /tmp/ticket80-local/compose.yaml \
+  run -d --name odoo-revolut-ticket80-local-full odoo \
+  --database ticket80 --init pos_revolut --stop-after-init --workers 0 \
+  --max-cron-threads 0 --log-level warn \
+  --log-handler odoo.tests.result:INFO --log-handler odoo.tests.stats:INFO \
+  --log-handler odoo.addons.pos_revolut:INFO --test-tags /pos_revolut
+```
+
+Host tooling ran `python3 -m unittest discover -s tests -v`; JavaScript ran
+`node --test --test-isolation=none pos_revolut/static/tests/*.test.mjs`.
+
+The full run failed the existing
+`TestRevolutVerifiedCheckout.test_terminal_busy_inflight_snapshot_reconciles_after_reload_without_duplicate_charge`
+at its initial Start PoS control, before the financial scenario, and
+`test_verified_payment_checkout_timeout_recovers_without_second_charge` waiting
+for the Check status modal (step 12/25). One optional `pos_hr` skip and a Chrome
+debugger-startup skip in
+`test_terminal_busy_line_can_be_removed_for_cash_without_second_dispatch`
+were recorded. Host memory/swap saturation was observed, but cause remains
+unestablished. No assertion/timeout was relaxed and this run remains red;
+[ticket 84](../tickets/needs-triage/84-investigate-checkout-browser-full-suite-failures.md)
+retains the release gate.
+
+No configured type checker applies to these documentation-only changes.
+`git diff --check` and relative Markdown-link checks passed. Independent
+Standards and Spec reviews compared `fdfa745...2064957`: Standards found zero
+documented-standard violations/baseline smells; Spec found one minor
+overstatement of native stock preservation, corrected above to the actual POS
+and invoice snapshots. Also narrowed the concurrency observation to a
+transaction, without claiming an identified worker. Final follow-up review is
+pending.
+
 ## Unresolved gates
 
-Final local regression results are still being collected. Production
-registration/binding confirmation remains an owner gate. A running platform
+Production registration/binding confirmation remains an owner gate. A running platform
 cron-worker restart was unavailable; manual cron invocation and HTTP restart
 coverage do not close that gap. Ticket 80 stays claimed/open. This report does
 not authorize promotion to `18.0` or resolve ticket 84.

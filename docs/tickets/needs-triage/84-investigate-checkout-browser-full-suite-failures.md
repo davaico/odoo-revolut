@@ -96,3 +96,29 @@ The French test ran after both failures. Host memory/swap pressure was observed,
 but root cause remains unestablished. The full result remains red and #81 is
 explicitly gated by this open ticket. Do not weaken financial assertions or
 close this issue based on isolated successes.
+
+### 2026-11-02 — Ticket 80 unchanged-addon full run
+
+The full local Community suite on candidate
+`fdfa74596f2445e0a54a1206cb28a052386cda01` (`18.0.1.0.8`) completed **815
+cases, two failures, zero errors and two skips**, actual container exit 1.
+Ticket 80 changes documentation/evidence only; addon code and tests are unchanged.
+
+- `TestRevolutVerifiedCheckout.test_terminal_busy_inflight_snapshot_reconciles_after_reload_without_duplicate_charge`:
+  initial `.screen-login .btn.open-register-btn` missing after ten seconds,
+  before financial behavior was exercised.
+- `TestRevolutVerifiedCheckout.test_verified_payment_checkout_timeout_recovers_without_second_charge`:
+  `.modal:contains('Check status')` missing after ten seconds, step 12/25.
+- `test_terminal_busy_line_can_be_removed_for_cash_without_second_dispatch`
+  skipped after a Chrome debugger connection timeout; the second skip was the
+  optional `pos_hr` characterization.
+
+Host memory/swap saturation was observed during the final browser cases (about
+181 MiB available RAM and almost all 4 GiB swap used). This is context, not an
+established cause. No application fix, assertion relaxation or timeout increase
+was made. Logs: `/tmp/ticket80-local/full.log`,
+`/tmp/ticket80-local/full-exit`; browser artifacts:
+`/tmp/ticket80-local/browser-artifacts`. The internal Compose network used
+`10.237.180.0/24`; real Merchant HTTP remained blocked. Hosted installation and
+lifecycle checks are [recorded separately](../../testing/ticket-80-odoo-sh-staging.md).
+This run does not resolve the release gate or the earlier observations.
