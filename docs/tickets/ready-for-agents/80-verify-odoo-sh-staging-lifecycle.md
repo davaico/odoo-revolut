@@ -1,11 +1,12 @@
 # 80 — Install and verify the integration on Odoo.sh staging
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 
-**Work branch:** `staging/18-enterprise`; base further task branches on its
-latest reviewed revision and integrate back there. Do not push to `18.0`.
+**Work branch:** `codex/80-odoo-sh-staging`, based on
+`staging/18-enterprise` at `fdfa74596f2445e0a54a1206cb28a052386cda01`.
+Integrate back into `staging/18-enterprise`. Do not push to `18.0`.
 
 **Parent:** [75 — Adapt Revolut to Odoo.sh Enterprise 18](75-adapt-revolut-to-odoo-sh.md)
 
@@ -13,9 +14,10 @@ latest reviewed revision and integrate back there. Do not push to `18.0`.
 
 **Completed prerequisite:** [78 — Make database copies safe](../closed/78-neutralize-revolut-database-copies.md).
 
-**External blockers:** Authenticated Odoo.sh access, a usable staging build and
-the subscription/database registration information. Registration changes must
-apply to the appropriate database, not automatically to a staging copy.
+**External blockers:** Production subscription/database binding confirmation
+from the owner; observation of a running platform cron worker across restart.
+Authenticated Odoo.sh access and usable builds are available. Registration
+changes must apply to the appropriate database, not automatically to a staging copy.
 
 ## What to build
 
@@ -30,25 +32,41 @@ behaviors. Record the exact candidate and hosted build used.
 - [ ] Verify subscription and database registration status; complete the correct
   registration step where required without registering a staging copy as an
   additional production database. Keep license material out of public evidence.
-- [ ] Install on staging and document repeatable setup after a rebuild, including
+- [x] Install on staging and document repeatable setup after a rebuild, including
   the fact that production database copies replace staging-only configuration.
   Preserve existing native business data.
-- [ ] Exercise administrator/POS role boundaries and company/terminal isolation
+- [x] Exercise administrator/POS role boundaries and company/terminal isolation
   in the hosted setup using synthetic credentials and mocked provider traffic.
 - [ ] Demonstrate credential availability to the required workers after restart
   and durable recovery of the same payment/refund attempts without duplicate
   dispatch. Do not rely on persistent custom background daemons.
-- [ ] Explicitly invoke or enable controlled payment/refund reconciliation jobs
+- [x] Explicitly invoke or enable controlled payment/refund reconciliation jobs
   and verify their results. Cover delayed scheduling; do not assume one-minute
   cron execution or equate a green staging build with passed tests.
-- [ ] Rebuild/copy a controlled database and verify live-key removal, preserved
+- [x] Rebuild/copy a controlled database and verify live-key removal, preserved
   financial history, production-request blocking and first-install-after-copy
   protection. No real Merchant API or terminal is contacted.
-- [ ] Provide the runbook for installation, restart, scheduled jobs and copies,
+- [x] Provide the runbook for installation, restart, scheduled jobs and copies,
   plus exact evidence, failures and unresolved external gates. Redact credentials,
   private host details and financial references from public records.
 
 ## Verification evidence
 
-Pending hosted work. Ticket 79 is not a prerequisite for these lifecycle
-checks; the assembled release must include its UI/documentation changes later.
+See the [staging runbook](../../odoo-sh-staging.md) and
+[exact evidence and failed runs](../../testing/ticket-80-odoo-sh-staging.md).
+Build 40905864 on candidate `fdfa745` installed `.8`, passed 18 controlled
+hosted sandbox tests and existing three-process payment recovery. A committed
+partial refund was recovered through delayed job invocation and verified by a
+fresh observer with zero-HTTP replay. Repeated native neutralization removed
+synthetic live keys across two companies while retaining financial/native
+history. Build 41044597 at the same candidate proved staging-only setup was
+replaced, then passed populated-native first installation/preservation and the
+unchanged first-install-after-neutralization guard fixture. The module remains
+installed there; both addon jobs are inactive after mocked acceptance.
+
+The HTTP restart succeeded after waking a worker. The platform cron restart
+reported no running worker and aborted; explicit job invocation passed but is
+not evidence of a running platform cron-worker restart. Registration remains
+an owner gate. Keep this ticket claimed/open until the remaining criteria pass.
+Ticket 79's UI/documentation changes are included in the candidate. Release
+promotion and ticket 84 remain separate gates.

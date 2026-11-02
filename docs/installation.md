@@ -13,6 +13,9 @@ The addon uses fixed Sandbox/Production Merchant hosts and API version `2026-08-
 
 ## Odoo.sh test environments
 
+For repeatable hosted installation, worker restarts, controlled scheduled jobs
+and rebuild/copy acceptance, use the [Odoo.sh staging runbook](odoo-sh-staging.md).
+
 Production Revolut HTTP is disabled when the server's `ODOO_STAGE` is present
 and is anything other than exactly `production`. This includes `staging`, `dev`,
 empty values and unknown internal stages. Odoo.sh documents this variable in its
