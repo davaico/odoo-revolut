@@ -1974,6 +1974,9 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
     def test_verified_saved_refund_checkout_timeout_recovers_without_second_refund(self):
         self._run_refund_checkout_recovery("timeout")
 
+    def test_verified_saved_refund_checkout_waits_for_delayed_canonical_response(self):
+        self._run_refund_checkout_recovery("delayed")
+
     def test_verified_saved_refund_checkout_offline_loader_recovers_without_second_refund(self):
         self._run_refund_checkout_recovery("offline")
 

@@ -98,4 +98,7 @@ reviews of `267138f...09bbbb4` reported zero findings and confirmed the remainin
 worker criterion is satisfied. Closed on 2026-11-02 without changing Production
 or activating a paid Enterprise plan.
 Ticket 79's UI/documentation changes are included in the candidate. Release
-promotion and ticket 84 remain separate gates.
+promotion remains separate. Ticket 84's later corrected-candidate full-suite
+completion at `02de21c` was preserved when integrating this work into staging;
+the earlier failed runs remain historical evidence. Ticket 81 owns remaining
+release assembly and revalidation.

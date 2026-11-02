@@ -2,7 +2,8 @@
 
 **Enterprise/Odoo.sh base and integration target:** `staging/18-enterprise`
 (owner decision, 2026-11-02). Tickets 75–82 and related follow-up 84 are maintained
-here. T76–79 are completed; remaining full-suite validation is tracked in T84.
+here. T76–79 and T84 are completed; hosted acceptance remains in T80 and release
+preparation in T81.
 Remaining Enterprise work must not be integrated into Community `feat/v18_rev`.
 Community acceptance records below are retained as context; deferred ticket 83
 is owned by the Community branch. Historical branch names in evidence are not
@@ -24,20 +25,20 @@ private host details and credentials in restricted records.
 | Ticket | Category | Triage | State | Blocked by |
 | --- | --- | --- | --- | --- |
 | [75 — Adapt Revolut to Odoo.sh Enterprise 18](ready-for-agents/75-adapt-revolut-to-odoo-sh.md) | Deployment compatibility | `ready-for-agent` | Open | No local implementation blocker; staging evidence gates release; permanent registration and bounded live check belong to live activation |
-| [81 — Validate the release candidate and prepare the production PR](ready-for-agents/81-prepare-odoo-sh-production-release-pr.md) | Release preparation | `ready-for-agent` | Open | #84; PR access; #80 hosted acceptance complete |
+| [81 — Validate the release candidate and prepare the production PR](ready-for-agents/81-prepare-odoo-sh-production-release-pr.md) | Release preparation | `ready-for-agent` | Open | PR access and remaining release assembly/revalidation; #80 and #84 complete |
 | [82 — Activate production and verify one payment and refund](ready-for-human/82-activate-odoo-sh-and-check-payment-refund.md) | Client live acceptance | `ready-for-human` | Open | #81; identified client environment, release approval and client/terminal participation; current Odoo.sh project remains test-only |
 | [83 — Finish the deferred Odoo 18 refund, return and session](ready-for-human/83-finish-deferred-v18-refund-return-session.md) | Deferred acceptance follow-up | `ready-for-human` | Open | Original provider finality and authorised custodian; non-blocking for release |
-| [84 — Investigate full-suite checkout browser failures](needs-triage/84-investigate-checkout-browser-full-suite-failures.md) | Test reliability | `needs-triage` | Open | None |
 
 ## Closed tickets
 
 | Ticket | Resolution |
 | --- | --- |
-| [80 — Install and verify the integration on Odoo.sh staging](closed/80-verify-odoo-sh-staging-lifecycle.md) | Installed `.8` on hosted staging; permissions, native preservation, copies, HTTP recovery and actual native cron-worker SIGKILL/replacement recovery passed with mocked HTTP. Recorded trial accepted for test-only scope; 0/0 reviews. Platform-managed restart limitation and #84 release gate remain explicit. |
-| [79 — Clarify the Revolut configuration workflow](closed/79-clarify-revolut-configuration-workflow.md) | Corrected native labels/layout, authority/source/role help and instructions in `.8`; focused/UI checks and 0/0 reviews passed. Full-run browser follow-up remains #84. |
-| [78 — Make database copies safe](closed/78-neutralize-revolut-database-copies.md) | Whole-database key cleanup and neutralized-runtime guard in `.7`; fresh-install/repeat-copy fixtures, 814 full-addon cases and 0/0 reviews passed. Hosted lifecycle remains #80. |
-| [77 — Manage company credentials through Odoo](closed/77-manage-company-revolut-credentials-in-odoo.md) | Database/environment sources, immutable rotation and historical recovery implemented in `.6`; 29 focused tests and upgrade passed. Full-run browser follow-up: #84. |
-| [76 — Block real Revolut access on Odoo.sh test environments](closed/76-block-live-revolut-on-odoo-sh-test-builds.md) | Runtime policy completed on Odoo 18 `d0d5225`; 796 full-addon tests (one optional skip), 146 JavaScript checks, and Standards/Spec reviews with zero findings. Hosted lifecycle remains in #80. |
+| [80 — Install and verify the integration on Odoo.sh staging](closed/80-verify-odoo-sh-staging-lifecycle.md) | Installed `.8` on hosted staging; permissions, native preservation, copies, HTTP recovery and actual native cron-worker SIGKILL/replacement recovery passed with mocked HTTP. Recorded trial accepted for test-only scope; 0/0 reviews. Platform-managed restart limitation remains explicit; later #84 regression completion is preserved. |
+| [84 — Investigate full-suite checkout browser failures](closed/84-investigate-checkout-browser-full-suite-failures.md) | Corrected the held-response fixture race; native red/green proof, 816 full cases with zero failures/errors (one optional skip), all ten affected browser cases and 146 JS checks passed. Hosted #80 is also complete; release assembly remains #81. |
+| [79 — Clarify the Revolut configuration workflow](closed/79-clarify-revolut-configuration-workflow.md) | Corrected native labels/layout, authority/source/role help and instructions in `.8`; focused/UI checks and 0/0 reviews passed. Full-run browser follow-up resolved in #84. |
+| [78 — Make database copies safe](closed/78-neutralize-revolut-database-copies.md) | Whole-database key cleanup and neutralized-runtime guard in `.7`; fresh-install/repeat-copy fixtures, 814 full-addon cases and 0/0 reviews passed. Hosted lifecycle subsequently completed in #80. |
+| [77 — Manage company credentials through Odoo](closed/77-manage-company-revolut-credentials-in-odoo.md) | Database/environment sources, immutable rotation and historical recovery implemented in `.6`; 29 focused tests and upgrade passed. Full-run browser follow-up resolved in #84. |
+| [76 — Block real Revolut access on Odoo.sh test environments](closed/76-block-live-revolut-on-odoo-sh-test-builds.md) | Runtime policy completed on Odoo 18 `d0d5225`; 796 full-addon tests (one optional skip), 146 JavaScript checks, and Standards/Spec reviews with zero findings. Hosted lifecycle subsequently completed in #80. |
 | [63 — Perform controlled Odoo 18 terminal acceptance](closed/63-v18-terminal-acceptance.md) | Accepted Community 18 campaign complete; corrected `.4` READY report and PR #88 integration. Deferred original refund/native completion remains open in #83. |
 | [74 — Restore Odoo 19 refund references after native refresh](closed/74-check-odoo19-refund-reference-refresh.md) | Combined `.16` candidate passed targeted native/browser, JS, tooling and versioned-upgrade gates; merged into `19.0` by PR #89. Earlier failing full-suite evidence remains historical. |
 | [71 — Recover existing waiting refund tenders on Odoo 19](closed/71-port-existing-waiting-refund-recovery-to-odoo-19.md) | Completed and published on `codex/71-v19-refund-recovery`; 664 full cases, upgrade preservation and 0/0 reviews passed. Production rollout remains separate. |

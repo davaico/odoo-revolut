@@ -311,7 +311,8 @@ host tooling: **80 tests, zero failures/errors, three optional PDF-dependency
 skips** (`/tmp/ticket80-native-host.log`). Both new standalone Python files
 compiled; whitespace checks passed. The unchanged installed application still
 uses the previously recorded full-addon/JavaScript evidence below; the two
-full-suite browser failures remain ticket 84's release gate. The new standalone
+full-suite browser failures were ticket 84's then-open release gate; its later
+corrected-candidate completion is preserved in the integration below. The new standalone
 files are not imported into the addon or its automatic Odoo test suite.
 
 ## Refund restart and delayed job
@@ -464,8 +465,9 @@ debugger-startup skip in
 `test_terminal_busy_line_can_be_removed_for_cash_without_second_dispatch`
 were recorded. Host memory/swap saturation was observed, but cause remains
 unestablished. No assertion/timeout was relaxed and this run remains red;
-[ticket 84](../tickets/needs-triage/84-investigate-checkout-browser-full-suite-failures.md)
-retains the release gate.
+[ticket 84](../tickets/closed/84-investigate-checkout-browser-full-suite-failures.md)
+retains this historical failure evidence. Its later corrected-candidate full
+suite passed; that completion is preserved in the staging integration below.
 
 No configured type checker applies to these documentation-only changes.
 `git diff --check` and relative Markdown-link checks passed. Independent
@@ -499,4 +501,21 @@ findings**. Spec review confirmed that the actual native worker interruption and
 replacement evidence meets the literal remaining worker criterion despite the
 separate platform-command limitation. [Ticket 80](../tickets/closed/80-verify-odoo-sh-staging-lifecycle.md)
 is closed with all criteria complete for the clarified test-only scope. This
-report does not authorize promotion to `18.0` or resolve ticket 84.
+report does not authorize promotion to `18.0`.
+
+### Integration with the subsequent ticket 84 completion
+
+Before pushing this work into `staging/18-enterprise`, fetched its newer reviewed
+head **02de21c** and merged it without dropping either history. That head closes
+ticket 84 after the held-response fixture correction and **816 full cases with
+zero failures/errors**, one optional skip, all ten affected browser cases and
+146 JavaScript checks. The earlier ticket 80 red run above remains red historical
+evidence; it was not rerun or relabelled as passing. Both #80 and #84 are now
+complete, while #81 still owns assembled-candidate release validation. The merge
+does not activate a paid plan or authorize deployment into `18.0`.
+Merge checks passed: 80 host tests (zero failures/errors, three optional PDF
+skips), 146 JavaScript tests and documentation link/layout checks. The two #84
+browser-test files match the fetched staging revision
+exactly, and the three #80 runner/fixture files match their reviewed commit.
+Production application model/view/security/data/POS source bytes did not differ
+between the two branches; the resolved conflicts were documentation only.
