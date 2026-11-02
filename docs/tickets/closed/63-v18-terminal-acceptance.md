@@ -23,7 +23,7 @@ observations and native completion evidence remain in the historical sections
 below and the acceptance handoff. This closure does not claim new live checks.
 
 The remaining original refund/return/session obligation is explicitly transferred
-to [ticket 83](../ready-for-human/83-finish-deferred-v18-refund-return-session.md).
+to [ticket 83](../closed/83-finish-deferred-v18-refund-return-session.md).
 It remains unverified and non-blocking under the owner's existing disposition;
 closure does not turn a processing refund into a successful one. Two distinct
 cards, a genuine issuer decline and unobserved interruption variants remain
@@ -32,6 +32,12 @@ setup. Earlier open checklists are historical and superseded by this disposition
 
 No live operation or production deployment was performed by this Community
 closure review.
+
+Subsequent completion on 2026-11-02 is recorded in
+[ticket 83](83-finish-deferred-v18-refund-return-session.md): the original refund
+was verified Completed, its same native return finished, and its original
+session closed with balanced posted accounting under separate owner authority.
+The dated release disposition above remains historical.
 
 ## Purpose and evidence boundary
 

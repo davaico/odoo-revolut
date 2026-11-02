@@ -1,12 +1,62 @@
-# Ticket 83 — preserved Community refund continuation
+# Ticket 83 — preserved Community refund completion
 
 Base: `feat/v18_rev` at `4b8b5cd`. Integration target: `feat/v18_rev`.
 Task branch: `codex/83-deferred-community-refund`.
 
 This is the original Community acceptance obligation. Use the preserved local
 acceptance database and frozen Community `18.0.1.0.4` addon, rather than an
-Enterprise trial or a newly created test refund. The [ticket](../tickets/ready-for-human/83-finish-deferred-v18-refund-return-session.md)
-stays open until verified completion or an explicit owner disposition.
+Enterprise trial or a newly created test refund. The [ticket](../tickets/closed/83-finish-deferred-v18-refund-return-session.md)
+closed on 2026-11-02 after verified provider and native completion.
+
+## Verified completion — 2026-11-02
+
+The owner separately authorised restoration of the original credential and a
+GET-only status check, then completion of the existing native return/session.
+The original approved credential source was recovered from the earlier private
+acceptance chat and restored only to its server-side temporary mount. All 162
+deployed addon files matched frozen reviewed `334c8a8` / `18.0.1.0.4`.
+A fresh private database dump and filestore archive were saved before the check.
+
+Exactly one provider GET checked the original refund. The existing server
+reconciliation method authenticated its identity, original sale, GBP amount and
+refund type, then persisted **verified / completed**. The process rejected all
+non-GET requests; a blocked POST probe verified that restriction before the GET.
+The original refund's other split leg was already verified completed.
+
+Native **Recover return** reopened the same saved return and original session.
+Both tenders were done, GBP -0.01 each, with distinct canonical references and
+zero due. Normal **Validate** produced the original GBP -0.02 return's receipt.
+An independent database check confirmed the same return was paid with both
+references matching the original refund operations. No direct record repair,
+replacement return or financial replay was used.
+
+Native **Close Register** showed two orders netting to GBP 0.00, zero Cash and
+Revolut totals/counts, and zero differences. Closure completed on the same
+session. Read-only SQL independently confirmed the return is now done, the
+session is closed with a closing time, and its linked accounting move is posted:
+**GBP 0.02 debit = GBP 0.02 credit**, across three accounting lines.
+
+Before/after comparisons preserved all original collection, refund, dispatch,
+order, order-line and tender record identities. Original financial amounts and
+provider references match; native tenders gained their canonical verified
+references through recovery. Counts remain 14 collection operations, eight
+refund operations and 27 dispatch claims. Native closure created its usual
+empty successor session in Opening Control, which was left unstarted with no
+orders or payments. The original return stayed in its original closed session.
+
+The normal worker's Merchant block and disabled cron were verified after the
+operation. The worker was returned to its initial stopped state; the temporary
+production credential and temporary browser operator-vault entry were removed,
+and the isolated browser was closed. The remote credential source was unchanged.
+No monitor, new collection, new refund, addon update or production deployment
+was performed. No financial/native condition remains unresolved for ticket 83.
+
+Restricted evidence remains alongside the original acceptance profile:
+`ticket83-completion-20261102.json` contains exact mappings, before/after snapshot
+paths and hashes, provider proof and backup locators. The private provider proof
+records the one GET and verified result. Screenshots retain the recovered
+return, native receipt and zero-difference closing preview. No live identities
+or credentials are copied into this repository.
 
 ## Read-only checkpoint — 2026-11-02
 
@@ -34,7 +84,7 @@ Recorded tenders do not establish refund success. No provider request, worker
 startup, credential restoration, refund submission, native validation or
 session closure was performed for this checkpoint.
 
-## Guided continuation
+## Prepared continuation (executed under the authorisations above)
 
 1. Obtain the owner's separate authorisation for restoring the original
    server-side credential and checking this existing refund through provider
@@ -79,8 +129,10 @@ session closure was performed for this checkpoint.
 
 ## Verification limits
 
-The read-only snapshot comparison exercises preservation of the actual records.
-It does not verify current provider status or native completion. No addon code
-changed, so typechecking, TDD and the addon test suite were not run for this
-documentation checkpoint. Existing synthetic tests cannot substitute for the
-remaining provider and native-accounting evidence.
+The initial read-only snapshot alone did not verify provider status or native
+completion. The subsequent authorised provider observation, native browser
+actions and independent SQL checks above exercised those actual behaviours.
+This is bounded completion of the original obligation, not a repeat of the
+broader physical acceptance matrix. No addon code changed, so typechecking,
+TDD and the full addon test suite were not run for this documentation-only
+change. Markdown links and whitespace are checked before submission.

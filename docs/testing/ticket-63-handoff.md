@@ -1,14 +1,17 @@
 # Ticket 63 — sanitized continuation handoff
 
-Checkpoint: 2026-10-30. **Accepted release scope closed.** Base and integration target:
+Checkpoint: 2026-11-02. **Accepted release scope and deferred obligation closed.** Base and integration target:
 **feat/v18_rev**. Preserve the original private acceptance checkout and its data;
 never merge its older ancestry. Read AGENTS.md and ADR 0002 before changes.
 
 The accepted Community 18 campaign is archived as
 [ticket 63](../tickets/closed/63-v18-terminal-acceptance.md), following the
 corrected READY report and integration into `18.0` through PR #88. The original
-pending refund/return/session remains unresolved and is now tracked by
-[ticket 83](../tickets/ready-for-human/83-finish-deferred-v18-refund-return-session.md).
+pending refund/return/session subsequently completed under separate owner
+authorisations in [ticket 83](../tickets/closed/83-finish-deferred-v18-refund-return-session.md).
+The final refund is verified Completed; the same return is done and its original
+session closed with a posted move balanced at GBP 0.02 debit/credit. See the
+[2026-11-02 completion evidence](ticket-83-continuation.md).
 The historical checkpoints below remain evidence, not a claim of fresh live
 verification. This handoff covers the Community acceptance campaign only.
 

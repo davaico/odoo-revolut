@@ -1,13 +1,13 @@
 # Community tickets
 
 This tracker belongs to `feat/v18_rev` and the released Community 18 line.
-The accepted `.4` implementation, completed Community evidence and deferred
+The accepted `.4` implementation, completed Community evidence and completed
 follow-up 83 are retained here.
 
 Internal tickets and live acceptance evidence remain in restricted records.
 Ticket 63's accepted Community 18 release campaign is closed; its deferred
-refund/return/session obligation remains open in ticket 83. Ticket 74's combined
-Odoo 19 release and upgrade gates passed. Other private ticket statuses are
+refund/return/session obligation completed on 2026-11-02 in ticket 83.
+Ticket 74's combined Odoo 19 release and upgrade gates passed. Other private ticket statuses are
 unchanged by this review.
 
 New public tickets use synthetic data and follow
@@ -17,15 +17,14 @@ private host details and credentials in restricted records.
 
 ## Open tickets
 
-| Ticket | Category | Triage | State | Blocked by |
-| --- | --- | --- | --- | --- |
-| [83 — Finish the deferred Odoo 18 refund, return and session](ready-for-human/83-finish-deferred-v18-refund-return-session.md) | Deferred acceptance follow-up | `ready-for-human` | Open | Original provider finality and authorised custodian; non-blocking for release |
+No open Community tickets.
 
 ## Closed tickets
 
 | Ticket | Resolution |
 | --- | --- |
-| [63 — Perform controlled Odoo 18 terminal acceptance](closed/63-v18-terminal-acceptance.md) | Accepted Community 18 campaign complete; corrected `.4` READY report and PR #88 integration. Deferred original refund/native completion remains open in #83. |
+| [83 — Finish the deferred Odoo 18 refund, return and session](closed/83-finish-deferred-v18-refund-return-session.md) | Original refund verified Completed; same native return done and session closed with balanced posted accounting. No new refund or collection. |
+| [63 — Perform controlled Odoo 18 terminal acceptance](closed/63-v18-terminal-acceptance.md) | Accepted Community 18 campaign complete; corrected `.4` READY report and PR #88 integration. Deferred original refund/native completion subsequently finished in #83. |
 | [74 — Restore Odoo 19 refund references after native refresh](closed/74-check-odoo19-refund-reference-refresh.md) | Combined `.16` candidate passed targeted native/browser, JS, tooling and versioned-upgrade gates; merged into `19.0` by PR #89. Earlier failing full-suite evidence remains historical. |
 | [71 — Recover existing waiting refund tenders on Odoo 19](closed/71-port-existing-waiting-refund-recovery-to-odoo-19.md) | Completed and published on `codex/71-v19-refund-recovery`; 664 full cases, upgrade preservation and 0/0 reviews passed. Production rollout remains separate. |
 | [73 — Restore verified refund references after native refresh](closed/73-restore-refund-reference-after-native-refresh.md) | Fixed on V18 18.0.1.0.4; original returns validated, balanced session posting. Odoo 19 follow-up: #74. |

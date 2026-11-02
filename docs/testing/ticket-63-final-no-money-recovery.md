@@ -102,5 +102,5 @@ retries do not relabel those attempts as passing.
 
 The accepted Community 18 campaign subsequently closed in
 [ticket 63](../tickets/closed/63-v18-terminal-acceptance.md). Its only retained
-financial/native obligation is [ticket 83](../tickets/ready-for-human/83-finish-deferred-v18-refund-return-session.md).
+financial/native obligation is [ticket 83](../tickets/closed/83-finish-deferred-v18-refund-return-session.md).
 These additions authorise no new test, live request or replay.
