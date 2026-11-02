@@ -9,8 +9,9 @@ candidate on `staging/18-enterprise`. Do not push to `18.0`.
 
 **Parent:** [75 — Adapt Revolut to Odoo.sh Enterprise 18](75-adapt-revolut-to-odoo-sh.md)
 
-**Blocked by:**
-- [78 — Make database copies safe](78-neutralize-revolut-database-copies.md)
+**Blocked by:** None locally.
+
+**Completed prerequisite:** [78 — Make database copies safe](../closed/78-neutralize-revolut-database-copies.md).
 
 **External blockers:** Authenticated Odoo.sh access, a usable staging build and
 the subscription/database registration information. Registration changes must

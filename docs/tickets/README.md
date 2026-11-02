@@ -16,9 +16,8 @@ private host details and credentials in restricted records.
 | Ticket | Category | Triage | State | Blocked by |
 | --- | --- | --- | --- | --- |
 | [75 — Adapt Revolut to Odoo.sh Enterprise 18](ready-for-agents/75-adapt-revolut-to-odoo-sh.md) | Deployment compatibility | `ready-for-agent` | Open | No local implementation blocker; hosted access/registration and staging evidence gate release; bounded live check follows production deployment |
-| [78 — Make database copies safe](ready-for-agents/78-neutralize-revolut-database-copies.md) | Deployment compatibility | `ready-for-agent` | Open | None |
 | [79 — Clarify the Revolut configuration workflow](ready-for-agents/79-clarify-revolut-configuration-workflow.md) | Configuration | `ready-for-agent` | Open | None |
-| [80 — Install and verify the integration on Odoo.sh staging](ready-for-agents/80-verify-odoo-sh-staging-lifecycle.md) | Hosted acceptance | `ready-for-agent` | Open | #78; hosted access and registration information |
+| [80 — Install and verify the integration on Odoo.sh staging](ready-for-agents/80-verify-odoo-sh-staging-lifecycle.md) | Hosted acceptance | `ready-for-agent` | Open | Hosted access and registration information |
 | [81 — Validate the release candidate and prepare the production PR](ready-for-agents/81-prepare-odoo-sh-production-release-pr.md) | Release preparation | `ready-for-agent` | Open | #79, #80; PR access |
 | [82 — Activate production and verify one payment and refund](ready-for-human/82-activate-odoo-sh-and-check-payment-refund.md) | Live acceptance | `ready-for-human` | Open | #81; release approval and owner/terminal participation |
 | [83 — Finish the deferred Odoo 18 refund, return and session](ready-for-human/83-finish-deferred-v18-refund-return-session.md) | Deferred acceptance follow-up | `ready-for-human` | Open | Original provider finality and authorised custodian; non-blocking for release |
@@ -28,6 +27,7 @@ private host details and credentials in restricted records.
 
 | Ticket | Resolution |
 | --- | --- |
+| [78 — Make database copies safe](closed/78-neutralize-revolut-database-copies.md) | Whole-database key cleanup and neutralized-runtime guard in `.7`; fresh-install/repeat-copy fixtures, 814 full-addon cases and 0/0 reviews passed. Hosted lifecycle remains #80. |
 | [77 — Manage company credentials through Odoo](closed/77-manage-company-revolut-credentials-in-odoo.md) | Database/environment sources, immutable rotation and historical recovery implemented in `.6`; 29 focused tests and upgrade passed. Full-run browser follow-up: #84. |
 | [76 — Block real Revolut access on Odoo.sh test environments](closed/76-block-live-revolut-on-odoo-sh-test-builds.md) | Runtime policy completed on Odoo 18 `d0d5225`; 796 full-addon tests (one optional skip), 146 JavaScript checks, and Standards/Spec reviews with zero findings. Hosted lifecycle remains in #80. |
 | [63 — Perform controlled Odoo 18 terminal acceptance](closed/63-v18-terminal-acceptance.md) | Accepted Community 18 campaign complete; corrected `.4` READY report and PR #88 integration. Deferred original refund/native completion remains open in #83. |
