@@ -130,3 +130,108 @@ resolved and the assembled candidate has clean full-suite evidence, including
 execution of the affected browser cases. The prior red runs retain their
 original results. This local Community-image comparison supplies no hosted
 Enterprise/Odoo.sh acceptance evidence.
+
+
+## Implementation investigation — 2026-11-02
+
+Triage was committed as `0257994`. Implementation continues on
+`codex/84-checkout-browser-triage`, based on and targeting
+`staging/18-enterprise` (`fdfa745` at task start).
+
+A disposable harness loaded the actual reconnect step from the checkout
+recovery tour and delivered its held-response callback after 3,200 ms. On both
+original candidate and baseline tour sources, the step failed at approximately
+3,007–3,008 ms with the financial-prematurity message, despite these observations:
+response hold absent, one restoration attempt, unfinished payment line, draft
+order, and no receipt. This isolates an ambiguous fixture failure: the shorter
+three-second wait can expire before a response that remains inside the existing
+five-second restoration budget. The harness simulates the boundary and is not
+native payment verification or proof of the original full-suite cause.
+
+The scoped correction synchronizes on the actual held response, racing that
+notification against completion of the existing native request. The native
+restoration timeout is unchanged. Failure diagnostics distinguish duplicate
+attempts, premature checkout, and restoration settling before a response could
+be held; they include response presence, attempt count, payment status, order
+state, receipt presence and elapsed time. Original finality, native identity,
+receipt and duplicate-financial-operation assertions remain intact.
+
+A new native saved-refund recovery case delays canonical delivery by 3,200 ms
+and uses the same real server interfaces, mocked provider and server-side
+refund assertions as the existing recovery cases. Regression-before-fix
+snapshots carry identical temporary `[DEBUG-T84]` evidence on baseline and
+candidate. Temporary diagnostics are excluded from the corrected addon.
+
+The lightweight corrected-step probe passes the delayed response and still
+fails when simulating premature line completion, duplicate restoration, or a
+native request settling without a held response. The existing payment-state
+file passes 143 checks. JavaScript syntax, Python compilation and whitespace
+checks pass. This repository has no configured static type checker.
+
+Retained ticket 79 logs also show broad browser responsiveness symptoms:
+its nominal 10-second refund step timeout was reported about 48 seconds after
+step entry, followed by a browser-shutdown CDP timeout. Takeout paused about
+31.6 seconds between native dialog steps before eventually hitting its overall
+tour deadline during order reopening. Retail's Chrome connection timeout
+preceded application execution. Retained artifacts do not establish OOM or
+another cause. These observations do not justify an application payment change.
+
+The same short wait exists on the released Community 18 and 19 branches.
+Their runtime behavior is unchanged by this staging-only test-fixture change;
+selective fixture backports and version-specific verification remain separate.
+No Community compatibility claim follows from this work.
+
+Native comparison and final full-suite results will be recorded before the
+implementation is submitted. Ticket 81 remains blocked during that validation.
+
+
+### Additional uncorrected full-run evidence
+
+The parallel ticket 80 local full run used addon tree
+`3218ad4a5803cddb4b7f7535b31cefd8510beb57`, identical to `fdfa745`.
+Its task HEAD `2fff881` adds documentation only. The retained log
+`/tmp/ticket84-implementation/host-full-pre-fix.log` reports **815 cases,
+two failures, zero errors**, exit 1, with an optional `pos_hr` skip and one
+Chrome connection skip. The failures were:
+
+- `test_terminal_busy_inflight_snapshot_reconciles_after_reload_without_duplicate_charge`:
+  the first login-control step timed out while the failure screenshot still
+  showed the full-screen POS loader. No later busy/payment steps executed.
+- `test_verified_payment_checkout_timeout_recovers_without_second_charge`:
+  the first Check-status modal step timed out, before the later held-response
+  assertion. Its later failure screenshot shows the intended recovery modal,
+  verified-recovery message and disabled Validate.
+- `test_terminal_busy_line_can_be_removed_for_cash_without_second_dispatch`:
+  skipped after a Chrome debugger connection timeout before tour execution.
+
+Host available memory fell below 400 MiB near the end of this run and swap
+was exhausted. These observations do not establish causation. In particular,
+the held-response fixture correction cannot explain the initial modal or
+startup failures. All three cases are included in the final candidate gate.
+
+### Review, integration and controlled-run plan
+
+Implementation commit: `fccfd12635b863b2761470afe920f3b7925c54e3`, addon tree
+`0210304b5bdde70956001e78d03d4485c8cff420`. The clean local
+`staging/18-enterprise` branch was fast-forwarded to this reviewed commit.
+Remote publication remains pending validation. Standards review: zero findings.
+Spec review: zero concrete implementation/scope findings; native and full-suite
+validation remain partial. Neither review clears the release gate.
+
+The native comparison is queued on this host, as selected by the owner. Its
+per-phase start guard requires at least 3 GiB available RAM, one-minute load at
+most 8 on this 16-CPU host, and memory full-pressure `avg10` below 1 percent.
+Temporary test containers are bounded to 3 GiB/4 CPUs for Odoo and 1.5 GiB/2 CPUs
+for PostgreSQL, with memory-plus-swap limits equal to memory limits, prohibiting
+container swapping. This replaces dependence on the host's exhausted swap with
+an explicit no-swap test runtime; host pressure and cgroup metrics are recorded.
+Other workloads are left untouched. No native comparison had started when this
+plan was recorded.
+
+Immutable snapshot inventories and temporary orchestration are retained in
+`/tmp/ticket84-implementation/`. The sequence is baseline/candidate native red
+regressions, unchanged baseline browser cases, corrected candidate browser
+cases, then one fresh full addon run. The full-run verifier requires all ten
+affected browser cases to succeed and rejects unexpected skips; only the
+existing optional `pos_hr` characterization skip is permitted. Ticket 81 remains
+blocked until the native/full-suite evidence establishes resolution.

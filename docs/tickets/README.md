@@ -28,7 +28,7 @@ private host details and credentials in restricted records.
 | [81 — Validate the release candidate and prepare the production PR](ready-for-agents/81-prepare-odoo-sh-production-release-pr.md) | Release preparation | `ready-for-agent` | Open | #80, #84; PR access |
 | [82 — Activate production and verify one payment and refund](ready-for-human/82-activate-odoo-sh-and-check-payment-refund.md) | Live acceptance | `ready-for-human` | Open | #81; release approval and owner/terminal participation |
 | [83 — Finish the deferred Odoo 18 refund, return and session](ready-for-human/83-finish-deferred-v18-refund-return-session.md) | Deferred acceptance follow-up | `ready-for-human` | Open | Original provider finality and authorised custodian; non-blocking for release |
-| [84 — Investigate full-suite checkout browser failures](ready-for-agents/84-investigate-checkout-browser-full-suite-failures.md) | bug | `ready-for-agent` | Open | Controlled-resource host for full-run validation |
+| [84 — Investigate full-suite checkout browser failures](ready-for-agents/84-investigate-checkout-browser-full-suite-failures.md) | bug | `ready-for-agent` | Claimed | Controlled-resource host for full-run validation |
 
 ## Closed tickets
 
