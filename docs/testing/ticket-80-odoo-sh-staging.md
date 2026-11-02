@@ -41,6 +41,22 @@ The project Settings already contains a masked Subscription Code; only its
 presence was recorded. This does not establish the production database's
 binding or distinguish trial/project entitlement from active registration.
 
+After the owner connected the browser, a read-only shell on production build
+**40905690** established `ODOO_STAGE=production`, no neutralization, no configured
+`database.enterprise_code`, expiration reason **trial**, and expiration
+**2026-12-03 10:43:31**. The database remains unregistered. The installed
+Enterprise Home template hides its registration panel until 30 trial days
+remain; at this check it had 31 days. Thus the absent banner and installed
+Contacts app do not prove registration. No expiration value was changed to
+force the panel to appear.
+
+Automatic approval review rejected the proposed submission of the existing
+project subscription code to Odoo's registration service from production,
+because the broader ticket request did not explicitly authorize that sensitive
+transfer and production state change. The command was rejected before execution.
+Explicit approval for that exact operation was requested and remains pending;
+no subscription code was submitted or production registration changed.
+
 ## Hosted focused tests
 
 Commands and controlled setup are in the [runbook](../odoo-sh-staging.md).
@@ -92,6 +108,40 @@ staging module page to wake HTTP, then `odoosh-restart http` confirmed all HTTP
 workers stopped and would respawn on request before the final fresh-process
 verification. A running platform cron-worker restart has not been demonstrated;
 controlled job execution is established by the focused tests above.
+
+### Subsequent platform scheduler observation
+
+On build 41044597, created a temporary native `ir.cron` action named
+`Ticket 80 controlled credential worker probe`, using a new Sandbox Database
+authority with a synthetic key and no provider calls. Its code resolved that
+exact authority through `_resolve_secret()` and incremented a durable counter
+only when the fake key matched. The reference was absent from the setup shell's
+environment. Scheduled it using native `_trigger()`; no shell manually invoked
+the action. A fresh observer confirmed one execution with last call
+**2026-11-02 11:30:09 UTC**.
+
+Two initial setup attempts rolled back because the action used an assertion
+opcode rejected by native safe evaluation. Changing its newline construction
+did not resolve that rejection. Correcting this test-only action to an explicit
+conditional allowed normal scheduling; no application code or safety boundary
+was changed.
+
+The direct cron restart still reported no live worker. Added a bounded
+45-second observation window to the synthetic action and watched for a worker
+using the supported `odoosh-restart cron` command, at five-second intervals
+for 36 attempts. The watcher reported
+`T80_PLATFORM_CRON_NOT_AVAILABLE_WITHIN_180_SECONDS`. A fresh observer then
+reported **four** successful credential reads, zero cron failures and last call
+**11:33:55 UTC**. Thus platform-triggered credential access is demonstrated,
+but a successful platform cron restart is still not observed. This probe does
+not replace the financial recovery checks above.
+
+`T80_PROBE_CLEANUP_OK` confirmed the final counter remained four, the probe
+was inactive, its synthetic authority was revoked, both addon jobs were inactive
+and addon `18.0.1.0.8` remained installed. Removed the observation-window code
+from the inactive probe. Retained `/tmp/ticket80-platform-cron-probe.jpg`
+outside Git; it contains private build context and must not be published
+unredacted. No custom background daemon or application source change was used.
 
 ## Refund restart and delayed job
 
@@ -256,9 +306,18 @@ transaction, without claiming an identified worker. Follow-up reviews of
 `fdfa745...1a6c751` confirmed **zero remaining Standards findings and zero
 remaining Spec findings**.
 
+The registration/scheduler continuation changed documentation only. Relative
+Markdown-link checks and `git diff --check` passed; no application tests were
+rerun after the full-suite run above. Independent final Standards and Spec
+reviews of `fdfa745...2fff881` plus the four-file continuation diff reported
+**zero new findings** on each axis. Both remaining acceptance gaps below stay
+explicitly unchecked in the ticket.
+
 ## Unresolved gates
 
-Production registration/binding confirmation remains an owner gate. A running platform
-cron-worker restart was unavailable; manual cron invocation and HTTP restart
-coverage do not close that gap. Ticket 80 stays claimed/open. This report does
-not authorize promotion to `18.0` or resolve ticket 84.
+Production is a confirmed unregistered trial; approval for submitting the existing
+project code to Odoo's registration service is pending. A running platform
+cron-worker restart was unavailable; successful platform-scheduled credential
+reads, manual financial cron invocation and HTTP restart coverage do not close
+that gap. Ticket 80 stays claimed/open. This report does not authorize promotion
+to `18.0` or resolve ticket 84.

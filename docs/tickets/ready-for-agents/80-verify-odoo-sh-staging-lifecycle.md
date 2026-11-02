@@ -14,8 +14,10 @@ Integrate back into `staging/18-enterprise`. Do not push to `18.0`.
 
 **Completed prerequisite:** [78 — Make database copies safe](../closed/78-neutralize-revolut-database-copies.md).
 
-**External blockers:** Production subscription/database binding confirmation
-from the owner; observation of a running platform cron worker across restart.
+**External blockers:** Production registration requires explicit approval to
+submit the existing project code to Odoo's registration service (read-only
+verification confirms an unregistered trial); observation of a running platform
+cron worker across restart.
 Authenticated Odoo.sh access and usable builds are available. Registration
 changes must apply to the appropriate database, not automatically to a staging copy.
 
@@ -66,7 +68,10 @@ installed there; both addon jobs are inactive after mocked acceptance.
 
 The HTTP restart succeeded after waking a worker. The platform cron restart
 reported no running worker and aborted; explicit job invocation passed but is
-not evidence of a running platform cron-worker restart. Registration remains
-an owner gate. Keep this ticket claimed/open until the remaining criteria pass.
+not evidence of a running platform cron-worker restart. A later native scheduled
+probe successfully resolved a synthetic Database credential four times, but a
+bounded restart watcher still found no live cron worker. Production remains an
+unregistered trial; approval for registration is pending. Keep this ticket
+claimed/open until the remaining criteria pass.
 Ticket 79's UI/documentation changes are included in the candidate. Release
 promotion and ticket 84 remain separate gates.

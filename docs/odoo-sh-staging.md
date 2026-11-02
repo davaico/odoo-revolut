@@ -36,6 +36,17 @@ identity with the owner before unlinking it. Never register the staging copy
 as another active production database. Keep subscription codes and database
 identifiers in restricted records.
 
+Browser access and project-level subscription configuration do not prove database
+registration. A restricted read-only shell check can report whether
+`database.enterprise_code` is populated, plus `database.expiration_reason` and
+`database.expiration_date`, without exposing the code. A `trial` reason and an
+absent code mean registration is still incomplete. The Enterprise Home panel
+can be hidden while more than 30 trial days remain; do not alter expiry values
+to make it appear. Have the owner complete registration, or obtain explicit
+authorization to send the existing project code to Odoo's registration service
+for the intended production database. Do not include that code in commands,
+logs or repository evidence.
+
 ## Install and repeat after a rebuild
 
 1. Close test POS sessions and retain any staging evidence needed before a
