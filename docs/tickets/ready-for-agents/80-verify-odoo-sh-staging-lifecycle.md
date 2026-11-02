@@ -14,12 +14,12 @@ Integrate back into `staging/18-enterprise`. Do not push to `18.0`.
 
 **Completed prerequisite:** [78 — Make database copies safe](../closed/78-neutralize-revolut-database-copies.md).
 
-**External blockers:** The approved submission of the existing project code
-did not activate Enterprise; production remains an unregistered trial. The owner
-will ask the subscription holder to confirm/register it privately. Observation
-of a running platform cron worker across restart also remains outstanding.
-Authenticated Odoo.sh access and usable builds are available. Registration
-changes must apply to the appropriate database, not automatically to a staging copy.
+**External blocker:** Observation of a running platform cron worker across restart.
+Authenticated Odoo.sh access and usable builds are available. On 2026-11-02 the
+owner clarified this environment is for deployment testing, not operational use.
+Its recorded trial status is sufficient for this evaluation while the trial is
+active; permanent Enterprise registration is not a prerequisite for this ticket.
+Permanent live activation remains in ticket 82. Do not register a staging copy.
 
 ## What to build
 
@@ -31,9 +31,10 @@ behaviors. Record the exact candidate and hosted build used.
 
 ## Acceptance criteria
 
-- [ ] Verify subscription and database registration status; complete the correct
-  registration step where required without registering a staging copy as an
-  additional production database. Keep license material out of public evidence.
+- [x] Verify and record project activation and database registration status for
+  the owner's test-only evaluation, including trial limits. Permanent registration
+  is deferred to live activation in ticket 82; never register a staging copy as
+  another production database. Keep license material out of public evidence.
 - [x] Install on staging and document repeatable setup after a rebuild, including
   the fact that production database copies replace staging-only configuration.
   Preserve existing native business data.
@@ -72,7 +73,8 @@ not evidence of a running platform cron-worker restart. A later native scheduled
 probe successfully resolved a synthetic Database credential four times, but a
 bounded restart watcher still found no live cron worker. Production remains an
 unregistered trial after an approved native validation attempt; the unaccepted
-local change was rolled back. The subscription holder will confirm/register it
-privately. Keep this ticket claimed/open until the remaining criteria pass.
+local change was rolled back. The owner's subsequent test-only clarification
+makes permanent registration unnecessary for this evaluation. Keep this ticket
+claimed/open for the remaining worker-restart criterion.
 Ticket 79's UI/documentation changes are included in the candidate. Release
 promotion and ticket 84 remain separate gates.

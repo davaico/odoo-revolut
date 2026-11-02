@@ -29,6 +29,18 @@ commands used the platform's existing configuration/addon paths, not Docker.
 
 ## Registration gate
 
+**Scope clarification, 2026-11-02:** The owner confirmed this project is only for
+deployment testing, not operational use. The active trial is sufficient for the
+current evaluation. Permanent registration is not a ticket 80 blocker; record
+the verified trial status and expiry instead. Earlier registration attempts
+below remain historical evidence. Ticket 82 retains appropriate registration
+before live financial use. This does not establish permanent entitlement or
+extend either project or database trial limits. Official reference:
+[Odoo.sh trial scope and limits](https://www.odoo.sh/faq).
+The five-file scope clarification passed Standards and Spec reviews with zero
+findings, relative Markdown-link checks and `git diff --check`. No application
+code changed or application tests were rerun for this clarification.
+
 Staging Settings shows Enterprise edition and expiration **2026-11-30**.
 Production Home says registration is available after installing the first app.
 No subscription code was entered and no database binding was changed. The owner
@@ -344,14 +356,15 @@ The registration/scheduler continuation changed documentation only. Relative
 Markdown-link checks and `git diff --check` passed; no application tests were
 rerun after the full-suite run above. Independent final Standards and Spec
 reviews of `fdfa745...2fff881` plus the four-file continuation diff reported
-**zero new findings** on each axis. Both remaining acceptance gaps below stay
-explicitly unchecked in the ticket.
+**zero new findings** on each axis. At that review, registration and cron restart
+remained unchecked; the owner's later test-only clarification resolves the
+registration requirement as recorded above.
 
 ## Unresolved gates
 
-Production is a confirmed unregistered trial after an approved attempt with the
-existing project code. The owner will ask the subscription holder to confirm or
-register it privately; the local unaccepted change was rolled back. A running platform
+The database remains a confirmed unregistered trial; its verified status is
+accepted for the owner's current test-only scope. Permanent registration is
+deferred to ticket 82 rather than blocking this evaluation. A running platform
 cron-worker restart was unavailable; successful platform-scheduled credential
 reads, manual financial cron invocation and HTTP restart coverage do not close
 that gap. Ticket 80 stays claimed/open. This report does not authorize promotion

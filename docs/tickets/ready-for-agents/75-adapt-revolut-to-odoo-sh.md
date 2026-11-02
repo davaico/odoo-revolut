@@ -22,6 +22,12 @@ staging build. Production release requires the staging evidence and a reviewed
 production-ready PR. Final live acceptance requires the owner's terminal and
 credentials. These gate the corresponding deployment steps, not local work.
 
+**Test-only clarification, 2026-11-02:** The owner is evaluating deployment, not
+operating this project live. Verified active-trial status is sufficient for
+ticket 80; permanent Enterprise activation remains part of ticket 82 before
+operational use. This clarification does not extend trial limits or authorize
+live financial operations.
+
 **Specification agreed:** 2026-10-30. The owner confirmed scope and the testing
 boundaries in the planning chat. This ticket records requirements, not completed
 implementation or hosted verification.

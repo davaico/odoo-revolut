@@ -27,9 +27,18 @@ The stage must be `staging`. Do not override the platform stage or clear
 expiration. An expiration date alone does not confirm the subscription's
 production database binding.
 
+For a test-only evaluation, an active trial is sufficient: record its status and
+expiry without treating permanent registration as a staging-test prerequisite.
+Odoo.sh trial projects are time-limited and may be deleted after expiry; retain
+test evidence outside the build. Continued hosting beyond the trial and actual
+operational deployment require the appropriate entitlement. Ticket 82 owns live
+registration. A branch labelled Production can still be the source of a
+temporary test project; that label alone does not mean the owner is using it live.
+
 The subscription owner checks registration on the intended **production**
-database. If its Home page requires a first app, the owner installs an intended
-standard app before entering the subscription code in the registration banner.
+database when permanent activation is needed. If its Home page requires a first
+app, the owner installs an intended standard app before entering the subscription
+code in the registration banner.
 Do not deploy Revolut to production to unblock staging registration. If the
 subscription is already attached elsewhere, resolve the intended production
 identity with the owner before unlinking it. Never register the staging copy
@@ -42,8 +51,9 @@ registration. A restricted read-only shell check can report whether
 `database.expiration_date`, without exposing the code. A `trial` reason and an
 absent code mean registration is still incomplete. The Enterprise Home panel
 can be hidden while more than 30 trial days remain; do not alter expiry values
-to make it appear. Have the owner complete registration, or obtain explicit
-authorization to send the existing project code to Odoo's registration service
+to make it appear. When permanent activation is needed, have the owner complete
+registration, or obtain explicit authorization to send the existing project code
+to Odoo's registration service
 for the intended production database. Do not include that code in commands,
 logs or repository evidence.
 
