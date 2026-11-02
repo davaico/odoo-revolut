@@ -1,6 +1,6 @@
 # 80 — Install and verify the integration on Odoo.sh staging
 
-**State:** claimed
+**State:** closed
 
 **Triage:** ready-for-agent
 
@@ -8,13 +8,13 @@
 `staging/18-enterprise` at `fdfa74596f2445e0a54a1206cb28a052386cda01`.
 Integrate back into `staging/18-enterprise`. Do not push to `18.0`.
 
-**Parent:** [75 — Adapt Revolut to Odoo.sh Enterprise 18](75-adapt-revolut-to-odoo-sh.md)
+**Parent:** [75 — Adapt Revolut to Odoo.sh Enterprise 18](../ready-for-agents/75-adapt-revolut-to-odoo-sh.md)
 
 **Blocked by:** None locally.
 
 **Completed prerequisite:** [78 — Make database copies safe](../closed/78-neutralize-revolut-database-copies.md).
 
-**External blocker:** Observation of a running platform cron worker across restart.
+**External blockers:** None for the clarified test-only acceptance scope.
 Authenticated Odoo.sh access and usable builds are available. On 2026-11-02 the
 owner clarified this environment is for deployment testing, not operational use.
 Its recorded trial status is sufficient for this evaluation while the trial is
@@ -43,7 +43,7 @@ behaviors. Record the exact candidate and hosted build used.
   Preserve existing native business data.
 - [x] Exercise administrator/POS role boundaries and company/terminal isolation
   in the hosted setup using synthetic credentials and mocked provider traffic.
-- [ ] Demonstrate credential availability to the required workers after restart
+- [x] Demonstrate credential availability to the required workers after restart
   and durable recovery of the same payment/refund attempts without duplicate
   dispatch. Do not rely on persistent custom background daemons.
 - [x] Explicitly invoke or enable controlled payment/refund reconciliation jobs
@@ -77,7 +77,25 @@ probe successfully resolved a synthetic Database credential four times, but a
 bounded restart watcher still found no live cron worker. Production remains an
 unregistered trial after an approved native validation attempt; the unaccepted
 local change was rolled back. The owner's subsequent test-only clarification
-makes permanent registration unnecessary for this evaluation. Keep this ticket
-claimed/open for the remaining worker-restart criterion.
+makes permanent registration unnecessary for this evaluation.
+
+The final bounded native-worker fixture passed on build 41044597: actual
+`WorkerCron` PIDs 100/105 were killed by SIGKILL during authenticated mocked
+payment/refund GETs; new PIDs 102/107 recovered the same committed attempts.
+The payment retained its real 60-second lease with zero early HTTP; fresh
+observation confirmed unchanged identities and dispatches, exact tip projection,
+the same partial refund and zero-HTTP public replay. Scheduler selection was
+process-local test dispatch of the actual inactive addon jobs; no persistent
+service was created. This proves native worker death/replacement, while retaining
+the separate limitation that the platform-managed restart command found no worker.
+Native setup preservation and cleanup-after-commit failure checks passed. All
+fixture workers were reaped, both jobs left inactive and the fake authority revoked.
+
+Standalone fixtures and evidence are committed in `09bbbb4`. Host tooling passed
+80 tests (three optional PDF-dependency skips); five targeted runner checks,
+compilation and whitespace/link checks passed. Independent Standards and Spec
+reviews of `267138f...09bbbb4` reported zero findings and confirmed the remaining
+worker criterion is satisfied. Closed on 2026-11-02 without changing Production
+or activating a paid Enterprise plan.
 Ticket 79's UI/documentation changes are included in the candidate. Release
 promotion and ticket 84 remain separate gates.

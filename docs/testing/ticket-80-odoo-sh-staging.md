@@ -494,6 +494,9 @@ identified client environment rather than blocking this evaluation. The bounded
 native-worker harness now demonstrates actual cron-worker death/replacement,
 credential availability and recovery of the same payment/refund attempts. The
 separate platform-managed restart command limitation remains explicitly recorded.
-Final independent review will assess this evidence against the remaining worker
-criterion before ticket closure. This report does not authorize promotion to
-`18.0` or resolve ticket 84.
+Independent Standards and Spec reviews of `267138f...09bbbb4` reported **zero
+findings**. Spec review confirmed that the actual native worker interruption and
+replacement evidence meets the literal remaining worker criterion despite the
+separate platform-command limitation. [Ticket 80](../tickets/closed/80-verify-odoo-sh-staging-lifecycle.md)
+is closed with all criteria complete for the clarified test-only scope. This
+report does not authorize promotion to `18.0` or resolve ticket 84.

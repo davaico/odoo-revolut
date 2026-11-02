@@ -11,13 +11,18 @@ to `18.0`.
 **Parent:** [75 — Adapt Revolut to Odoo.sh Enterprise 18](75-adapt-revolut-to-odoo-sh.md)
 
 **Blocked by:**
-- [80 — Install and verify the integration on Odoo.sh staging](80-verify-odoo-sh-staging-lifecycle.md)
 - [84 — Investigate full-suite checkout browser failures](../needs-triage/84-investigate-checkout-browser-full-suite-failures.md)
 
 **Completed prerequisite:** [79 — Clarify the Revolut configuration workflow](../closed/79-clarify-revolut-configuration-workflow.md).
 Its focused criteria passed; its full run remains red despite successful isolated
 reruns. Obtain clean full candidate evidence or establish and gate the defect
 through #84 before calling this candidate production-ready.
+
+**Completed hosted prerequisite:** [80 — Install and verify the integration on Odoo.sh staging](../closed/80-verify-odoo-sh-staging-lifecycle.md).
+Its final native cron-worker interruption/replacement proof passed on candidate
+`fdfa745`, build 41044597, with scheduler selection/provider traffic mocked and
+the platform-managed restart limitation retained. The reference project remains
+test-only, with no paid Enterprise production activation or client hosting.
 
 **External blockers:** Repository access to publish the PR and staging access
 if the assembled candidate differs from the previously validated hosted build.

@@ -24,8 +24,7 @@ private host details and credentials in restricted records.
 | Ticket | Category | Triage | State | Blocked by |
 | --- | --- | --- | --- | --- |
 | [75 — Adapt Revolut to Odoo.sh Enterprise 18](ready-for-agents/75-adapt-revolut-to-odoo-sh.md) | Deployment compatibility | `ready-for-agent` | Open | No local implementation blocker; staging evidence gates release; permanent registration and bounded live check belong to live activation |
-| [80 — Install and verify the integration on Odoo.sh staging](ready-for-agents/80-verify-odoo-sh-staging-lifecycle.md) | Hosted acceptance | `ready-for-agent` | Claimed | Platform cron-worker restart evidence (scheduled key probe passed); recorded trial accepted for owner's test-only evaluation |
-| [81 — Validate the release candidate and prepare the production PR](ready-for-agents/81-prepare-odoo-sh-production-release-pr.md) | Release preparation | `ready-for-agent` | Open | #80, #84; PR access |
+| [81 — Validate the release candidate and prepare the production PR](ready-for-agents/81-prepare-odoo-sh-production-release-pr.md) | Release preparation | `ready-for-agent` | Open | #84; PR access; #80 hosted acceptance complete |
 | [82 — Activate production and verify one payment and refund](ready-for-human/82-activate-odoo-sh-and-check-payment-refund.md) | Client live acceptance | `ready-for-human` | Open | #81; identified client environment, release approval and client/terminal participation; current Odoo.sh project remains test-only |
 | [83 — Finish the deferred Odoo 18 refund, return and session](ready-for-human/83-finish-deferred-v18-refund-return-session.md) | Deferred acceptance follow-up | `ready-for-human` | Open | Original provider finality and authorised custodian; non-blocking for release |
 | [84 — Investigate full-suite checkout browser failures](needs-triage/84-investigate-checkout-browser-full-suite-failures.md) | Test reliability | `needs-triage` | Open | None |
@@ -34,6 +33,7 @@ private host details and credentials in restricted records.
 
 | Ticket | Resolution |
 | --- | --- |
+| [80 — Install and verify the integration on Odoo.sh staging](closed/80-verify-odoo-sh-staging-lifecycle.md) | Installed `.8` on hosted staging; permissions, native preservation, copies, HTTP recovery and actual native cron-worker SIGKILL/replacement recovery passed with mocked HTTP. Recorded trial accepted for test-only scope; 0/0 reviews. Platform-managed restart limitation and #84 release gate remain explicit. |
 | [79 — Clarify the Revolut configuration workflow](closed/79-clarify-revolut-configuration-workflow.md) | Corrected native labels/layout, authority/source/role help and instructions in `.8`; focused/UI checks and 0/0 reviews passed. Full-run browser follow-up remains #84. |
 | [78 — Make database copies safe](closed/78-neutralize-revolut-database-copies.md) | Whole-database key cleanup and neutralized-runtime guard in `.7`; fresh-install/repeat-copy fixtures, 814 full-addon cases and 0/0 reviews passed. Hosted lifecycle remains #80. |
 | [77 — Manage company credentials through Odoo](closed/77-manage-company-revolut-credentials-in-odoo.md) | Database/environment sources, immutable rotation and historical recovery implemented in `.6`; 29 focused tests and upgrade passed. Full-run browser follow-up: #84. |
