@@ -5,12 +5,18 @@
         <field name="model">pos.payment.method</field>
         <field name="inherit_id" ref="point_of_sale.pos_payment_method_view_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//field[@name='use_payment_terminal']" position="after">
+            <xpath expr="//group[@name='Payment methods']" position="after">
                 <group
                     string="Revolut"
                     invisible="use_payment_terminal != 'revolut'"
                     groups="point_of_sale.group_pos_manager"
                 >
+                    <div class="text-muted" colspan="2">
+                        Ask a system administrator to authorize the Merchant account for this company and environment.
+                        Enter the approved reference, never the API key. Use one terminal per payment method.
+                    </div>
+                    <field name="company_id" string="Revolut Company" readonly="1"
+                           help="This payment method's company must match the administrator-authorized Merchant credential. Create the method in the correct active company with a journal from that company."/>
                     <field name="revolut_environment" required="use_payment_terminal == 'revolut'"/>
                     <field name="revolut_location_id" required="use_payment_terminal == 'revolut'"/>
                     <field name="revolut_terminal_id" required="use_payment_terminal == 'revolut'"/>
@@ -29,6 +35,7 @@
                         string="Check Connection"
                         icon="fa-plug"
                         class="btn-secondary"
+                        help="Check that the configured terminal is online at this location using the authorized credential. No payment is sent; this does not verify payment or report permissions."
                     />
                 </group>
             </xpath>

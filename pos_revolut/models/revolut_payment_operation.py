@@ -226,13 +226,18 @@ class PosRevolutPaymentOperation(models.Model):
     def _cron_reconcile_payments(self, batch_size=50):
         # Missing provider IDs require authoritative manual association. They
         # must never cause a replacement order or intent dispatch.
+        domain = [
+            ("state", "in", ["pending", "unresolved", "dispatching_intent"]),
+            ("revolut_order_id", "!=", False),
+            ("revolut_payment_intent_id", "!=", False),
+            ("next_reconcile_at", "<=", fields.Datetime.now()),
+        ]
+        if self.env["pos.payment.method"]._revolut_environment_blocked("production"):
+            # Apply before the batch limit so copied live attempts cannot
+            # indefinitely occupy every slot ahead of sandbox observations.
+            domain.append(("environment", "=", "sandbox"))
         operations = self.sudo().search(
-            [
-                ("state", "in", ["pending", "unresolved", "dispatching_intent"]),
-                ("revolut_order_id", "!=", False),
-                ("revolut_payment_intent_id", "!=", False),
-                ("next_reconcile_at", "<=", fields.Datetime.now()),
-            ],
+            domain,
             order="next_reconcile_at, id",
             limit=max(1, min(int(batch_size), 50)),
         )
@@ -240,6 +245,8 @@ class PosRevolutPaymentOperation(models.Model):
             payment_method = operation.payment_method_id.sudo().with_company(
                 operation.company_id
             )
+            if payment_method._revolut_environment_blocked(operation.environment):
+                continue
             try:
                 payment_method.revolut_poll_payment(
                     operation.id, operation.order_uuid, operation.payment_line_uuid

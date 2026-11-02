@@ -74,7 +74,13 @@ function interceptCheckout(kind, reset = true) {
             }
             if (control.kind === "hold") {
                 const result = await call(model, rpc, args, ...rest);
-                await new Promise((resolve) => { control.release = resolve; });
+                if (control.holdResponseDelayMs) {
+                    await new Promise((resolve) => setTimeout(resolve, control.holdResponseDelayMs));
+                }
+                await new Promise((resolve) => {
+                    control.release = resolve;
+                    control.responseHeld?.();
+                });
                 return result;
             }
         }
@@ -130,7 +136,7 @@ function failureSteps(refund) {
 }
 
 for (const refund of [false, true]) {
-    for (const kind of ["reject", "timeout", "offline"]) {
+    for (const kind of ["reject", "timeout", "offline", ...(refund ? ["delayed"] : [])]) {
         const reload = !refund && kind === "reject";
         registry.category("web_tour.tours").add(`pos_revolut_${refund ? "refund" : "payment"}_checkout_${kind}`, {
             steps: () => [
@@ -151,7 +157,7 @@ for (const refund of [false, true]) {
                 {
                     content: `Interrupt only canonical checkout ${kind} after real server verification`,
                     trigger: ".payment-screen",
-                    run() { interceptCheckout(kind); },
+                    run() { interceptCheckout(kind === "delayed" ? "timeout" : kind); },
                 },
                 PaymentScreen.clickPaymentMethod("Revolut"),
                 ...(refund ? [
@@ -162,7 +168,7 @@ for (const refund of [false, true]) {
                 PaymentScreen.clickValidate(),
                 { trigger: ".modal:contains('Revolut reconciliation required')" },
                 Dialog.confirm(),
-                ...(refund && ["reject", "timeout"].includes(kind) ? [
+                ...(refund && ["reject", "timeout", "delayed"].includes(kind) ? [
                     {
                         content: "Dismiss the checkout recovery popup with the normal OK button",
                         trigger: ".modal:not(.o_inactive_modal):contains('Revolut checkout recovery')",
@@ -209,20 +215,35 @@ for (const refund of [false, true]) {
                     async run() {
                         const control = window.revolutCheckoutRecovery;
                         control.kind = "hold";
+                        control.holdResponseDelayMs = kind === "delayed" ? 3200 : 0;
                         current().pos.data.network.offline = false;
                         current().line.payment_method_id.payment_terminal.paymentState.checkoutRestoreTimeoutMs = 5000;
                         const before = control.attempts;
+                        const started = performance.now();
+                        const held = new Promise((resolve) => { control.responseHeld = resolve; });
                         this.anchor.click();
                         this.anchor.click();
-                        const deadline = performance.now() + 3000;
-                        while (!control.release && performance.now() < deadline) {
-                            await new Promise((resolve) => setTimeout(resolve, 10));
-                        }
+                        // Inspect the real held response, or fail when the native
+                        // request settles. Its existing restoration deadline bounds
+                        // the wait without a shorter, competing fixture timeout.
+                        await Promise.race([held, waitNativeRequest()]);
                         const { order, line } = current();
-                        if (!control.release || control.attempts !== before + 1 ||
-                            line.is_done() || order.state !== "draft" ||
-                            document.querySelector(".receipt-screen")) {
-                            throw new Error("Financial verification completed checkout before canonical restoration");
+                        const evidence = {
+                            responseHeld: Boolean(control.release),
+                            attempts: control.attempts - before,
+                            paymentStatus: line?.get_payment_status(),
+                            orderState: order?.state,
+                            receiptPresent: Boolean(document.querySelector(".receipt-screen")),
+                            elapsedMs: Math.round(performance.now() - started),
+                        };
+                        if (control.attempts !== before + 1) {
+                            throw new Error(`Check status duplicated canonical restoration: ${JSON.stringify(evidence)}`);
+                        }
+                        if (!order || !line || line.is_done() || order.state !== "draft" || evidence.receiptPresent) {
+                            throw new Error(`Financial verification completed checkout before canonical restoration: ${JSON.stringify(evidence)}`);
+                        }
+                        if (!control.release) {
+                            throw new Error(`Canonical restoration settled before its response was held: ${JSON.stringify(evidence)}`);
                         }
                         control.release();
                     },

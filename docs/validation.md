@@ -1,8 +1,44 @@
 # Validation and limitations
 
-The Odoo 18 release `18.0.1.0.4` was tested with Odoo Community
-`18.0.20261015` and PostgreSQL `16.14`. Enterprise and other runtime builds
-have not been verified.
+The released Community `18.0.1.0.4` was tested with Odoo Community
+`18.0.20261015` and PostgreSQL `16.14`. Its historical coverage is retained below.
+The Enterprise/Odoo.sh `18.0.1.0.8` candidate has separate lifecycle evidence and
+release validation in progress; it is not yet ready for promotion.
+
+## Enterprise/Odoo.sh 18 candidate
+
+Frozen source: `f8abaa3fcab1f1261ab04cc92bdf1bdc6d03d9ea`; exact addon tree:
+`a6b87c19d9615ea07ff0b9dd86c82b4495f26e70`. This includes the corrected `.4`
+baseline plus server environment protection, administrator-managed credentials,
+copy neutralization and configuration guidance. Listing prose now acknowledges
+the bounded hosted evidence. No payment runtime code changed during release
+assembly.
+
+Hosted staging build **41044597** used source `fdfa74596f2445e0a54a1206cb28a052386cda01`,
+installed `.8`, Odoo `18.0+e` (Odoo `2982b5f`, Enterprise `631c5ab`). Mocked checks
+exercised populated installation, credential access, neutralization/copy safety,
+HTTP recovery and actual native cron-worker interruption/replacement for the same
+payment/refund attempts. The platform-managed restart command and scheduling SLA
+were not established. Production runtime files match the assembled candidate;
+manifest prose and test fixtures differ. This attributes hosted results to the
+actual build rather than claiming the assembled revision itself ran there.
+
+Assembled-candidate populated installation/update, versioned `.4 -> .8` upgrade,
+neutralized first installation and final full-addon results are pending. Current
+portable checks: 146 JavaScript passes and 80 host tests with three existing
+optional PDF dependency skips.
+
+This reference project remains test-only. Mocked Community-image tests and bounded
+Enterprise lifecycle evidence do not establish a client's terminal, entitlement,
+production setup or live financial outcomes. Staging configuration is not promoted
+with code. Follow [Release and activation](releasing.md) for explicit client setup,
+module upgrade, bounded payment/refund acceptance and recovery.
+
+Community 18/19 remain separately maintained. The held-response test-fixture
+correction needs selective backporting and native recovery/full-suite evidence on
+each line. Enterprise credential/hosting changes require deliberate adaptation
+before adoption there. These tests do not certify either unchanged Community line
+or Odoo 19 Enterprise/Odoo.sh.
 
 ## Recorded automated coverage
 

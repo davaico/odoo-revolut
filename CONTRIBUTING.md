@@ -1,6 +1,10 @@
 # Contributing
 
-Target `18.0` for Odoo 18 changes and `19.0` for Odoo 19 changes. Keep
+Develop Odoo 18 Enterprise/Odoo.sh changes on `staging/18-enterprise`, including
+task-branch bases, integration and hosted validation. Community 18 development
+remains on `feat/v18_rev`; transfer shared fixes selectively rather than merging
+the divergent product branches wholesale. Target `18.0` only with a production-ready PR; it
+automatically deploys production. Odoo 19 releases target `19.0`. Keep
 equivalent payment and refund behavior across versions, adapting to each
 version's native APIs and testing relevant fixes on both.
 Keep integration code in `pos_revolut` and follow Odoo conventions. Read

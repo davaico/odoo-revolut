@@ -271,7 +271,8 @@ class PosPaymentMethod(models.Model):
             order_uuid, payment_line_uuid = str(UUID(order_uuid)), str(UUID(payment_line_uuid))
         except (TypeError, ValueError, AttributeError):
             raise UserError(_("The POS payment identifiers are invalid.")) from None
-        self._read_revolut_operation_owned(operation_id, order_uuid, payment_line_uuid)
+        operation = self._read_revolut_operation_owned(operation_id, order_uuid, payment_line_uuid)
+        self._revolut_check_environment_access(operation["environment"])
         token = self._claim_revolut_observation_owned(operation_id)
         if not token:
             return self._read_revolut_operation_owned(operation_id, order_uuid, payment_line_uuid)["snapshot"]

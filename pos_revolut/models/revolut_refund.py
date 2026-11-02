@@ -213,12 +213,19 @@ class PosRevolutRefundOperation(models.Model):
 
     @api.model
     def _cron_reconcile_refunds(self, batch_size=50):
-        operations = self.sudo().search([
+        domain = [
             ("state", "in", ["dispatching", "pending", "unresolved"]),
             ("next_reconcile_at", "<=", fields.Datetime.now()),
-        ], order="next_reconcile_at, id", limit=max(1, min(int(batch_size), 50)))
+        ]
+        if self.env["pos.payment.method"]._revolut_environment_blocked("production"):
+            domain.append(("original_operation_id.environment", "=", "sandbox"))
+        operations = self.sudo().search(
+            domain, order="next_reconcile_at, id", limit=max(1, min(int(batch_size), 50))
+        )
         for operation in operations:
             payment_method = operation.payment_method_id.sudo().with_company(operation.company_id)
+            if payment_method._revolut_environment_blocked(operation.original_operation_id.environment):
+                continue
             try:
                 payment_method.revolut_poll_refund(
                     operation.id, operation.order_uuid, operation.payment_line_uuid
@@ -593,6 +600,7 @@ class PosPaymentMethod(models.Model):
         operation = self._read_refund_owned(operation_id, order_uuid, payment_line_uuid)
         if operation["state"] in {"verified", "failed"}:
             return operation["snapshot"]
+        self._revolut_check_environment_access(operation["environment"])
         try:
             if not operation["order_id"]:
                 if operation["origin"] == "external":

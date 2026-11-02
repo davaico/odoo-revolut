@@ -1,6 +1,6 @@
 {
     "name": "POS Revolut",
-    "version": "18.0.1.0.4",
+    "version": "18.0.1.0.8",
     "category": "Sales/Point of Sale",
     "summary": "Configure a Revolut payment terminal for Point of Sale",
     "description": """
@@ -13,8 +13,9 @@ Requires an administered Odoo server, a Revolut Merchant account, authorized
 Merchant API credentials, an online compatible terminal in Pay at Counter mode,
 and permissions for terminal operations and payments_report creation, polling
 and download. Dependencies: point_of_sale and pos_restaurant. Verified runtime:
-Odoo Community 18.0.20261015 and PostgreSQL 16.14. Other builds and Enterprise
-have not been verified.
+Odoo Community 18.0.20261015 and PostgreSQL 16.14. Bounded Odoo.sh Enterprise 18
+installation, copy safety and worker recovery were also verified with mocked
+provider traffic. Client activation and live acceptance remain separate steps.
 
 External service and data: the server contacts the Revolut Merchant API for
 terminal discovery, payments, refunds, status checks and payment reports. It
