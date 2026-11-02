@@ -22,13 +22,17 @@ T76 environment guard (`.5`), T77 credential authority/storage/log redaction
 (`.6`), T78 neutralization (`.7`), T79 configuration (`.8`), and T80/T84 fixtures.
 No Community restoration commit is included.
 
-A direct staging PR would reintroduce agent guidance, internal tickets and old
-acceptance evidence removed from the production tree. Prepare an allowlisted
-release projection on the production base: exact `pos_revolut/`, the two new
-upgrade/neutralization runners, the cron host tests, README/CONTRIBUTING/SECURITY,
-installation, upgrade, public lifecycle, validation and release instructions.
-Retain this ticket and campaign evidence on Enterprise staging. Check projected
-addon-tree equality and the full production diff before opening the PR.
+The production PR comes directly from `staging/18-enterprise`, the maintained
+Enterprise development branch, into `18.0`. The completed task was fast-forwarded
+from reviewed staging base `d5d13d3` through `fbf944f`, preserving its full history.
+This includes campaign documentation, local tickets and historical testing
+records alongside the approved addon and tools.
+
+An initial release projection used a `codex/` branch to omit those development
+records from the production diff. The owner clarified that staging is the dev
+branch and the PR must originate there. PR #95 was closed unmerged and replaced
+by PR #96. The correction changes branch routing and documentation only; the
+addon tree remains the exact validated `57730fd0d5a81ea6a288081ac0eced63eb9e5b1b`.
 
 ## Hosted evidence applicability
 
@@ -248,17 +252,22 @@ Standards: 0 findings. Spec: 0 findings.
 
 ## Production PR and disposition
 
-[PR #95](https://github.com/davaico/odoo-revolut/pull/95) is open and ready for
-review, targeting `18.0` at `2814e8f6d24cccfa99fccbe0ea6e08c1bfb646b6`.
-Head: `53ab3aea02e4e81193a2671de978723a7215df0a`; addon tree is exactly the frozen
-`57730fd0d5a81ea6a288081ac0eced63eb9e5b1b`. It contains 43 scoped files and two
-commits, with payment impact, every test limitation, credentials/configuration,
-module upgrade and recovery instructions. Staging configuration is explicitly
-not promoted with code.
+[PR #96](https://github.com/davaico/odoo-revolut/pull/96) is open and ready for
+review, from `staging/18-enterprise` into `18.0`, whose revision remains
+`2814e8f6d24cccfa99fccbe0ea6e08c1bfb646b6`. Its addon tree is exactly the frozen
+`57730fd0d5a81ea6a288081ac0eced63eb9e5b1b`. Its description covers payment impact,
+every test limitation, credentials/configuration, module upgrade and recovery.
+Staging configuration is explicitly not promoted automatically with code.
 
-Ticket 81 is closed on the task branch. Base remains reviewed Enterprise staging
-`d5d13d3`; intended integration target is `staging/18-enterprise`. The owner
-explicitly instructed **not to merge** after the PR was opened. Accordingly,
-neither the production PR nor task branches are merged or promoted in this
-handoff. Production `18.0`, client databases and live financial state remain
-unchanged; ticket 82 retains the separate client activation requirements.
+Ticket 81 is closed and its completed work is integrated into the Enterprise dev
+branch. Base: reviewed staging `d5d13d3`; integration target:
+`staging/18-enterprise`, fast-forwarded through `fbf944f` before this documentation
+correction. Earlier reviews retain their recorded ranges; the branch correction
+adds the retained development records to the PR without changing addon code.
+Narrow verification checks documentation links, ancestry and exact addon-tree
+equality; payment tests are not rerun for this branch/documentation-only change.
+
+The owner's “Don't merge” instruction applies to the production PR. PR #96 stays
+unmerged; superseded [PR #95](https://github.com/davaico/odoo-revolut/pull/95) is
+closed and unmerged. Production `18.0`, client databases and live financial state
+remain unchanged. Ticket 82 retains separate client activation requirements.

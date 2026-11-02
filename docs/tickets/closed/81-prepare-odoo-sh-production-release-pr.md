@@ -73,9 +73,9 @@ was tested or which configuration still needs to be applied in production.
 
 ## Verification evidence
 
-Completed 2026-11-02. [Production PR #95](https://github.com/davaico/odoo-revolut/pull/95)
-is open, ready for review and **unmerged**, head
-`53ab3aea02e4e81193a2671de978723a7215df0a`, targeting unchanged `18.0`
+Completed 2026-11-02. [Production PR #96](https://github.com/davaico/odoo-revolut/pull/96)
+is open, ready for review and **unmerged**, source branch
+`staging/18-enterprise`, targeting unchanged `18.0`
 `2814e8f6d24cccfa99fccbe0ea6e08c1bfb646b6`. Frozen source `3f2ff4a`, addon
 `18.0.1.0.8`, tree `57730fd0d5a81ea6a288081ac0eced63eb9e5b1b`.
 [Full evidence](../../testing/ticket-81-release-candidate.md) records fresh/populated
@@ -90,9 +90,10 @@ resource-skipped full run is not relabelled clean. 146 JS and 80 host tests pass
 (three optional host PDF skips). Independent Standards and Spec reviews: 0/0.
 
 The bounded [client activation checklist](../../releasing.md) is prepared.
-Production and live financial state are unchanged. The owner's final “Don't
-merge” instruction leaves the PR and task branches unmerged; Enterprise
-integration target remains `staging/18-enterprise`. #82 owns release approval,
+Production and live financial state are unchanged. The owner clarified that
+`staging/18-enterprise` is the dev branch and must be pushed before opening the
+production PR. Completed #81 work is fast-forwarded there; the production PR
+remains unmerged under the “Don't merge” instruction. #82 owns release approval,
 client activation and live proof.
 
 ## Comments
@@ -128,9 +129,19 @@ follows from this local test result.
 
 ### 2026-11-02 — Release preparation complete
 
-PR #95 contains the exact validated addon plus scoped public instructions/tools,
-without restoring internal tracker/history files into the production diff.
+PR #96 contains the complete Enterprise dev branch, including the exact validated
+addon, instructions/tools, local tracker and retained history.
 Retained clean-full and current assembled-source evidence are separately
 attributed; no assertion or timeout was weakened. The owner explicitly requested
-that the PR not be merged. No production push, merge, database mutation or live
+that the PR not be merged. No production push, production PR merge, database mutation or live
 financial operation was performed.
+
+
+### 2026-11-02 — Use the maintained dev branch as the PR source
+
+The owner clarified that completed task work must be pushed to
+`origin/staging/18-enterprise`, then proposed into `18.0` from that branch.
+The dev branch was fast-forwarded through `fbf944f`; PR #96 replaces the initial
+codex-branch PR #95, which was closed unmerged. The addon tree is unchanged,
+so existing validation remains applicable. Production remains unchanged and
+PR #96 must stay unmerged until the owner authorizes release.

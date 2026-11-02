@@ -21,7 +21,7 @@ Client installation and its resulting build/version must be verified separately.
 
 **Completed prerequisite:**
 [81 — Validate the release candidate and prepare the production PR](../closed/81-prepare-odoo-sh-production-release-pr.md).
-[PR #95](https://github.com/davaico/odoo-revolut/pull/95) is ready and unmerged;
+[PR #96](https://github.com/davaico/odoo-revolut/pull/96) is ready and unmerged;
 the owner explicitly requested no merge. Release approval and the client-only
 external requirements below remain before activation.
 
