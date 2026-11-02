@@ -32,11 +32,10 @@ For a test-only evaluation, an active trial is sufficient: record its status and
 expiry without treating permanent registration as a staging-test prerequisite.
 Odoo.sh trial projects are time-limited and may be deleted after expiry; retain
 test evidence outside the build. Continued hosting beyond the trial and actual
-operational deployment require the appropriate entitlement. The owner will not
-activate a paid Enterprise production plan on this project; it is only a test
-harness for an addon delivered to clients. Any future ticket 82 live acceptance
-must identify the client's environment and use that client's hosting/subscription
-arrangements with separate approval. A branch labelled Production can still be
+operational deployment require the appropriate entitlement. Keep a reference
+test project separate from client hosting. Live acceptance must identify the
+client's environment and use that client's hosting/subscription arrangements
+with separate approval. A branch labelled Production can still be
 the source of a temporary test project; that label does not mean live business use.
 
 Perform addon installation, permission, payment/refund, restart, reconciliation
@@ -76,7 +75,7 @@ logs or repository evidence.
 2. In **Apps**, remove the default **Apps** filter, search **Revolut**, and
    activate **POS Revolut**. Native POS and Restaurant dependencies install with
    it. Refresh after the server reload; confirm **Upgrade/Uninstall** controls
-   and installed version `18.0.1.0.8` for the ticket 80 candidate.
+   and the installed version against the identified release candidate.
 3. Inspect the original companies, customers, products and financial documents
    against a pre-install baseline. Do not replace the database with demo data
    or count a fresh empty database as populated-data preservation evidence.
