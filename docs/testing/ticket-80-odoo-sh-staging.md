@@ -54,8 +54,42 @@ Automatic approval review rejected the proposed submission of the existing
 project subscription code to Odoo's registration service from production,
 because the broader ticket request did not explicitly authorize that sensitive
 transfer and production state change. The command was rejected before execution.
-Explicit approval for that exact operation was requested and remains pending;
-no subscription code was submitted or production registration changed.
+Explicit approval for that exact operation was requested. No code was submitted
+before the owner approved it in the subsequent continuation below.
+
+### Approved registration attempt
+
+The owner explicitly approved submitting the existing project code to Odoo's
+registration service for the intended production database. Used a hidden
+`getpass` prompt in the production Odoo shell; no code was placed in a command,
+printed, committed or copied into a staging database. Confirmed the project's
+password input held a non-mask value before diagnosing the response.
+
+Called native `publisher_warranty.contract.update_notification(cron_mode=False)`
+after setting the code within the shell transaction. The method returned true,
+but registration did **not** succeed: expiration reason remained `trial`, date
+remained **2026-12-03 10:43:31**, and the response did not indicate another linked
+database. Rolled back rather than retaining an unaccepted code. A second
+rollback-only call to native `_get_sys_logs()` classified the response without
+printing it: `enterprise_info` present, returned Enterprise code absent,
+expiration reason absent, unchanged date, no linked-database indication and
+zero messages. Native update defaults an absent reason to `trial`; a true return
+only establishes completion of the notification call, not accepted registration.
+
+No purchase, renewal, upsell quotation acceptance, resource-allocation change
+or financial operation was performed. These observations do not establish the
+owner's existing subscription price or entitlement. The project activation code
+may differ from the required Enterprise contract code; the response does not
+establish why this code was unaccepted. The owner will ask the subscription
+holder to confirm or register the intended production database privately.
+
+A separate final read-only shell confirmed production, no neutralization,
+`enterprise_code_configured=false`, reason `trial` and the unchanged expiration
+date. Retained `/tmp/ticket80-production-registration-result.jpg` outside Git;
+it shows safe status flags with private build context, not the code. Both
+Standards and Spec continuation reviews reported zero new findings. Relative
+documentation links and `git diff --check` passed; no addon code changed or
+application test suite was rerun for this documentation-only continuation.
 
 ## Hosted focused tests
 
@@ -315,8 +349,9 @@ explicitly unchecked in the ticket.
 
 ## Unresolved gates
 
-Production is a confirmed unregistered trial; approval for submitting the existing
-project code to Odoo's registration service is pending. A running platform
+Production is a confirmed unregistered trial after an approved attempt with the
+existing project code. The owner will ask the subscription holder to confirm or
+register it privately; the local unaccepted change was rolled back. A running platform
 cron-worker restart was unavailable; successful platform-scheduled credential
 reads, manual financial cron invocation and HTTP restart coverage do not close
 that gap. Ticket 80 stays claimed/open. This report does not authorize promotion
