@@ -50,3 +50,22 @@ operation is authorised by this ticket's creation. The pending condition was
 retained during the 2026-10-30 tracker review; no terminal/API call was made.
 See the [acceptance handoff](../../testing/ticket-63-handoff.md) and the
 [original owner disposition](../closed/63-v18-terminal-acceptance.md#owner-release-disposition--2026-10-26).
+
+## Comments
+
+### 2026-11-02 — Locate preserved records and prepare continuation
+
+The original private checkout, acceptance profile and record mapping were
+located. A read-only snapshot exactly matches the final 2026-10-26 checkpoint
+across all nine captured financial/native tables. The original refund is still
+locally pending/processing, its return is draft and its session remains open;
+this is not a fresh provider observation.
+
+The Odoo worker is stopped and its temporary production credential source file
+is missing. Restoring authorised provider access and checking finality remain
+necessary before native completion. No provider call or original-record mutation
+was performed. Keep this ticket open and `ready-for-human`.
+
+The [guided continuation and verification limits](../../testing/ticket-83-continuation.md)
+record the next steps. Exact mappings, snapshot locations and hashes stay in
+the custodian's private `ticket83-continuation-20261102.json` evidence record.
