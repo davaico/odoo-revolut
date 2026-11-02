@@ -1,9 +1,11 @@
 # Ticket 80 — Odoo.sh staging lifecycle evidence
 
-Verification recorded on 2026-11-02; external gates remain open. Base and integration target:
+Verification recorded on 2026-11-02; release gates are reported separately. Base and integration target:
 `staging/18-enterprise` at `fdfa74596f2445e0a54a1206cb28a052386cda01`.
 Work branch: `codex/80-odoo-sh-staging`. Addon candidate: `18.0.1.0.8`,
-unchanged application/test bytes from that base. No production deployment.
+unchanged installed application and original test bytes from that base. This
+continuation adds standalone native-worker acceptance fixtures and host runner
+checks. No production deployment.
 
 ## Hosted identity and installation
 
@@ -208,6 +210,110 @@ from the inactive probe. Retained `/tmp/ticket80-platform-cron-probe.jpg`
 outside Git; it contains private build context and must not be published
 unredacted. No custom background daemon or application source change was used.
 
+### Native cron-worker interruption and replacement
+
+Build **41044597**, installed candidate `.8` on `fdfa745`, passed the bounded
+native-worker harness described in the runbook. New standalone fixture files
+were copied from this work branch into `/tmp/ticket80-native-cron-src`, with
+SHA-256 values checked against the local files. Installed application files,
+platform configuration, stage and neutralization were unchanged. Both real addon
+jobs remained globally inactive; only the harness's process-local scheduler
+selection dispatched their actual `method_direct_trigger()` actions. Native
+`PreforkServer.worker_spawn`, `WorkerCron.start/run/process_work`, cron user,
+action code and financial adapters remained real. Provider HTTP was mocked and
+the independent Merchant HTTP guard was enabled in every interpreter.
+
+The existing restart seed/wait fixtures committed two authorized carts and
+captured zero/nonzero-tip observations. The unchanged final fixture settled only
+the zero-tip source, which was completed through native paid-order validation.
+A saved native 6.17 partial return then started exactly one mocked refund POST
+after its original-order GET. The nonzero-tip payment remained pending for
+explicit report evidence. Both used the same synthetic Database authority,
+with its environment reference absent.
+
+Native worker PID **100** was killed by **SIGKILL** during its first authenticated
+payment GET and reaped with status **-9**. Replacement PID **102** invoked the
+actual payment job while the original observation lease was live: the same
+attempt stayed pending and made **zero HTTP**. The fixture waited for the real
+**60-second** lease expiry without changing timestamps/constants, then verified
+the original payment, its 300-minor-unit tip and one native tip projection.
+Recovery completed at **61.820 seconds** and the replacement exited cleanly.
+
+Native refund worker PID **105** was then killed/reaped with **-9** during its
+authenticated refund GET. Replacement PID **107** recovered the same persisted
+617-minor-unit refund, then exited cleanly. Total lifecycle: **62.728 seconds**,
+under the 200-second hard budget. The supervisor verified PID-bound markers and
+entry through the native `WorkerCron.process_work` stack. No background service
+was installed or left running.
+
+A separate Odoo shell passed `verify()`: identical payment/refund, authority,
+authorization, provider, financial-snapshot and dispatch identities; two original
+payment operations, four unchanged dispatch rows and one partial refund. Both
+recovered attempts were verified. The native sale retained its single tip line
+and correct 15.34 total; repeated public payment/refund start and poll calls made
+**zero HTTP** and did not project again. Every worker provider request was a
+validated Sandbox **GET**, with zero financial or report POSTs during recovery.
+
+Passing logs and actual exit statuses (all **0**) on the hosted build:
+`/tmp/ticket80-native-cron-seed-v2.{log,exit}`,
+`/tmp/ticket80-native-cron-workers-v2.{log,exit}`, and
+`/tmp/ticket80-native-cron-verify.{log,exit}`. Detailed lifecycle and provider
+request records are under `/tmp/ticket80-native-cron-run/`, outside Git.
+
+Retained failed runs: the initial combined seed exited **1** because final
+verification was called within the native one-second observation cadence. The
+fixture now waits that actual cadence; it resumed the same committed carts
+without another payment dispatch. The first launcher exited **1** before any
+worker started because its standalone interpreter lacked Odoo's initialized
+addon namespace. Forwarding the effective addon paths and using native path
+initialization fixed bootstrap; no application assertion or financial timeout
+was changed. Original failed logs remain `/tmp/ticket80-native-cron-seed.log`
+and `/tmp/ticket80-native-cron-workers.log`, with their `.exit` files.
+
+The supported platform `odoosh-restart cron` command still did not observe a
+managed worker. This is retained as a platform-control limitation, not reported
+as a successful command. The new evidence establishes actual native cron-worker
+death/replacement and durable recovery on the hosted staging database, with
+scheduler acquisition timing explicitly mocked for isolation. It supplements
+the earlier real platform-scheduled credential probe and HTTP restart proof.
+
+The final native preservation comparison initially failed: test setup had
+enabled the native Product Variants implication on Internal User and appended
+the synthetic company's tax to an existing shared fixture product. Merely
+restoring the user's group list did not remove the implied group; the first
+cleanup check also failed. These were setup effects, not relaxed comparison
+criteria. Restored the identified feature implication, synthetic manager
+membership and product tax to their recorded native baseline. The unchanged
+`native_install_verify.py` then passed.
+
+The committed seed wrapper now snapshots existing group implications, user
+memberships and shared product taxes before native setup and restores them
+through a fresh cursor in `finally`, even after setup commits and fails. A
+hosted regression deliberately committed the same feature/tax changes then
+raised a synthetic setup exception; the wrapper restored all three sets and
+the unchanged native preservation fixture passed again. Log/status:
+`/tmp/ticket80-native-cron-cleanup-v2.{log,exit}`, **exit 0**,
+`T80_SETUP_PRESERVATION_OK`. The earlier failed cleanup log/status remain
+`/tmp/ticket80-native-cron-cleanup.{log,exit}`, **exit 1**.
+
+Final cleanup revoked only the synthetic authority, retained financial/native
+history, confirmed all four fixture worker PIDs were gone and left both addon
+jobs inactive. The installed candidate remained `.8` on Staging. No production
+registration, paid-plan activation or real Merchant request was part of this
+continuation.
+The final fresh summary confirmed nine mocked GETs (one/five for payment
+interruption/recovery, one/two for refund interruption/recovery), zero POSTs,
+both original attempts verified and unchanged native fixture values.
+
+Local runner checks: **five passed**, covering stage/network/budget rejection,
+foreign/partial PID markers and actual forced child termination/reaping. Full
+host tooling: **80 tests, zero failures/errors, three optional PDF-dependency
+skips** (`/tmp/ticket80-native-host.log`). Both new standalone Python files
+compiled; whitespace checks passed. The unchanged installed application still
+uses the previously recorded full-addon/JavaScript evidence below; the two
+full-suite browser failures remain ticket 84's release gate. The new standalone
+files are not imported into the addon or its automatic Odoo test suite.
+
 ## Refund restart and delayed job
 
 Completed the zero-tip synthetic original through native
@@ -379,13 +485,15 @@ reviews of `fdfa745...2fff881` plus the four-file continuation diff reported
 remained unchecked; the owner's later test-only clarification resolves the
 registration requirement as recorded above.
 
-## Unresolved gates
+## Acceptance result and separate release gates
 
 The database remains a confirmed unregistered trial; its verified status is
 accepted for the owner's current test-only scope. Permanent registration is
 outside this test project's scope; any future ticket 82 activation belongs to an
-identified client environment rather than blocking this evaluation. A running platform
-cron-worker restart was unavailable; successful platform-scheduled credential
-reads, manual financial cron invocation and HTTP restart coverage do not close
-that gap. Ticket 80 stays claimed/open. This report does not authorize promotion
-to `18.0` or resolve ticket 84.
+identified client environment rather than blocking this evaluation. The bounded
+native-worker harness now demonstrates actual cron-worker death/replacement,
+credential availability and recovery of the same payment/refund attempts. The
+separate platform-managed restart command limitation remains explicitly recorded.
+Final independent review will assess this evidence against the remaining worker
+criterion before ticket closure. This report does not authorize promotion to
+`18.0` or resolve ticket 84.

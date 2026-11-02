@@ -158,6 +158,72 @@ HTTP worker, then restart it and load another page to confirm service recovery.
 If the platform has no live cron worker, record that limit separately from
 explicit `method_direct_trigger()` coverage.
 
+For bounded native cron-worker interruption/replacement coverage, use
+`pos_revolut/tests/cron_restart_fixture.py` with `cron_restart_worker.py` on a
+disposable staging build. These standalone fixtures do not change addon code
+or create a persistent service. Keep both addon cron records globally inactive
+throughout: provider mocks are process-local and must not race a platform job.
+Quiesce administrative edits while seeding: the fixture snapshots and restores
+existing group implications, user memberships and shared product taxes affected
+by native company/chart/product setup, including when setup fails after a commit.
+The launcher uses native `PreforkServer.worker_spawn(WorkerCron, ...)`, startup,
+`process_work`, signals and shutdown. Only scheduler selection is replaced
+inside the test process, dispatching the actual inactive addon actions through
+`method_direct_trigger()` under their configured cron user.
+
+Copy the two new files and unchanged `restart_seed.py`, `restart_wait.py` and
+`restart_verify.py` from the reviewed repository into a temporary source
+directory. Verify their hashes; do not edit installed application files. Each
+of the following snippets runs in a separate Odoo shell with
+`ODOO_REVOLUT_BLOCK_MERCHANT_HTTP=1`,
+`PYTHONPATH=/home/odoo/src/user/docker`, `--no-http --max-cron-threads=0
+--shell-interface=python --log-level=error`. Use a new result directory and
+retain each process's actual exit status and log.
+
+```python
+# Process one: same committed attempts, Database key, no environment export.
+import sys
+sys.path.insert(0, '/tmp/ticket80-native-cron-src')
+from cron_restart_fixture import seed
+seed(env, '/tmp/ticket80-native-cron-run')
+```
+
+```python
+# Process two: hard total budget; native worker death and replacement.
+import sys
+sys.path.insert(0, '/tmp/ticket80-native-cron-src')
+from cron_restart_worker import run
+run(env, '/tmp/ticket80-native-cron-run', timeout=200)
+```
+
+```python
+# Process three: new transaction, exact durable identities and zero-HTTP replay.
+import sys
+sys.path.insert(0, '/tmp/ticket80-native-cron-src')
+from cron_restart_fixture import verify
+verify(env, '/tmp/ticket80-native-cron-run')
+```
+
+The seed reuses existing restart carts and explicit tip reports, then starts a
+617-minor-unit partial refund against the verified zero-tip source. The remaining
+payment has a 300-minor-unit tip awaiting final report evidence. A failed seed
+must retain its checkpoint; never reseed financial dispatches to hide a failure.
+The fixture can resume its inspected committed source and saved return without
+repeating dispatches. After a failed worker run, retain its markers and inspect
+which original attempts are still pending before deciding how to resume. Do not
+reset verified financial evidence or create replacement attempts to obtain a pass.
+
+The supervisor kills a PID-bound native worker during a mocked GET, then starts
+a different native worker. Recovery must respect the original payment's real
+60-second observation lease: the early cron call makes zero HTTP and the test
+waits for actual expiry without editing lease fields or constants. It separately
+interrupts and recovers the partial refund. Provider mocks reject every POST,
+unexpected host/path and wrong synthetic Authorization value. A hard timeout
+cleans up the test's process group. Check lifecycle markers, fresh financial
+identities/counts and replay assertions; do not treat worker startup as a pass.
+This proves the bounded native-worker lifecycle on the hosted database, not a
+successful platform-managed `odoosh-restart cron` command or its scheduling SLA.
+
 Use `restart_seed.py`, `restart_wait.py` and `restart_verify.py` under
 `pos_revolut/tests/` for committed payment recovery across fresh Odoo shells.
 For database-source coverage, create the synthetic Sandbox authority for
