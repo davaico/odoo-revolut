@@ -32,17 +32,55 @@ class PosRevolutMerchantCredential(models.Model):
     _name = "pos.revolut.merchant.credential"
     _description = "Revolut Merchant Credential Authority"
 
-    company_id = fields.Many2one("res.company", required=True, ondelete="restrict", index=True)
-    environment = fields.Selection(
-        [("sandbox", "Sandbox"), ("production", "Production")], required=True
+    company_id = fields.Many2one(
+        "res.company", required=True, ondelete="restrict", index=True,
+        help=(
+            "The Odoo company authorized to use this Merchant account. Payment methods must use "
+            "this same company and Revolut environment."
+        ),
     )
-    secret_reference = fields.Char(required=True, copy=False)
+    environment = fields.Selection(
+        [("sandbox", "Sandbox"), ("production", "Production")], required=True,
+        string="Revolut Environment",
+        help=(
+            "Choose the environment that issued this Merchant API key. Sandbox and Production "
+            "credentials and devices are separate."
+        ),
+    )
+    secret_reference = fields.Char(
+        required=True, copy=False, string="Credential Reference",
+        help=(
+            "A unique name starting with ODOO_REVOLUT_SECRET_ followed by uppercase letters, "
+            "digits or underscores. Share this reference, never the API key, with the POS manager."
+            " For Environment variable, use the exact server variable name; Database needs no "
+            "environment variable."
+        ),
+    )
     source = fields.Selection(
         [("environment", "Environment variable"), ("database", "Database")],
         required=True, default="environment", copy=False,
+        string="Credential Source",
+        help=(
+            "Environment variable reads the key from every Odoo worker's environment. Database "
+            "stores the key here and in backups. The selected source never falls back to the other"
+            " source."
+        ),
     )
-    secret_key = fields.Char(copy=False, groups="base.group_system")
-    revoked = fields.Boolean(default=False, copy=False)
+    secret_key = fields.Char(
+        copy=False, groups="base.group_system", string="Merchant API Key",
+        help=(
+            "System administrators enter the secret key only when creating a Database authority. "
+            "The saved form hides it; masking is not encryption. Use Rotate Credential to create a"
+            " replacement."
+        ),
+    )
+    revoked = fields.Boolean(
+        default=False, copy=False,
+        help=(
+            "Block this authority, including pending recovery and historical refunds that need its"
+            " key. This does not revoke the key with Revolut."
+        ),
+    )
 
     _sql_constraints = [
         ("unique_reference",

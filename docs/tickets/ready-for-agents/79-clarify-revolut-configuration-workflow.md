@@ -1,11 +1,11 @@
 # 79 — Clarify the Revolut configuration workflow
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 
-**Work branch:** `feat/v18_rev`; base implementation branches on its latest
-reviewed revision and integrate back there. Do not push to `18.0`.
+**Work branch:** `codex/79-configuration-workflow`, based on `feat/v18_rev`
+`bb13748`; integrate back into `feat/v18_rev`. Do not push to `18.0`.
 
 **Parent:** [75 — Adapt Revolut to Odoo.sh Enterprise 18](75-adapt-revolut-to-odoo-sh.md)
 

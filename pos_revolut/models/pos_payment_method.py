@@ -39,14 +39,24 @@ class PosPaymentMethod(models.Model):
         default="sandbox",
         copy=False,
         groups="point_of_sale.group_pos_manager",
+        help=(
+            "Match the Merchant authority's Revolut environment. Sandbox and Production "
+            "use separate credentials, locations and terminals. Production access is "
+            "blocked on Odoo.sh test builds and neutralized databases."
+        ),
     )
     revolut_location_id = fields.Char(
         string="Revolut Location ID",
+        help="The Revolut location UUID belonging to this Merchant account and environment, not an Odoo shop ID.",
         copy=False,
         groups="point_of_sale.group_pos_manager",
     )
     revolut_terminal_id = fields.Char(
         string="Revolut Terminal ID",
+        help=(
+            "The Revolut terminal UUID at the configured location. Use a terminal in Pay at "
+            "Counter mode, not its display name or serial number."
+        ),
         copy=False,
         groups="point_of_sale.group_pos_manager",
     )
@@ -61,13 +71,15 @@ class PosPaymentMethod(models.Model):
         ),
     )
     revolut_secret_reference = fields.Char(
-        string="Revolut Secret Reference",
+        string="Revolut Credential Reference",
         copy=False,
         groups="point_of_sale.group_pos_manager",
         help=(
-            "Administrator-authorized credential reference in the "
-            "ODOO_REVOLUT_SECRET_ namespace, backed by a server environment "
-            "variable or an administrator-managed database key."
+            "Enter the exact reference approved by a system administrator for this "
+            "company and Revolut environment, never the Merchant API key. POS managers "
+            "can configure this reference but cannot administer credentials. For an "
+            "Environment variable source it is the server variable name; for Database "
+            "it identifies the stored key. Both use the ODOO_REVOLUT_SECRET_ prefix."
         ),
     )
 

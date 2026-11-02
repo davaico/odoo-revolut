@@ -1,5 +1,25 @@
 import { registry } from "@web/core/registry";
 
+function authorityLabels() {
+    return {
+        content: "The authority form distinguishes the environment, reference and source",
+        trigger: ".o_field_widget[name=secret_reference] input",
+        run() {
+            const labels = [...document.querySelectorAll(".o_form_label")].map(
+                (label) => label.textContent.replace("?", "").trim()
+            );
+            for (const label of ["Revolut Environment", "Credential Reference", "Credential Source"]) {
+                if (!labels.includes(label)) {
+                    throw new Error(`Missing authority label: ${label}`);
+                }
+            }
+            if (!document.body.textContent.includes("Only system administrators administer Merchant credentials.")) {
+                throw new Error("The authority form does not explain who administers credentials");
+            }
+        },
+    };
+}
+
 function savedDatabaseAuthority(reference) {
     return {
         content: "The saved database authority hides its key and freezes its identity",
@@ -20,6 +40,7 @@ function savedDatabaseAuthority(reference) {
 registry.category("web_tour.tours").add("pos_revolut_admin_database_credential", {
     steps: () => [
         { trigger: ".o_list_button_add", run: "click" },
+        authorityLabels(),
         {
             trigger: ".o_field_widget[name=company_id] input",
             run: "edit Browser Revolut Company",
@@ -30,6 +51,15 @@ registry.category("web_tour.tours").add("pos_revolut_admin_database_credential",
         },
         { trigger: ".o_field_widget[name=environment] select", run: "selectByLabel Sandbox" },
         { trigger: ".o_field_widget[name=source] select", run: "selectByLabel Database" },
+        {
+            trigger: ".o_field_widget[name=secret_key] input[type=password]",
+            run() {
+                const label = document.querySelector("label[for='" + this.anchor.id + "']");
+                if (label?.textContent.replace("?", "").trim() !== "Merchant API Key") {
+                    throw new Error("The database secret input is not labelled Merchant API Key");
+                }
+            },
+        },
         {
             trigger: ".o_field_widget[name=secret_reference] input",
             run: "edit ODOO_REVOLUT_SECRET_BROWSER_DATABASE",
@@ -71,6 +101,18 @@ registry.category("web_tour.tours").add("pos_revolut_admin_rotate_database_crede
 registry.category("web_tour.tours").add("pos_revolut_admin_credential_authority", {
     steps: () => [
         { trigger: ".o_list_button_add", run: "click" },
+        authorityLabels(),
+        {
+            trigger: ".o_field_widget[name=source] select",
+            run() {
+                if (document.querySelector(".o_field_widget[name=secret_key]")) {
+                    throw new Error("The Environment variable source displays a database key input");
+                }
+                if (!document.body.textContent.includes("Saving this authority does not create that variable.")) {
+                    throw new Error("The environment authority omits provisioning guidance");
+                }
+            },
+        },
         {
             trigger: ".o_field_widget[name=company_id] input",
             run: "edit Browser Revolut Company",

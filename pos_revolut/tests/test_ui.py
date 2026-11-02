@@ -24,6 +24,27 @@ class TestRevolutManagerUi(TestPointOfSaleHttpCommon):
     LOCATION_ID = "123e4567-e89b-12d3-a456-426614174000"
     TERMINAL_ID = "0e53f673-7705-473a-a263-89a3e7647c3d"
 
+    def test_administrator_configures_database_credentials_in_french_browser(self):
+        self.env["res.lang"]._activate_lang("fr_FR")
+        self.env.company.name = "Browser Revolut Company"
+        self.pos_admin.write({
+            "lang": "fr_FR",
+            "groups_id": [Command.link(self.env.ref("base.group_system").id)],
+        })
+        action = self.env.ref("pos_revolut.action_revolut_merchant_credential")
+        # Native controls use French; addon strings fall back to English until
+        # translated. Literal references and saved configuration stay identical.
+        self.start_tour(
+            f"/odoo/action-{action.id}?debug=tests",
+            "pos_revolut_admin_database_credential", login="pos_admin",
+        )
+        credential = self.env["pos.revolut.merchant.credential"].search([
+            ("secret_reference", "=", "ODOO_REVOLUT_SECRET_BROWSER_DATABASE"),
+        ])
+        self.assertRecordValues(credential, [{
+            "company_id": self.env.company.id, "environment": "sandbox", "source": "database",
+        }])
+
     def test_administrator_configures_and_rotates_database_credentials_in_browser(self):
         self.env.company.name = "Browser Revolut Company"
         system_group = self.env.ref("base.group_system")
@@ -112,6 +133,14 @@ class TestRevolutManagerUi(TestPointOfSaleHttpCommon):
             "environment": "sandbox",
             "secret_reference": reference,
         }])
+        other_company = self.env["res.company"].create({"name": "Foreign Browser Company"})
+        credentials.create({
+            "company_id": other_company.id, "environment": "sandbox",
+            "source": "database", "secret_reference": "ODOO_REVOLUT_SECRET_FOREIGN_BROWSER",
+            "secret_key": "synthetic-foreign-browser-key",
+        })
+        self.pos_admin.groups_id -= self.env.ref("base.group_system")
+        self.assertFalse(self.pos_admin.has_group("base.group_system"))
         payment_method = self.env["pos.payment.method"].create(
             {
                 "name": "Browser Revolut",
@@ -169,7 +198,16 @@ class TestRevolutManagerUi(TestPointOfSaleHttpCommon):
             ],
         )
         self.assertEqual(len(merchant_requests), 1)
+        self.assertEqual(merchant_requests[0][1]["headers"]["Authorization"],
+                         "Bearer test-only-not-a-credential")
         response.raise_for_status.assert_called_once_with()
+
+        self.start_tour(
+            f"/odoo/action-{action.id}/{payment_method.id}?debug=tests",
+            "pos_revolut_manager_rejects_foreign_authority", login="pos_admin",
+        )
+        payment_method.invalidate_recordset()
+        self.assertEqual(payment_method.revolut_secret_reference, reference)
 
         self.main_pos_config.write({"payment_method_ids": [Command.link(payment_method.id)]})
         self.main_pos_config.with_user(self.pos_user).open_ui()
@@ -180,6 +218,7 @@ class TestRevolutManagerUi(TestPointOfSaleHttpCommon):
             lookup(order_uuid, payment_uuid, session.id)
 
         config_action = self.env.ref("point_of_sale.action_pos_config_tree")
+        self.pos_admin.groups_id += self.env.ref("base.group_system")
         self.start_tour(
             f"/odoo/action-{config_action.id}/{self.main_pos_config.id}?debug=tests",
             "pos_revolut_admin_register_grant",

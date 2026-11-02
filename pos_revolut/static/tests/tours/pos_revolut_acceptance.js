@@ -79,6 +79,26 @@ registry.category("web_tour.tours").add("pos_revolut_manager_configuration", {
             run: 'selectByLabel Revolut',
         },
         {
+            content: "The native integration labels and Revolut authority guidance are visible",
+            trigger: ".o_field_widget[name=revolut_environment] select",
+            run() {
+                const labels = [...document.querySelectorAll(".o_form_label")].map(
+                    (label) => label.textContent.replace("?", "").trim()
+                );
+                for (const label of ["Integration", "Integrate with", "Revolut Company", "Revolut Credential Reference"]) {
+                    if (!labels.includes(label)) {
+                        throw new Error(`Missing configuration label: ${label}`);
+                    }
+                }
+                if (!document.body.textContent.includes("Enter the approved reference, never the API key.")) {
+                    throw new Error("The manager form does not explain the credential boundary");
+                }
+                if (document.querySelector(".o_field_widget[name=secret_key]")) {
+                    throw new Error("The payment method exposes a Merchant API key field");
+                }
+            },
+        },
+        {
             trigger: ".o_field_widget[name=revolut_location_id] input",
             run: "edit 123e4567-e89b-12d3-a456-426614174000",
         },
@@ -105,6 +125,32 @@ registry.category("web_tour.tours").add("pos_revolut_manager_configuration", {
         {
             trigger: '.o_notification_content:contains("Counter 1 is online.")',
         },
+    ],
+});
+
+registry.category("web_tour.tours").add("pos_revolut_manager_rejects_foreign_authority", {
+    steps: () => [
+        {
+            trigger: ".o_field_widget[name=revolut_secret_reference] input",
+            run: "edit ODOO_REVOLUT_SECRET_FOREIGN_BROWSER",
+        },
+        { trigger: ".o_form_button_save", run: "click" },
+        {
+            content: "A foreign authority is rejected without revealing a key",
+            trigger: ".o_dialog:contains('credential authority is not configured for this company')",
+            run() {
+                if (document.body.textContent.includes("synthetic-foreign-browser-key")) {
+                    throw new Error("The rejected configuration exposes a Merchant API key");
+                }
+            },
+        },
+        { trigger: ".o_dialog .btn-close", run: "click" },
+        {
+            trigger: ".o_field_widget[name=revolut_secret_reference] input",
+            run: "edit ODOO_REVOLUT_SECRET_TEST_TERMINAL",
+        },
+        { trigger: ".o_form_button_save", run: "click" },
+        { trigger: ".o_form_renderer.o_form_saved" },
     ],
 });
 

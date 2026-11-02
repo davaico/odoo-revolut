@@ -100,8 +100,9 @@ Invoice PDFs require a working Odoo-compatible server PDF renderer, installed se
 ## Authorize credentials
 
 As system administrator, verify the owning Merchant account/company. Under
-**Point of Sale → Revolut Merchant Authorities**, create an authority with its
-company, Sandbox/Production environment, source and unique reference. References
+**Point of Sale → Orders → Revolut Merchant Authorities**, create an authority with its
+**Company**, **Revolut Environment** (Sandbox/Production), **Credential Source**
+and unique **Credential Reference**. References
 use the `ODOO_REVOLUT_SECRET_` prefix followed by uppercase letters, digits and
 underscores, for example `ODOO_REVOLUT_SECRET_REGISTER_1`.
 
@@ -113,15 +114,16 @@ Choose one source:
   Any environment file must be outside the repository with restricted ownership
   and mode `0600`. Existing environment-backed authorities keep this source
   after an addon update.
-- **Database**: enter the Merchant key in the administrator-only password field
+- **Database**: enter the Merchant key in the administrator-only **Merchant API Key** password field
   when creating the authority. The reference identifies this stored key; it
   does not require an environment variable. The saved form hides the key.
 
 Only system administrators can read, export or change authority records through
 Odoo, including direct RPC. POS managers configure the authorized reference on
 the payment method without reading its key; cashiers and POS-loaded data receive
-neither the key nor the authority inventory. Share the approved reference with
-the relevant POS manager. Creating a new Revolut method as administrator can
+neither the key nor the authority inventory. Share the approved company, environment, reference, location UUID and terminal
+UUID with the relevant POS manager through an approved private channel. A reference
+is a name for an authority; it is not the API key or a terminal selector. Creating a new Revolut method as administrator can
 also provision an environment authority; editing an existing method cannot.
 
 The configured source is exclusive: a missing or revoked database key never
@@ -132,12 +134,29 @@ masking is not encryption. Protect database access, backups and copied databases
 System administrators are trusted across all companies in their database.
 Unrelated customers must use separate databases.
 
+On Odoo.sh, prefer **Database** when your deployment does not offer persistent
+secret injection into every Odoo process. Saving an Environment variable
+authority does not provision a key. An `export` in an interactive Odoo.sh shell
+only changes that shell and its children; it does not configure running HTTP
+or cron workers or survive a rebuild. Do not put keys in branch files or assume
+that `odoo.conf` creates environment variables. Use Environment variable only
+with a deployment-supported secret mechanism verified on every worker after
+restart/rebuild. Odoo.sh recycles workers and restricts staging/development
+resources and scheduled actions; see its [platform FAQ](https://www.odoo.sh/faq).
+Production connections remain blocked on test builds and neutralized databases,
+including for Database keys; use a separate Sandbox authority for testing.
+
 ## Configure a register
 
-1. Under **Point of Sale → Configuration → Payment Methods**, create a bank method for the company. Set **Integration → Terminal** and **Integrate with → Revolut**.
-2. Set **Revolut Environment**, **Location ID**, **Terminal ID** and **Secret Reference** (the approved authority reference). Use one terminal per method.
+A POS manager can configure a permitted reference and check the connection; only
+a system administrator can administer Merchant authorities or enter/rotate keys.
+System administrators who configure methods also need POS manager access. First
+obtain the approved configuration from the administrator, then:
+
+1. Select the owning company in Odoo's company switcher before creating a method. Under **Point of Sale → Configuration → Payment Methods**, choose **New**, give it a recognizable name and select that company's bank **Journal**. The readonly **Revolut Company** must match the authority and the register. In a multi-company session, verify the method's company rather than assuming every selected company can use every reference.
+2. Set **Integration → Terminal** and **Integrate with → Revolut**. In the **Revolut** section, set **Revolut Environment** to the authority's environment. Copy its approved **Revolut Credential Reference** exactly, including `ODOO_REVOLUT_SECRET_`; enter no API key here. Enter **Revolut Location ID** and **Revolut Terminal ID** as UUIDs from the same Merchant account/environment, with the terminal belonging to that location. These are not an Odoo shop ID, terminal name or serial number. Use one terminal per method; different terminals may share an authorized Merchant credential within the same company/environment.
 3. Set **Revolut Fulfilment**. Retail currently uses **Eat In**. Restaurant derives **Eat In/Take Away** from its table and Dine In/Takeout preset; delivery and unknown no-table presets are guarded.
-4. Save and select **Check Connection** to discover the terminal and verify it is online. This sends no payment.
+4. Save and select **Check Connection**. Expect **Revolut terminal connected** and the terminal name/ID followed by **is online**. This checks the configured location/terminal using the server-owned key and sends no payment. It does not establish payment/report permissions or financial readiness.
 5. Add the method to the register; enable **Automatically validate terminal payments**.
 6. Configure **Tip Product**, even with tips disabled. Its taxes and Product Price precision must represent currency minor units exactly; the standard untaxed product is supported. Configure the terminal's tip prompt as needed.
 7. Disable Restaurant **Add tips after payment**. Remove Odoo-entered tips before collection; Revolut supports terminal-selected tips.
@@ -148,18 +167,33 @@ Register grants start empty; employee PINs do not grant access. Removing a user 
 
 On Odoo 18, this addon provides the Dine In/Takeout preset and pickup scheduling controls. For timed Takeout, configure the pickup calendar and select an available date/time before payment. Choose another day if no slots remain. See [Restaurant orders](user-guide.md#restaurant-orders) for recovery after capture.
 
+If saving reports that the credential authority is not configured, ask the
+administrator to check the exact company, environment and reference; do not
+paste a key or a foreign company's reference. If the server credential is
+unavailable, the administrator checks the selected source, including every
+worker for an environment key. For a missing/offline terminal, verify its UUID,
+location and Pay at Counter mode. An Odoo.sh/neutralization restriction requires
+a Sandbox configuration, not changing the platform stage flag. Close active POS
+sessions before changing methods and reload POS after configuration changes.
+
+The labels above are the English Odoo 18 labels. Odoo translates native labels
+according to the user's language; Revolut labels/help use Odoo's normal
+translation mechanism and fall back to English where no translation exists.
+Field references and UUIDs are literal identifiers in every UI language: do not
+translate or retype their meaning.
+
 ## Verify and maintain
 
 Check ordinary POS operation, terminal discovery, account/location/currency agreement, register permissions and payment-report access. Financial acceptance needs the account owner's approved amounts and a reconciliation plan. Mocked tests and connection checks cannot replace device checks.
 
 Verify the native sale, provider payment, tip, receipt and refund as applicable; retain evidence privately. Follow the [user guide](user-guide.md) if results are uncertain.
 
-To rotate a key, open its authority as system administrator and select **Rotate Credential**.
+To rotate a key, open **Point of Sale → Orders → Revolut Merchant Authorities** and its authority as system administrator and select **Rotate Credential**.
 This opens a new authority for the same company, environment and source, with an
 empty reference and key. Give it a new unique reference. For Database, enter the
 new key; for Environment variable, provision the new variable on every worker
 and restart them. Save the new authority before giving its reference to the POS
-manager. Close the POS session before changing its payment method, then run
+manager. Close the POS session before changing its payment method, update **Revolut Credential Reference** on each affected method, then run
 **Check Connection** and reopen POS.
 
 Rotation does not update payment methods automatically, alter the old authority
