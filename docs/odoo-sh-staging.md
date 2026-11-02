@@ -37,9 +37,11 @@ deployment, not this test campaign.
 Odoo.sh trial projects are time-limited and may be deleted after expiry; retain
 test evidence outside the build. Continued hosting beyond the trial and actual
 operational deployment require the appropriate entitlement. Keep a reference
-test project separate from client hosting. Live acceptance must identify the
-client's environment and use that client's hosting/subscription arrangements
-with separate approval. A branch labelled Production can still be
+test project separate from client hosting. Real terminal payment/refund testing
+on the existing Odoo.sh Enterprise trial is tracked separately in
+[T82](tickets/ready-for-human/82-activate-odoo-sh-and-check-payment-refund.md),
+using the appropriate operational trial database without bypassing stage or
+neutralization guards. No second Enterprise installation is assumed. A branch labelled Production can still be
 the source of a temporary test project; that label does not mean live business use.
 
 Perform addon installation, permission, payment/refund, restart, reconciliation

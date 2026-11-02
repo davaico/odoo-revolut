@@ -3,12 +3,27 @@
 Code promotion and client activation are separate operations. A PR into `18.0`
 prepares the reviewed addon for distribution and automatically builds the reference
 Odoo.sh project's Production branch. It does not install or configure a client
-system. The reference project is test-only; do not activate a paid production
-plan or perform live payments there. Obtain approval for the concrete release
-before merging. This adaptation's delivery scope is reusable addon compatibility
+system. The reference project is a trial test environment; do not activate a
+paid plan or permanently register it. Bounded real payment/refund testing belongs
+to T82 on the existing Odoo.sh Enterprise trial. Obtain approval for the concrete
+release before merging. This adaptation's delivery scope is reusable addon compatibility
 validated on the trial database; it requires no permanent activation code or
 executed client rollout. The client sections below are instructions for a future,
 separately approved operational deployment, not gates for delivering the addon.
+
+## Real payment/refund testing on the existing trial
+
+The owner requires real terminal payment/refund acceptance as well as the mocked
+hosted checks. The trial's Odoo.sh hosting and Enterprise edition are one test
+target. No Enterprise activation code or permanent registration is required by
+the test plan. Verify trial/build usability before execution. Use the actual
+operational Production-stage database for real traffic; Staging/Development and
+neutralized copies remain blocked. Do not bypass those guards or change expiry.
+The deployment and financial amounts require concrete approval before execution;
+T82's reopening is not a merge or money-movement instruction. Record final
+provider outcomes and matching native records, including partial and remaining
+balance refunds, under [T82](tickets/ready-for-human/82-activate-odoo-sh-and-check-payment-refund.md).
+The client instructions below remain guidance for separate future deployments.
 
 ## Before approving the release
 
