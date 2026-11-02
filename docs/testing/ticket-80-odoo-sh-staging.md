@@ -252,8 +252,9 @@ Standards and Spec reviews compared `fdfa745...2064957`: Standards found zero
 documented-standard violations/baseline smells; Spec found one minor
 overstatement of native stock preservation, corrected above to the actual POS
 and invoice snapshots. Also narrowed the concurrency observation to a
-transaction, without claiming an identified worker. Final follow-up review is
-pending.
+transaction, without claiming an identified worker. Follow-up reviews of
+`fdfa745...1a6c751` confirmed **zero remaining Standards findings and zero
+remaining Spec findings**.
 
 ## Unresolved gates
 
