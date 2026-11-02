@@ -3,9 +3,10 @@
 Validated locally on 2026-11-02. Starting Odoo 18 base: `feat/v18_rev` at
 `bb1374899286e05978f6a34d20b5859e2ffdcae7`. The owner subsequently moved
 Enterprise/Odoo.sh work to **`staging/18-enterprise`**; that is the final
-integration target. This task preserves its candidate on the task branch for
-the coordinating chat to inspect and integrate, without updating either shared
-branch.
+integration target. After the full run, this task incorporated staging routing
+commit `eff53ba`; its addon tree is identical to the tested implementation. The
+owner then authorized integration and push to staging only. Community
+`feat/v18_rev` and production `18.0` are outside this task's write scope.
 Task branch: `codex/79-configuration-workflow`. Tested implementation:
 `0fd1ae777efeb6b879f02c0c6d0ecf18ff3903c0`, addon `18.0.1.0.8`.
 
@@ -84,15 +85,45 @@ docker compose -p odoo-revolut-ticket79 -f /tmp/ticket79-runner/compose.yaml run
   **3 tests passed**, zero failures/errors, exit 0 (`/tmp/ticket79-ui-final.log`).
   This includes the installed French translations and visible rejection checks.
 - Full addon suite (same invocation, `--test-tags /pos_revolut` plus
-  `--log-handler odoo.addons.pos_revolut:INFO`): pending. The original attached
-  client disconnected with status 130 while the Odoo container kept running;
-  `/tmp/ticket79-full-container.log` captures that same container's output and
-  `/tmp/ticket79-full-exit` captures its actual exit status. This is one full
-  suite invocation, not a restart or isolated rerun. It has reported a receipt-screen
-  timeout in unchanged
-  `TestRevolutRefundHistory.test_saved_return_recovers_unavailable_closed_original_without_duplicate_refund`.
-  Synthetic failure artifacts are retained in `/tmp/ticket79-browser-artifacts`.
-  Final result and isolated recheck remain pending; no root cause is claimed.
+  `--log-handler odoo.addons.pos_revolut:INFO`): **815 cases, two failures, zero
+  errors, two skips, exit 1**. All three configuration UI cases passed again
+  inside this full run. Skips were the optional `pos_hr` characterization and
+  retail startup after a Chrome connection error.
+
+  The two failures were unchanged browser cases:
+  `TestRevolutRefundHistory.test_saved_return_recovers_unavailable_closed_original_without_duplicate_refund`
+  (receipt-screen timeout) and
+  `TestRevolutTakeoutReadinessUi.test_captured_tender_finishes_after_native_scheduling_correction`
+  (overall script timeout). The reviewed diff changes neither these tours nor
+  the POS application/refund/checkout logic. The language test ran after both
+  failures. No change-caused link or root cause has been established.
+
+  The original attached client disconnected with status 130 while the Odoo
+  container kept running. `/tmp/ticket79-full-container.log` captures that same
+  container's complete output; `/tmp/ticket79-full-exit` records its actual exit
+  status 1. This was one full suite invocation. Synthetic browser artifacts
+  are retained in `/tmp/ticket79-browser-artifacts` and
+  `/tmp/ticket79-browser-artifacts-late`.
+- Isolated rerun of both failed cases, same database and addon bytes after the
+  routing-only fast-forward to `eff53ba`: **two tests passed**, zero
+  failures/errors, exit 0 (`/tmp/ticket79-recheck.log`). The original financial,
+  native return and duplicate-operation assertions remain intact. Command:
+
+  ```bash
+  docker compose -p odoo-revolut-ticket79 -f /tmp/ticket79-runner/compose.yaml run -d --name odoo-revolut-ticket79-recheck odoo \
+    --database odoo_revolut_tests --update pos_revolut --stop-after-init --workers 0 \
+    --log-level warn --log-handler odoo.tests.result:INFO --log-handler odoo.tests.stats:INFO \
+    --test-tags /pos_revolut:TestRevolutRefundHistory.test_saved_return_recovers_unavailable_closed_original_without_duplicate_refund,/pos_revolut:TestRevolutTakeoutReadinessUi.test_captured_tender_finishes_after_native_scheduling_correction
+  ```
+
+  These isolated successes do **not** make the full run green. The follow-up
+  remains [ticket 84](../tickets/needs-triage/84-investigate-checkout-browser-full-suite-failures.md)
+  and a release-candidate validation gate under #81.
+- Retail startup skipped by the full run: **one test passed**, zero
+  failures/errors/skips, exit 0 (`/tmp/ticket79-retail-recheck.log`). Same
+  invocation with container name `odoo-revolut-ticket79-retail-recheck` and
+  `--test-tags /pos_revolut:TestRevolutRetailPosStarts.test_retail_pos_starts_with_addon_installed`.
+  The full run's original browser skip remains recorded above.
 - `node --test --test-isolation=none pos_revolut/static/tests/*.test.mjs`:
   **146 passed**, zero failures (`/tmp/ticket79-js.log`).
 - `python3 -m unittest discover -s tests -v`: **75 run**, zero failures,
@@ -126,4 +157,6 @@ production acceptance and release-candidate assembly remain #80, #81 and #82.
 The wording/layout change is relevant to the maintained Odoo 19 branch, but this
 ticket changes and validates Odoo 18 only; Odoo 19 needs a separate branch-specific
 adaptation and native UI check. This is not Odoo 19 compatibility evidence. No
-deployment, production push or live financial operation was performed.
+production push or live financial operation was performed. Publishing to
+`staging/18-enterprise` is the owner-authorized integration step; it does not
+establish hosted acceptance.
