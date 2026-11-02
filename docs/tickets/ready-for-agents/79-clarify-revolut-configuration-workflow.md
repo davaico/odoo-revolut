@@ -5,7 +5,10 @@
 **Triage:** ready-for-agent
 
 **Work branch:** `codex/79-configuration-workflow`, based on `feat/v18_rev`
-`bb13748`; integrate back into `feat/v18_rev`. Do not push to `18.0`.
+`bb13748`. Final integration target: `staging/18-enterprise`, per the owner's
+Enterprise/Odoo.sh migration coordination on 2026-11-02. Keep this candidate
+on the task branch for the coordinating chat to integrate; do not integrate or
+push either shared branch from this task. Do not push to `18.0`.
 
 **Parent:** [75 — Adapt Revolut to Odoo.sh Enterprise 18](75-adapt-revolut-to-odoo-sh.md)
 
