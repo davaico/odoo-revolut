@@ -226,5 +226,39 @@ verified final outcomes, original-attempt recovery and cashier enablement only
 after acceptance. Accepted earlier hardware limitations remain; unrelated historic
 transactions and deferred ticket 83 are not reopened.
 
-PR reference and independent Standards/Spec review: pending final validation.
-Production remains unchanged.
+## Standards
+
+Independent final review of `d5d13d3...c733222` and public projection
+`2814e8f...53ab3ae`: **0 actionable findings**. Exact addon identity, scoped public
+files, original-authority recovery and deferred cashier grants conform to the
+repository guidance. No concealed failure or unsupported compatibility claim.
+
+## Spec
+
+Independent final review of the same ranges: **0 findings**. The retained clean
+full prerequisite plus byte-equivalence proof, assembled execution and all four
+unchanged browser completions satisfy #81's material-revalidation requirement.
+Upgrade, hosted applicability, Community gates, activation and recovery are
+covered. The resource-skipped full run remains explicitly distinguished.
+
+Closing tracker/reference changes were reviewed separately; their stale blocker
+wording was corrected. No outstanding closing-delta findings remain.
+
+Standards: 0 findings. Spec: 0 findings.
+
+## Production PR and disposition
+
+[PR #95](https://github.com/davaico/odoo-revolut/pull/95) is open and ready for
+review, targeting `18.0` at `2814e8f6d24cccfa99fccbe0ea6e08c1bfb646b6`.
+Head: `53ab3aea02e4e81193a2671de978723a7215df0a`; addon tree is exactly the frozen
+`57730fd0d5a81ea6a288081ac0eced63eb9e5b1b`. It contains 43 scoped files and two
+commits, with payment impact, every test limitation, credentials/configuration,
+module upgrade and recovery instructions. Staging configuration is explicitly
+not promoted with code.
+
+Ticket 81 is closed on the task branch. Base remains reviewed Enterprise staging
+`d5d13d3`; intended integration target is `staging/18-enterprise`. The owner
+explicitly instructed **not to merge** after the PR was opened. Accordingly,
+neither the production PR nor task branches are merged or promoted in this
+handoff. Production `18.0`, client databases and live financial state remain
+unchanged; ticket 82 retains the separate client activation requirements.

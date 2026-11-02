@@ -2,8 +2,8 @@
 
 **Enterprise/Odoo.sh base and integration target:** `staging/18-enterprise`
 (owner decision, 2026-11-02). Tickets 75–82 and related follow-up 84 are maintained
-here. T76–79 and T84 are completed; hosted acceptance remains in T80 and release
-preparation in T81.
+here. T76–81 and T84 are completed on their task branches; client activation remains
+in T82. T81's production PR and integration remain unmerged at the owner's request.
 Remaining Enterprise work must not be integrated into Community `feat/v18_rev`.
 Community acceptance records below are retained as context; deferred ticket 83
 is owned by the Community branch. Historical branch names in evidence are not
@@ -24,15 +24,15 @@ private host details and credentials in restricted records.
 
 | Ticket | Category | Triage | State | Blocked by |
 | --- | --- | --- | --- | --- |
-| [75 — Adapt Revolut to Odoo.sh Enterprise 18](ready-for-agents/75-adapt-revolut-to-odoo-sh.md) | Deployment compatibility | `ready-for-agent` | Open | No local implementation blocker; staging evidence gates release; permanent registration and bounded live check belong to live activation |
-| [81 — Validate the release candidate and prepare the production PR](ready-for-agents/81-prepare-odoo-sh-production-release-pr.md) | Release preparation | `ready-for-agent` | Open | PR access and remaining release assembly/revalidation; #80 and #84 complete |
-| [82 — Activate production and verify one payment and refund](ready-for-human/82-activate-odoo-sh-and-check-payment-refund.md) | Client live acceptance | `ready-for-human` | Open | #81; identified client environment, release approval and client/terminal participation; current Odoo.sh project remains test-only |
+| [75 — Adapt Revolut to Odoo.sh Enterprise 18](ready-for-agents/75-adapt-revolut-to-odoo-sh.md) | Deployment compatibility | `ready-for-agent` | Open | No local implementation blocker; release PR #95 prepared and unmerged; permanent client registration and bounded live check belong to live activation |
+| [82 — Activate production and verify one payment and refund](ready-for-human/82-activate-odoo-sh-and-check-payment-refund.md) | Client live acceptance | `ready-for-human` | Open | Identified client environment, release approval and client/terminal participation; PR #95 remains unmerged and current Odoo.sh project remains test-only |
 | [83 — Finish the deferred Odoo 18 refund, return and session](ready-for-human/83-finish-deferred-v18-refund-return-session.md) | Deferred acceptance follow-up | `ready-for-human` | Open | Original provider finality and authorised custodian; non-blocking for release |
 
 ## Closed tickets
 
 | Ticket | Resolution |
 | --- | --- |
+| [81 — Validate the release candidate and prepare the production PR](closed/81-prepare-odoo-sh-production-release-pr.md) | Validated `.8` assembly, populated/versioned upgrades and copy guards; retained clean full evidence plus current full/four-case completion with honest Chrome-skip limits. PR #95 is ready, open and unmerged; 0/0 reviews. Owner requested no merges; #82 activation remains separate. |
 | [80 — Install and verify the integration on Odoo.sh staging](closed/80-verify-odoo-sh-staging-lifecycle.md) | Installed `.8` on hosted staging; permissions, native preservation, copies, HTTP recovery and actual native cron-worker SIGKILL/replacement recovery passed with mocked HTTP. Recorded trial accepted for test-only scope; 0/0 reviews. Platform-managed restart limitation remains explicit; later #84 regression completion is preserved. |
 | [84 — Investigate full-suite checkout browser failures](closed/84-investigate-checkout-browser-full-suite-failures.md) | Corrected the held-response fixture race; native red/green proof, 816 full cases with zero failures/errors (one optional skip), all ten affected browser cases and 146 JS checks passed. Hosted #80 is also complete; release assembly remains #81. |
 | [79 — Clarify the Revolut configuration workflow](closed/79-clarify-revolut-configuration-workflow.md) | Corrected native labels/layout, authority/source/role help and instructions in `.8`; focused/UI checks and 0/0 reviews passed. Full-run browser follow-up resolved in #84. |

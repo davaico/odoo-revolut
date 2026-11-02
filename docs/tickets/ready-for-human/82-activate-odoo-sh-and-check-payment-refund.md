@@ -19,8 +19,11 @@ Client installation and its resulting build/version must be verified separately.
 
 **Parent:** [75 — Adapt Revolut to Odoo.sh Enterprise 18](../ready-for-agents/75-adapt-revolut-to-odoo-sh.md)
 
-**Blocked by:**
-- [81 — Validate the release candidate and prepare the production PR](../ready-for-agents/81-prepare-odoo-sh-production-release-pr.md)
+**Completed prerequisite:**
+[81 — Validate the release candidate and prepare the production PR](../closed/81-prepare-odoo-sh-production-release-pr.md).
+[PR #95](https://github.com/davaico/odoo-revolut/pull/95) is ready and unmerged;
+the owner explicitly requested no merge. Release approval and the client-only
+external requirements below remain before activation.
 
 **External blockers:** Release approval for the concrete candidate, production
 administrative access, the intended Revolut credentials/terminal and the owner's
