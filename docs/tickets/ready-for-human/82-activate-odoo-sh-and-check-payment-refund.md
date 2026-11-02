@@ -117,3 +117,31 @@ code or permanent account activation. The earlier `wontfix` closure conflated
 subscription activation with financial acceptance and is superseded. The owner
 was unsure about separate Enterprise hosting; this brief uses the existing
 Odoo.sh Enterprise database and does not invent a second installation.
+
+### 2026-11-02 — Read-only checkpoint before guided live acceptance
+
+Work branch: `codex/82-live-test-checkpoint`, based on reviewed
+`staging/18-enterprise` at `4330188446d96aca4f517522fd86165d24fa2254`;
+integration target: `staging/18-enterprise`.
+
+Authenticated browser inspection confirmed:
+
+- Odoo.sh Production `18.0` still shows source `2814e8f6`. Its database opens
+  successfully; POS Revolut has an **Activate** button and is not installed.
+- Staging `staging/18-enterprise` shows source `43301884` and Connect resolves
+  to build 41044597. The database displays the neutralized-for-testing banner;
+  POS Revolut is already installed (Module Info offers Upgrade and Uninstall).
+  Its installed version was not freshly read during this checkpoint. T80's
+  earlier `.8` verification retains its original attribution.
+- GitHub PR #96 is open and unmerged, from `staging/18-enterprise` at
+  `43301884` into `18.0` at `2814e8f6`. The local candidate addon tree remains
+  `57730fd0d5a81ea6a288081ac0eced63eb9e5b1b`, matching T81's frozen `.8` tree.
+
+The supplied colleague handoff predates completed T79–81 work. No installation,
+upgrade, configuration, registration, merge or financial operation was performed
+in this checkpoint. Trial expiry/usability for live acceptance, the installed
+candidate on Production, company/register/terminal configuration and financial
+amount approval remain to be verified. Keep the existing no-merge instruction:
+the reviewed candidate needs separately approved deployment before live T82
+testing can proceed on Production. Staging remains suitable for non-financial
+walkthroughs and mocked/Sandbox checks, with its live guards intact.
