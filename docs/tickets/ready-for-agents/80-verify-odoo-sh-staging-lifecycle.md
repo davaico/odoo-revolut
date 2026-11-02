@@ -4,8 +4,8 @@
 
 **Triage:** ready-for-agent
 
-**Work branch:** `feat/v18_rev`; integrate implementation there and validate the
-candidate on `staging/18-enterprise`. Do not push to `18.0`.
+**Work branch:** `staging/18-enterprise`; base further task branches on its
+latest reviewed revision and integrate back there. Do not push to `18.0`.
 
 **Parent:** [75 — Adapt Revolut to Odoo.sh Enterprise 18](75-adapt-revolut-to-odoo-sh.md)
 

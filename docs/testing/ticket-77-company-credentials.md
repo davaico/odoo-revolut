@@ -1,5 +1,9 @@
 # Ticket 77 — Company credential verification
 
+**Current maintenance target (2026-11-02):** `staging/18-enterprise`.
+The original base and integration references below are historical; they do not
+authorise further Enterprise work on the restored Community branch.
+
 Validated locally on 2026-10-30. Base: `bcc2f9395a931fae9f90e3d8979165ae2272e293`
 from the latest reviewed `feat/v18_rev`. Final tested source:
 `6fbea9d7a78e96a4684ef2679934c40079345f48` (`18.0.1.0.6`). Task branch:

@@ -10,8 +10,8 @@ and partial refunds. A temporary customer backport or reduced-feature pilot
 does not meet the agreed scope.
 
 Maintain separate version branches in this repository, retaining the
-`pos_revolut` addon name. The owner selected `feat/v18_rev` for Odoo 18; the existing
-Odoo 19 line remains on `main`. Odoo 18 task branches and agent worktrees start
+`pos_revolut` addon name. The owner selected `feat/v18_rev` for Community 18; the existing
+Odoo 19 line remains on `main`. Community 18 task branches and agent worktrees start
 from the latest `feat/v18_rev` and integrate back there. The operational agent rule
 is recorded in root `AGENTS.md`.
 
@@ -39,3 +39,20 @@ Deployment and live financial operations require separate authorization.
 
 On 2026-10-22, the owner selected `feat/v18_rev` as the sanitized Odoo 18
 continuation branch. Its fresh history excludes earlier internal evidence.
+
+## Enterprise branch separation — 2026-11-02
+
+The owner moved Odoo 18 Enterprise/Odoo.sh development, its tracker and remaining
+acceptance work to `staging/18-enterprise`. It preserves the T76–78 implementation
+from `bb13748` and the continuing T79 task. Future Enterprise task branches start
+from and integrate into this staging branch. Historical references to
+`feat/v18_rev` in completed evidence retain their original meaning.
+
+`feat/v18_rev` returns to the released Community `.4` implementation, retaining
+its Community evidence and deferred follow-up. The product parity and payment
+guarantees above remain required; this change separates development and hosting
+scope, not those guarantees. Shared fixes require deliberate selection and
+verification on each line. In particular, never merge the Community restoration
+commit into staging, since it removes the Enterprise implementation. Likewise,
+do not merge the complete Enterprise branch back into Community. Production
+promotion into `18.0` remains a separate reviewed release step.

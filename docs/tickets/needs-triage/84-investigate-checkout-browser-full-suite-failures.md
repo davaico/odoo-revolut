@@ -4,8 +4,8 @@
 
 **Triage:** needs-triage
 
-**Work branch:** `feat/v18_rev`; base implementation branches on its latest
-reviewed revision and integrate back there. Do not push to `18.0`.
+**Work branch:** `staging/18-enterprise`; base further task branches on its
+latest reviewed revision and integrate back there. Do not push to `18.0`.
 
 **Related:** [77 — Company credentials](../closed/77-manage-company-revolut-credentials-in-odoo.md)
 and [81 — Release validation](../ready-for-agents/81-prepare-odoo-sh-production-release-pr.md).

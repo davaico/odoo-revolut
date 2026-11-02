@@ -1,5 +1,13 @@
 # Tickets
 
+**Enterprise/Odoo.sh base and integration target:** `staging/18-enterprise`
+(owner decision, 2026-11-02). Tickets 75–82 and related follow-up 84 are maintained
+here. T76–78 remain completed; T79 continues from its preserved task branch.
+Remaining Enterprise work must not be integrated into Community `feat/v18_rev`.
+Community acceptance records below are retained as context; deferred ticket 83
+is owned by the Community branch. Historical branch names in evidence are not
+current routing instructions.
+
 Internal tickets and live acceptance evidence remain in restricted records.
 Ticket 63's accepted Community 18 release campaign is closed; its deferred
 refund/return/session obligation remains open in ticket 83. Ticket 74's combined

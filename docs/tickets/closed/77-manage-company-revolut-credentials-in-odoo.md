@@ -4,8 +4,8 @@
 
 **Triage:** ready-for-agent
 
-**Work branch:** `feat/v18_rev`; base implementation branches on its latest
-reviewed revision and integrate back there. Do not push to `18.0`.
+**Work branch:** `staging/18-enterprise`; base further task branches on its
+latest reviewed revision and integrate back there. Do not push to `18.0`.
 
 **Parent:** [75 — Adapt Revolut to Odoo.sh Enterprise 18](../ready-for-agents/75-adapt-revolut-to-odoo-sh.md)
 
@@ -53,6 +53,10 @@ remain trusted across its companies.
   financial history. Setup/rotation documentation covers both credential sources.
 
 ## Verification evidence
+
+Branch migration, 2026-11-02: this completed implementation and its evidence
+are now maintained on `staging/18-enterprise`. References to the former
+`feat/v18_rev` base/integration below describe historical work only.
 
 Implemented on `6fbea9d7a78e96a4684ef2679934c40079345f48` (`18.0.1.0.6`),
 based on `bcc2f9395a931fae9f90e3d8979165ae2272e293` from `feat/v18_rev`.

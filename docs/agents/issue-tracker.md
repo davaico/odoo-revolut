@@ -2,6 +2,11 @@
 
 Issues and specifications live under `docs/tickets/`.
 
+On this branch, Enterprise/Odoo.sh tickets 75–82 and related follow-up 84 belong
+to `staging/18-enterprise`; start task branches there and integrate back there.
+Copied Community acceptance records retain their provenance. Deferred Community
+ticket 83 is owned on `feat/v18_rev`, not a blocker for this Enterprise campaign.
+
 ## Layout
 
 Open tickets are organized by triage label:

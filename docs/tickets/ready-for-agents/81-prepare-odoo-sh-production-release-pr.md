@@ -4,8 +4,9 @@
 
 **Triage:** ready-for-agent
 
-**Work branch:** `feat/v18_rev`; the production-ready PR targets `18.0` only
-after the acceptance gates pass. Do not merge the PR or push directly to `18.0`.
+**Work branch:** `staging/18-enterprise`; the production-ready PR targets
+`18.0` only after acceptance gates pass. Do not merge the PR or push directly
+to `18.0`.
 
 **Parent:** [75 — Adapt Revolut to Odoo.sh Enterprise 18](75-adapt-revolut-to-odoo-sh.md)
 

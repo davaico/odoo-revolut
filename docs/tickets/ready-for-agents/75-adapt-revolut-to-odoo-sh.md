@@ -6,10 +6,10 @@
 
 **Triage:** ready-for-agent
 
-**Work branch:** `feat/v18_rev`. Base task branches on its latest reviewed
-revision and integrate back there. Hosted validation targets
-`staging/18-enterprise`; `18.0` automatically deploys production and must remain
-untouched until the candidate is production-ready.
+**Work branch:** `staging/18-enterprise`. Base task branches on its latest
+reviewed revision and integrate back there, including hosted validation.
+`feat/v18_rev` is reserved for Community 18. `18.0` automatically deploys
+production and must remain untouched until the candidate is production-ready.
 
 **Dependencies:** No outstanding ticket blocks starting this adaptation.
 Preserve the corrected Odoo 18 baseline and existing accepted limitations.
@@ -104,10 +104,10 @@ evidence; do not repeat the entire hardware acceptance campaign.
   security conventions. Extend credential administration, credential resolution,
   outbound Revolut access, neutralization, relevant views and deployment
   documentation. Do not create an Enterprise-only fork or unrelated framework.
-- Use `feat/v18_rev`, whose reviewed baseline is version `18.0.1.0.4`; record
-  the exact candidate revision used for each new verification. The earlier
-  proposal to work on `feat/v18` is superseded. Do not transplant the older
-  `.1` branch over the corrected candidate.
+- Use `staging/18-enterprise` for Enterprise/Odoo.sh development and
+  integration. The original Community baseline was `18.0.1.0.4`; preserve the
+  subsequent T76–79 work and record the exact candidate used for verification.
+  The 2026-11-02 owner decision supersedes earlier `feat/v18_rev` routing.
 - Keep the maintained Community 18 and 19 scope and ADR parity commitments.
   Coordinate relevant shared fixes across supported versions with version-specific
   verification; Odoo 18 results alone do not establish Odoo 19 compatibility.
@@ -281,7 +281,8 @@ evidence; do not repeat the entire hardware acceptance campaign.
 - Keep the work limited to the client's four requests. The owner approved the
   scope, administrator-managed database keys, separate customer databases,
   multi-company support, the production branch boundary and limited live
-  acceptance. The final branch choice is `feat/v18_rev`.
+  acceptance. The final Enterprise branch choice is `staging/18-enterprise`
+  following the owner's 2026-11-02 correction; Community work stays separate.
 - The local corrected baseline is `18.0.1.0.4`; hosted build identity and
   subscription state have not been verified during specification work.
   Existing accepted physical-test limitations remain accepted, and unrelated

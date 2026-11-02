@@ -4,8 +4,8 @@
 
 **Triage:** ready-for-human
 
-**Work branch:** Validated release from `feat/v18_rev` through the reviewed PR
-into `18.0`; that branch automatically deploys production.
+**Work branch:** Validated release from `staging/18-enterprise` through the
+reviewed PR into `18.0`; that branch automatically deploys production.
 
 **Parent:** [75 — Adapt Revolut to Odoo.sh Enterprise 18](../ready-for-agents/75-adapt-revolut-to-odoo-sh.md)
 

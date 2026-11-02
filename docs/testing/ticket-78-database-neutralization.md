@@ -1,5 +1,9 @@
 # Ticket 78 — Database copy safety
 
+**Current maintenance target (2026-11-02):** `staging/18-enterprise`.
+The original base and integration references below are historical; they do not
+authorise further Enterprise work on the restored Community branch.
+
 Local verification on 2026-11-02. Odoo 18 base/integration target:
 `feat/v18_rev`, baseline `f1bb895ef32646ab4506eef05c7ca27c89dd11de`.
 Application candidate: `7063c3f`; final test lifecycle correction: `bf97e8d`

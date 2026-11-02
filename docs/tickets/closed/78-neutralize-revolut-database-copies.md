@@ -4,8 +4,8 @@
 
 **Triage:** ready-for-agent
 
-**Work branch:** `codex/78-safe-database-copies`, based on `feat/v18_rev` at
-`f1bb895`; integration target: `feat/v18_rev`. Do not push to `18.0`.
+**Work branch:** `staging/18-enterprise`; base further task branches on its
+latest reviewed revision and integrate back there. Do not push to `18.0`.
 
 **Parent:** [75 — Adapt Revolut to Odoo.sh Enterprise 18](../ready-for-agents/75-adapt-revolut-to-odoo-sh.md)
 
@@ -48,6 +48,10 @@ cron activation or installation of the addon after copying.
   fact that re-entering a live key cannot enable production API access on staging.
 
 ## Verification evidence
+
+Branch migration, 2026-11-02: this completed implementation and its evidence
+are now maintained on `staging/18-enterprise`. References to the former
+`feat/v18_rev` base/integration below describe historical work only.
 
 Implemented in `18.0.1.0.7`: application commit `7063c3f`, final test lifecycle
 correction `bf97e8d`, based on `feat/v18_rev` at `f1bb895` and integrated back

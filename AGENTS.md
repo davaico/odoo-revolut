@@ -6,7 +6,7 @@ This repository is the single source of truth for the complete integration. Keep
 
 ## Project Mission
 
-Maintain an installable Odoo Community 18 and 19 Point of Sale addon that integrates a Revolut payment terminal through the Revolut Merchant API. Follow established Odoo addon conventions and keep changes focused on this integration.
+This branch adapts the Revolut Point of Sale addon to Odoo 18 Enterprise on Odoo.sh. Keep the existing payment guarantees and established Odoo addon conventions. Community 18 and 19 remain separately maintained product lines.
 
 The finished integration must:
 
@@ -24,17 +24,18 @@ The finished integration must:
 
 Keep the addon at root-level `pos_revolut/`, matching the Odoo Apps and Odoo.sh layout imported from `18.0`. Keep models, views, security rules, static POS code, data, and tests inside that package. Put project documentation in `docs/` and reusable development scripts in `scripts/`.
 
-## Odoo 18 Agent Work
+## Odoo 18 Enterprise Agent Work
 
-All Odoo 18 work targets `feat/v18_rev`. Before editing, verify the active branch.
-Base task branches and parallel-agent worktrees on the latest `feat/v18_rev`, not
-`main`, and integrate their changes back into `feat/v18_rev`. Include this base and
-target in every Odoo 18 agent handoff.
+Enterprise/Odoo.sh work targets `staging/18-enterprise`. Before editing, verify
+the active branch. Base task branches and parallel-agent worktrees on its latest
+reviewed revision and integrate back there. Include this base and target in every
+Enterprise handoff. `feat/v18_rev` is reserved for the released Community 18 line.
 
-Validate hosted changes on `staging/18-enterprise`. Prepare a PR into `18.0`
-only when production-ready; that branch automatically deploys production.
-Retain the development tracker and acceptance records on `feat/v18_rev` when
-synchronizing production packaging or public-documentation changes.
+Keep Enterprise tickets, testing evidence and development guidance on this branch.
+Validate hosted changes here; prepare a PR into `18.0` only when production-ready,
+because that branch automatically deploys production. Do not merge the Community
+restoration commit into this branch or merge this whole branch back into Community.
+Transfer applicable shared fixes selectively and verify each supported line.
 
 Before implementation or review, read
 [`docs/adr/0002-maintain-odoo-18-and-19-support.md`](docs/adr/0002-maintain-odoo-18-and-19-support.md)
