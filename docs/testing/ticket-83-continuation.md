@@ -135,4 +135,17 @@ actions and independent SQL checks above exercised those actual behaviours.
 This is bounded completion of the original obligation, not a repeat of the
 broader physical acceptance matrix. No addon code changed, so typechecking,
 TDD and the full addon test suite were not run for this documentation-only
-change. Markdown links and whitespace are checked before submission.
+change. All 54 relative Markdown links in the affected documents, the five
+completed acceptance criteria, ticket relocation and retained tracker marker
+passed checks; `git diff --check` passed.
+
+## Independent review
+
+Standards: **0 findings**. The Community branch scope, private identity boundary,
+separate authorisations and tracker closure follow repository guidance.
+
+Spec: **0 findings**. All five acceptance criteria are supported; the reviewer
+also confirmed the private before/after and provider-proof hashes match the
+completion manifest. No replacement refund, collection or replay was introduced.
+
+Total: **0 Standards / 0 Spec findings**; neither axis has an unresolved issue.
