@@ -202,7 +202,11 @@ class PosPaymentMethod(models.Model):
         if self.use_payment_terminal != "revolut":
             raise UserError(_("This payment method does not use Revolut."))
 
-        self._revolut_check_environment_access(self.revolut_environment)
+        try:
+            self._revolut_check_environment_access(self.revolut_environment)
+        except RevolutEnvironmentError as error:
+            # The web client recognizes Odoo's native exception names.
+            raise UserError(str(error)) from None
         credential = self._revolut_configuration_credential()
         secret = credential._resolve_secret()
 

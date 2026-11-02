@@ -6,6 +6,7 @@ from requests import RequestException
 
 from odoo import Command
 from odoo.exceptions import AccessError, UserError, ValidationError
+from odoo.http import serialize_exception
 from odoo.tests.common import TransactionCase, new_test_user
 
 
@@ -40,8 +41,11 @@ class TestRevolutPaymentMethod(TransactionCase):
         method = self._create_revolut_payment_method(revolut_environment="production")
         for stage in ("staging", "dev", "support", "", "Production"):
             with self.subTest(stage=stage), patch.dict(os.environ, {"ODOO_STAGE": stage}):
-                with self.assertRaisesRegex(UserError, "Production Revolut access is disabled"):
+                with self.assertRaisesRegex(UserError, "Production Revolut access is disabled") as error:
                     method.with_context(ODOO_STAGE="production").action_revolut_check_connection()
+                self.assertEqual(
+                    serialize_exception(error.exception)["name"], "odoo.exceptions.UserError",
+                )
         request_get.assert_not_called()
 
     @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.get")
