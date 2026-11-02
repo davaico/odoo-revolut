@@ -85,9 +85,8 @@ class RefundDiscovery(models.Model):
             ("revolut_order_id", "!=", False),
         ])
         credentials = sources.credential_id.filtered(
-            lambda item: not self.env["pos.payment.method"]._revolut_environment_blocked(item.environment)
-            and (not item.next_refund_discovery_at
-                 or item.next_refund_discovery_at <= fields.Datetime.now())
+            lambda item: not item.next_refund_discovery_at
+            or item.next_refund_discovery_at <= fields.Datetime.now()
         ).sorted(lambda item: (item.next_refund_discovery_at or datetime.min, item.id))
         limit = max(1, min(int(batch_size), 5))
         processed = 0
@@ -147,7 +146,6 @@ class RefundDiscovery(models.Model):
             return
         anchor = sources[0]
         method = anchor.payment_method_id.sudo().with_company(anchor.company_id)
-        method._revolut_check_environment_access(anchor.environment)
         authority = {"credential_operation_id": anchor.id,
                      "environment": anchor.environment, "secret_reference": anchor.secret_reference}
         now = fields.Datetime.now()

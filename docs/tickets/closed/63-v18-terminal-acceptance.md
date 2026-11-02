@@ -30,8 +30,8 @@ cards, a genuine issuer decline and unobserved interruption variants remain
 accepted limitations; physical printing remains not applicable to the intended
 setup. Earlier open checklists are historical and superseded by this disposition.
 
-Enterprise/Odoo.sh acceptance remains separate in tickets 75–82. No live
-operation or production deployment was performed by this closure review.
+No live operation or production deployment was performed by this Community
+closure review.
 
 ## Purpose and evidence boundary
 

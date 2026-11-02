@@ -13,7 +13,8 @@ failed release report and its standalone checks, a bounded supplemental evidence
 table, and browser/device observation limitations. The current handoff now labels
 superseded operating instructions as historical. No old branch ancestry, live
 identifiers, private account setup or credential-restoration procedures were
-imported. Spec 75 and the approved Odoo.sh scope remain unchanged.
+imported. This record preserves the Community acceptance evidence recovered
+from the original checkout.
 
 ## Disposition of every source file
 
@@ -68,9 +69,9 @@ acceptance custodian.
 
 Verification for this documentation-only transfer checks the nine-file inventory,
 source preservation, restored report attribution, relative document links,
-unchanged corrected report/spec 75 and whitespace. Application tests are not
+unchanged corrected report and whitespace. Application tests are not
 rerun because no addon code, test code or runtime configuration changes.
 
 There is no additional implementation task or newly discovered financial
-obligation to open. Tickets 75–82 retain the agreed Odoo.sh work; ticket 83 retains
-the original deferred obligation without replay or forced completion.
+obligation to open. Ticket 83 retains the original deferred Community obligation
+without replay or forced completion.

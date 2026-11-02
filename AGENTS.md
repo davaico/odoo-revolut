@@ -22,19 +22,19 @@ The finished integration must:
 
 ## Project Structure
 
-Keep the addon at root-level `pos_revolut/`, matching the Odoo Apps and Odoo.sh layout imported from `18.0`. Keep models, views, security rules, static POS code, data, and tests inside that package. Put project documentation in `docs/` and reusable development scripts in `scripts/`.
+Keep the addon at root-level `pos_revolut/`, matching the released Odoo Apps layout. Keep models, views, security rules, static POS code, data, and tests inside that package. Put project documentation in `docs/` and reusable development scripts in `scripts/`.
 
-## Odoo 18 Agent Work
+## Odoo Community 18 Agent Work
 
-All Odoo 18 work targets `feat/v18_rev`. Before editing, verify the active branch.
+Community 18 work targets `feat/v18_rev`. Before editing, verify the active branch.
 Base task branches and parallel-agent worktrees on the latest `feat/v18_rev`, not
 `main`, and integrate their changes back into `feat/v18_rev`. Include this base and
-target in every Odoo 18 agent handoff.
+target in every Community 18 agent handoff.
 
-Validate hosted changes on `staging/18-enterprise`. Prepare a PR into `18.0`
-only when production-ready; that branch automatically deploys production.
-Retain the development tracker and acceptance records on `feat/v18_rev` when
-synchronizing production packaging or public-documentation changes.
+This branch retains the released Community `18.0.1.0.4` baseline and Community
+tickets/evidence. Prepare release changes for review against `18.0`. Select
+applicable fixes individually from other product lines and verify them here;
+do not merge a divergent product branch wholesale into this Community line.
 
 Before implementation or review, read
 [`docs/adr/0002-maintain-odoo-18-and-19-support.md`](docs/adr/0002-maintain-odoo-18-and-19-support.md)

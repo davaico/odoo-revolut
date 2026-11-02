@@ -5,13 +5,6 @@ const TERMINAL_FAILURE_STATES = new Set(["terminal_unavailable", "terminal_check
 
 export class ForegroundTimeout extends Error {}
 
-function requestErrorOutcome(error) {
-    if (error?.data?.name === "odoo.addons.pos_revolut.models.pos_payment_method.RevolutEnvironmentError") {
-        return "environment_blocked";
-    }
-    return error instanceof ForegroundTimeout ? "timed_out" : "interrupted";
-}
-
 export function isRevolut(line) {
     return line?.payment_method_id?.use_payment_terminal === "revolut";
 }
@@ -643,11 +636,7 @@ export class RevolutPaymentState {
                 this.showError(line, "register_access_denied");
                 return false;
             }
-            const failure = requestErrorOutcome(error);
-            if (failure === "environment_blocked") {
-                this.showError(line, failure);
-                return false;
-            }
+            const failure = error instanceof ForegroundTimeout ? "timed_out" : "interrupted";
             const outcome = !financialStartMayHaveOccurred(line) && line.uiState.revolutUndispatched
                 ? `discovery_${failure}` : failure;
             line.uiState.revolutLocalOutcome = outcome;
@@ -743,7 +732,7 @@ export class RevolutPaymentState {
                 return true;
             } catch (error) {
                 line.uiState.revolutMessage = false;
-                this.showError(line, requestErrorOutcome(error));
+                this.showError(line, error instanceof ForegroundTimeout ? "timed_out" : "interrupted");
                 return false;
             } finally {
                 line.uiState.revolutDiscovering = false;
@@ -909,7 +898,7 @@ export class RevolutPaymentState {
                 }
                 return false;
             }
-            this.showError(line, requestErrorOutcome(error));
+            this.showError(line, error instanceof ForegroundTimeout ? "timed_out" : "interrupted");
             return false;
         }
     }
@@ -918,7 +907,7 @@ export class RevolutPaymentState {
         if (line.uiState.revolutSnapshot?.state === "verified") {
             return;
         }
-        if (["interrupted", "timed_out", "environment_blocked"].includes(outcome)) {
+        if (["interrupted", "timed_out"].includes(outcome)) {
             line.uiState.revolutLocalOutcome = outcome;
         }
         const providerState = line.uiState.revolutSnapshot?.provider_state;

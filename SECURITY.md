@@ -10,11 +10,7 @@ Use synthetic examples. Keep secrets, card/customer data, live terminal/location
 
 ## Deployment
 
-Store Merchant secrets in the server secret store and worker environment, or in
-administrator-only database credential authorities. POS managers configure
-authorized references without reading keys. Database keys are included in
-backups; password masking is not encryption. Restrict database access,
-configuration, backups and logs; grant users only the registers they need.
+Keep Merchant secrets in the server secret store and worker environment. Odoo stores authorized variable references. Restrict configuration, backups and logs; grant users only the registers they need.
 
 Follow [Installation](docs/installation.md) and [Upgrading](docs/upgrading.md). Resolve uncertain payments/refunds through their original records using the [recovery steps](docs/user-guide.md#understand-the-payment-status).
 

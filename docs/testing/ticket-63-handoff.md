@@ -10,7 +10,7 @@ corrected READY report and integration into `18.0` through PR #88. The original
 pending refund/return/session remains unresolved and is now tracked by
 [ticket 83](../tickets/ready-for-human/83-finish-deferred-v18-refund-return-session.md).
 The historical checkpoints below remain evidence, not a claim of fresh live
-verification. Odoo.sh acceptance is separate in tickets 75–82.
+verification. This handoff covers the Community acceptance campaign only.
 
 The [legacy-work audit](legacy-v18-work-audit-20261030.md) accounts for all nine
 remaining files in the original checkout. It restores the initial failed release
@@ -127,8 +127,8 @@ The copy was removed. See [the focused results](ticket-63-final-no-money-recover
 
 These instructions describe the earlier bounded campaign only. Later recorded
 authorisations and outcomes superseded them; they are not current directions
-to repeat testing or reopen closed tickets. Current work is tracked in tickets
-75–83, with the preserved-record obligation specifically in ticket 83.
+to repeat testing or reopen closed tickets. The current preserved-record
+obligation is tracked in ticket 83.
 
 Real Merchant requests remain blocked on the local acceptance worker, and cron
 is disabled. Existing card collection/refund caps are fully consumed; refunds

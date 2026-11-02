@@ -60,14 +60,10 @@ class TestRevolutRefund(TestPointOfSaleCommon):
         self.request = self.enterContext(patch(
             "odoo.addons.pos_revolut.models.pos_payment_method.requests.request"
         ))
-        self._prepare_return()
-
-    def _prepare_return(self, **operation_values):
         original = self._order_payload(str(uuid4()), str(uuid4()))
         self.source = self._operation(
             original["uuid"], original["payment_ids"][0][2]["uuid"],
             financial_snapshot=self.env["pos.revolut.payment.operation"]._normalize_financial_snapshot(original),
-            **operation_values,
         )
         original["payment_ids"][0][2]["transaction_id"] = self.source.revolut_payment_id
         self.env["pos.order"].sync_from_ui([original])
@@ -82,130 +78,6 @@ class TestRevolutRefund(TestPointOfSaleCommon):
         self.payload["payment_ids"][0][2].update(amount=-12.34, transaction_id=False, payment_status="waiting")
         self.refund_id = str(uuid4())
         self.env.flush_all()
-
-    def _prepare_production_return(self):
-        reference = "ODOO_REVOLUT_SECRET_REFUND_LIVE_TEST"
-        self.env["pos.revolut.merchant.credential"].create({
-            "company_id": self.env.company.id, "environment": "production",
-            "secret_reference": reference,
-        })
-        self.session.write({"state": "closed"})
-        self.revolut_method.write({
-            "revolut_environment": "production", "revolut_secret_reference": reference,
-        })
-        self.session.write({"state": "opened"})
-        self.enterContext(patch.dict(os.environ, {reference: "test-only"}))
-        self._prepare_return(environment="production")
-
-    def test_odoo_sh_blocks_production_refund_before_dispatch(self):
-        self._prepare_production_return()
-        self._save_return_draft()
-        before = self.env["pos.revolut.refund.operation"].sudo().search_count([])
-        for stage in ("staging", "dev", "support", ""):
-            with self.subTest(stage=stage), patch.dict(os.environ, {"ODOO_STAGE": stage}):
-                with TestCase.assertRaisesRegex(self, UserError, "Production Revolut access is disabled"):
-                    self._start()
-                self.assertEqual(self.env["pos.revolut.refund.operation"].sudo().search_count([]), before)
-        self.request.assert_not_called()
-
-    def test_odoo_sh_preserves_pending_refund_and_discovery_evidence(self):
-        self._prepare_production_return()
-        self.request.side_effect = [
-            self._response(id=self.source.revolut_order_id, state="completed",
-                           amount=1234, currency=self.session.currency_id.name, refunded_amount=0),
-            self._refund_response(),
-        ]
-        with patch.dict(os.environ, {"ODOO_STAGE": "production"}):
-            started = self._start()
-        self.assertEqual(started["state"], "pending")
-        self.request.reset_mock()
-        def sandbox_discovery(verb, url, **kwargs):
-            self.assertEqual(verb, "GET")
-            self.assertEqual(url, "https://sandbox-merchant.revolut.com/api/orders")
-            return self._response(orders=[])
-        self.request.side_effect = sandbox_discovery
-        refunds = self.env["pos.revolut.refund.operation"]
-        refund = refunds.browse(started["operation_id"])
-        refund.invalidate_recordset()
-        before = refund.read()[0]
-        credential = self.source.credential_id
-        discovery_before = credential.read()[0]
-        evidence_before = self.env["pos.revolut.external.refund.evidence"].sudo().search_count([])
-        for stage in ("staging", "dev", "support", ""):
-            with self.subTest(stage=stage), patch.dict(os.environ, {"ODOO_STAGE": stage}):
-                with TestCase.assertRaisesRegex(self, UserError, "Production Revolut access is disabled"):
-                    refund.action_check_status()
-                refunds._cron_reconcile_refunds()
-                refund.invalidate_recordset()
-                credential.invalidate_recordset()
-                self.assertEqual(refund.read()[0], before)
-                self.assertEqual(credential.read()[0], discovery_before)
-                self.assertEqual(self.env["pos.revolut.external.refund.evidence"].sudo().search_count([]), evidence_before)
-        self.assertTrue(all("sandbox-merchant.revolut.com" in call.args[1]
-                            for call in self.request.call_args_list))
-
-    def test_neutralization_preserves_refund_identity_and_blocks_retry_and_cron(self):
-        from .neutralization_fixtures import neutralize
-
-        self._prepare_production_return()
-        self.request.side_effect = [
-            self._response(id=self.source.revolut_order_id, state="completed",
-                           amount=1234, currency=self.session.currency_id.name, refunded_amount=0),
-            self._refund_response(),
-        ]
-        with patch.dict(os.environ, {"ODOO_STAGE": "production"}):
-            started = self._start()
-        refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
-        refund.invalidate_recordset()
-        evidence = self.env["pos.revolut.external.refund.evidence"].sudo().create({
-            "credential_id": self.source.credential_id.id,
-            "original_operation_id": self.source.id,
-            "provider_order_id": str(uuid4()), "reason": "interrupted",
-        })
-        before, source_before, evidence_before = refund.read()[0], self.source.read()[0], evidence.read()[0]
-        for _ in range(2):
-            neutralize(self.env)
-            self.assertEqual(refund.read()[0], before)
-            self.assertEqual(self.source.read()[0], source_before)
-            self.assertEqual(evidence.read()[0], evidence_before)
-        self.source.credential_id.write({"revoked": False})
-        # Test-only copied configuration; open-session native edits are frozen.
-        self.cr.execute("UPDATE pos_payment_method SET active = true WHERE id = %s", [self.revolut_method.id])
-        self.revolut_method.invalidate_recordset()
-        self.env.flush_all()
-        discovery_before = self.source.credential_id.read()[0]
-        cron = self.env.ref("pos_revolut.ir_cron_reconcile_refunds")
-        cron.write({"active": True})
-        self.request.reset_mock(side_effect=True)
-        def sandbox_discovery(verb, url, **kwargs):
-            self.assertEqual((verb, url), ("GET", "https://sandbox-merchant.revolut.com/api/orders"))
-            return self._response(orders=[])
-        self.request.side_effect = sandbox_discovery
-        for stage in ("staging", "production", None):
-            with self.subTest(stage=stage), patch.dict(os.environ):
-                if stage is None:
-                    os.environ.pop("ODOO_STAGE", None)
-                else:
-                    os.environ["ODOO_STAGE"] = stage
-                for action in (
-                    lambda: refund.sudo().action_check_status(),
-                    lambda: self.revolut_method.revolut_poll_refund(refund.id, refund.order_uuid, refund.payment_line_uuid),
-                ):
-                    with TestCase.assertRaisesRegex(self, UserError, "Production Revolut access is disabled"):
-                        action()
-                # Retrying the same return can only rediscover its pending reservation.
-                recovered = self._start()
-                self.assertEqual(recovered["operation_id"], refund.id)
-                self.assertEqual(recovered["state"], "pending")
-                cron.method_direct_trigger()
-                self.env.invalidate_all()
-                self.assertEqual(refund.read()[0], before)
-                self.assertEqual(self.source.read()[0], source_before)
-                self.assertEqual(evidence.read()[0], evidence_before)
-                self.assertEqual(self.source.credential_id.read()[0], discovery_before)
-        self.assertFalse(recovered["retry_safe"])
-        self.assertTrue(all(call.args[:2] == ("GET", "https://sandbox-merchant.revolut.com/api/orders")
-                            for call in self.request.call_args_list))
 
     def test_public_saved_return_requires_persisted_draft_before_provider_call(self):
         manager = self._mutation_actor()

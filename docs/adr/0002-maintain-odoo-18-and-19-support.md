@@ -10,8 +10,8 @@ and partial refunds. A temporary customer backport or reduced-feature pilot
 does not meet the agreed scope.
 
 Maintain separate version branches in this repository, retaining the
-`pos_revolut` addon name. The owner selected `feat/v18_rev` for Odoo 18; the existing
-Odoo 19 line remains on `main`. Odoo 18 task branches and agent worktrees start
+`pos_revolut` addon name. The owner selected `feat/v18_rev` for Community 18; the existing
+Odoo 19 line remains on `main`. Community 18 task branches and agent worktrees start
 from the latest `feat/v18_rev` and integrate back there. The operational agent rule
 is recorded in root `AGENTS.md`.
 

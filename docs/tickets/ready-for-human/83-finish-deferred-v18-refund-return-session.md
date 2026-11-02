@@ -5,12 +5,12 @@
 **Triage:** ready-for-human
 
 **Work branch:** `feat/v18_rev` for documentation or any separately scoped fix.
-This is an existing acceptance-record follow-up, not an Odoo.sh rollout task.
+This is an existing Community acceptance-record follow-up.
 
 **Parent:** [63 — Perform controlled Odoo 18 terminal acceptance](../closed/63-v18-terminal-acceptance.md)
 
 **Blocked by:** None among implementation tickets. This obligation was accepted
-as non-blocking for release and does not block tickets 75–82.
+as non-blocking for the accepted Community release.
 
 **External blockers:** Provider finality for the original refund and access to
 the preserved acceptance records through their authorised custodian. The last
