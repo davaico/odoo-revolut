@@ -40,9 +40,10 @@ and identify the intended client environment before activation.
    **Staging configuration is not promoted automatically with code.** Create the
    Production authority for the correct company and environment, configure the
    bank journal, Merchant location/terminal UUIDs and credential reference, enable
-   automatic terminal validation, set the exact tip product and grant only the
-   intended backend users register access. Keep cashier access closed until the
-   acceptance steps below finish.
+   automatic terminal validation and set the exact tip product. Initially grant
+   register access only to the acceptance operator and supervisor. Prepare the
+   ordinary cashier access list, then apply those grants only after the acceptance
+   steps below finish.
 4. Use Database credentials where persistent environment injection is unavailable.
    Only a system administrator enters keys. Verify the selected source; an
    interactive shell export does not provision HTTP/cron workers. For environment
@@ -81,8 +82,9 @@ refund amount before starting. Retain real identifiers only in restricted record
    refund is not acceptance. Full and partial refunds have mocked regression
    coverage; this bounded live check need not repeat the entire hardware campaign.
 4. Record final outcomes, client build/version, participant and timestamp in
-   restricted evidence, with a sanitized acceptance summary. Enable ordinary
-   cashier use only after both outcomes and native completion are accepted.
+   restricted evidence, with a sanitized acceptance summary. Apply the approved
+   cashier register grants and enable ordinary cashier use only after both
+   outcomes and native completion are accepted.
 
 Earlier hardware limitations remain: two distinct physical cards in one split,
 real issuer decline and unobserved interruption variants were not established.

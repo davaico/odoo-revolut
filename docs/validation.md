@@ -3,12 +3,12 @@
 The released Community `18.0.1.0.4` was tested with Odoo Community
 `18.0.20261015` and PostgreSQL `16.14`. Its historical coverage is retained below.
 The Enterprise/Odoo.sh `18.0.1.0.8` candidate has separate lifecycle evidence and
-release validation in progress; it is not yet ready for promotion.
+release validation recorded below. Client activation remains a separate approved step.
 
 ## Enterprise/Odoo.sh 18 candidate
 
-Frozen source: `f8abaa3fcab1f1261ab04cc92bdf1bdc6d03d9ea`; exact addon tree:
-`a6b87c19d9615ea07ff0b9dd86c82b4495f26e70`. This includes the corrected `.4`
+Frozen source: `3f2ff4a167f154fafe5ff886cb506a47145b0bae`; exact addon tree:
+`57730fd0d5a81ea6a288081ac0eced63eb9e5b1b`. This includes the corrected `.4`
 baseline plus server environment protection, administrator-managed credentials,
 copy neutralization and configuration guidance. Listing prose now acknowledges
 the bounded hosted evidence. No payment runtime code changed during release
@@ -20,13 +20,33 @@ exercised populated installation, credential access, neutralization/copy safety,
 HTTP recovery and actual native cron-worker interruption/replacement for the same
 payment/refund attempts. The platform-managed restart command and scheduling SLA
 were not established. Production runtime files match the assembled candidate;
-manifest prose and test fixtures differ. This attributes hosted results to the
+manifest/store-listing prose and test fixtures differ. This attributes hosted results to the
 actual build rather than claiming the assembled revision itself ran there.
 
-Assembled-candidate populated installation/update, versioned `.4 -> .8` upgrade,
-neutralized first installation and final full-addon results are pending. Current
-portable checks: 146 JavaScript passes and 80 host tests with three existing
-optional PDF dependency skips.
+| Check | Result and source |
+| --- | --- |
+| Retained clean full-suite prerequisite | `fccfd12`: 816 cases, zero failures/errors, one optional `pos_hr` skip |
+| Assembled-source full invocation | `3f2ff4a`: 816 cases, zero failures/errors, five skips (optional `pos_hr` plus four Chrome startup skips); not a clean fresh full run |
+| Four exact skipped saved-refund browser cases | `3f2ff4a`: 4 passed, zero failures/errors/skips; original references and no duplicate dispatch verified |
+| Populated native first installation and same-candidate update | `f8abaa3`: 31 focused tests in each phase; native history and 29 configuration/financial records preserved |
+| Production `.4 -> .8` versioned upgrade | `f8abaa3`: native/financial history and environment authorities preserved; original-key GET-only recovery passed |
+| Neutralized before addon installation | `f8abaa3`: both Production key sources blocked with zero HTTP/reservations; Sandbox usable |
+| JavaScript and portable tooling | 146 JS passes; 80 host tests, zero failures/errors, three existing optional PDF dependency skips |
+
+The final addon differs from `f8abaa3` only in store-listing prose. Compared with
+`fccfd12`, runtime, manifest settings and automatically loaded tests are identical;
+only manifest/store prose and two unimported standalone cron fixtures differ.
+The retained clean-full evidence, assembled invocation, exact four-case completion
+and install/upgrade checks form the release evidence. All ten previously affected
+browser cases executed successfully on the final addon across its full/focused
+runs. Counts describe separate runs and must not be added together.
+
+The new full run's four Chrome startup skips coincided with a severe late shared-host
+resource burst; root cause remains unestablished. Its rejected clean-run status is
+preserved. A first invocation was deliberately interrupted before an aggregate to
+include the final listing clarification. Neither run is presented as a clean full
+pass. All provider traffic was mocked and real Merchant HTTP blocked. No payment
+assertion or test timeout was changed.
 
 This reference project remains test-only. Mocked Community-image tests and bounded
 Enterprise lifecycle evidence do not establish a client's terminal, entitlement,
@@ -40,7 +60,7 @@ each line. Enterprise credential/hosting changes require deliberate adaptation
 before adoption there. These tests do not certify either unchanged Community line
 or Odoo 19 Enterprise/Odoo.sh.
 
-## Recorded automated coverage
+## Recorded Community .4 coverage
 
 Application results apply to candidate
 [`ed82c90`](https://github.com/davaico/odoo-revolut/commit/ed82c90c1eddfb1bf898a8978c99e2c874fd7d5b).

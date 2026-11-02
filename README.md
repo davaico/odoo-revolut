@@ -1,6 +1,6 @@
 # POS Revolut for Odoo 18
 
-Connect Odoo Community 18 Point of Sale to a Revolut terminal. Send the amount,
+Connect Odoo 18 Point of Sale to a Revolut terminal. Send the amount,
 let the customer pay, and complete the sale after Odoo verifies the underlying
 payment. Credentials and authenticated Revolut calls stay on the server.
 
@@ -12,7 +12,10 @@ tips, full and partial refunds, interrupted-payment recovery, external refund
 reconciliation, shared-register access, native receipts, invoices and accounting.
 Odoo 18 preset and pickup controls provide dine-in and timed Takeout workflows.
 
-Test runtime: **Odoo Community 18.0.20261015** and **PostgreSQL 16.14**.
+Local test runtime: **Odoo Community 18.0.20261015** and **PostgreSQL 16.14**.
+Bounded Odoo.sh Enterprise 18 lifecycle checks use mocked provider traffic.
+See [Validation](docs/validation.md) and [Release and activation](docs/releasing.md)
+for coverage, client setup and live acceptance requirements.
 See [Validation](docs/validation.md) for recorded automated coverage and device
 testing limitations. Installing into an existing Odoo 18 database preserves
 native business data; importing another integration's payment history is outside

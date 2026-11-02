@@ -40,11 +40,9 @@ the source of a temporary test project; that label does not mean live business u
 
 Perform addon installation, permission, payment/refund, restart, reconciliation
 and copy acceptance on **Staging**, using synthetic data and mocked provider
-traffic. The test project's **Production** branch supplies the source database
-for staging copies. Earlier registration checks and an approved, rolled-back
-registration attempt used Production; those were not addon payment tests and
-are not prerequisites to repeat for this evaluation. Do not deploy or configure
-the addon there merely to finish staging acceptance.
+traffic. A reference test project's **Production** branch can supply the source
+database for staging copies. Do not deploy or configure the addon there merely
+to finish staging acceptance.
 
 The subscription owner checks registration on the intended **production**
 database when permanent activation is needed. If its Home page requires a first
