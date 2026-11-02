@@ -31,9 +31,20 @@ For a test-only evaluation, an active trial is sufficient: record its status and
 expiry without treating permanent registration as a staging-test prerequisite.
 Odoo.sh trial projects are time-limited and may be deleted after expiry; retain
 test evidence outside the build. Continued hosting beyond the trial and actual
-operational deployment require the appropriate entitlement. Ticket 82 owns live
-registration. A branch labelled Production can still be the source of a
-temporary test project; that label alone does not mean the owner is using it live.
+operational deployment require the appropriate entitlement. The owner will not
+activate a paid Enterprise production plan on this project; it is only a test
+harness for an addon delivered to clients. Any future ticket 82 live acceptance
+must identify the client's environment and use that client's hosting/subscription
+arrangements with separate approval. A branch labelled Production can still be
+the source of a temporary test project; that label does not mean live business use.
+
+Perform addon installation, permission, payment/refund, restart, reconciliation
+and copy acceptance on **Staging**, using synthetic data and mocked provider
+traffic. The test project's **Production** branch supplies the source database
+for staging copies. Earlier registration checks and an approved, rolled-back
+registration attempt used Production; those were not addon payment tests and
+are not prerequisites to repeat for this evaluation. Do not deploy or configure
+the addon there merely to finish staging acceptance.
 
 The subscription owner checks registration on the intended **production**
 database when permanent activation is needed. If its Home page requires a first

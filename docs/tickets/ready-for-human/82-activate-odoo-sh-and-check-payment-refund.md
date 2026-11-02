@@ -4,8 +4,18 @@
 
 **Triage:** ready-for-human
 
+**Client-only scope, 2026-11-02:** The current Odoo.sh project is a temporary
+validation environment for an addon delivered to clients. The owner will not
+activate its paid Enterprise production plan or operate client hosting. This
+ticket does not authorize converting that test project to live use. Identify
+the intended client environment, client administrator and hosting/subscription
+arrangements before any activation. All references to production below mean
+that approved client environment, not the current test project's branch label.
+
 **Work branch:** Validated release from `staging/18-enterprise` through the
-reviewed PR into `18.0`; that branch automatically deploys production.
+reviewed PR into `18.0`; that branch automatically deploys the current test
+project's Production build. It does not deploy the addon to client databases.
+Client installation and its resulting build/version must be verified separately.
 
 **Parent:** [75 — Adapt Revolut to Odoo.sh Enterprise 18](../ready-for-agents/75-adapt-revolut-to-odoo-sh.md)
 
@@ -28,8 +38,9 @@ this live check verifies the initial deployment rather than narrowing support.
 ## Acceptance criteria
 
 - [ ] Confirm release approval and the exact tested candidate, review deployment
-  and recovery instructions, then promote only the reviewed PR into `18.0`.
-  Verify the resulting build and installed addon version.
+  and recovery instructions, then promote only the reviewed PR into `18.0`
+  when that release step is approved. Verify the client installation/build and
+  installed addon version separately from the test project's automatic build.
 - [ ] Apply the required production configuration and appropriate Enterprise
   registration, verifying administrator permissions, company, merchant authority
   and terminal before enabling financial operations. Do not assume staging

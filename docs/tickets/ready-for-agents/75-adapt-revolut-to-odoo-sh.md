@@ -24,9 +24,12 @@ credentials. These gate the corresponding deployment steps, not local work.
 
 **Test-only clarification, 2026-11-02:** The owner is evaluating deployment, not
 operating this project live. Verified active-trial status is sufficient for
-ticket 80; permanent Enterprise activation remains part of ticket 82 before
-operational use. This clarification does not extend trial limits or authorize
-live financial operations.
+ticket 80. The owner further clarified that the deliverable is a reusable addon
+for clients, not an owner-operated hosting service. The current Odoo.sh project
+will remain test-only: do not activate a paid Enterprise production plan here.
+Any future ticket 82 live acceptance belongs to an identified client environment
+under that client's hosting/subscription arrangements and separate approval.
+This clarification does not extend trial limits or authorize live operations.
 
 **Specification agreed:** 2026-10-30. The owner confirmed scope and the testing
 boundaries in the planning chat. This ticket records requirements, not completed

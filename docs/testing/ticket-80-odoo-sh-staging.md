@@ -34,7 +34,10 @@ deployment testing, not operational use. The active trial is sufficient for the
 current evaluation. Permanent registration is not a ticket 80 blocker; record
 the verified trial status and expiry instead. Earlier registration attempts
 below remain historical evidence. Ticket 82 retains appropriate registration
-before live financial use. This does not establish permanent entitlement or
+before live financial use in a future identified client environment. The owner
+will not activate a paid Enterprise production plan on the current test project
+or operate client hosting. The deliverable is the addon for clients. This does
+not establish permanent entitlement or
 extend either project or database trial limits. Official reference:
 [Odoo.sh trial scope and limits](https://www.odoo.sh/faq).
 The five-file scope clarification passed Standards and Spec reviews with zero
@@ -102,6 +105,22 @@ it shows safe status flags with private build context, not the code. Both
 Standards and Spec continuation reviews reported zero new findings. Relative
 documentation links and `git diff --check` passed; no addon code changed or
 application test suite was rerun for this documentation-only continuation.
+
+### Environment boundary clarification
+
+Addon installation, focused permissions/credential tests, mocked payment/refund
+recovery, HTTP restart, scheduled credential probes, neutralization and populated
+first-install checks were performed on **Staging** builds 40905864/41044597.
+The **Production** build 40905690 was used for registration-status inspection
+and the explicitly approved registration/diagnostic attempts above, both rolled
+back. No addon production deployment or live Revolut operation was performed.
+That registration investigation was unnecessary for the clarified test-only
+goal. Further addon acceptance stays on Staging; the test project's Production
+database is only the source for fresh staging copies, not a client live database.
+This six-file client/environment clarification passed independent Standards and
+Spec reviews with zero findings, relative-link checks and `git diff --check`.
+It changed documentation only; no application tests or hosted mutations were
+needed or performed for the clarification.
 
 ## Hosted focused tests
 
@@ -364,7 +383,8 @@ registration requirement as recorded above.
 
 The database remains a confirmed unregistered trial; its verified status is
 accepted for the owner's current test-only scope. Permanent registration is
-deferred to ticket 82 rather than blocking this evaluation. A running platform
+outside this test project's scope; any future ticket 82 activation belongs to an
+identified client environment rather than blocking this evaluation. A running platform
 cron-worker restart was unavailable; successful platform-scheduled credential
 reads, manual financial cron invocation and HTTP restart coverage do not close
 that gap. Ticket 80 stays claimed/open. This report does not authorize promotion
