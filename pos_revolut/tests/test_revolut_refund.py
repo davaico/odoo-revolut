@@ -144,6 +144,69 @@ class TestRevolutRefund(TestPointOfSaleCommon):
         self.assertTrue(all("sandbox-merchant.revolut.com" in call.args[1]
                             for call in self.request.call_args_list))
 
+    def test_neutralization_preserves_refund_identity_and_blocks_retry_and_cron(self):
+        from .neutralization_fixtures import neutralize
+
+        self._prepare_production_return()
+        self.request.side_effect = [
+            self._response(id=self.source.revolut_order_id, state="completed",
+                           amount=1234, currency=self.session.currency_id.name, refunded_amount=0),
+            self._refund_response(),
+        ]
+        with patch.dict(os.environ, {"ODOO_STAGE": "production"}):
+            started = self._start()
+        refund = self.env["pos.revolut.refund.operation"].browse(started["operation_id"])
+        refund.invalidate_recordset()
+        evidence = self.env["pos.revolut.external.refund.evidence"].sudo().create({
+            "credential_id": self.source.credential_id.id,
+            "original_operation_id": self.source.id,
+            "provider_order_id": str(uuid4()), "reason": "interrupted",
+        })
+        before, source_before, evidence_before = refund.read()[0], self.source.read()[0], evidence.read()[0]
+        for _ in range(2):
+            neutralize(self.env)
+            self.assertEqual(refund.read()[0], before)
+            self.assertEqual(self.source.read()[0], source_before)
+            self.assertEqual(evidence.read()[0], evidence_before)
+        self.source.credential_id.write({"revoked": False})
+        # Test-only copied configuration; open-session native edits are frozen.
+        self.cr.execute("UPDATE pos_payment_method SET active = true WHERE id = %s", [self.revolut_method.id])
+        self.revolut_method.invalidate_recordset()
+        self.env.flush_all()
+        discovery_before = self.source.credential_id.read()[0]
+        cron = self.env.ref("pos_revolut.ir_cron_reconcile_refunds")
+        cron.write({"active": True})
+        self.request.reset_mock(side_effect=True)
+        def sandbox_discovery(verb, url, **kwargs):
+            self.assertEqual((verb, url), ("GET", "https://sandbox-merchant.revolut.com/api/orders"))
+            return self._response(orders=[])
+        self.request.side_effect = sandbox_discovery
+        for stage in ("staging", "production", None):
+            with self.subTest(stage=stage), patch.dict(os.environ):
+                if stage is None:
+                    os.environ.pop("ODOO_STAGE", None)
+                else:
+                    os.environ["ODOO_STAGE"] = stage
+                for action in (
+                    lambda: refund.sudo().action_check_status(),
+                    lambda: self.revolut_method.revolut_poll_refund(refund.id, refund.order_uuid, refund.payment_line_uuid),
+                ):
+                    with TestCase.assertRaisesRegex(self, UserError, "Production Revolut access is disabled"):
+                        action()
+                # Retrying the same return can only rediscover its pending reservation.
+                recovered = self._start()
+                self.assertEqual(recovered["operation_id"], refund.id)
+                self.assertEqual(recovered["state"], "pending")
+                cron.method_direct_trigger()
+                self.env.invalidate_all()
+                self.assertEqual(refund.read()[0], before)
+                self.assertEqual(self.source.read()[0], source_before)
+                self.assertEqual(evidence.read()[0], evidence_before)
+                self.assertEqual(self.source.credential_id.read()[0], discovery_before)
+        self.assertFalse(recovered["retry_safe"])
+        self.assertTrue(all(call.args[:2] == ("GET", "https://sandbox-merchant.revolut.com/api/orders")
+                            for call in self.request.call_args_list))
+
     def test_public_saved_return_requires_persisted_draft_before_provider_call(self):
         manager = self._mutation_actor()
         payment = self.payload["payment_ids"][0][2]

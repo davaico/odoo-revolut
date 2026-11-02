@@ -602,13 +602,16 @@ class PosPaymentMethod(models.Model):
         # Missing metadata supports self-hosted deployments; it does not attest
         # Odoo.sh production. Empty and unknown stages fail closed for live API.
         stage = os.environ.get("ODOO_STAGE")
-        return environment != "sandbox" and stage is not None and stage != "production"
+        neutralized = self.env["ir.config_parameter"].sudo().get_param("database.is_neutralized")
+        return environment != "sandbox" and (
+            bool(neutralized) or (stage is not None and stage != "production")
+        )
 
     @api.model
     def _revolut_check_environment_access(self, environment):
         if self._revolut_environment_blocked(environment):
             raise RevolutEnvironmentError(_(
-                "Production Revolut access is disabled in this Odoo.sh test environment. "
+                "Production Revolut access is disabled in this test or neutralized database. "
                 "Use a sandbox terminal for testing. Reconcile existing production "
                 "payments and refunds in the production environment."
             ))

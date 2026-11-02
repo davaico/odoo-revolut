@@ -56,3 +56,5 @@ from . import test_revolut_restaurant_refund_ui
 from . import test_revolut_refund_history_ui
 
 from . import test_external_refund_ui
+
+from . import test_revolut_neutralization

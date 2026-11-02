@@ -37,9 +37,51 @@ remove the platform's stage variable to enable testing against live terminals.
 On a supported self-hosted server without `ODOO_STAGE`, the configured
 Sandbox/Production behavior continues to work. Absence of that variable is
 self-hosted compatibility, rather than evidence of Odoo.sh production. A present
-`production` value permits configured production access; ordinary credential,
+`production` value permits configured production access only on a database that
+has not been neutralized; ordinary credential,
 company and register checks still apply. No secret rotation is required for
 this policy change.
+
+## Database copies and neutralization
+
+Use Odoo's **neutralize** option when restoring or duplicating a database for
+testing. For an offline self-hosted copy, stop its Odoo workers and run the
+[Odoo neutralization command](https://www.odoo.com/documentation/18.0/developer/reference/cli.html#neutralize-neutralize-a-database)
+with the copied database's configuration and the addon on `addons_path`:
+
+```bash
+odoo neutralize --config /path/to/copy.conf --database COPIED_DATABASE
+```
+
+When the addon is installed, Odoo runs its `data/neutralize.sql` hook. Across
+all companies this erases Production database keys, revokes Production
+Merchant authorities (including environment-backed authorities), archives
+Production Revolut methods and disables the two Revolut reconciliation jobs.
+Repeating neutralization is safe. Sandbox authorities and methods remain
+available; Odoo's base neutralization also disables scheduled actions.
+
+Cleanup preserves payment/refund history, original credential bindings,
+provider references, dispatch records, pending reservations and reconciliation
+evidence. A copied uncertain payment remains uncertain; cleanup cannot mark it
+paid, cancel it, or permit a replacement charge/refund. Reconcile the original
+live attempt in production. Archiving retains the Revolut terminal integration
+and never converts the method to a manually confirmable payment method.
+
+The runtime guard also rejects Production access whenever Odoo marks the
+database neutralized, including a self-hosted copy without `ODOO_STAGE`, a
+server labelled `production`, and an addon installed **after** neutralization.
+Re-entering a live database key, supplying a valid live environment key,
+unarchiving a method or reactivating cron cannot enable live API access on
+staging or a neutralized database. Database cleanup cannot erase keys from the
+server environment, so keep live keys out of test-server configuration too.
+
+For testing, create a separate **Sandbox** authority and method with sandbox
+credentials and devices, configure a test register and deliberately enable the
+reconciliation jobs if needed. Keep copied Production records for reference;
+do not repurpose their authority or transaction identity for sandbox tests.
+A raw PostgreSQL copy or backup restore without Odoo neutralization does not
+execute cleanup; ORM `copy=False` exclusions do not protect database copies.
+Protect the original backups, which still contain their original keys.
 
 ## Install
 

@@ -1,11 +1,11 @@
 # 78 — Make database copies safe
 
-**State:** open
+**State:** claimed
 
 **Triage:** ready-for-agent
 
-**Work branch:** `feat/v18_rev`; base implementation branches on its latest
-reviewed revision and integrate back there. Do not push to `18.0`.
+**Work branch:** `codex/78-safe-database-copies`, based on `feat/v18_rev` at
+`f1bb895`; integration target: `feat/v18_rev`. Do not push to `18.0`.
 
 **Parent:** [75 — Adapt Revolut to Odoo.sh Enterprise 18](75-adapt-revolut-to-odoo-sh.md)
 

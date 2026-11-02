@@ -191,6 +191,59 @@ class TestRevolutPayment(TransactionCase):
                 self.assertEqual(operation.read()[0], before)
         request.assert_not_called()
 
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_LIVE_TEST": "synthetic-live-key"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.get")
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_neutralized_copy_preserves_payment_and_blocks_reactivation(self, request, connection):
+        from .neutralization_fixtures import neutralize
+
+        self._configure_production()
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        request.side_effect = self._start_responses()
+        with patch.dict(os.environ, {"ODOO_STAGE": "production"}):
+            started = self._start(order_uuid, line_uuid)
+        operation = self.env["pos.revolut.payment.operation"].browse(started["operation_id"])
+        operation.invalidate_recordset()
+        operation.write({"state": "unresolved", "local_outcome": "interrupted"})
+        dispatches = self.env["pos.revolut.payment.dispatch"].search([("operation_id", "=", operation.id)])
+        before, dispatch_before = operation.read()[0], dispatches.read()
+        request.reset_mock(side_effect=True)
+        for _ in range(2):
+            neutralize(self.env)
+            self.assertEqual(operation.read()[0], before)
+            self.assertEqual(dispatches.read(), dispatch_before)
+        # Reactivation cannot override either the stage or the database marker.
+        operation.credential_id.write({"revoked": False})
+        # Test-only copied configuration: native Odoo freezes methods in open
+        # sessions. Simulate reactivation without closing an uncertain sale.
+        self.cr.execute("UPDATE pos_payment_method SET active = true WHERE id = %s", [self.payment_method.id])
+        self.payment_method.invalidate_recordset()
+        self.env.ref("pos_revolut.ir_cron_reconcile_payments").write({"active": True})
+        for stage in ("staging", "production", None):
+            with self.subTest(stage=stage), patch.dict(os.environ):
+                if stage is None:
+                    os.environ.pop("ODOO_STAGE", None)
+                else:
+                    os.environ["ODOO_STAGE"] = stage
+                for action in (
+                    lambda: self.payment_method.action_revolut_check_connection(),
+                    lambda: self.payment_method.revolut_poll_payment(operation.id, order_uuid, line_uuid),
+                    lambda: self.payment_method.revolut_cancel_payment(operation.id, order_uuid, line_uuid),
+                    lambda: operation.sudo().action_revolut_reconcile(),
+                    lambda: self._start(order_uuid, line_uuid),
+                    lambda: self._start(str(uuid4()), str(uuid4())),
+                ):
+                    with self.assertRaisesRegex(UserError, "Production Revolut access is disabled"):
+                        action()
+                self.env.ref("pos_revolut.ir_cron_reconcile_payments").method_direct_trigger()
+                operation.invalidate_recordset()
+                self.assertEqual(operation.read()[0], before)
+                self.assertEqual(dispatches.read(), dispatch_before)
+        self.assertEqual(self.payment_method.revolut_find_payment(order_uuid, line_uuid)["operation_id"], operation.id)
+        self.assertFalse(operation.retry_safe)
+        request.assert_not_called()
+        connection.assert_not_called()
+
     @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
     @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
     def test_new_payment_requires_original_financial_contents(self, request):
