@@ -19,11 +19,22 @@ target. No Enterprise activation code or permanent registration is required by
 the test plan. Verify trial/build usability before execution. Use the actual
 operational Production-stage database for real traffic; Staging/Development and
 neutralized copies remain blocked. Do not bypass those guards or change expiry.
+For this reference project, the owner may approve candidate promotion into
+`18.0` for the team's trial testing after mocked and hosted validation, before
+T82's real terminal acceptance. That promotion deploys trial code; it does not
+establish client rollout or marketplace release readiness.
 The deployment and financial amounts require concrete approval before execution;
 T82's reopening is not a merge or money-movement instruction. Record final
 provider outcomes and matching native records, including partial and remaining
 balance refunds, under [T82](tickets/ready-for-human/82-activate-odoo-sh-and-check-payment-refund.md).
 The client instructions below remain guidance for separate future deployments.
+
+Odoo.sh deployment and Odoo Apps marketplace publication are separate paths.
+Check the publisher's registered repository/branch and automatic/manual scanning
+policy before promoting test code into a branch used by the marketplace.
+Disabling a GitHub CI workflow does not by itself establish that marketplace
+scanning is paused. Keep marketplace publication paused for trial-only promotion;
+resume it only after acceptance and separate release approval.
 
 ## Before approving the release
 
