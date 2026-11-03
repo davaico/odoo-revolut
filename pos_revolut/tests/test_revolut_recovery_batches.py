@@ -40,19 +40,23 @@ class TestRevolutRecoveryBatches(TransactionCase):
         self.request.side_effect = self._http
         self._create_payments()
 
-    def _create_payments(self):
+    def _create_payments(self, environment="sandbox"):
         self.payments = []
+        reference = "ODOO_REVOLUT_SECRET_BATCH_TEST"
+        if environment == "production":
+            reference = "ODOO_REVOLUT_SECRET_BATCH_LIVE_TEST"
+            self.enterContext(patch.dict(os.environ, {reference: "test-only"}))
         with self.registry.cursor() as cursor:
             env = api.Environment(cursor, SUPERUSER_ID, self.context)
             for index in range(2):
                 method = env["pos.payment.method"].create({
                     "name": "Revolut recovery batch test",
                     "payment_method_type": "terminal", "use_payment_terminal": "revolut",
-                    "revolut_environment": "sandbox",
+                    "revolut_environment": environment,
                     "revolut_location_id": str(uuid4()),
                     "revolut_terminal_id": str(uuid4()),
                     "revolut_fulfilment_type": "eat_in",
-                    "revolut_secret_reference": "ODOO_REVOLUT_SECRET_BATCH_TEST",
+                    "revolut_secret_reference": reference,
                 })
                 config = env["pos.config"].create({
                     "name": "Revolut recovery batch test",
@@ -71,13 +75,13 @@ class TestRevolutRecoveryBatches(TransactionCase):
                     "amount": 12.34, "amount_minor": 1234,
                     "currency_id": config.currency_id.id,
                     "currency_code": config.currency_id.name,
-                    "environment": "sandbox", "location_id": method.revolut_location_id,
+                    "environment": environment, "location_id": method.revolut_location_id,
                     "terminal_id": method.revolut_terminal_id, "fulfilment_type": "eat_in",
                     "secret_reference": method.revolut_secret_reference,
                     "state": "pending", "revolut_order_id": order_id,
                     "revolut_payment_intent_id": intent_id,
                     "blocking_order_key": f"{env.company.id}:{order_uuid}",
-                    "blocking_terminal_key": f"sandbox:{method.revolut_terminal_id}",
+                    "blocking_terminal_key": f"{environment}:{method.revolut_terminal_id}",
                     "next_reconcile_at": self.now - timedelta(seconds=2 - index),
                 })
                 env["pos.revolut.payment.dispatch"].create([
@@ -106,6 +110,30 @@ class TestRevolutRecoveryBatches(TransactionCase):
                     "state": "captured",
                 }
             cursor.commit()
+
+    def _assert_odoo_sh_batch_keeps_sandbox(self, kind):
+        sandbox = self._make_refunds()[0] if kind == "refund" else self.payments[0]
+        self._create_payments(environment="production")
+        live = self._make_refunds()[0] if kind == "refund" else self.payments[0]
+        with self.registry.cursor() as cursor:
+            env = api.Environment(cursor, SUPERUSER_ID, self.context)
+            env[f"pos.revolut.{kind}.operation"].browse(live["id"]).write({
+                "next_reconcile_at": self.now - timedelta(days=1),
+            })
+            cursor.commit()
+        with patch.dict(os.environ, {"ODOO_STAGE": "staging"}):
+            self._cron(kind=f"{kind}s", batch_size=1)
+        self.assertEqual(self._status(sandbox, kind=kind)["state"], "verified")
+        self.assertEqual(self._status(live, kind=kind)["state"], "pending")
+        self.assertFalse(self._status(live, kind=kind)["retry_safe"])
+        self.assertTrue(all(call.args[1].startswith("https://sandbox-merchant.revolut.com/")
+                            for call in self.request.call_args_list))
+
+    def test_odoo_sh_blocked_live_attempts_do_not_starve_sandbox_payments(self):
+        self._assert_odoo_sh_batch_keeps_sandbox("payment")
+
+    def test_odoo_sh_blocked_live_attempts_do_not_starve_sandbox_refunds(self):
+        self._assert_odoo_sh_batch_keeps_sandbox("refund")
 
     def _unschedule(self):
         # Fixtures use real commits, so cleanup must also use a real cursor.

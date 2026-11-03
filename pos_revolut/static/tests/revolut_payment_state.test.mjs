@@ -2415,3 +2415,33 @@ test("native saved refund sync must not report completion after losing verified 
     assert.equal(line.transaction_id, "refund-81");
     assert.equal(line.payment_ref_no, "refund-81");
 });
+
+test("deployment restriction preserves payment and refund exposure with specific feedback", async () => {
+    for (const refund of [false, true]) {
+        const blocked = { data: {
+            name: "odoo.addons.pos_revolut.models.pos_payment_method.RevolutEnvironmentError",
+            message: "Production Revolut access is disabled in this Odoo.sh test environment.",
+        } };
+        const { state, order, line, errors, calls } = fixture({ refund, call() { throw blocked; } });
+        line.uiState.revolutOperationId = 52;
+        line.uiState.revolutStarted = true;
+        line.uiState.revolutSnapshot = {
+            operation_id: 52, state: "unresolved", order_id: "original-order",
+            payment_intent_id: "original-intent", retry_safe: false,
+        };
+        const before = structuredClone(line.uiState.revolutSnapshot);
+        assert.equal(await state.request(order, line), false);
+        assert.equal(paymentOutcome(line), "environment_blocked");
+        assert.deepEqual(errors, ["environment_blocked"]);
+        assert.deepEqual(line.uiState.revolutSnapshot, before);
+        assert.equal(paymentActions(line).canDelete, false);
+        assert.equal(paymentActions(line).blocksCheckout, true);
+        assert.equal(calls.some(({ method }) => method.startsWith("revolut_start")), false);
+        if (!refund) {
+            line.uiState.revolutMessage = false;
+            assert.equal(await state.cancel(order, line), false);
+            assert.equal(errors.at(-1), "environment_blocked");
+            assert.deepEqual(line.uiState.revolutSnapshot, before);
+        }
+    }
+});
