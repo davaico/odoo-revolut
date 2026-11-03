@@ -6,6 +6,7 @@
             <div class="col-lg-7 mb-4 mb-lg-0">
                 <p style="margin: 0 0 20px 0;">
                     <span style="display: inline-block; margin: 0 6px 8px 0; padding: 6px 14px; border: 1px solid #3a3d42; border-radius: 999px; color: #e6e8eb; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;">Odoo 18</span>
+                    <span style="display: inline-block; margin: 0 6px 8px 0; padding: 6px 14px; border: 1px solid #9ed8ca; border-radius: 999px; background-color: #dff5ef; color: #163e36; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;">Enterprise on Odoo.sh</span>
                     <span style="display: inline-block; margin: 0 6px 8px 0; padding: 6px 14px; border: 1px solid #3a3d42; border-radius: 999px; color: #e6e8eb; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;">Point of Sale</span>
                     <span style="display: inline-block; margin: 0 6px 8px 0; padding: 6px 14px; border: 1px solid #ffffff; border-radius: 999px; background-color: #ffffff; color: #191c1f; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;">Free &#183; LGPL-3</span>
                 </p>
@@ -154,7 +155,9 @@
                 <div class="p-4" style="background-color: #f4f5f6; border-radius: 20px;">
                     <p style="margin: 0 0 8px 0; color: #6b7079; font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;">Verified runtime</p>
                     <p style="margin: 0 0 8px 0; color: #191c1f; font-size: 16px; font-weight: 700; line-height: 1.4;">Odoo Community 18.0.20261015<br />PostgreSQL 16.14</p>
-                    <p style="margin: 0; font-size: 14px;">Bounded Odoo.sh Enterprise 18 installation, copy safety and worker recovery were also verified with mocked provider traffic. Client activation and live acceptance remain separate. Odoo Online does not support installing this Python addon.</p>
+                    <p style="margin: 12px 0 4px 0; color: #191c1f; font-size: 16px; font-weight: 700;">Odoo 18 Enterprise on Odoo.sh</p>
+                    <p style="margin: 0 0 8px 0; font-size: 14px;">Installation, staging safeguards and recovery were tested with simulated Revolut responses. Validate live payments and refunds on your terminal before rollout.</p>
+                    <p style="margin: 0; font-size: 14px;">Odoo Online does not support this addon.</p>
                 </div>
             </div>
             <div class="col-lg-6 offset-lg-1">
@@ -187,14 +190,17 @@
                 <div class="h-100 p-4" style="border: 1px solid #e5e5e5; border-radius: 20px;">
                     <p style="margin: 0 0 12px 0; color: #6b7079; font-size: 14px; font-weight: 700; letter-spacing: 0.06em; line-height: 1;">01</p>
                     <h3 style="margin: 0 0 8px 0; color: #191c1f; font-family: Arial, Helvetica, sans-serif; font-size: 19px; font-weight: 700; letter-spacing: -0.01em;">Install the module</h3>
-                    <p style="margin: 0; font-size: 15px;">Place <code style="padding: 2px 6px; border-radius: 6px; background-color: #eceef1; color: #191c1f; font-size: 13px;">pos_revolut</code> on your server's addon path, update the Apps list and install POS Revolut. Its Point of Sale and Restaurant dependencies install automatically.</p>
+                    <p style="margin: 0 0 10px 0; font-size: 15px;"><strong style="color: #191c1f;">On Odoo.sh:</strong> Add the module to your project repository and deploy it to a test build. In Apps, install or upgrade POS Revolut.</p>
+                    <p style="margin: 0 0 10px 0; font-size: 15px;"><strong style="color: #191c1f;">On your own server:</strong> Add the module to your addons path, refresh the Apps list and install or upgrade POS Revolut.</p>
+                    <p style="margin: 0; font-size: 15px;">Point of Sale and Restaurant install automatically as dependencies.</p>
                 </div>
             </div>
             <div class="col-md-6 mb-4">
                 <div class="h-100 p-4" style="border: 1px solid #e5e5e5; border-radius: 20px;">
                     <p style="margin: 0 0 12px 0; color: #6b7079; font-size: 14px; font-weight: 700; letter-spacing: 0.06em; line-height: 1;">02</p>
                     <h3 style="margin: 0 0 8px 0; color: #191c1f; font-family: Arial, Helvetica, sans-serif; font-size: 19px; font-weight: 700; letter-spacing: -0.01em;">Authorize your Merchant credentials</h3>
-                    <p style="margin: 0; font-size: 15px;">As administrator, create a Revolut Merchant Authority for the company and environment. On Odoo.sh, choose Database and enter the Merchant API key in the restricted form. Self-hosted deployments can also use Environment variable. Both sources use a reference beginning with <code style="padding: 2px 6px; border-radius: 6px; background-color: #eceef1; color: #191c1f; font-size: 13px;">ODOO_REVOLUT_SECRET_</code>; a Database reference requires no environment variable. Database keys are included in backups; masking is not encryption.</p>
+                    <p style="margin: 0 0 10px 0; font-size: 15px;">As administrator, create a Revolut Merchant Authority for your company and environment. On Odoo.sh, choose <strong style="color: #191c1f;">Database</strong> and enter the Merchant API key. Use a reference beginning with <code style="padding: 2px 6px; border-radius: 6px; background-color: #eceef1; color: #191c1f; font-size: 13px;">ODOO_REVOLUT_SECRET_</code>. In Database mode, this is a reference within Odoo. Self-hosted installations can also use the Environment variable option.</p>
+                    <p style="margin: 0; font-size: 15px;">Database keys are included in backups. Restrict access to the database and its backups.</p>
                 </div>
             </div>
             <div class="col-md-6 mb-4">
@@ -212,7 +218,6 @@
                 </div>
             </div>
         </div>
-        <p style="margin: 0; padding: 4px 0 4px 18px; border-left-style: solid; border-left-width: 3px; border-left-color: #c4c8ce; font-size: 15px;">Check Connection discovers the terminal; it does not send a payment or verify every Merchant permission. Keep the installation, user and upgrade guides with your deployment.</p>
     </section>
 
     <!-- Scope -->
