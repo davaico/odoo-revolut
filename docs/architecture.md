@@ -2,6 +2,35 @@
 
 Odoo owns cart authorization, register access, credentials, financial requests and verification. The POS browser is untrusted. The terminal collects card payments and optional tips; Merchant secrets stay on the server.
 
+## Credentials and hosting
+
+An administrator-owned Merchant authority binds a credential to one company,
+Revolut environment and unique reference. **Database** authorities store the key
+in an administrator-only field and require no worker environment variable;
+**Environment variable** authorities resolve the named variable on the server.
+The configured source is exclusive. POS managers configure permitted references,
+while POS browser data contains neither keys nor the authority inventory.
+
+Company, environment, source, reference and database key are immutable after
+creation. Rotation creates a new authority; existing attempts and refunds retain
+their original authority. Missing or revoked historical credentials fail safely
+instead of redirecting recovery to a new Merchant account. Database keys are
+included in backups; field masking is not encryption.
+
+Odoo.sh Production access is blocked whenever `ODOO_STAGE` is present with a
+value other than `production`. Production access is also blocked on any
+neutralized database. The same policy covers connection checks, financial
+requests, reports and scheduled recovery. Sandbox configuration remains available
+for test environments; changing current settings cannot redirect a historical
+Production attempt into Sandbox.
+
+The database neutralization hook clears Production database keys, revokes live
+authorities, archives live payment methods and disables the reconciliation jobs.
+It preserves financial history and uncertain attempts. Re-entering a key or
+reactivating a job cannot bypass the runtime guard. Self-hosted deployments
+without `ODOO_STAGE` continue to use their configured Revolut environment, subject
+to the neutralization guard and normal permissions.
+
 ## Payment lifecycle
 
 1. Save the draft, check required pickup scheduling, and derive prices, taxes and tender amounts on the server.

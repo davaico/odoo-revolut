@@ -111,7 +111,7 @@
                 <div class="h-100 p-4" style="background-color: #f4f5f6; border-radius: 20px;">
                     <p style="margin: 0 0 14px 0;"><span style="display: inline-block; padding: 4px 10px; border-radius: 999px; background-color: #ffffff; color: #4a4f57; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">Security</span></p>
                     <h3 style="margin: 0 0 8px 0; color: #191c1f; font-family: Arial, Helvetica, sans-serif; font-size: 19px; font-weight: 700; letter-spacing: -0.01em;">Server-side credentials</h3>
-                    <p style="margin: 0; font-size: 15px;">Merchant secrets remain in the server environment. Company authority and register access are controlled in the backend.</p>
+                    <p style="margin: 0; font-size: 15px;">Merchant keys stay on the server in administrator-only Database authorities or worker environment variables. Company authority and register access are controlled in the backend.</p>
                 </div>
             </div>
         </div>
@@ -154,7 +154,7 @@
                 <div class="p-4" style="background-color: #f4f5f6; border-radius: 20px;">
                     <p style="margin: 0 0 8px 0; color: #6b7079; font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;">Verified runtime</p>
                     <p style="margin: 0 0 8px 0; color: #191c1f; font-size: 16px; font-weight: 700; line-height: 1.4;">Odoo Community 18.0.20261015<br />PostgreSQL 16.14</p>
-                    <p style="margin: 0; font-size: 14px;">Other builds and Enterprise have not been verified. Odoo Online does not support installing this Python addon.</p>
+                    <p style="margin: 0; font-size: 14px;">Bounded Odoo.sh Enterprise 18 installation, copy safety and worker recovery were also verified with mocked provider traffic. Client activation and live acceptance remain separate. Odoo Online does not support installing this Python addon.</p>
                 </div>
             </div>
             <div class="col-lg-6 offset-lg-1">
@@ -194,7 +194,7 @@
                 <div class="h-100 p-4" style="border: 1px solid #e5e5e5; border-radius: 20px;">
                     <p style="margin: 0 0 12px 0; color: #6b7079; font-size: 14px; font-weight: 700; letter-spacing: 0.06em; line-height: 1;">02</p>
                     <h3 style="margin: 0 0 8px 0; color: #191c1f; font-family: Arial, Helvetica, sans-serif; font-size: 19px; font-weight: 700; letter-spacing: -0.01em;">Authorize your Merchant credentials</h3>
-                    <p style="margin: 0; font-size: 15px;">Store the secret in a server environment variable beginning with <code style="padding: 2px 6px; border-radius: 6px; background-color: #eceef1; color: #191c1f; font-size: 13px;">ODOO_REVOLUT_SECRET_</code>. As administrator, authorize its reference for the company and environment under Revolut Merchant Authorities.</p>
+                    <p style="margin: 0; font-size: 15px;">As administrator, create a Revolut Merchant Authority for the company and environment. On Odoo.sh, choose Database and enter the Merchant API key in the restricted form. Self-hosted deployments can also use Environment variable. Both sources use a reference beginning with <code style="padding: 2px 6px; border-radius: 6px; background-color: #eceef1; color: #191c1f; font-size: 13px;">ODOO_REVOLUT_SECRET_</code>; a Database reference requires no environment variable. Database keys are included in backups; masking is not encryption.</p>
                 </div>
             </div>
             <div class="col-md-6 mb-4">

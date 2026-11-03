@@ -1,12 +1,14 @@
 import csv
 import io
 import json
+import os
 from unittest.mock import Mock, patch
 from uuid import uuid4
 
 import requests
 
 from odoo import Command
+from odoo.api import call_kw
 from odoo.exceptions import AccessError
 from odoo.addons.point_of_sale.tests.test_frontend import (
     TestPointOfSaleHttpCommon,
@@ -21,6 +23,92 @@ from .test_revolut_terminal_tip import TerminalTipFixtures
 class TestRevolutManagerUi(TestPointOfSaleHttpCommon):
     LOCATION_ID = "123e4567-e89b-12d3-a456-426614174000"
     TERMINAL_ID = "0e53f673-7705-473a-a263-89a3e7647c3d"
+
+    def test_administrator_configures_database_credentials_in_french_browser(self):
+        self.env["res.lang"]._activate_and_install_lang("fr_FR")
+        self.env.company.name = "Browser Revolut Company"
+        self.pos_admin.write({
+            "lang": "fr_FR",
+            "groups_id": [Command.link(self.env.ref("base.group_system").id)],
+        })
+        action = self.env.ref("pos_revolut.action_revolut_merchant_credential")
+        # Native controls use French; addon strings fall back to English until
+        # translated. Literal references and saved configuration stay identical.
+        self.start_tour(
+            f"/odoo/action-{action.id}?debug=tests",
+            "pos_revolut_admin_database_credential_french", login="pos_admin",
+        )
+        credential = self.env["pos.revolut.merchant.credential"].search([
+            ("secret_reference", "=", "ODOO_REVOLUT_SECRET_BROWSER_DATABASE"),
+        ])
+        self.assertRecordValues(credential, [{
+            "company_id": self.env.company.id, "environment": "sandbox", "source": "database",
+        }])
+
+    def test_administrator_configures_and_rotates_database_credentials_in_browser(self):
+        self.env.company.name = "Browser Revolut Company"
+        system_group = self.env.ref("base.group_system")
+        self.pos_admin.groups_id += system_group
+        credentials = self.env["pos.revolut.merchant.credential"]
+        reference = "ODOO_REVOLUT_SECRET_BROWSER_DATABASE"
+        authority_action = self.env.ref("pos_revolut.action_revolut_merchant_credential")
+        self.start_tour(
+            f"/odoo/action-{authority_action.id}?debug=tests",
+            "pos_revolut_admin_database_credential", login="pos_admin",
+        )
+        credential = credentials.search([("secret_reference", "=", reference)])
+        self.assertRecordValues(credential, [{
+            "company_id": self.env.company.id, "environment": "sandbox",
+            "source": "database", "secret_reference": reference,
+        }])
+        method = self.env["pos.payment.method"].create({
+            "name": "Browser database Revolut", "journal_id": self.bank_journal.id,
+            "payment_method_type": "terminal", "use_payment_terminal": "revolut",
+            "revolut_environment": "sandbox", "revolut_location_id": self.LOCATION_ID,
+            "revolut_terminal_id": self.TERMINAL_ID, "revolut_fulfilment_type": "eat_in",
+            "revolut_secret_reference": reference,
+        })
+        # An ordinary POS manager configures the reference and checks the
+        # terminal, while model/RPC access to the key remains unavailable.
+        self.pos_admin.groups_id -= system_group
+        self.assertFalse(self.pos_admin.has_group("base.group_system"))
+        method.with_user(self.pos_admin).write({"revolut_secret_reference": reference})
+        response = Mock(status_code=200)
+        response.json.return_value = {"terminals": [{"id": self.TERMINAL_ID, "online": True}]}
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.get", return_value=response,
+        ) as provider:
+            notification = method.with_user(self.pos_admin).action_revolut_check_connection()
+        self.assertEqual(provider.call_args.kwargs["headers"]["Authorization"],
+                         "Bearer synthetic-browser-database-key")
+        self.assertNotIn("synthetic-browser-database-key", repr(notification))
+        for user in (self.pos_admin, self.pos_user):
+            user.groups_id += self.env.ref("base.group_allow_export")
+            restricted = credentials.with_user(user)
+            with self.subTest(user=user.login), self.assertRaises(AccessError):
+                call_kw(restricted, "read", [[credential.id], ["secret_key"]], {})
+            with self.subTest(user=user.login, operation="export"), self.assertRaises(AccessError):
+                call_kw(restricted, "export_data", [[credential.id], ["secret_key"]], {})
+
+        self.pos_admin.groups_id += system_group
+        self.start_tour(
+            f"/odoo/action-{authority_action.id}/{credential.id}?debug=tests",
+            "pos_revolut_admin_rotate_database_credential", login="pos_admin",
+        )
+        rotated = credentials.search([("secret_reference", "=", f"{reference}_ROTATED")])
+        self.assertRecordValues(rotated, [{
+            "company_id": self.env.company.id, "environment": "sandbox", "source": "database",
+        }])
+        self.assertNotEqual(rotated, credential)
+        self.assertEqual(method.revolut_secret_reference, reference)
+        self.assertFalse(credential.revoked)
+        method.with_user(self.pos_admin).write({"revolut_secret_reference": rotated.secret_reference})
+        with patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.get", return_value=response,
+        ) as provider:
+            method.with_user(self.pos_admin).action_revolut_check_connection()
+        self.assertEqual(provider.call_args.kwargs["headers"]["Authorization"],
+                         "Bearer synthetic-browser-rotated-key")
 
     def test_manager_configures_and_checks_terminal_in_browser(self):
         # Only the ordinary company/user/register/method fixture exists before
@@ -45,6 +133,14 @@ class TestRevolutManagerUi(TestPointOfSaleHttpCommon):
             "environment": "sandbox",
             "secret_reference": reference,
         }])
+        other_company = self.env["res.company"].create({"name": "Foreign Browser Company"})
+        credentials.create({
+            "company_id": other_company.id, "environment": "sandbox",
+            "source": "database", "secret_reference": "ODOO_REVOLUT_SECRET_FOREIGN_BROWSER",
+            "secret_key": "synthetic-foreign-browser-key",
+        })
+        self.pos_admin.groups_id -= self.env.ref("base.group_system")
+        self.assertFalse(self.pos_admin.has_group("base.group_system"))
         payment_method = self.env["pos.payment.method"].create(
             {
                 "name": "Browser Revolut",
@@ -102,7 +198,16 @@ class TestRevolutManagerUi(TestPointOfSaleHttpCommon):
             ],
         )
         self.assertEqual(len(merchant_requests), 1)
+        self.assertEqual(merchant_requests[0][1]["headers"]["Authorization"],
+                         "Bearer test-only-not-a-credential")
         response.raise_for_status.assert_called_once_with()
+
+        self.start_tour(
+            f"/odoo/action-{action.id}/{payment_method.id}?debug=tests",
+            "pos_revolut_manager_rejects_foreign_authority", login="pos_admin",
+        )
+        payment_method.invalidate_recordset()
+        self.assertEqual(payment_method.revolut_secret_reference, reference)
 
         self.main_pos_config.write({"payment_method_ids": [Command.link(payment_method.id)]})
         self.main_pos_config.with_user(self.pos_user).open_ui()
@@ -113,6 +218,7 @@ class TestRevolutManagerUi(TestPointOfSaleHttpCommon):
             lookup(order_uuid, payment_uuid, session.id)
 
         config_action = self.env.ref("point_of_sale.action_pos_config_tree")
+        self.pos_admin.groups_id += self.env.ref("base.group_system")
         self.start_tour(
             f"/odoo/action-{config_action.id}/{self.main_pos_config.id}?debug=tests",
             "pos_revolut_admin_register_grant",
@@ -310,14 +416,14 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         response.json.return_value = payload
         return response
 
-    def _configure_revolut_checkout(self, include_bank=False):
+    def _configure_revolut_checkout(self, include_bank=False, environment="sandbox"):
         revolut_method = self.env["pos.payment.method"].create(
             {
                 "name": "Revolut",
                 "journal_id": self.bank_journal.id,
                 "payment_method_type": "terminal",
                 "use_payment_terminal": "revolut",
-                "revolut_environment": "sandbox",
+                "revolut_environment": environment,
                 "revolut_location_id": self.LOCATION_ID,
                 "revolut_terminal_id": self.TERMINAL_ID,
                 "revolut_fulfilment_type": "eat_in",
@@ -344,6 +450,17 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         self.main_pos_config.with_user(self.pos_user).open_ui()
         self.main_pos_config.current_session_id.set_opening_control(0, "")
         return revolut_method
+
+    def test_odoo_sh_restriction_is_explained_without_terminal_or_secret_errors(self):
+        method = self._configure_revolut_checkout(environment="production")
+        with patch.dict(os.environ, {"ODOO_STAGE": "staging"}), patch(
+            "odoo.addons.pos_revolut.models.pos_payment_method.requests.request"
+        ) as provider:
+            self.start_pos_tour("pos_revolut_environment_blocked")
+            provider.assert_not_called()
+        self.assertFalse(self.env["pos.revolut.payment.operation"].search([
+            ("payment_method_id", "=", method.id),
+        ]))
 
     def test_stale_draft_sync_preserves_payment_recovery(self):
         self._configure_revolut_checkout()
@@ -1856,6 +1973,9 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
 
     def test_verified_saved_refund_checkout_timeout_recovers_without_second_refund(self):
         self._run_refund_checkout_recovery("timeout")
+
+    def test_verified_saved_refund_checkout_waits_for_delayed_canonical_response(self):
+        self._run_refund_checkout_recovery("delayed")
 
     def test_verified_saved_refund_checkout_offline_loader_recovers_without_second_refund(self):
         self._run_refund_checkout_recovery("offline")
