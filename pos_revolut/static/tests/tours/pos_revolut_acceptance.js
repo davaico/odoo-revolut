@@ -11,6 +11,30 @@ import { reopenRevolutOrder } from "./recovery_order_util";
 const PAYMENT_REFERENCE = "2c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf";
 const REFUND_REFERENCE = "6c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf";
 
+registry.category("web_tour.tours").add("pos_revolut_environment_blocked", {
+    steps: () => [
+        Chrome.startPoS(),
+        ProductScreen.addOrderline("Desk Pad"),
+        ProductScreen.clickPayButton(),
+        PaymentScreen.clickPaymentMethod("Revolut"),
+        {
+            trigger: ".modal:contains('Revolut test environment'):contains('Production Revolut access is disabled')",
+            run() {
+                const text = this.anchor.textContent;
+                if (!text.includes("sandbox terminal") || !text.includes("production environment") ||
+                    /ODOO_REVOLUT_SECRET_|Bearer|test-only-not-a-credential/.test(text)) {
+                    throw new Error("Deployment feedback must explain safe testing without credentials");
+                }
+                if (document.querySelector(".receipt-screen")) {
+                    throw new Error("A restricted production payment cannot complete checkout");
+                }
+            },
+        },
+        Dialog.confirm(),
+        { trigger: ".payment-screen" },
+    ].flat(),
+});
+
 function focusPaymentControl(selector) {
     return {
         content: "Payment controls are keyboard reachable with a visible focus indicator",
@@ -55,6 +79,26 @@ registry.category("web_tour.tours").add("pos_revolut_manager_configuration", {
             run: 'selectByLabel Revolut',
         },
         {
+            content: "The native integration labels and Revolut authority guidance are visible",
+            trigger: ".o_field_widget[name=revolut_environment] select",
+            run() {
+                const labels = [...document.querySelectorAll(".o_form_label")].map(
+                    (label) => label.textContent.replace("?", "").trim()
+                );
+                for (const label of ["Integration", "Integrate with", "Revolut Company", "Revolut Credential Reference"]) {
+                    if (!labels.includes(label)) {
+                        throw new Error(`Missing configuration label: ${label}`);
+                    }
+                }
+                if (!document.body.textContent.includes("Enter the approved reference, never the API key.")) {
+                    throw new Error("The manager form does not explain the credential boundary");
+                }
+                if (document.querySelector(".o_field_widget[name=secret_key]")) {
+                    throw new Error("The payment method exposes a Merchant API key field");
+                }
+            },
+        },
+        {
             trigger: ".o_field_widget[name=revolut_location_id] input",
             run: "edit 123e4567-e89b-12d3-a456-426614174000",
         },
@@ -81,6 +125,32 @@ registry.category("web_tour.tours").add("pos_revolut_manager_configuration", {
         {
             trigger: '.o_notification_content:contains("Counter 1 is online.")',
         },
+    ],
+});
+
+registry.category("web_tour.tours").add("pos_revolut_manager_rejects_foreign_authority", {
+    steps: () => [
+        {
+            trigger: ".o_field_widget[name=revolut_secret_reference] input",
+            run: "edit ODOO_REVOLUT_SECRET_FOREIGN_BROWSER",
+        },
+        { trigger: ".o_form_button_save", run: "click" },
+        {
+            content: "A foreign authority is rejected without revealing a key",
+            trigger: ".o_dialog .modal-body:contains('credential authority is not configured for this company')",
+            run() {
+                if (document.body.textContent.includes("synthetic-foreign-browser-key")) {
+                    throw new Error("The rejected configuration exposes a Merchant API key");
+                }
+            },
+        },
+        { trigger: ".o_dialog .modal-footer button", run: "click" },
+        {
+            trigger: ".o_field_widget[name=revolut_secret_reference] input",
+            run: "edit ODOO_REVOLUT_SECRET_TEST_TERMINAL",
+        },
+        { trigger: ".o_form_button_save", run: "click" },
+        { trigger: ".o_form_renderer.o_form_saved" },
     ],
 });
 

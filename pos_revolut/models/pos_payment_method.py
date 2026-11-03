@@ -26,6 +26,10 @@ REVOLUT_API_HOSTS = {
 REVOLUT_REQUEST_TIMEOUT_SECONDS = 10
 
 
+class RevolutEnvironmentError(UserError):
+    """A server deployment restriction, rather than a terminal failure."""
+
+
 class PosPaymentMethod(models.Model):
     _inherit = "pos.payment.method"
 
@@ -35,14 +39,24 @@ class PosPaymentMethod(models.Model):
         default="sandbox",
         copy=False,
         groups="point_of_sale.group_pos_manager",
+        help=(
+            "Match the Merchant authority's Revolut environment. Sandbox and Production "
+            "use separate credentials, locations and terminals. Production access is "
+            "blocked on Odoo.sh test builds and neutralized databases."
+        ),
     )
     revolut_location_id = fields.Char(
         string="Revolut Location ID",
+        help="The Revolut location UUID belonging to this Merchant account and environment, not an Odoo shop ID.",
         copy=False,
         groups="point_of_sale.group_pos_manager",
     )
     revolut_terminal_id = fields.Char(
         string="Revolut Terminal ID",
+        help=(
+            "The Revolut terminal UUID at the configured location. Use a terminal in Pay at "
+            "Counter mode, not its display name or serial number."
+        ),
         copy=False,
         groups="point_of_sale.group_pos_manager",
     )
@@ -57,12 +71,15 @@ class PosPaymentMethod(models.Model):
         ),
     )
     revolut_secret_reference = fields.Char(
-        string="Revolut Secret Reference",
+        string="Revolut Credential Reference",
         copy=False,
         groups="point_of_sale.group_pos_manager",
         help=(
-            "Name of a server environment variable in the "
-            "ODOO_REVOLUT_SECRET_ namespace. The secret itself is never stored."
+            "Enter the exact reference approved by a system administrator for this "
+            "company and Revolut environment, never the Merchant API key. POS managers "
+            "can configure this reference but cannot administer credentials. For an "
+            "Environment variable source it is the server variable name; for Database "
+            "it identifies the stored key. Both use the ODOO_REVOLUT_SECRET_ prefix."
         ),
     )
 
@@ -126,7 +143,7 @@ class PosPaymentMethod(models.Model):
             ):
                 raise ValidationError(
                     _(
-                        "The Revolut secret reference must name a variable in the "
+                        "The Revolut credential reference must use the "
                         "ODOO_REVOLUT_SECRET_ namespace."
                     )
                 )
@@ -185,12 +202,13 @@ class PosPaymentMethod(models.Model):
         if self.use_payment_terminal != "revolut":
             raise UserError(_("This payment method does not use Revolut."))
 
+        try:
+            self._revolut_check_environment_access(self.revolut_environment)
+        except RevolutEnvironmentError as error:
+            # The web client recognizes Odoo's native exception names.
+            raise UserError(str(error)) from None
         credential = self._revolut_configuration_credential()
-        secret = os.environ.get(credential.secret_reference)
-        if not secret:
-            raise UserError(
-                _("The Revolut credential is not available on the Odoo server.")
-            )
+        secret = credential._resolve_secret()
 
         try:
             response = requests.get(
@@ -284,8 +302,7 @@ class PosPaymentMethod(models.Model):
             raise UserError(_("The POS payment identifiers are invalid.")) from None
         if require_current_credential:
             credential = self._revolut_configuration_credential()
-            if not os.environ.get(credential.secret_reference):
-                raise UserError(_("The Revolut credential is not available on the Odoo server."))
+            credential._resolve_secret()
         amount_decimal = self.env["pos.revolut.payment.operation"].normalize_amount(
             currency, amount
         )[0]
@@ -596,11 +613,31 @@ class PosPaymentMethod(models.Model):
             return True
         return False
 
+    @api.model
+    def _revolut_environment_blocked(self, environment):
+        # Missing metadata supports self-hosted deployments; it does not attest
+        # Odoo.sh production. Empty and unknown stages fail closed for live API.
+        stage = os.environ.get("ODOO_STAGE")
+        neutralized = self.env["ir.config_parameter"].sudo().get_param("database.is_neutralized")
+        return environment != "sandbox" and (
+            bool(neutralized) or (stage is not None and stage != "production")
+        )
+
+    @api.model
+    def _revolut_check_environment_access(self, environment):
+        if self._revolut_environment_blocked(environment):
+            raise RevolutEnvironmentError(_(
+                "Production Revolut access is disabled in this test or neutralized database. "
+                "Use a sandbox terminal for testing. Reconcile existing production "
+                "payments and refunds in the production environment."
+            ))
+
     def _revolut_authorized_operation_secret(self, operation):
         """Resolve the frozen operation authority before every provider request."""
         self.ensure_one()
+        self._revolut_check_environment_access(operation.get("environment"))
         operation_id = operation.get("credential_operation_id")
-        def authorized_reference(source):
+        def authorized_secret(source):
             credential = source.credential_id if source else False
             if (not source or source.payment_method_id.id != self.id
                     or source.company_id != self.company_id or not credential
@@ -614,13 +651,13 @@ class PosPaymentMethod(models.Model):
                     "Revolut credential authority for this attempt is unverified. "
                     "Ask a system administrator to review and authorize its original Merchant account."
                 ))
-            return credential.secret_reference
+            return credential._resolve_secret()
 
         source = self.env["pos.revolut.payment.operation"].sudo().browse(
             operation_id if type(operation_id) is int else 0
         ).exists()
         if source:
-            reference = authorized_reference(source)
+            secret = authorized_secret(source)
         else:
             # A payment/refund reservation commits through an owned cursor.
             # The caller's repeatable-read snapshot may predate that commit.
@@ -629,12 +666,9 @@ class PosPaymentMethod(models.Model):
                 source = owned_env["pos.revolut.payment.operation"].sudo().browse(
                     operation_id if type(operation_id) is int else 0
                 ).exists()
-                reference = authorized_reference(source)
+                secret = authorized_secret(source)
         # The mapping can only be created or changed by a system administrator;
         # the frozen operation never follows edits to the current POS method.
-        secret = os.environ.get(reference)
-        if not secret:
-            raise UserError(_("The Revolut credential is not available on the Odoo server."))
         return secret
 
     def _revolut_api_request(self, operation, method, path, **kwargs):
@@ -736,6 +770,7 @@ class PosPaymentMethod(models.Model):
         ) = self._validate_revolut_pos_request(
             session_id, order_uuid, payment_line_uuid, amount, currency_id
         )
+        self._revolut_check_environment_access(self.sudo().revolut_environment)
         if not authorization_id or type(authorization_id) is not int:
             raise UserError(_("Prepare a server-authorized persisted cart before Revolut payment."))
         authority = self.env["pos.revolut.cart.authorization"].sudo().browse(authorization_id).exists()
