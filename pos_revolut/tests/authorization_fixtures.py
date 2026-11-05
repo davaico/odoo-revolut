@@ -14,6 +14,15 @@ from odoo import Command, api
 from ..models.financial_snapshot import normalize_snapshot
 
 
+def create_legacy_pos_order(session):
+    """Seed a native historical order with an absent UUID."""
+    return session.env["pos.order"].create({
+        "name": "Historical POS order", "session_id": session.id,
+        "uuid": False, "state": "cancel", "amount_total": 0,
+        "amount_tax": 0, "amount_paid": 0, "amount_return": 0,
+    })
+
+
 def native_products(env, config):
     """Configure real untaxed products for canonical pricing regression carts."""
     income = env["account.account"].search([
