@@ -129,6 +129,52 @@ class _RevolutPaymentFixtures(TransactionCase):
         self.session.write({"state": "opened"})
 
 
+@tagged("post_install", "-at_install", "-standard", "pos_revolut_without_restaurant_companion")
+class TestRevolutWithoutRestaurantCompanion(_RevolutPaymentFixtures):
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_restaurant_dispatch_requires_companion_but_retail_can_pay(self, request):
+        if "restaurant.table" not in self.env or self.env["ir.module.module"].search_count([
+            ("name", "=", "pos_revolut_restaurant_integration"), ("state", "=", "installed"),
+        ]):
+            self.skipTest("Run this scenario with Restaurant installed and only the base addon delivered.")
+
+        preset = self.env.ref("pos_revolut.pos_takein_preset")
+        restaurant = self.env["pos.config"].create({
+            "name": "Restaurant without the Revolut companion",
+            "module_pos_restaurant": True,
+            "payment_method_ids": [Command.link(self.payment_method.id)],
+            "auto_validate_terminal_payment": True,
+            "use_presets": True,
+            "default_preset_id": preset.id,
+            "available_preset_ids": [Command.link(preset.id)],
+            "tip_product_id": self.config.tip_product_id.id,
+        })
+        session = self.env["pos.session"].create({"config_id": restaurant.id, "state": "opened"})
+        order_uuid = str(uuid4())
+        snapshot = self._financial_snapshot(order_uuid)
+        snapshot.update({
+            "pricelist_id": restaurant.pricelist_id.id,
+            "restaurant": {"preset_id": preset.id, "table_id": False},
+        })
+        request.side_effect = self._start_responses()
+
+        result = authorized_start(
+            self.payment_method, session.id, order_uuid, str(uuid4()), 12.34,
+            restaurant.currency_id.id, snapshot=snapshot,
+        )
+
+        self.assertEqual(result.get("start_rejected"), "snapshot_invalid")
+        self.assertIn("Install the POS Revolut Restaurant integration", result["message"])
+        request.assert_not_called()
+        self.assertFalse(self.env["pos.revolut.payment.operation"].search_count([
+            ("order_uuid", "=", order_uuid),
+        ]))
+        retail = self._start(str(uuid4()), str(uuid4()))
+        self.assertEqual(retail["state"], "pending")
+        self.assertEqual(request.call_count, 3)
+
+
 class TestRevolutPayment(_RevolutPaymentFixtures):
     @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_LIVE_TEST": "test-only"})
     @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
