@@ -192,7 +192,8 @@
                     <h3 style="margin: 0 0 8px 0; color: #191c1f; font-family: Arial, Helvetica, sans-serif; font-size: 19px; font-weight: 700; letter-spacing: -0.01em;">Install the module</h3>
                     <p style="margin: 0 0 10px 0; font-size: 15px;"><strong style="color: #191c1f;">On Odoo.sh:</strong> Add the module to your project repository and deploy it to a test build. In Apps, install or upgrade POS Revolut.</p>
                     <p style="margin: 0 0 10px 0; font-size: 15px;"><strong style="color: #191c1f;">On your own server:</strong> Add the module to your addons path, refresh the Apps list and install or upgrade POS Revolut.</p>
-                    <p style="margin: 0; font-size: 15px;">Odoo installs Point of Sale as needed. For Restaurant registers, also install the matching free companion.</p>
+                    <p style="margin: 0 0 10px 0; font-size: 15px;">Retail uses <code>pos_revolut</code> with standard Point of Sale. For Restaurant, also install standard Restaurant and the free <code>pos_revolut_restaurant_integration</code> companion from the same Odoo version and source release.</p>
+                    <p style="margin: 0; font-size: 15px;">When upgrading a database with Restaurant installed, deploy both Revolut addon folders, even for retail registers, and verify that POS Revolut Restaurant is installed at the matching version.</p>
                 </div>
             </div>
             <div class="col-md-6 mb-4">

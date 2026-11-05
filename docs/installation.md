@@ -6,6 +6,15 @@ Enterprise installations, including Odoo.sh. For an existing installation, use
 and the limits of mocked Enterprise/Odoo.sh checks, and complete the
 [release checklist](releasing.md) before enabling live cashier use.
 
+## Choose the addons
+
+- **Retail**. Install `pos_revolut`. Odoo installs standard Point of Sale as needed.
+- **Restaurant**. Also deploy `pos_revolut_restaurant_integration` from the same
+  Odoo version and source release, and install it with standard Restaurant.
+- **Existing database with Restaurant installed**. Deploy both Revolut addon
+  directories, even if the registers use retail mode. Follow [Upgrading](upgrading.md)
+  and verify that POS Revolut Restaurant is installed at the matching version.
+
 ## Requirements
 
 - An administered Odoo 18 Community or Enterprise installation with outbound HTTPS, standard Point of Sale and working journal, currency and accounting configuration. Odoo.sh installations require project administration access and the appropriate Odoo subscription.
