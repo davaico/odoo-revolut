@@ -204,6 +204,19 @@ class TestDeliveredAddon(unittest.TestCase):
         self.assertFalse(self.log.exists())
         self.assertEqual(outside.read_text(), "outside archive\n")
 
+    def test_migration_alias_uses_legacy_upgrade_for_split_candidates(self):
+        self.write_addon("pos_revolut_restaurant", "old-bridge")
+        legacy = self.commit()
+        shutil.rmtree(self.repo / "addons/pos_revolut_restaurant")
+        companion = "pos_revolut_restaurant_integration"
+        self.write_addon(companion, "original")
+        result = self.run_cli(self.commit(), "migration", legacy)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        call = json.loads(self.log.read_text())
+        self.assertEqual(call["args"][-2:], ["--delivered-scenario", "legacy-upgrade"])
+        self.assertIn(f"{companion}/__init__.py", call["trees"]["--addons-dir"]["files"])
+        self.assertIn("pos_revolut_restaurant/__init__.py", call["trees"]["--legacy-addons-dir"]["files"])
+
     def test_paired_source_requires_matching_companion_and_uses_committed_files(self):
         companion = "pos_revolut_restaurant_integration"
         result = self.run_cli(self.commit(), "restaurant")
