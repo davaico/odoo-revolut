@@ -2,6 +2,7 @@
 """Run disposable Odoo acceptance from an exact committed release artifact."""
 
 import argparse
+import ast
 import hashlib
 import re
 import subprocess
@@ -13,6 +14,8 @@ from pathlib import Path, PurePosixPath
 REPOSITORY = Path(__file__).resolve().parents[1]
 MAX_ARCHIVE_MEMBERS = 10000
 MAX_ARCHIVE_BYTES = 100 * 1024 * 1024
+COMPANION_ADDON = "pos_revolut_restaurant_integration"
+PAIRED_SCENARIOS = ("restaurant", "restaurant-later", "upgrade", "legacy-upgrade")
 
 
 class ArtifactError(RuntimeError):
@@ -94,14 +97,40 @@ def archive_addons(revision, archive, addons):
     )
 
 
+def verify_matching_versions(release, addons):
+    versions = []
+    try:
+        for addon in addons:
+            manifest = (release / addon / "__manifest__.py").read_text()
+            versions.append(ast.literal_eval(manifest)["version"])
+    except (OSError, SyntaxError, ValueError, TypeError, KeyError) as error:
+        raise ArtifactError("Cannot read addon versions from the artifact.") from error
+    base, companion = versions
+    if not isinstance(base, str) or not base or base != companion:
+        raise ArtifactError("POS Revolut and Restaurant companion versions must match.")
+
+
+def has_companion(revision):
+    paths = (f"{COMPANION_ADDON}/__manifest__.py", f"addons/{COMPANION_ADDON}/__manifest__.py")
+    return bool(subprocess.check_output(
+        ["git", "ls-tree", "-r", "--name-only", revision, "--", *paths],
+        cwd=REPOSITORY,
+    ))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--revision", required=True)
-    parser.add_argument("--scenario", choices=("retail", "migration"), required=True)
-    parser.add_argument("--migration-from", help="Full SHA of a legacy two-addon release")
+    parser.add_argument("--scenario", choices=(
+        "retail", "restaurant", "restaurant-later", "retail-with-restaurant",
+        "upgrade", "legacy-upgrade", "migration",
+    ), required=True)
+    parser.add_argument("--migration-from", help="Full SHA of the release to install before upgrading")
+    parser.add_argument("--test-tags", help="Override acceptance selection")
     args = parser.parse_args()
-    if args.scenario == "migration" and not args.migration_from:
-        parser.error("--scenario migration requires --migration-from")
+    legacy = args.scenario in {"migration", "legacy-upgrade"}
+    if (legacy or args.scenario == "upgrade") and not args.migration_from:
+        parser.error(f"--scenario {args.scenario} requires --migration-from")
     if args.migration_from and not re.fullmatch(r"[0-9a-f]{40}", args.migration_from):
         parser.error("--migration-from must be a full commit SHA")
     if not re.fullmatch(r"[0-9a-f]{40}", args.revision):
@@ -120,18 +149,27 @@ def main():
         if resolved != revision:
             parser.error(f"{option} did not resolve to the exact commit")
 
+    scenario = args.scenario
+    if scenario == "migration" and has_companion(args.revision):
+        scenario = "legacy-upgrade"
+
     with tempfile.TemporaryDirectory(prefix="pos-revolut-delivered-") as temporary:
         root = Path(temporary)
         archive = root / "release.tar.gz"
         try:
-            archive_addons(args.revision, archive, ("pos_revolut",))
-            release = extract_addons(archive, root / "release", ("pos_revolut",))
+            addons = ("pos_revolut",)
+            if scenario in PAIRED_SCENARIOS:
+                addons += (COMPANION_ADDON,)
+            archive_addons(args.revision, archive, addons)
+            release = extract_addons(archive, root / "release", addons)
+            if COMPANION_ADDON in addons:
+                verify_matching_versions(release, addons)
         except ArtifactError as error:
             parser.exit(1, f"{parser.prog}: {error}\n")
         legacy_args = []
-        if args.scenario == "migration":
+        if args.migration_from:
             legacy_archive = root / "legacy.tar.gz"
-            legacy_addons = ("pos_revolut", "pos_revolut_restaurant")
+            legacy_addons = ("pos_revolut", "pos_revolut_restaurant") if legacy else ("pos_revolut",)
             try:
                 archive_addons(args.migration_from, legacy_archive, legacy_addons)
                 legacy_root = extract_addons(legacy_archive, root / "legacy", legacy_addons)
@@ -140,10 +178,11 @@ def main():
             legacy_args = ["--legacy-addons-dir", str(legacy_root)]
         print(f"Artifact revision: {args.revision}", flush=True)
         print(f"Artifact SHA256: {sha256(archive)}", flush=True)
+        test_args = ["--test-tags", args.test_tags] if args.test_tags is not None else []
         subprocess.run(
             [str(REPOSITORY / "scripts" / "test-addon"),
              "--addons-dir", str(release), *legacy_args,
-             "--delivered-scenario", args.scenario],
+             "--delivered-scenario", scenario, *test_args],
             cwd=REPOSITORY, check=True,
         )
 

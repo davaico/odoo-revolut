@@ -1,18 +1,19 @@
 {
     "name": "POS Revolut",
-    "version": "19.0.1.18.16",
+    "version": "19.0.1.18.17",
     "category": "Sales/Point of Sale",
     "summary": "Configure a Revolut payment terminal for Point of Sale",
     "description": """
-Connect Odoo Point of Sale to a Revolut payment terminal. Supports retail and
-Restaurant registers, split payments, terminal-selected tips, full and partial
+Connect Odoo Point of Sale to a Revolut payment terminal. Supports retail registers and, with the free Restaurant companion, Restaurant
+registers. Supports split payments, terminal-selected tips, full and partial
 refunds, interrupted-payment recovery and discovery of external refunds.
 Checkout completes after payment verification and native Odoo validation.
 
 Requires an administered Odoo server, a Revolut Merchant account, authorized
 Merchant API credentials, an online compatible terminal in Pay at Counter mode,
 and permissions for terminal operations and payments_report creation, polling
-and download. Dependencies: point_of_sale and pos_restaurant. Verified runtime:
+and download. Retail requires point_of_sale. Restaurant registers also require pos_restaurant
+and the matching pos_revolut_restaurant_integration addon. Verified runtime:
 Odoo Community 19.0.20260908 and PostgreSQL 16.14. Other builds and Enterprise
 have not been verified.
 
@@ -36,7 +37,7 @@ Revolut hardware, account and processing charges are separate from the free addo
 """,
     "author": "Davai",
     "images": ["static/description/revolut-terminal.jpg"],
-    "depends": ["point_of_sale", "pos_restaurant"],
+    "depends": ["point_of_sale"],
     "data": [
         "security/ir.model.access.csv",
         "security/revolut_reconciliation_rules.xml",

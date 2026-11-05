@@ -22,7 +22,6 @@ from . import test_revolut_cart_pricing
 
 from . import test_revolut_terminal_tip
 from . import test_revolut_cart_authority_concurrency
-from . import test_revolut_restaurant_authority
 from . import test_revolut_credential_authority
 
 from . import test_revolut_register_refund
@@ -43,6 +42,7 @@ from . import test_external_native_association
 
 from . import test_discounted_rounded_returns
 from . import test_native_adjustment_ui
-from . import test_takeout_readiness_ui
 from . import test_odoo_tip_ui
 from . import test_revolut_refund_recovery_ui
+
+from . import test_restaurant_without_companion

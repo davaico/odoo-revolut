@@ -8,15 +8,13 @@ from odoo.addons.point_of_sale.tests.common import CommonPosTest
 from odoo.exceptions import UserError
 from odoo.tests.common import tagged
 
-from .test_revolut_terminal_tip import TerminalTipFixtures
+from odoo.addons.pos_revolut.tests.test_revolut_terminal_tip import TerminalTipFixtures
 
 
 @tagged("post_install", "-at_install", "pos_revolut_restaurant")
 class TestRevolutRestaurantAuthority(TerminalTipFixtures, CommonPosTest):
     def setUp(self):
         super().setUp()
-        if self.env["ir.module.module"].search([("name", "=", "pos_restaurant")]).state != "installed":
-            self.skipTest("Restaurant table ownership needs pos_restaurant installed")
         mode = self.enter_registry_test_mode()
         mode.__enter__()
         self.addCleanup(mode.__exit__, None, None, None)
