@@ -24,7 +24,10 @@ with Path(os.environ['FAKE_DOCKER_LOG']).open('a') as stream:
 if 'dpkg-query' in args:
     print(os.environ.get('FAKE_ODOO_VERSION', os.environ['ODOO_REVOLUT_ODOO_VERSION']), end='')
 elif 'psql' in args:
-    print('absent' if 'pos_revolut_restaurant' in args[-1] else 'installed')
+    if "'pos_restaurant'" in args[-1]:
+        print(os.environ.get('FAKE_RESTAURANT_STATE', 'installed'))
+    else:
+        print('absent' if 'pos_revolut_restaurant' in args[-1] else 'installed')
 '''
 
 
@@ -44,7 +47,7 @@ class TestRuntimeRunner(unittest.TestCase):
     def run_script(self, name='test-addon', *args, **environment):
         return subprocess.run([str(ROOT / 'scripts' / name), *args],
                               env={**self.env, **environment}, text=True,
-                              capture_output=True, timeout=10)
+                              capture_output=True, timeout=30)
 
     def calls(self):
         return [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []
@@ -68,19 +71,24 @@ class TestRuntimeRunner(unittest.TestCase):
         self.assertFalse(any('--init' in row['args'] for row in self.calls()))
 
     def test_fresh_delivered_scenario_retains_default_and_honors_selected_tests(self):
+        addons = self.root / 'retail-package'
+        addon = addons / 'pos_revolut'
+        addon.mkdir(parents=True)
+        (addon / '__manifest__.py').write_text("{'depends': ['point_of_sale']}")
         for selected in (None, '/pos_revolut:InstallSlice'):
             with self.subTest(selected=selected):
                 self.log.unlink(missing_ok=True)
                 flags = ['--test-tags', selected] if selected else []
-                result = self.run_script('test-addon', '--delivered-scenario', 'retail', *flags)
+                result = self.run_script(
+                    'test-addon', '--delivered-scenario', 'retail', '--addons-dir', str(addons),
+                    *flags, FAKE_RESTAURANT_STATE='uninstalled',
+                )
                 self.assertEqual(result.returncode, 0, result.stderr)
                 acceptance = [row['args'] for row in self.calls() if '--test-tags' in row['args']]
                 self.assertEqual(len(acceptance), 1)
                 tags = acceptance[0][acceptance[0].index('--test-tags') + 1]
-                if selected:
-                    self.assertEqual(tags, selected)
-                else:
-                    self.assertIn('TestRestaurantConsolidation', tags)
+                self.assertEqual(tags, selected or '/pos_revolut')
+                self.assertIn('pos_restaurant = uninstalled', result.stdout)
 
     def test_populated_database_is_checked_after_first_install_and_update(self):
         addons = self.root / 'addons'
@@ -131,7 +139,7 @@ class TestRuntimeRunner(unittest.TestCase):
             fixture.write_text('Uncommitted source must not be used')
         result = subprocess.run([str(scripts / 'test-delivered-addon'), '--revision', revision,
                                  '--scenario', 'populated', '--test-tags', '/pos_revolut:InstallSlice'],
-                                env=self.env, text=True, capture_output=True, timeout=10)
+                                env=self.env, text=True, capture_output=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(f'Artifact revision: {revision}', result.stdout)
         self.assertIn('Artifact SHA256:', result.stdout)

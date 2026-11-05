@@ -14,6 +14,9 @@ class DeploymentError(RuntimeError):
     """An expected deployment refusal or command failure."""
 
 
+COMPANION_ADDON = "pos_revolut_restaurant_integration"
+
+
 class CommandRunner:
     """Run local deployment commands without invoking a shell."""
 
@@ -33,6 +36,7 @@ def parse_arguments(argv):
     deploy.add_argument("--customer", required=True)
     deploy.add_argument("--environment", required=True)
     deploy.add_argument("--mode", choices=("install", "upgrade"), required=True)
+    deploy.add_argument("--package", choices=("retail", "restaurant"))
     return parser.parse_args(argv)
 
 
@@ -126,14 +130,25 @@ def deploy(args, runner):
     with tempfile.TemporaryDirectory(prefix="pos-revolut-deploy-") as directory:
         archive = Path(directory) / f"pos-revolut-{args.revision}.tar.gz"
         candidates = ("pos_revolut/__manifest__.py", "addons/pos_revolut/__manifest__.py")
+        companion_candidates = (
+            f"{COMPANION_ADDON}/__manifest__.py", f"addons/{COMPANION_ADDON}/__manifest__.py",
+        )
         paths = set(run_checked(
             runner,
-            ["git", "ls-tree", "-r", "--name-only", args.revision, "--", *candidates],
+            ["git", "ls-tree", "-r", "--name-only", args.revision, "--", *candidates, *companion_candidates],
             "Addon layout lookup", cwd=args.repository, capture_output=True,
         ).stdout.splitlines())
         if len(paths.intersection(candidates)) != 1:
             raise DeploymentError("Revision must contain exactly one POS Revolut addon layout.")
         root_layout = candidates[0] in paths
+        has_companion = companion_candidates[0 if root_layout else 1] in paths
+        if has_companion and args.package is None:
+            raise DeploymentError("Select --package retail or --package restaurant for this revision.")
+        if args.package is not None and not has_companion:
+            raise DeploymentError("The revision is missing the Restaurant companion.")
+        addon_paths = ["pos_revolut" if root_layout else "addons/pos_revolut"]
+        if args.package == "restaurant":
+            addon_paths.append(COMPANION_ADDON if root_layout else f"addons/{COMPANION_ADDON}")
         run_checked(
             runner,
             [
@@ -145,7 +160,7 @@ def deploy(args, runner):
                 *(["--prefix=addons/"] if root_layout else []),
                 args.revision,
                 "--",
-                "pos_revolut" if root_layout else "addons/pos_revolut",
+                *addon_paths,
             ],
             "Revision archive",
             cwd=args.repository,
@@ -196,6 +211,7 @@ def deploy(args, runner):
                 args.environment,
                 "--mode",
                 args.mode,
+                *(["--package", args.package] if args.package else []),
             ],
             "Remote deployment",
             input=remote_script,

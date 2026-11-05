@@ -106,3 +106,24 @@ class TestStorePackaging(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Restaurant companion"):
             self.delivered.archive_addons(revision, archive, package="restaurant")
         self.assertFalse(archive.exists())
+
+    def test_store_source_extraction_checks_matching_versions(self):
+        self.addon("")
+        companion = self.repository / "pos_revolut_restaurant_integration"
+        companion.mkdir()
+        manifest = companion / "__manifest__.py"
+        for version in ("18.0.1.0.1", "18.0.1.0.4"):
+            with self.subTest(version=version):
+                manifest.write_text(repr({"version": version}))
+                archive = self.repository / f"restaurant-{version}.tar.gz"
+                self.delivered.archive_addons(self.commit(), archive, package="restaurant")
+                if version.endswith(".1"):
+                    with self.assertRaisesRegex(ValueError, "versions must match"):
+                        self.delivered.extract_store_source(
+                            archive, self.repository / "mismatch", package="restaurant"
+                        )
+                else:
+                    release = self.delivered.extract_store_source(
+                        archive, self.repository / "matched", package="restaurant"
+                    )
+                    self.assertTrue((release / companion.name / manifest.name).is_file())
