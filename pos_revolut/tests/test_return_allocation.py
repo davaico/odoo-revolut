@@ -13,6 +13,8 @@ from odoo.exceptions import AccessError, UserError
 from odoo.tests.common import tagged
 from odoo.tools import mute_logger
 
+from ..models.return_allocation import ReturnAllocation
+from .authorization_fixtures import create_legacy_pos_order
 from .test_revolut_tip_refund import TestRevolutTipRefund
 
 
@@ -65,6 +67,36 @@ class TestReturnAllocation(TestPointOfSaleCommon):
         self.enterContext(patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_SETTLEMENT_TEST": "test-only"}))
         self.request = self.enterContext(patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request"))
         self.env.flush_all()
+
+    def test_lock_batch_preserves_legacy_orders_and_sorts_unique_uuids(self):
+        legacy_order = create_legacy_pos_order(self.session)
+        self.assertFalse(legacy_order.uuid)
+        company_id = self.session.company_id.id
+        first = (company_id, "00000000-0000-4000-8000-000000000001")
+        last = (company_id, "00000000-0000-4000-8000-000000000002")
+        empty = (company_id, legacy_order.uuid)
+        charges = type(self.env["pos.revolut.payment.operation"])
+
+        for identities, expected in (
+            ([last, empty, first, last, empty], [first, last]),
+            ([empty, empty, (company_id, "")], []),
+        ):
+            with self.subTest(identities=identities):
+                self.env.cr.execute("UPDATE pos_order SET write_date = '2000-01-01' WHERE id = %s",
+                                    [legacy_order.id])
+                legacy_order.invalidate_recordset(["write_date"])
+                previous_write_date = legacy_order.write_date
+                with patch.object(charges, "_lock_order", autospec=True, side_effect=charges._lock_order) as lock, \
+                        patch.object(charges, "search", autospec=True, side_effect=charges.search) as search:
+                    ReturnAllocation(self.env).acquire_many(self.session, identities, legacy_order)
+
+                self.assertEqual([call.args[1:] for call in lock.call_args_list], expected)
+                self.assertEqual([call.args[1] for call in search.call_args_list], [
+                    [("pos_order_id", "in", legacy_order.ids)],
+                    *([("company_id", "=", company), ("order_uuid", "=", uuid)] for company, uuid in expected),
+                ])
+                # The native row update acquires a lock even when there is no UUID.
+                self.assertGreater(legacy_order.write_date, previous_write_date)
 
     def _reserve_partition(self, manager, quantity, amount, refunded=0):
         self._tip_return(goods_qty=quantity, tip_qty=0, payment_minor=amount)

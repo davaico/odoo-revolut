@@ -299,6 +299,24 @@ class TestRevolutMutationBoundaries(TestPointOfSaleCommon):
             self._rpc("pos.order", "action_pos_order_paid", [[order_id]])
             self.assertEqual(self.env["pos.order"].browse(order_id).state, "paid")
 
+    def test_native_cash_checkout_can_link_a_line_from_a_draft_without_uuid(self):
+        historical = self._order_payload(False, str(uuid4()), payment_method=self.cash_payment_method)
+        historical.update(state="draft", payment_ids=[], amount_paid=0)
+        legacy_order = self.env["pos.order"].create(historical)
+        self.assertFalse(legacy_order.uuid)
+        legacy_line = legacy_order.lines
+
+        payload = self._order_payload(str(uuid4()), str(uuid4()), payment_method=self.cash_payment_method)
+        payload.update(state="paid", user_id=self.cashier.id, lines=[Command.link(legacy_line.id)])
+        payload["payment_ids"][0][2]["transaction_id"] = False
+        self._rpc("pos.order", "sync_from_ui", [[payload]])
+
+        order = self.env["pos.order"].search([("uuid", "=", payload["uuid"])])
+        self.assertEqual(order.state, "paid")
+        self.assertEqual(order.lines, legacy_line)
+        self.assertEqual(order.payment_ids.payment_method_id, self.cash_payment_method)
+        self.assertFalse(legacy_order.uuid)
+
     def test_missing_pending_failed_and_mismatched_evidence_cannot_be_created_done(self):
         for mismatch in ("pending", "failed", "amount", "currency", "company", "cart"):
             with self.subTest(mismatch=mismatch):
