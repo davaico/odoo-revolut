@@ -6,7 +6,7 @@ from odoo import Command
 from odoo.addons.point_of_sale.tests.test_frontend import TestPointOfSaleHttpCommon
 from odoo.tests import tagged
 
-from .authorization_fixtures import install_zero_reports
+from odoo.addons.pos_revolut.tests.authorization_fixtures import install_zero_reports
 
 
 @tagged("post_install", "-at_install", "pos_revolut_restaurant")
