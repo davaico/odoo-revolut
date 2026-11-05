@@ -50,13 +50,19 @@ Historical upgrade runners require the full Git history. Keep their original fix
 ./scripts/test-return-rounding-upgrade
 ```
 
-To test an exact committed addon, replace these placeholders with full repository commit hashes. Migration also needs a retained two-addon revision:
+Test the exact base-only and paired release archives using full commit hashes.
 
 ```bash
 ./scripts/test-delivered-addon --revision REVIEWED_FULL_COMMIT_SHA --scenario retail
+./scripts/test-delivered-addon --revision REVIEWED_FULL_COMMIT_SHA --scenario restaurant
 ./scripts/test-delivered-addon --revision REVIEWED_FULL_COMMIT_SHA \
-  --scenario migration --migration-from LEGACY_FULL_COMMIT_SHA
+  --scenario upgrade --migration-from COMBINED_FULL_COMMIT_SHA
 ```
+
+Use `--scenario legacy-upgrade` with the retained original bridge release
+to exercise its retirement. Use `--scenario restaurant-later` to verify that
+adding native Restaurant activates the new companion.
+
 
 ## Payment changes
 
