@@ -12,7 +12,7 @@ from odoo.addons.point_of_sale.tests.test_frontend import (
 )
 from odoo.tests import tagged
 
-from .authorization_fixtures import install_zero_reports
+from .authorization_fixtures import create_legacy_pos_order, install_zero_reports
 from .test_revolut_terminal_tip import TerminalTipFixtures
 
 
@@ -567,17 +567,21 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
 
     def test_cash_and_bank_still_checkout_without_revolut_dispatch(self):
         self._configure_revolut_checkout(include_bank=True)
+        session = self.main_pos_config.current_session_id
+        legacy_order = create_legacy_pos_order(session)
         with patch(
             "odoo.addons.pos_revolut.models.pos_payment_method.requests.request"
         ) as request:
             self.start_pos_tour("pos_revolut_other_tenders_checkout")
 
         self.env.invalidate_all()
+        self.assertFalse(legacy_order.uuid)
         orders = self.env["pos.order"].search([
-            ("session_id", "=", self.main_pos_config.current_session_id.id),
+            ("session_id", "=", session.id),
             ("state", "=", "paid"),
         ])
         self.assertEqual(len(orders), 2)
+        self.assertTrue(all(orders.mapped("uuid")))
         self.assertEqual(
             {order.payment_ids.payment_method_id.name for order in orders},
             {"Cash", "Bank"},

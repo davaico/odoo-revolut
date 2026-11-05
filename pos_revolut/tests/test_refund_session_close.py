@@ -9,6 +9,7 @@ from odoo.addons.point_of_sale.tests.common import CommonPosTest
 from odoo.exceptions import UserError
 from odoo.tests.common import tagged
 
+from .authorization_fixtures import create_legacy_pos_order
 from .test_revolut_refund import TestRevolutRefund
 
 
@@ -140,6 +141,12 @@ class TestRefundSessionClose(CommonPosTest):
 
     def test_completed_finalized_refund_allows_session_closing(self):
         refund = self._refund("verified")
+        legacy_order = create_legacy_pos_order(self.session)
+        self.assertFalse(legacy_order.uuid)
+        with self.assertRaisesRegex(UserError, "refund"):
+            self._close()
+        self.assertEqual(self.session.state, "opened")
+
         order = self._save_verified_return(refund)
         self.assertEqual(order.state, "paid")
         self.assertEqual(refund.pos_order_id, order)
