@@ -204,6 +204,30 @@ class TestDeliveredAddon(unittest.TestCase):
         self.assertFalse(self.log.exists())
         self.assertEqual(outside.read_text(), "outside archive\n")
 
+    def test_paired_source_requires_matching_companion_and_uses_committed_files(self):
+        companion = "pos_revolut_restaurant_integration"
+        result = self.run_cli(self.commit(), "restaurant")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.log.exists())
+
+        self.write_addon(companion, "mismatched")
+        result = self.run_cli(self.commit(), "restaurant")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("versions must match", result.stderr)
+        self.assertFalse(self.log.exists())
+
+        self.write_addon(companion, "original")
+        revision = self.commit()
+        self.write_addon(companion, "dirty-working-tree")
+        result = self.run_cli(revision, "restaurant")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        files = json.loads(self.log.read_text())["trees"]["--addons-dir"]["files"]
+        self.assertEqual(files[f"{companion}/__init__.py"], "# original\n")
+        result = self.run_cli(revision)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        files = json.loads(self.log.read_text())["trees"]["--addons-dir"]["files"]
+        self.assertNotIn(f"{companion}/__init__.py", files)
+
     def test_downstream_failure_is_reported_and_extracted_tree_is_removed(self):
         result = self.run_cli(self.commit(), env=dict(self.env, DELIVERED_TEST_EXIT="29"))
         self.assertNotEqual(result.returncode, 0)
