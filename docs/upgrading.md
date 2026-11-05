@@ -33,6 +33,11 @@ workers stopped during the maintenance window.
    financial activity is still stopped. Reconcile any later provider or
    native financial operations before a restore.
 
+For the guarded self-hosted deployer, choose `--package restaurant` whenever
+standard Restaurant is installed, including existing retail registers that
+inherited it. Choose `--package retail` for a base-only database. Retain the
+reviewed package and its source revision for rollback.
+
 The new companion uses a different technical name from the retired
 `pos_revolut_restaurant` bridge. On a supported direct upgrade from that
 historical release, keep the old bridge source available until its migration
