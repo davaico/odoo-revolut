@@ -1,4 +1,6 @@
+import os
 from unittest.mock import Mock, patch
+from uuid import uuid4
 
 from odoo import Command
 from odoo.addons.point_of_sale.tests.test_frontend import TestPointOfSaleHttpCommon
@@ -9,6 +11,11 @@ from odoo.tests import tagged
 
 @tagged("post_install", "-at_install", "pos_revolut_restaurant")
 class TestRevolutRestaurantPosStarts(TestPointOfSaleHttpCommon):
+    def setUp(self):
+        super().setUp()
+        self.secret_reference = f"ODOO_REVOLUT_SECRET_RESTAURANT_UI_{uuid4().hex.upper()}"
+        self.enterContext(patch.dict(os.environ, {self.secret_reference: "test-only-not-a-credential"}))
+
     def test_restaurant_table_checkout_verifies_revolut_payment(self):
         method = self.env["pos.payment.method"].create({
             "name": "Revolut",
@@ -19,7 +26,7 @@ class TestRevolutRestaurantPosStarts(TestPointOfSaleHttpCommon):
             "revolut_location_id": TestRevolutManagerUi.LOCATION_ID,
             "revolut_terminal_id": TestRevolutManagerUi.TERMINAL_ID,
             "revolut_fulfilment_type": "eat_in",
-            "revolut_secret_reference": "ODOO_REVOLUT_SECRET_TEST_TERMINAL",
+            "revolut_secret_reference": self.secret_reference,
         })
         self.main_pos_config.sudo().write({
             "revolut_user_ids": [Command.set((self.env.user | self.pos_user).ids)],
@@ -113,7 +120,7 @@ class TestRevolutRestaurantPosStarts(TestPointOfSaleHttpCommon):
             "revolut_location_id": TestRevolutManagerUi.LOCATION_ID,
             "revolut_terminal_id": TestRevolutManagerUi.TERMINAL_ID,
             "revolut_fulfilment_type": "eat_in",
-            "revolut_secret_reference": "ODOO_REVOLUT_SECRET_TEST_TERMINAL",
+            "revolut_secret_reference": self.secret_reference,
         })
         self.main_pos_config.sudo().write({
             "revolut_user_ids": [Command.set((self.env.user | self.pos_user).ids)],
