@@ -77,9 +77,12 @@ logs or repository evidence.
 1. Close test POS sessions and retain any staging evidence needed before a
    rebuild. Use the reviewed candidate on the staging branch.
 2. In **Apps**, remove the default **Apps** filter, search **Revolut**, and
-   activate **POS Revolut**. Native POS and Restaurant dependencies install with
-   it. Refresh after the server reload; confirm **Upgrade/Uninstall** controls
-   and the installed version against the identified release candidate.
+   activate **POS Revolut**. Odoo installs standard Point of Sale as needed.
+   For a Restaurant staging test, include the matching
+   `pos_revolut_restaurant_integration` source and install standard Restaurant
+   and the companion. When updating a combined release with Restaurant
+   installed, verify that the upgrade activates the available companion.
+   Refresh after reload and confirm the installed versions against the candidate.
 3. Inspect the original companies, customers, products and financial documents
    against a pre-install baseline. Do not replace the database with demo data
    or count a fresh empty database as populated-data preservation evidence.

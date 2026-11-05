@@ -29,6 +29,7 @@ private host details and credentials in restricted records.
 | [75 — Adapt Revolut to Odoo.sh Enterprise 18](ready-for-agents/75-adapt-revolut-to-odoo-sh.md) | Deployment compatibility | `ready-for-agent` | Open | No local implementation blocker; release PR #96 prepared and unmerged; live trial acceptance in #82; no permanent activation or client rollout gate |
 | [82 — Test real payments and refunds on the Odoo.sh Enterprise trial](ready-for-human/82-activate-odoo-sh-and-check-payment-refund.md) | Enhancement / live trial acceptance | `ready-for-human` | Open | Usable operational trial build, candidate/deployment approval, owner/terminal participation and agreed small amounts; no activation code or permanent registration |
 | [83 — Finish the deferred Odoo 18 refund, return and session](ready-for-human/83-finish-deferred-v18-refund-return-session.md) | Enhancement / deferred acceptance follow-up | `ready-for-human` | Open | Original provider finality and authorised custodian; non-blocking for release, independent of Enterprise activation |
+| [86 — Make Odoo Restaurant optional for POS Revolut](ready-for-agents/86-make-restaurant-optional.md) | Enhancement | `ready-for-agent` | Claimed | Hosted staging and Store download checks before release |
 
 ## Closed tickets
 
