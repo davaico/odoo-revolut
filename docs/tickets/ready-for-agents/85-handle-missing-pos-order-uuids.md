@@ -111,3 +111,16 @@ and host suites passed 159 and 23 tests respectively.
 
 Standards and Spec reviewed both release-line diffs. Standards found one
 terminology correction in this ticket, now applied. Spec found no defects.
+
+## Odoo.sh acceptance preflight
+
+On 2026-11-05, staging build `41044597` reported `ODOO_STAGE=staging`, a
+neutralized Odoo 18 Enterprise database, and POS Revolut `18.0.1.0.8`
+installed. The build ran `14fdbb1`, the pre-fix revision. A read-only query
+counted four POS orders, zero with a missing UUID, and an earliest order year
+of 2026. The backup list showed Odoo 18 project backups and no identified
+sanitized Odoo 15 migration copy. The migrated-database checkout is pending.
+
+The Odoo 18 addon patch also passed `git apply --check` against release
+snapshot `0e515e9`. Both local patches are ready for PR preparation. PR
+publication follows the migrated-database checkout acceptance.
