@@ -99,16 +99,15 @@ class ReturnAllocation:
         for session in sessions.sorted("id"):
             self.env.cr.execute("UPDATE pos_session SET write_date = write_date WHERE id = %s", [session.id])
         charges = self.env["pos.revolut.payment.operation"].sudo()
-        for company_id, identity in sorted(set(identities)):
-            if identity:
-                charges._lock_order(company_id, identity)
+        ordered_identities = sorted({(company_id, identity) for company_id, identity in identities if identity})
+        for company_id, identity in ordered_identities:
+            charges._lock_order(company_id, identity)
         originals.flush_recordset()
         for original in originals.sorted("id"):
             self.env.cr.execute("UPDATE pos_order SET write_date = NOW() AT TIME ZONE 'UTC' WHERE id = %s", [original.id])
         selected = charges.search([("pos_order_id", "in", originals.ids)], order="id")
-        for company_id, identity in sorted(set(identities)):
-            if identity:
-                selected |= charges.search([("company_id", "=", company_id), ("order_uuid", "=", identity)])
+        for company_id, identity in ordered_identities:
+            selected |= charges.search([("company_id", "=", company_id), ("order_uuid", "=", identity)])
         sources = (selected | sources.sudo() if sources is not None else selected).sorted("id")
         sources.flush_recordset()
         for source in sources:
