@@ -252,6 +252,8 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
         return response
 
     def _configure_revolut_checkout(self, include_bank=False, environment="sandbox"):
+        secret_reference = f"ODOO_REVOLUT_SECRET_CHECKOUT_TEST_{uuid4().hex.upper()}"
+        self.enterContext(patch.dict(os.environ, {secret_reference: "test-only-not-a-credential"}))
         revolut_method = self.env["pos.payment.method"].create(
             {
                 "name": "Revolut",
@@ -262,7 +264,7 @@ class TestRevolutVerifiedCheckout(TestPointOfSaleHttpCommon):
                 "revolut_location_id": self.LOCATION_ID,
                 "revolut_terminal_id": self.TERMINAL_ID,
                 "revolut_fulfilment_type": "eat_in",
-                "revolut_secret_reference": "ODOO_REVOLUT_SECRET_TEST_TERMINAL",
+                "revolut_secret_reference": secret_reference,
             }
         )
         self.main_pos_config.sudo().write({
