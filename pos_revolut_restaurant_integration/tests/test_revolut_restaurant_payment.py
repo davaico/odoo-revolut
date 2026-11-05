@@ -9,7 +9,7 @@ from odoo.exceptions import UserError
 from odoo.tests.common import TransactionCase, tagged
 
 from odoo.addons.pos_revolut.tests import test_revolut_payment
-from odoo.addons.pos_revolut.tests.authorization_fixtures import authorized_start, native_products
+from odoo.addons.pos_revolut.tests.authorization_fixtures import authorized_start, financial_posts, native_products
 
 
 @tagged("post_install", "-at_install", "pos_revolut_restaurant")
@@ -65,7 +65,7 @@ class TestRevolutRestaurantContext(TransactionCase):
         response.json.return_value = payload
         return response
 
-    def _start(self, preset_id, table_id, *, preset_time=False):
+    def _start(self, preset_id, table_id, *, preset_time=False, amount=4.34):
         order_uuid, line_uuid = str(uuid4()), str(uuid4())
         snapshot = {
             "pricelist_id": self.config.pricelist_id.id,
@@ -78,7 +78,7 @@ class TestRevolutRestaurantContext(TransactionCase):
             }],
         }
         return authorized_start(self.method,
-            self.session.id, order_uuid, line_uuid, 4.34,
+            self.session.id, order_uuid, line_uuid, amount,
             self.config.currency_id.id, False, snapshot, preset_time=preset_time,
         )
 
@@ -224,3 +224,95 @@ class TestRevolutRestaurantContext(TransactionCase):
                       if call.args[0] == "POST"][0]
         self.assertEqual(order_post.kwargs["json"]["fulfilment_type"], "take_away")
         self.assertEqual(order_post.kwargs["json"]["amount"], 434)
+
+    @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_RESTAURANT_TEST": "test-only"})
+    @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
+    def test_full_and_partial_refunds_keep_original_restaurant_payment(self, request):
+        orders = self.env["pos.order"]
+        operations = self.env["pos.revolut.payment.operation"]
+        currency = self.session.currency_id
+        preset = self.env.ref("pos_restaurant.pos_takein_preset")
+        for quantity, minor in ((1, 1234), (0.5, 617)):
+            with self.subTest(quantity=quantity), self.cr.savepoint():
+                order_id, intent_id, payment_id, refund_id = (str(uuid4()) for _ in range(4))
+                request.side_effect = [
+                    self._response({"terminals": [{
+                        "id": self.TERMINAL_ID, "online": True, "location_id": self.LOCATION_ID,
+                    }]}),
+                    self._response({"id": order_id}),
+                    self._response({"id": intent_id, "state": "pending"}),
+                    self._response({"id": intent_id, "order_id": order_id, "state": "completed",
+                                    "payment_id": payment_id}),
+                    self._response({"id": payment_id, "order_id": order_id, "state": "captured",
+                                    "amount": 1234, "currency": currency.name}),
+                ]
+                started = self._start(preset.id, self.table.id, amount=12.34)
+                source = operations.browse(started["operation_id"])
+                captured = self.method.revolut_poll_payment(
+                    source.id, source.order_uuid, source.payment_line_uuid,
+                )
+                self.assertEqual(captured["state"], "verified")
+                self.env.invalidate_all()
+                sale = source.pos_order_id
+                self.assertEqual(sale.payment_ids.uuid, source.payment_line_uuid)
+                sale.write({"payment_ids": [Command.update(sale.payment_ids.id, {
+                    "payment_status": "done", "transaction_id": payment_id,
+                })], "amount_paid": 12.34})
+                sale.action_pos_order_paid()
+                self.assertEqual(sale.state, "paid")
+                self.assertEqual(sale.table_id, self.table)
+                self.assertEqual(sale.payment_ids.revolut_operation_id, source)
+
+                amount = -minor / 100
+                returned = orders.create({
+                    "uuid": str(uuid4()), "session_id": self.session.id,
+                    "pricelist_id": sale.pricelist_id.id, "amount_total": amount,
+                    "amount_tax": 0, "amount_paid": 0, "amount_return": 0,
+                    "lines": [Command.create({
+                        "product_id": self.product.id, "qty": -quantity, "price_unit": 12.34,
+                        "price_subtotal": amount, "price_subtotal_incl": amount,
+                        "refunded_orderline_id": sale.lines.id, "tax_ids": [Command.clear()],
+                    })],
+                    "payment_ids": [Command.create({
+                        "uuid": str(uuid4()), "payment_method_id": self.method.id,
+                        "amount": amount, "payment_status": "waiting",
+                    })],
+                })
+                tender = returned.payment_ids
+                request.reset_mock()
+                provider_refund = {
+                    "id": refund_id, "type": "refund", "related_order_id": order_id,
+                    "amount": minor, "currency": currency.name,
+                }
+                request.side_effect = [
+                    self._response({"id": order_id, "state": "completed", "amount": 1234,
+                                    "refunded_amount": 0, "currency": currency.name}),
+                    self._response(dict(provider_refund, state="pending")),
+                    self._response(dict(provider_refund, state="completed")),
+                ]
+                self.env.flush_all()
+                refund = self.method.revolut_start_refund(
+                    self.session.id, returned.uuid, tender.uuid, amount, currency.id,
+                    returned._revolut_order_values(), source.id, minor, 0,
+                )
+                self.assertEqual(refund["state"], "pending")
+                verified = self.method.revolut_poll_refund(refund["operation_id"], returned.uuid, tender.uuid)
+                self.assertEqual(verified["state"], "verified")
+                returned.write({
+                    "amount_paid": amount,
+                    "payment_ids": [Command.update(tender.id, {
+                        "payment_status": "done", "transaction_id": refund_id,
+                    })],
+                })
+                returned.action_pos_order_paid()
+                self.assertEqual(returned.state, "paid")
+                self.assertEqual(returned.lines.refunded_orderline_id, sale.lines)
+                refund_operation = tender.revolut_refund_operation_id
+                self.assertEqual(refund_operation.original_operation_id, source)
+                self.assertEqual(refund_operation.pos_payment_id, tender)
+                self.assertEqual(refund_operation.pos_order_id, returned)
+                self.assertEqual(refund_operation.amount_minor, minor)
+                self.assertEqual(tender.transaction_id, refund_id)
+                refund_post, = financial_posts(request)
+                self.assertTrue(refund_post.args[1].endswith(f"/orders/{order_id}/refund"))
+                self.assertEqual(refund_post.kwargs["json"]["amount"], minor)
