@@ -2,6 +2,15 @@
 
 For an existing database, use [Upgrading](upgrading.md). Tested runtime: Odoo Community `19.0.20260908` and PostgreSQL `16.14`.
 
+## Choose the addons
+
+- **Retail**. Install `pos_revolut`. Odoo installs standard Point of Sale as needed.
+- **Restaurant**. Also deploy `pos_revolut_restaurant_integration` from the same
+  Odoo version and source release, and install it with standard Restaurant.
+- **Existing database with Restaurant installed**. Deploy both Revolut addon
+  directories, even if the registers use retail mode. Follow [Upgrading](upgrading.md)
+  and verify that POS Revolut Restaurant is installed at the matching version.
+
 ## Requirements
 
 - An administered Odoo server with outbound HTTPS, standard Point of Sale and working journal, currency and accounting configuration.
