@@ -1,5 +1,5 @@
 {
-    "name": "POS Revolut Restaurant Integration",
+    "name": "POS Revolut Restaurant",
     "version": "19.0.1.18.17",
     "category": "Sales/Point of Sale",
     "summary": "Use Revolut terminal payments on Odoo Restaurant registers",
