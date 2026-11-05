@@ -168,9 +168,8 @@ patch(PosStore.prototype, {
                 days: availability.days,
                 timezone: availability.timezone,
                 save: async (slot) => {
-                    // Restaurant saves drafts in the background. Wait before changing
-                    // context so an older save response cannot discard this selection.
-                    await Promise.all([...(this.revolutRestaurantSyncs || [])]);
+                    // Wait for tracked background saves before changing context.
+                    await Promise.all([...(this.revolutPendingDraftSyncs || [])]);
                     if (order.finalized || order.preset_id !== preset) {
                         throw new Error(_t("The order changed. Close scheduling and open it again."));
                     }
@@ -237,11 +236,8 @@ patch(ControlButtons.prototype, {
             list: presets.map((item) => ({ id: item.id, label: item.name, item,
                 isSelected: item === order.preset_id })),
         });
-        if (preset && this.currentOrder === order && order.setPreset(preset) &&
-            preset.revolut_fulfilment === "take_away") {
-            // Only an explicit Takeout selection removes the table. Applying a
-            // default while opening a Restaurant table must retain its context.
-            order.update({ table_id: false });
+        if (preset && this.currentOrder === order) {
+            order.setPreset(preset, { explicitSelection: true });
         }
     },
 });

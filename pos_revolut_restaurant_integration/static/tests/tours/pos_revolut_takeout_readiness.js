@@ -5,7 +5,7 @@ import * as PaymentScreen from "@point_of_sale/../tests/tours/utils/payment_scre
 import * as ProductScreen from "@point_of_sale/../tests/tours/utils/product_screen_util";
 import * as ReceiptScreen from "@pos_revolut/../tests/tours/receipt_screen_util";
 import { registry } from "@web/core/registry";
-import { reopenRevolutOrder } from "./recovery_order_util";
+import { reopenRevolutOrder } from "@pos_revolut/../tests/tours/recovery_order_util";
 
 function beginTakeout(loseSlotAfterCapture = false) {
     return [

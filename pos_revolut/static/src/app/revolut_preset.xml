@@ -14,9 +14,6 @@
                 <t t-esc="currentOrder.presetPickupLabel || 'Pickup time'"/>
             </button>
         </xpath>
-        <xpath expr="//button[@t-on-click='clickTakeAway']" position="attributes">
-            <attribute name="t-if">pos.config.takeaway and !pos.config.use_presets</attribute>
-        </xpath>
     </t>
 
     <t t-name="pos_revolut.PaymentPickup" t-inherit="point_of_sale.PaymentScreenButtons" t-inherit-mode="extension">

@@ -5,7 +5,6 @@ from . import product_combo
 from . import revolut_payment_operation
 from . import pos_payment_method
 from . import pos_order
-from . import restaurant_table
 from . import revolut_reconciliation
 from . import revolut_refund
 from . import cart_pricing

@@ -2,7 +2,7 @@
 from odoo import _, models
 from odoo.exceptions import UserError
 
-from .return_allocation import ReturnAllocation
+from odoo.addons.pos_revolut.models.return_allocation import ReturnAllocation
 
 
 class RestaurantTable(models.Model):
