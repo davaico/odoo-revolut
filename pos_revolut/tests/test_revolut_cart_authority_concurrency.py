@@ -18,8 +18,7 @@ from odoo.tests.common import TransactionCase, tagged
 from odoo.tools import mute_logger
 
 
-@tagged("post_install", "-at_install")
-class TestRevolutCartAuthorityConcurrency(TransactionCase):
+class RevolutCartAuthorityConcurrencyFixtures:
     def setUp(self):
         super().setUp()
         self.observation_time = fields.Datetime.now()
@@ -128,6 +127,94 @@ class TestRevolutCartAuthorityConcurrency(TransactionCase):
         return self.rpc('pos.order', 'revolut_remove_unstarted_payment' if remove else 'revolut_recover_unstarted_payment',
             self.order_id, self.order_uuid, self.line_a, self.method_id, 100, self.currency_id)
 
+    def response(self, payload):
+        content = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+        response = Mock(status_code=200)
+        response.json.return_value = payload
+        response.iter_content.return_value = [content]
+        return response
+
+    def http(self, method, url, **kwargs):
+        path = urlsplit(url).path
+        if method == "GET" and path == "/api/terminals":
+            return self.response({"terminals": [{"id": self.terminal_id, "online": True,
+                "operation_mode": "pos", "location_id": self.location_id}]})
+        if method == "POST" and path == "/api/orders":
+            identifier = str(uuid4())
+            self.providers[identifier] = {"minor": kwargs["json"]["amount"], "payment_id": str(uuid4())}
+            return self.response({"id": identifier})
+        if method == "POST" and path.endswith("/payment-intents"):
+            identifier = str(uuid4())
+            order_id = path.split("/")[3]
+            self.intents[identifier] = order_id
+            self.payment_ids[self.providers[order_id]["payment_id"]] = order_id
+            return self.response({"id": identifier, "state": "pending"})
+        if method == "GET" and path.startswith("/api/payment-intents/"):
+            identifier = path.rsplit("/", 1)[-1]
+            order_id = self.intents[identifier]
+            provider = self.providers[order_id]
+            return self.response({"id": identifier, "order_id": order_id, "state": "completed",
+                "payment_id": provider["payment_id"], "amount": provider["minor"],
+                "currency": self.currency_code, "terminal_id": self.terminal_id})
+        if method == "GET" and path.startswith("/api/payments/"):
+            identifier = path.rsplit("/", 1)[-1]
+            order_id = self.payment_ids[identifier]
+            return self.response({"id": identifier, "order_id": order_id, "state": "captured",
+                "amount": self.providers[order_id]["minor"] + self.providers[order_id].get("tip", 0), "currency": self.currency_code,
+                "created_at": "2026-10-01T10:00:00Z"})
+        if method == "POST" and path == "/api/report-runs":
+            identifier = str(uuid4())
+            self.report_ids.add(identifier)
+            return self.response({"report_run_id": identifier, "status": self.report_status})
+        if method == "GET" and path.rsplit("/", 1)[-1] in self.report_ids:
+            return self.response({"report_run_id": path.rsplit("/", 1)[-1], "status": self.report_status})
+        if method == "GET" and path.startswith("/api/report-runs/") and path.endswith("/file"):
+            columns = ("payment_id", "type", "order_id", "state", "amount", "currency", "surcharge_amount",
+                "tip_amount", "refunded_amount", "created_date", "captured_date", "location_id")
+            output = io.StringIO(newline="")
+            writer = csv.writer(output)
+            writer.writerow(columns)
+            for payment_id, order_id in self.payment_ids.items():
+                provider = self.providers[order_id]
+                writer.writerow([payment_id, "PAYMENT", order_id, "COMPLETED",
+                    f"{(provider['minor'] + provider.get('tip', 0)) / 100:.2f}", self.currency_code,
+                    "", f"{provider.get('tip', 0) / 100:.2f}", "0.00",
+                    "2026-10-01T10:00:00Z", "2026-10-01T10:00:10Z", self.location_id])
+            return self.response(output.getvalue().encode())
+        if method == "GET" and path.startswith("/api/orders/"):
+            order_id = path.rsplit("/", 1)[-1]
+            provider = self.providers[order_id]
+            return self.response({"id": order_id, "currency": self.currency_code, "location_id": self.location_id,
+                "payments": [{"id": provider["payment_id"], "state": "captured",
+                              "amount": provider["minor"] + provider.get("tip", 0)}]})
+        raise AssertionError(f"Unexpected guarded provider request: {method} {path}")
+
+    def workers(self, tasks):
+        results, errors = {}, []
+
+        def run(name, task):
+            try:
+                results[name] = task()
+            except UserError as error:
+                results[name] = {"error": str(error)}
+            except Exception as error:
+                errors.append(error)
+
+        threads = [Thread(target=run, args=(name, task), name=name, daemon=True) for name, task in tasks]
+        # Odoo preload owns Registry._lock while tests run. This replacement
+        # permits thread Environments while retaining real database cursors.
+        with patch.object(Registry, "_lock", RLock()), mute_logger("odoo.sql_db"):
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=20)
+        self.assertFalse(any(thread.is_alive() for thread in threads), "Public RPC deadlocked")
+        self.assertFalse(errors, repr(errors))
+        return results
+
+
+@tagged("post_install", "-at_install")
+class TestRevolutCartAuthorityConcurrency(RevolutCartAuthorityConcurrencyFixtures, TransactionCase):
     def test_recovery_racing_start_either_fences_admission_or_keeps_operation(self):
         self.save_waiting_tender()
         authority = self.prepare([(self.line_a, 100)])
@@ -243,91 +330,6 @@ class TestRevolutCartAuthorityConcurrency(TransactionCase):
                 [{'uuid': self.line_a, 'payment_method_id': self.method_id, 'amount': 100}], state['recovery_revision'])
         self.assertFalse(self.operations())
         self.request.assert_not_called()
-
-    def response(self, payload):
-        content = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
-        response = Mock(status_code=200)
-        response.json.return_value = payload
-        response.iter_content.return_value = [content]
-        return response
-
-    def http(self, method, url, **kwargs):
-        path = urlsplit(url).path
-        if method == "GET" and path == "/api/terminals":
-            return self.response({"terminals": [{"id": self.terminal_id, "online": True,
-                "operation_mode": "pos", "location_id": self.location_id}]})
-        if method == "POST" and path == "/api/orders":
-            identifier = str(uuid4())
-            self.providers[identifier] = {"minor": kwargs["json"]["amount"], "payment_id": str(uuid4())}
-            return self.response({"id": identifier})
-        if method == "POST" and path.endswith("/payment-intents"):
-            identifier = str(uuid4())
-            order_id = path.split("/")[3]
-            self.intents[identifier] = order_id
-            self.payment_ids[self.providers[order_id]["payment_id"]] = order_id
-            return self.response({"id": identifier, "state": "pending"})
-        if method == "GET" and path.startswith("/api/payment-intents/"):
-            identifier = path.rsplit("/", 1)[-1]
-            order_id = self.intents[identifier]
-            provider = self.providers[order_id]
-            return self.response({"id": identifier, "order_id": order_id, "state": "completed",
-                "payment_id": provider["payment_id"], "amount": provider["minor"],
-                "currency": self.currency_code, "terminal_id": self.terminal_id})
-        if method == "GET" and path.startswith("/api/payments/"):
-            identifier = path.rsplit("/", 1)[-1]
-            order_id = self.payment_ids[identifier]
-            return self.response({"id": identifier, "order_id": order_id, "state": "captured",
-                "amount": self.providers[order_id]["minor"] + self.providers[order_id].get("tip", 0), "currency": self.currency_code,
-                "created_at": "2026-10-01T10:00:00Z"})
-        if method == "POST" and path == "/api/report-runs":
-            identifier = str(uuid4())
-            self.report_ids.add(identifier)
-            return self.response({"report_run_id": identifier, "status": self.report_status})
-        if method == "GET" and path.rsplit("/", 1)[-1] in self.report_ids:
-            return self.response({"report_run_id": path.rsplit("/", 1)[-1], "status": self.report_status})
-        if method == "GET" and path.startswith("/api/report-runs/") and path.endswith("/file"):
-            columns = ("payment_id", "type", "order_id", "state", "amount", "currency", "surcharge_amount",
-                "tip_amount", "refunded_amount", "created_date", "captured_date", "location_id")
-            output = io.StringIO(newline="")
-            writer = csv.writer(output)
-            writer.writerow(columns)
-            for payment_id, order_id in self.payment_ids.items():
-                provider = self.providers[order_id]
-                writer.writerow([payment_id, "PAYMENT", order_id, "COMPLETED",
-                    f"{(provider['minor'] + provider.get('tip', 0)) / 100:.2f}", self.currency_code,
-                    "", f"{provider.get('tip', 0) / 100:.2f}", "0.00",
-                    "2026-10-01T10:00:00Z", "2026-10-01T10:00:10Z", self.location_id])
-            return self.response(output.getvalue().encode())
-        if method == "GET" and path.startswith("/api/orders/"):
-            order_id = path.rsplit("/", 1)[-1]
-            provider = self.providers[order_id]
-            return self.response({"id": order_id, "currency": self.currency_code, "location_id": self.location_id,
-                "payments": [{"id": provider["payment_id"], "state": "captured",
-                              "amount": provider["minor"] + provider.get("tip", 0)}]})
-        raise AssertionError(f"Unexpected guarded provider request: {method} {path}")
-
-    def workers(self, tasks):
-        results, errors = {}, []
-
-        def run(name, task):
-            try:
-                results[name] = task()
-            except UserError as error:
-                results[name] = {"error": str(error)}
-            except Exception as error:
-                errors.append(error)
-
-        threads = [Thread(target=run, args=(name, task), name=name, daemon=True) for name, task in tasks]
-        # Odoo preload owns Registry._lock while tests run. This replacement
-        # permits thread Environments while retaining real database cursors.
-        with patch.object(Registry, "_lock", RLock()), mute_logger("odoo.sql_db"):
-            for thread in threads:
-                thread.start()
-            for thread in threads:
-                thread.join(timeout=20)
-        self.assertFalse(any(thread.is_alive() for thread in threads), "Public RPC deadlocked")
-        self.assertFalse(errors, repr(errors))
-        return results
 
     def test_distinct_slots_are_reserved_once_then_verified_sequentially(self):
         authority = self.prepare([(self.line_a, 40), (self.line_b, 60)])
@@ -642,84 +644,3 @@ class TestRevolutCartAuthorityConcurrency(TransactionCase):
             self.assertIn(cash_minor, (2000, 3000))
         self.assertEqual(len(self.operations()), 2)
         self.assertEqual(len(self.financial_posts()), 4)
-
-    def test_cross_session_restaurant_transfers_racing_native_sync_preserve_exposure(self):
-        if self.env["ir.module.module"].search([("name", "=", "pos_restaurant")]).state != "installed":
-            self.skipTest("Restaurant transfer races need pos_restaurant installed")
-        with self.registry.cursor() as cursor:
-            env = api.Environment(cursor, SUPERUSER_ID, self.context)
-            source = env["pos.order"].browse(self.order_id)
-            source.session_id.state = "closed"
-            preset = env.ref("pos_revolut.pos_takein_preset")
-            source.config_id.write({
-                "module_pos_restaurant": True, "use_presets": True,
-                "default_preset_id": preset.id, "available_preset_ids": [Command.link(preset.id)],
-            })
-            other_config = source.config_id.copy({"name": "Concurrent shared-floor register"})
-            floor = env["restaurant.floor"].create({
-                "name": "Concurrent shared floor", "pos_config_ids": [
-                    Command.link(source.config_id.id), Command.link(other_config.id),
-                ],
-            })
-            first_table, second_table = env["restaurant.table"].create([
-                {"floor_id": floor.id, "table_number": 1},
-                {"floor_id": floor.id, "table_number": 2},
-            ])
-            source.write({"table_id": first_table.id, "preset_id": preset.id})
-            other_session = env["pos.session"].create({"config_id": other_config.id, "state": "opened"})
-            other = env["pos.order"].create({
-                "session_id": other_session.id, "uuid": str(uuid4()), "table_id": second_table.id,
-                "date_order": "2099-01-01 12:00:00", "preset_id": preset.id,
-                "pricelist_id": source.pricelist_id.id, "amount_total": 100, "amount_tax": 0,
-                "amount_paid": 0, "amount_return": 0,
-                "lines": [Command.create({
-                    "uuid": str(uuid4()), "product_id": source.lines.product_id.id, "qty": 1,
-                    "price_unit": 100, "price_subtotal": 100, "price_subtotal_incl": 100,
-                    "tax_ids": [Command.clear()],
-                })],
-            })
-            source.session_id.state = "opened"
-            source_table, destination_table, other_id = first_table.id, second_table.id, other.id
-            other_uuid, other_session_id = other.uuid, other_session.id
-            cursor.commit()
-        self.save_waiting_tender()
-        authority = self.prepare([(self.line_a, 100)])
-        started = self.start(authority, self.line_a, 100)
-        self.assertEqual(started["state"], "pending")
-        self.request.reset_mock()
-        barrier = Barrier(2)
-
-        def native_transfer():
-            barrier.wait(timeout=10)
-            return self.rpc("pos.order", "sync_from_ui", [{
-                "uuid": other_uuid, "session_id": other_session_id, "state": "draft",
-                "table_id": source_table, "amount_total": 100, "amount_tax": 0,
-                "amount_paid": 0, "amount_return": 0, "lines": [], "payment_ids": [],
-            }])
-
-        def opposite_transfer():
-            barrier.wait(timeout=10)
-            with self.registry.cursor() as cursor:
-                env = api.Environment(cursor, SUPERUSER_ID, self.context)
-                retrying(lambda: env["pos.order"].browse(self.order_id).write({
-                    "table_id": destination_table,
-                }), env)
-                cursor.commit()
-
-        results = self.workers([("native", native_transfer), ("opposite", opposite_transfer)])
-        for result in results.values():
-            self.assertRegex(result["error"], "occupied table")
-        with self.registry.cursor() as cursor:
-            env = api.Environment(cursor, SUPERUSER_ID, self.context)
-            source, other = env["pos.order"].browse([self.order_id, other_id])
-            self.assertEqual((source.uuid, source.table_id.id, source.session_id.id),
-                             (self.order_uuid, source_table, self.session_id))
-            self.assertEqual((other.uuid, other.table_id.id, other.session_id.id),
-                             (other_uuid, destination_table, other_session_id))
-            self.assertEqual((source.lines.qty, other.lines.qty), (1, 1))
-            recovered = env["pos.payment.method"].browse(self.method_id).revolut_find_payment(
-                self.order_uuid, self.line_a, self.session_id,
-            )
-            self.assertEqual(recovered["operation_id"], started["operation_id"])
-            self.assertEqual(recovered["state"], "pending")
-        self.request.assert_not_called()

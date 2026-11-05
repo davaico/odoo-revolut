@@ -5,7 +5,7 @@ from odoo import Command
 from odoo.addons.point_of_sale.tests.test_frontend import TestPointOfSaleHttpCommon
 from odoo.tests import tagged
 
-from .test_ui import TestRevolutVerifiedCheckout
+from odoo.addons.pos_revolut.tests.test_ui import TestRevolutVerifiedCheckout
 
 
 @tagged("post_install", "-at_install", "pos_revolut_restaurant")
