@@ -26,6 +26,8 @@ if 'dpkg-query' in args:
 elif 'psql' in args:
     if "'pos_restaurant'" in args[-1]:
         print(os.environ.get('FAKE_RESTAURANT_STATE', 'installed'))
+    elif "'pos_revolut_restaurant_integration'" in args[-1]:
+        print(os.environ.get('FAKE_COMPANION_STATE', 'absent'))
     else:
         print('absent' if 'pos_revolut_restaurant' in args[-1] else 'installed')
 '''
@@ -153,6 +155,37 @@ class TestRuntimeRunner(unittest.TestCase):
         self.assertEqual(len(acceptance), 2)
         for args in acceptance:
             self.assertEqual(args[args.index('--test-tags') + 1], '/pos_revolut:InstallSlice')
+
+    def test_populated_split_artifact_installs_and_updates_companion(self):
+        repository = self.root / "split-release"
+        scripts = repository / "scripts"
+        scripts.mkdir(parents=True)
+        for name in ("test-delivered-addon", "test-addon", "odoo-runtime", "deploy-addon-remote"):
+            shutil.copy2(ROOT / "scripts" / name, scripts / name)
+        companion_name = "pos_revolut_restaurant_integration"
+        for name in ("pos_revolut", companion_name):
+            addon = repository / name
+            addon.mkdir()
+            (addon / "__manifest__.py").write_text("{'version': '18.0.1.0.9'}")
+        fixtures = repository / "pos_revolut" / "tests"
+        fixtures.mkdir()
+        for name in ("native_install_seed", "native_install_verify", "candidate_update_seed", "candidate_update_verify"):
+            (fixtures / f"{name}.py").write_text(name)
+        for command in (["init", "--quiet"], ["add", "."],
+                        ["-c", "user.name=Runtime test", "-c", "user.email=runtime@example.invalid",
+                         "commit", "--quiet", "-m", "Fixture artifact"]):
+            subprocess.run(["git", "-C", str(repository), *command], check=True, capture_output=True)
+        revision = subprocess.check_output(["git", "-C", str(repository), "rev-parse", "HEAD"],
+                                           text=True).strip()
+        result = subprocess.run([str(scripts / "test-delivered-addon"), "--revision", revision,
+                                 "--scenario", "populated"],
+                                env={**self.env, "FAKE_COMPANION_STATE": "installed"},
+                                text=True, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"{companion_name} = installed", result.stdout)
+        updates = [row["args"] for row in self.calls() if "--update" in row["args"]]
+        self.assertEqual(len(updates), 1)
+        self.assertEqual(updates[0][updates[0].index("--update") + 1], f"pos_revolut,{companion_name}")
 
     def test_unsupported_major_is_rejected_before_docker(self):
         result = self.run_script(ODOO_REVOLUT_ODOO_MAJOR='20')
