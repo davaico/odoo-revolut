@@ -44,6 +44,11 @@ while (($#)); do
     esac
 done
 
+addon_root="${ODOO_REVOLUT_ADDONS_DIR:-$repository_root}"
+if [[ "$delivered_scenario" == migration && -f "$addon_root/$companion/__manifest__.py" ]]; then
+    delivered_scenario=legacy-upgrade
+fi
+
 case "$delivered_scenario" in
     ""|retail|restaurant|restaurant-later|retail-with-restaurant|upgrade|legacy-upgrade|migration) ;;
     *) echo "Unknown delivered scenario: $delivered_scenario" >&2; exit 2 ;;
@@ -146,7 +151,6 @@ if [[ "$explicit_test_tags" == true ]]; then
 fi
 
 if [[ "$delivered_scenario" == retail ]]; then
-    addon_root="${ODOO_REVOLUT_ADDONS_DIR:-$repository_root}"
     if python3 -c 'import ast, pathlib, sys; sys.exit("pos_restaurant" not in ast.literal_eval(pathlib.Path(sys.argv[1]).read_text())["depends"])' \
         "$addon_root/pos_revolut/__manifest__.py"; then
         # This scenario also accepts old combined artifacts for comparison.
@@ -288,24 +292,39 @@ elif [[ "$delivered_scenario" == migration ]]; then
         require_state pos_revolut_restaurant absent
     done
 else
-    if [[ "$verify_install_upgrade" == true && "$ODOO_REVOLUT_ODOO_MAJOR" == 18 ]]; then
-        run_odoo --init point_of_sale,pos_restaurant
-        native_install_phase native_install_seed.py
+    update_modules=pos_revolut
+    if [[ "$verify_install_upgrade" == true ]]; then
+        if [[ -f "$addon_root/$companion/__manifest__.py" ]]; then
+            update_modules+=",$companion"
+            if [[ "$explicit_test_tags" == false ]]; then
+                test_tags+=",/$companion"
+            fi
+        fi
+        if [[ "$ODOO_REVOLUT_ODOO_MAJOR" == 18 ]]; then
+            run_odoo --init point_of_sale,pos_restaurant
+            native_install_phase native_install_seed.py
+        fi
     fi
     run_odoo \
         --init pos_revolut \
         --test-tags "$test_tags"
     if [[ "$verify_install_upgrade" == true ]]; then
         require_state pos_restaurant installed
-        require_state pos_revolut_restaurant absent
+        require_state "$legacy_bridge" absent
+        if [[ "$update_modules" != pos_revolut ]]; then
+            require_state "$companion" installed
+        fi
         if [[ "$ODOO_REVOLUT_ODOO_MAJOR" == 18 ]]; then
             native_install_phase native_install_verify.py
             native_install_phase candidate_update_seed.py
         fi
         run_odoo \
-            --update pos_revolut \
+            --update "$update_modules" \
             --test-tags "$test_tags"
-        require_state pos_revolut_restaurant absent
+        require_state "$legacy_bridge" absent
+        if [[ "$update_modules" != pos_revolut ]]; then
+            require_state "$companion" installed
+        fi
         if [[ "$ODOO_REVOLUT_ODOO_MAJOR" == 18 ]]; then
             native_install_phase native_install_verify.py
             native_install_phase candidate_update_verify.py
