@@ -46,3 +46,5 @@ from . import test_native_adjustment_ui
 from . import test_takeout_readiness_ui
 from . import test_odoo_tip_ui
 from . import test_revolut_refund_recovery_ui
+
+from . import test_restaurant_without_companion
