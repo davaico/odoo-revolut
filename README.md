@@ -6,11 +6,12 @@ Connect Odoo Point of Sale to a Revolut terminal: send the amount, let the custo
 
 Supports retail and Restaurant registers, split payments, terminal-selected tips, full and partial refunds, interrupted-payment recovery, and refunds issued outside Odoo.
 
-Tested runtime: **Odoo Community 19.0.20260908** and **PostgreSQL 16.14**. Other builds are not yet verified. The addon requires standard `point_of_sale` and `pos_restaurant`; retail registers can stay in retail mode.
+Tested runtime: **Odoo Community 19.0.20260908** and **PostgreSQL 16.14**. Other builds are not yet verified. Retail needs only standard `point_of_sale`. Use the matching `pos_revolut_restaurant_integration` addon for Restaurant registers.
 
 ## Repository structure
 
 - `pos_revolut/`: installable Odoo addon, including migrations and addon tests.
+- `pos_revolut_restaurant_integration/` provides the optional Restaurant integration and its tests.
 - `docs/`: installation, user, upgrade and architecture guides.
 - `tests/`: tests for the development and release runners.
 - `scripts/` and `docker/`: disposable test runners and their guarded runtime.

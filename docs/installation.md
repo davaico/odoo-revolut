@@ -4,7 +4,7 @@ For an existing database, use [Upgrading](upgrading.md). Tested runtime: Odoo Co
 
 ## Requirements
 
-- An administered Odoo server with outbound HTTPS, standard POS/Restaurant addons and working journal, currency and accounting configuration.
+- An administered Odoo server with outbound HTTPS, standard Point of Sale and working journal, currency and accounting configuration.
 - A Revolut Merchant account, secret, location ID and terminal belonging to that location.
 - An online terminal in **Pay at Counter** mode.
 - Access to terminal operations and Merchant `payments_report` creation, polling and download. **Check Connection** does not verify all these permissions.
@@ -21,7 +21,29 @@ The addon uses fixed Sandbox/Production Merchant hosts and API version `2026-08-
      --init pos_revolut --stop-after-init --no-http --workers=0
    ```
 
-3. After success, restart Odoo and confirm **POS Revolut** is installed. Dependencies `point_of_sale` and `pos_restaurant` install automatically; retail registers can remain in retail mode.
+3. Restart Odoo and confirm **POS Revolut** is installed. Odoo installs standard
+   Point of Sale as needed. For a retail shop, leave **Is a Bar/Restaurant**
+   unchecked in the register's settings.
+
+### Restaurant registers
+
+Make both `pos_revolut` and the matching `pos_revolut_restaurant_integration`
+directory available on `addons_path`. Use the same source release for both.
+If the POS Revolut Store download contains only the base addon, obtain the
+free companion from the corresponding source release. Install Odoo Restaurant
+and the companion before using Revolut in Restaurant mode. For a new setup,
+Odoo can auto-install the companion when both dependencies are present and
+one is newly installed. You can also install it explicitly:
+
+```bash
+odoo --config /path/to/odoo.conf --database DATABASE_NAME \
+  --init pos_revolut_restaurant_integration --stop-after-init --no-http --workers=0
+```
+
+In Apps, remove the default **Apps** filter to check the companion's state.
+Confirm that it is installed, then enable Restaurant mode on the register
+and reopen POS. For an existing POS Revolut database, follow the coordinated
+procedure in [Upgrading](upgrading.md).
 
 Invoice PDFs require a working Odoo-compatible server PDF renderer, installed separately.
 

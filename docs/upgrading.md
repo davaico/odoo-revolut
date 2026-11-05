@@ -2,22 +2,39 @@
 
 Preserve financial records and their original Merchant access. Review changes between the starting and target versions. Never uninstall the addon or delete uncertain attempts to make an upgrade pass.
 
-## Upgrade procedure
+Before updating, inventory unresolved transactions, back up the database,
+filestore, addon and configuration, and verify restoration. Rehearse on a
+disposable copy with real provider traffic disabled. Keep POS activity and Odoo
+workers stopped during the maintenance window.
 
-1. Inventory unresolved payments, refunds, native returns and external refunds needing review. Plan recovery using their existing references.
-2. Back up the database, filestore, addon and configuration; securely preserve secret references. Verify restoration.
-3. Test on a disposable copy with real provider traffic disabled. Run relevant [historical upgrade tests](../CONTRIBUTING.md#choose-checks).
-4. Stop all workers for maintenance. Install the reviewed release, retaining any legacy bridge described below.
-5. Update with the service's configuration and environment:
+## Update to the optional Restaurant companion
+
+1. If standard Restaurant is installed in the database, put both matching
+   addon directories on `addons_path`, including for databases whose registers
+   are all in retail mode. Run the update and install the companion in the
+   same offline command:
 
    ```bash
    odoo --config /path/to/odoo.conf --database DATABASE_NAME \
-     --update pos_revolut --stop-after-init --no-http --workers=0
+     --update pos_revolut --init pos_revolut_restaurant_integration \
+     --stop-after-init --no-http --workers=0
    ```
 
-6. After success, restart and verify authorities, register grants, connection checks, scheduled actions and historical sales/returns. Reopen every POS browser.
+   If the companion is already installed, update both modules together with
+   `--update pos_revolut,pos_revolut_restaurant_integration`. On a database
+   without Restaurant, update only `pos_revolut`.
+2. Confirm the installed module versions, reload the POS assets, and check
+   the original register settings and financial references before reopening.
+   Existing orders and unresolved attempts retain their original identities.
+   If an update fails, keep POS activity stopped. Restore the matching
+   previous addon release, database and filestore together only while
+   financial activity is still stopped. Reconcile any later provider or
+   native financial operations before a restore.
 
-If updating fails, keep the service stopped. Preserve evidence and reconcile provider outcomes before rollback: restoring an older database could lose subsequent financial operations.
+The new companion uses a different technical name from the retired
+`pos_revolut_restaurant` bridge. On a supported direct upgrade from that
+historical release, keep the old bridge source available until its migration
+retires it, then remove the old source.
 
 ## Version-specific steps
 
