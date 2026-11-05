@@ -132,7 +132,7 @@ class _RevolutPaymentFixtures(TransactionCase):
 class TestRevolutWithoutRestaurantCompanion(_RevolutPaymentFixtures):
     @patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_PAYMENT_TEST": "test-only"})
     @patch("odoo.addons.pos_revolut.models.pos_payment_method.requests.request")
-    def test_restaurant_dispatch_requires_companion_but_retail_can_pay(self, request):
+    def test_restaurant_dispatch_requires_companion_but_recovery_and_retail_work(self, request):
         if "restaurant.table" not in self.env or self.env["ir.module.module"].search_count([
             ("name", "=", "pos_revolut_restaurant_integration"), ("state", "=", "installed"),
         ]):
@@ -150,18 +150,21 @@ class TestRevolutWithoutRestaurantCompanion(_RevolutPaymentFixtures):
             "tip_product_id": self.config.tip_product_id.id,
         })
         session = self.env["pos.session"].create({"config_id": restaurant.id, "state": "opened"})
-        order_uuid = str(uuid4())
-        snapshot = self._financial_snapshot(order_uuid)
-        snapshot.update({
-            "pricelist_id": restaurant.pricelist_id.id,
-            "restaurant": {"preset_id": preset.id, "table_id": False},
-        })
-        request.side_effect = self._start_responses()
 
-        result = authorized_start(
-            self.payment_method, session.id, order_uuid, str(uuid4()), 12.34,
-            restaurant.currency_id.id, snapshot=snapshot,
-        )
+        def start_restaurant(order_uuid, line_uuid):
+            snapshot = self._financial_snapshot(order_uuid)
+            snapshot.update({
+                "pricelist_id": restaurant.pricelist_id.id,
+                "restaurant": {"preset_id": preset.id, "table_id": False},
+            })
+            return authorized_start(
+                self.payment_method, session.id, order_uuid, line_uuid, 12.34,
+                restaurant.currency_id.id, snapshot=snapshot,
+            )
+
+        request.side_effect = self._start_responses()
+        order_uuid = str(uuid4())
+        result = start_restaurant(order_uuid, str(uuid4()))
 
         self.assertEqual(result.get("start_rejected"), "snapshot_invalid")
         self.assertIn("Install the POS Revolut Restaurant integration", result["message"])
@@ -169,6 +172,28 @@ class TestRevolutWithoutRestaurantCompanion(_RevolutPaymentFixtures):
         self.assertFalse(self.env["pos.revolut.payment.operation"].search_count([
             ("order_uuid", "=", order_uuid),
         ]))
+
+        request.side_effect = [
+            *self._start_responses(),
+            self._response({"id": self.revolut_intent_id, "order_id": self.revolut_order_id,
+                            "state": "completed", "payment_id": self.revolut_payment_id}),
+            self._response({"id": self.revolut_payment_id, "order_id": self.revolut_order_id,
+                            "state": "captured", "amount": 1234, "currency": restaurant.currency_id.name}),
+        ]
+        # Seed an attempt that the combined release could already have dispatched.
+        order_uuid, line_uuid = str(uuid4()), str(uuid4())
+        with patch.object(type(self.payment_method), "_revolut_charge_fulfilment", return_value="eat_in"):
+            pending = start_restaurant(order_uuid, line_uuid)
+        self.assertEqual(pending["state"], "pending")
+        request.reset_mock()
+        recovered = self.payment_method.revolut_poll_payment(pending["operation_id"], order_uuid, line_uuid)
+        self.assertEqual(recovered["state"], "verified")
+        self.assertEqual(recovered["payment_id"], self.revolut_payment_id)
+        self.assertFalse(financial_posts(request))
+
+        self.revolut_order_id, self.revolut_intent_id = str(uuid4()), str(uuid4())
+        request.reset_mock()
+        request.side_effect = self._start_responses()
         retail = self._start(str(uuid4()), str(uuid4()))
         self.assertEqual(retail["state"], "pending")
         self.assertEqual(request.call_count, 3)
