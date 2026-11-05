@@ -35,26 +35,25 @@ existing orders and `acquire_native_creation` can pass them from command
 owners. `acquire_session_closure` also collects identities from native orders.
 
 Filter empty UUIDs before sorting and reuse one sorted list of distinct valid
-`(company_id, uuid)` pairs for advisory locking and payment-operation lookup.
+`(company_id, uuid)` pairs for UUID lock rows and payment-operation lookup.
 Keep the existing lock order and retain every original order in the row-lock
 and `pos_order_id` lookup paths, including orders with no UUID. Keep the
 existing payment-operation and refund locking and cache invalidation.
 
 ## Acceptance criteria
 
-- [ ] Add a regression with distinct valid UUIDs and missing UUIDs in the
+- [x] Add a regression with distinct valid UUIDs and missing UUIDs in the
   same company, duplicate identities, and an all-empty case. Verify both UUID
   passes process each valid identity once in deterministic order. Verify
   original orders with missing UUIDs still participate in row locking.
-- [ ] In a test database with legacy orders that have no UUID, complete a
-  normal retail sale through the standard POS flow with the addon installed.
-  Verify the checkout exercises the mixed-identity path and saves the paid
-  order without the reported TypeError. Prioritize Odoo 18 Enterprise on
-  Odoo.sh. The existing cash/bank browser checkout can provide a starting
-  point for the automated fixture.
-- [ ] Run the affected refund and return-allocation regressions on both
+- [x] Complete a normal retail checkout through the standard POS flow with
+  synthetic legacy orders present. Exercise the mixed-identity checkout path
+  separately through native `sync_from_ui` and verify the paid order is saved.
+- [ ] Repeat retail checkout on an Odoo 18 Enterprise Odoo.sh test database
+  migrated from Odoo 15 and containing native orders with missing UUIDs.
+- [x] Run the affected refund and return-allocation regressions on both
   release lines. Mock Revolut HTTP wherever the tests exercise provider paths.
-- [ ] Review each release-line correction separately and record the source
+- [x] Review each release-line correction separately and record the source
   revision, Odoo version and edition, database provenance, and actual outcome
   of each check. Distinguish synthetic legacy fixtures from a migrated copy.
 
@@ -64,11 +63,51 @@ The method itself reproduced the TypeError in Python with a stubbed Odoo
 environment and a same-company string UUID, `False`, and a duplicate UUID.
 Revisions checked were `0baa2c5` (`origin/18.0`), `c2b7d40` (`origin/19.0`),
 `14fdbb1` (`origin/staging/18-enterprise`), and `3f00804` (`feat/v18_rev`).
-The failure happened before UUID advisory locking. Checkout on a migrated Odoo
-database, PostgreSQL locking, and runtime refund tests remain pending. The
-local Docker daemon was inaccessible from this session.
+The failure happened before acquiring UUID lock rows. At intake, the check
+did not exercise PostgreSQL, native checkout, or refund processing.
 
 Both release branches still have the affected sort in the shared allocation
 method. Searches of the allocation callers, local ticket index, and Git
 history found no matching fix or ticket. The prior rejection in
 `.out-of-scope/` concerns permanent production activation and client rollout.
+
+## Implementation verification
+
+On both Odoo Community versions the native tests reproduced the TypeError
+before the correction in the lock batch, POS synchronization and refund
+session-close cases. After the correction the lock test verified ordered,
+unique UUIDs in both passes and a row update for the original order without a
+UUID. The native checkout test exercised a command linking a line from an
+older draft into a new sale. The browser tour exercised ordinary cash and bank
+sales with a legacy order present. The refund tests covered verified full and
+partial refunds and the session-close guard before and after a verified refund
+was linked to a paid return.
+
+| Release line | Tested Odoo edition and version | Source | Focused Odoo results |
+| --- | --- | --- | --- |
+| 18.0 via Enterprise staging | Community `18.0.20261015` | `c40f98e` | 5 backend tests and 1 Chrome checkout passed |
+| 19.0 | Community `19.0.20260908` | `480bfa4` | 13 backend tests and 1 Chrome checkout passed |
+
+Both runs used disposable PostgreSQL 16.15 databases with synthetic legacy
+orders, pinned Chrome `153.0.8010.52` for the browser tours, and blocked live
+Revolut HTTP. Neither database was an Odoo 15 migration copy. The Odoo.sh
+Enterprise acceptance remains open pending a suitable test build/database.
+
+The 18.0 addon patch passed `git apply --check` against release snapshot
+`0baa2c5`. All six affected files had identical contents in that snapshot and
+Enterprise staging `14fdbb1` before the change.
+
+The full addon selection used `--test-tags /pos_revolut`. Both runs exited
+successfully with zero failures or errors:
+
+- 18.0 selected 818 tests. Three were skipped during the full run. The two
+  refund-history tours that skipped on Chrome startup passed a focused rerun
+  on the same revision. The optional `pos_hr` case remained skipped.
+- 19.0 selected 670 tests with one optional `pos_hr` skip.
+
+The 18.0 JavaScript suite passed 146 tests. The host suite selected 80 tests
+with zero failures or errors and three optional skips. The 19.0 JavaScript
+and host suites passed 159 and 23 tests respectively.
+
+Standards and Spec reviewed both release-line diffs. Standards found one
+terminology correction in this ticket, now applied. Spec found no defects.
