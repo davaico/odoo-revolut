@@ -56,7 +56,7 @@ class TestRestaurantRefundCheckout(TestPointOfSaleHttpCommon):
         self.env["restaurant.table"].create({"floor_id": floor.id, "table_number": 1, "seats": 2})
         return TestRevolutVerifiedCheckout._configure_revolut_checkout(self, include_bank=True)
 
-    def _assert_original_return_policy(self, with_customer=True):
+    def _assert_original_return_policy(self, with_customer=True, *, quantity=1):
         self.env.invalidate_all()
         orders = self.env["pos.order"].search([
             ("session_id", "=", self.main_pos_config.current_session_id.id), ("state", "=", "paid"),
@@ -64,7 +64,8 @@ class TestRestaurantRefundCheckout(TestPointOfSaleHttpCommon):
         self.assertEqual(len(orders), 2)
         original = orders.filtered(lambda order: order.amount_total > 0)
         returned = orders.filtered(lambda order: order.amount_total < 0)
-        self.assertEqual((original.amount_total, returned.amount_total), (12.34, -12.34))
+        returned_amount = -round(12.34 * quantity, 2)
+        self.assertEqual((original.amount_total, returned.amount_total), (12.34, returned_amount))
         if with_customer:
             self.assertEqual(orders.partner_id, self.customer)
         else:
@@ -72,9 +73,9 @@ class TestRestaurantRefundCheckout(TestPointOfSaleHttpCommon):
         self.assertEqual(orders.pricelist_id, self.original_pricelist)
         self.assertEqual(orders.fiscal_position_id, self.original_fiscal)
         self.assertEqual(returned.lines.refunded_orderline_id, original.lines)
-        self.assertEqual(returned.lines.qty, -1)
-        self.assertEqual(original.lines.refunded_qty, 1)
-        self.assertEqual(returned.amount_paid, -12.34)
+        self.assertEqual(returned.lines.qty, -quantity)
+        self.assertEqual(original.lines.refunded_qty, quantity)
+        self.assertEqual(returned.amount_paid, returned_amount)
         self.assertNotEqual(returned.pricelist_id, self.main_pos_config.default_preset_id.pricelist_id)
         self.assertNotEqual(returned.fiscal_position_id, self.main_pos_config.default_preset_id.fiscal_position_id)
         return original, returned
@@ -90,14 +91,15 @@ class TestRestaurantRefundCheckout(TestPointOfSaleHttpCommon):
             ("pos_session_id", "=", self.main_pos_config.current_session_id.id),
         ]))
 
-    def test_native_revolut_return_preserves_original_policy_and_payment_references(self):
-        calls = self._run_full_refund("pos_revolut_restaurant_revolut_return_policy")
-        original, returned = self._assert_original_return_policy()
+    def _assert_verified_revolut_return(self, calls, *, quantity, refund_minor):
+        original, returned = self._assert_original_return_policy(quantity=quantity)
         refund = self.env["pos.revolut.refund.operation"].search([("pos_order_id", "=", returned.id)])
         self.assertEqual(len(refund), 1)
         self.assertEqual(refund.state, "verified")
+        self.assertEqual(refund.amount_minor, refund_minor)
         self.assertEqual(refund.original_order_id, original)
         self.assertEqual(refund.original_operation_id.revolut_payment_id, self.PAYMENT_ID)
+        self.assertEqual(refund.original_operation_id.pos_payment_id, original.payment_ids)
         self.assertEqual(refund.revolut_order_id, self.REFUND_ID)
         self.assertEqual(refund.pos_payment_id, returned.payment_ids)
         self.assertEqual(returned.payment_ids.transaction_id, self.REFUND_ID)
@@ -105,3 +107,13 @@ class TestRestaurantRefundCheckout(TestPointOfSaleHttpCommon):
             call[1].endswith("/api/orders") or call[1].endswith("/payment-intents")
         )]), 2)
         self.assertEqual(len([call for call in calls if call[0] == "POST" and call[1].endswith("/refund")]), 1)
+        return original
+
+    def test_native_revolut_return_preserves_original_policy_and_payment_references(self):
+        calls = self._run_full_refund("pos_revolut_restaurant_revolut_return_policy")
+        self._assert_verified_revolut_return(calls, quantity=1, refund_minor=1234)
+
+    def test_native_partial_revolut_return_keeps_original_restaurant_payment(self):
+        calls = self._run_full_refund("pos_revolut_restaurant_revolut_partial_return", refund_minor=617)
+        original = self._assert_verified_revolut_return(calls, quantity=0.5, refund_minor=617)
+        self.assertTrue(original.has_refundable_lines)
