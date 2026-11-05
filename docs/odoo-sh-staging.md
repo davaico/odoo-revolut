@@ -1,282 +1,113 @@
-# Odoo.sh staging lifecycle
+# Install and operate POS Revolut on Odoo.sh
 
-Enterprise work starts from and returns to `staging/18-enterprise`. Keep
-`18.0` for the reviewed production release: pushing there deploys production.
-Use this runbook with [Installation](installation.md), not instead of it.
-Record results separately with the exact source revision, addon version, build,
-commands, results and limitations. See [Validation](validation.md).
+POS Revolut supports Odoo 18 Enterprise on Odoo.sh with administrator-managed
+Database credentials. Use this guide with [Installation](installation.md),
+[Upgrading](upgrading.md) and [Validation](validation.md).
 
-## Identify the database and registration gate
+## Install on a test database first
 
-In Odoo.sh, select the staging branch and record its exact Git revision, build
-identifier, Odoo/Enterprise revision and date. Open **Connect** from that build;
-verify the neutralized database banner before installing or configuring it.
-The build's green status establishes successful startup, not addon test success.
+1. Add the reviewed root-level `pos_revolut/` addon to the Odoo.sh repository
+   and deploy it to a Staging or Development build. Keep existing repository
+   content and addons intact.
+2. Open that build's database. Confirm the intended Odoo 18 Enterprise edition,
+   platform stage and neutralized-copy status. A green build establishes startup;
+   it does not prove that the addon is installed or its payment flows are verified.
+3. Under **Apps**, find **POS Revolut** and install it. Confirm the installed
+   addon version. An existing installation needs a module upgrade when deploying
+   a newer addon version. Retail requires only standard Point of Sale. If
+   standard Restaurant is installed, include the matching
+   `pos_revolut_restaurant_integration/` directory in the project and verify
+   that the companion is installed after the upgrade.
+4. Configure a separate Sandbox authority, payment method and register as
+   described below. Preserve copied Production records for reference.
 
-In its web shell, check only the necessary values; never dump the environment
-or all system parameters:
+Use a valid Enterprise subscription or an appropriate active trial according
+to your hosting agreement. Manage subscription registration on the intended
+operational database through Odoo's normal process; never register a test copy
+as another production database or expose subscription codes in support reports.
 
-```bash
-printenv ODOO_STAGE
-git -C /home/odoo/src/user rev-parse HEAD
-git -C /home/odoo/src/odoo rev-parse HEAD
-git -C /home/odoo/src/enterprise rev-parse HEAD
-```
+## Store the Merchant key through Odoo
 
-The stage must be `staging`. Do not override the platform stage or clear
-`database.is_neutralized`. Check **Settings → About** for Enterprise edition and
-expiration. An expiration date alone does not confirm the subscription's
-production database binding.
+As a system administrator, open **Point of Sale → Orders → Revolut Merchant
+Authorities**. Create an authority for the correct company and Revolut
+environment, choose **Credential Source → Database**, enter a unique
+`ODOO_REVOLUT_SECRET_` reference and the **Merchant API Key**, then save.
+The reference names the authority; it is not an environment variable requirement
+when using Database storage.
 
-For a test-only evaluation, an active trial is sufficient: record its status and
-expiry without treating permanent registration as a staging-test prerequisite.
-The owner's current project is used only for trial testing of the reusable
-addon; no permanent activation code or client rollout is required for delivery.
-The production registration instructions below apply only to a future operational
-deployment, not this test campaign.
-Odoo.sh trial projects are time-limited and may be deleted after expiry; retain
-test evidence outside the build. Continued hosting beyond the trial and actual
-operational deployment require the appropriate entitlement. Keep a reference
-test project separate from client hosting. Real terminal payment/refund testing
-on the existing Odoo.sh Enterprise trial is tracked separately in
-[T82](tickets/ready-for-human/82-activate-odoo-sh-and-check-payment-refund.md),
-using the appropriate operational trial database without bypassing stage or
-neutralization guards. No second Enterprise installation is assumed. A branch labelled Production can still be
-the source of a temporary test project; that label does not mean live business use.
+Only system administrators administer keys. POS managers use the approved
+reference on their payment methods, and the POS browser receives no key. Database
+keys are stored in the database and its backups; masking is not encryption.
+Restrict database and backup access accordingly.
 
-Perform addon installation, permission, payment/refund, restart, reconciliation
-and copy acceptance on **Staging**, using synthetic data and mocked provider
-traffic. A reference test project's **Production** branch can supply the source
-database for staging copies. Do not deploy or configure the addon there merely
-to finish staging acceptance.
+The **Environment variable** source remains available for deployments that
+support persistent secret injection into every Odoo worker. An interactive
+shell `export` changes only that shell and its children; it does not provision
+running HTTP/cron workers or survive a rebuild. Saving an Environment authority
+does not create the corresponding variable. Prefer Database storage on Odoo.sh
+rather than putting keys in Git, `odoo.conf` or command arguments.
 
-The subscription owner checks registration on the intended **production**
-database when permanent activation is needed. If its Home page requires a first
-app, the owner installs an intended standard app before entering the subscription
-code in the registration banner.
-Do not deploy Revolut to production to unblock staging registration. If the
-subscription is already attached elsewhere, resolve the intended production
-identity with the owner before unlinking it. Never register the staging copy
-as another active production database. Keep subscription codes and database
-identifiers in restricted records.
+Existing environment-backed authorities retain their source after an upgrade.
+To change sources, create a new authority/reference and update the relevant
+payment method deliberately. Keep the original authority and key available for
+unresolved operations and historical refunds. See
+[credential rotation](installation.md#verify-and-maintain).
 
-Browser access and project-level subscription configuration do not prove database
-registration. A restricted read-only shell check can report whether
-`database.enterprise_code` is populated, plus `database.expiration_reason` and
-`database.expiration_date`, without exposing the code. A `trial` reason and an
-absent code mean registration is still incomplete. The Enterprise Home panel
-can be hidden while more than 30 trial days remain; do not alter expiry values
-to make it appear. When permanent activation is needed, have the owner complete
-registration, or obtain explicit authorization to send the existing project code
-to Odoo's registration service
-for the intended production database. Do not include that code in commands,
-logs or repository evidence.
+## Test-environment restrictions
 
-## Install and repeat after a rebuild
+Production Revolut access is blocked whenever Odoo.sh supplies an `ODOO_STAGE`
+value other than exactly `production`, or Odoo marks the database neutralized.
+This covers payments, refunds, cancellation, status/report retrieval, connection
+checks and scheduled reconciliation. The protection also applies when the addon
+is installed after the database was neutralized, or someone enters a new key.
 
-1. Close test POS sessions and retain any staging evidence needed before a
-   rebuild. Use the reviewed candidate on the staging branch.
-2. In **Apps**, remove the default **Apps** filter, search **Revolut**, and
-   activate **POS Revolut**. Odoo installs standard Point of Sale as needed.
-   For a Restaurant staging test, include the matching
-   `pos_revolut_restaurant_integration` source and install standard Restaurant
-   and the companion. When updating a combined release with Restaurant
-   installed, verify that the upgrade activates the available companion.
-   Refresh after reload and confirm the installed versions against the candidate.
-3. Inspect the original companies, customers, products and financial documents
-   against a pre-install baseline. Do not replace the database with demo data
-   or count a fresh empty database as populated-data preservation evidence.
-4. Create a dedicated synthetic company/register and a **Sandbox**, **Database**
-   Merchant authority for controlled tests. Follow the installation guide for
-   journals, register grants, automatic validation, Tip Product and terminal
-   bindings. Use synthetic UUIDs and fake keys with provider HTTP mocked.
-5. Deactivate the two addon scheduled actions before controlled test runs;
-   invoke only the required jobs explicitly under the mock. First installation
-   after neutralization can create active addon crons from module data, so
-   inspect their actual state rather than assuming neutralization disabled
-   records which did not yet exist.
+Use separate Sandbox credentials and compatible Sandbox devices on test builds.
+Configure a Sandbox payment method with the matching company, authority,
+location and terminal; complete the remaining
+[register setup](installation.md#configure-a-register). A blocked Production
+**Check Connection** on Staging is expected. Do not override the platform stage,
+clear neutralization or repurpose a copied Production authority to enable live
+traffic. Reconcile original Production transactions on the operational database.
 
-A staging push/rebuild starts from a fresh production copy. Staging-only
-installation, company setup, keys, grants, jobs and fixture attempts disappear
-unless present in that source. Repeat setup for every new build. Copying and
-restarting are different checks: a restart must retain the same database and
-attempts; a rebuild need not retain records created only on staging.
+## Copies and rebuilds
 
-## Mocked acceptance and controlled jobs
+When the installed addon is neutralized with a database copy, it clears
+Production database keys, revokes Production authorities of both credential
+sources, archives Production Revolut methods and disables its reconciliation
+jobs across all companies. It preserves transaction history, original references
+and uncertain outcomes. Copied uncertain attempts must not become replacement
+payments or refunds.
 
-The repository's existing Odoo test selection covers administrator-only
-credential RPC/export, company/terminal boundaries, original-key recovery after
-rotation, full/partial refunds and payment cron backoff/lost responses. Run it
-only on a controlled staging database, with no simultaneous module update.
-The repository network guard rejects any unmocked Merchant HTTP in the test
-process; its shell environment is not configuration for running Odoo workers.
+A fresh Staging rebuild can replace settings created only on Staging. Repeat
+the installation and Sandbox setup checks on each new copy; keep any setup notes
+free of secrets. A worker restart retains the database and differs from a fresh
+copy. After a restart, verify configuration and recover the same unresolved
+attempts without resending financial operations.
 
-```bash
-ODOO_REVOLUT_BLOCK_MERCHANT_HTTP=1 \
-ODOO_REVOLUT_SECRET_TEST_TERMINAL=test-only-not-a-credential \
-PYTHONPATH=/home/odoo/src/user/docker \
-odoo-bin --no-http --workers=0 --max-cron-threads=0 --stop-after-init \
-  --update=pos_revolut \
-  --test-tags='/pos_revolut:TestRevolutDatabaseCredentials,/pos_revolut:TestRevolutDatabaseCredentialFlow,/pos_revolut:TestRevolutNeutralization,/pos_revolut:TestRevolutPayment.test_scheduled_reconciliation_verifies_payment_without_browser,/pos_revolut:TestRevolutPayment.test_scheduled_network_error_backs_off_without_new_dispatch,/pos_revolut:TestRevolutPayment.test_scheduled_reconciliation_never_replays_lost_intent_creation' \
-  --log-level=warn --log-handler=odoo.tests.result:INFO \
-  --log-handler=odoo.tests.stats:INFO > /tmp/ticket80-controlled.log 2>&1
-```
+Keep original backups protected because they retain their original keys.
+For self-hosted copies or restores, follow
+[Database copies and neutralization](installation.md#database-copies-and-neutralization).
 
-Inspect the exit status, final test summary and failures, not just module load.
-Keep the two crons inactive during this selection: its fixtures call
-`method_direct_trigger()` themselves. A live cron worker can conflict with those
-transactions. This does not justify removing cron locks or weakening assertions.
+## Reconciliation and production setup
 
-The copy-payment/refund fixtures that first create mocked **Production**
-transactions belong on an isolated source database before neutralization. They
-cannot seed those transactions on an already guarded staging database. Preserve
-such failures as fixture limitations; never bypass the runtime guard to make
-them pass. The whole-database key cleanup test above can run on staging.
+The addon installs **Reconcile Revolut POS payments** and **Reconcile Revolut
+POS refunds**. Test copies can have scheduled actions disabled. Enable only the
+jobs needed for the intended Sandbox setup and verify their results on eligible
+attempts. A job that runs with no pending work does not demonstrate recovery.
+Odoo.sh worker and scheduling restrictions mean the configured one-minute
+interval is not a timing guarantee; delayed jobs must retain the original
+uncertain attempt rather than trigger a replacement financial operation.
 
-For manual controlled runs, the job XML IDs are
-`pos_revolut.ir_cron_reconcile_payments` and
-`pos_revolut.ir_cron_reconcile_refunds`. From an Odoo shell, invoke
-`env.ref(XML_ID).method_direct_trigger()` only while provider calls are mocked.
-Check attempt state, original credential/provider references, reservations,
-dispatch counts and the next reconciliation time before and after each run.
-Exercise an overdue pending attempt, a repeated invocation, a provider error
-and a later successful observation. A job firing without an eligible attempt
-does not demonstrate recovery.
+Before operational use, back up and test recovery, deploy the reviewed version,
+and install or upgrade it on the intended Production database. Staging settings
+are not promoted with code. Configure the Production Merchant authority,
+company/currency, journal, terminal and approved register operators separately.
+Enable the reconciliation jobs deliberately and complete the bounded
+[payment/refund acceptance checklist](releasing.md) before enabling cashiers.
 
-Odoo.sh may schedule staging jobs only a few times a day and may terminate
-workers. The module's one-minute interval is not a hosted timing guarantee.
-Delayed verification must retain uncertainty and prevent replacement dispatch.
-Do not install a custom background daemon or change financial assertions/timeouts
-to make scheduling appear successful.
+## Platform references
 
-## Restarts and copies
-
-Use the platform's web shell if SSH is unavailable. `odoosh-restart --help`
-lists the supported services; restart staging HTTP and cron separately:
-
-```bash
-odoosh-restart http
-odoosh-restart cron
-```
-
-Inspect the command's message. An absent worker makes the command abort; an
-exit status alone does not establish a restart. Load a staging page to wake an
-HTTP worker, then restart it and load another page to confirm service recovery.
-If the platform has no live cron worker, record that limit separately from
-explicit `method_direct_trigger()` coverage.
-
-For bounded native cron-worker interruption/replacement coverage, use
-`pos_revolut/tests/cron_restart_fixture.py` with `cron_restart_worker.py` on a
-disposable staging build. These standalone fixtures do not change addon code
-or create a persistent service. Keep both addon cron records globally inactive
-throughout: provider mocks are process-local and must not race a platform job.
-Quiesce administrative edits while seeding: the fixture snapshots and restores
-existing group implications, user memberships and shared product taxes affected
-by native company/chart/product setup, including when setup fails after a commit.
-The launcher uses native `PreforkServer.worker_spawn(WorkerCron, ...)`, startup,
-`process_work`, signals and shutdown. Only scheduler selection is replaced
-inside the test process, dispatching the actual inactive addon actions through
-`method_direct_trigger()` under their configured cron user.
-
-Copy the two new files and unchanged `restart_seed.py`, `restart_wait.py` and
-`restart_verify.py` from the reviewed repository into a temporary source
-directory. Verify their hashes; do not edit installed application files. Each
-of the following snippets runs in a separate Odoo shell with
-`ODOO_REVOLUT_BLOCK_MERCHANT_HTTP=1`,
-`PYTHONPATH=/home/odoo/src/user/docker`, `--no-http --max-cron-threads=0
---shell-interface=python --log-level=error`. Use a new result directory and
-retain each process's actual exit status and log.
-
-```python
-# Process one: same committed attempts, Database key, no environment export.
-import sys
-sys.path.insert(0, '/tmp/ticket80-native-cron-src')
-from cron_restart_fixture import seed
-seed(env, '/tmp/ticket80-native-cron-run')
-```
-
-```python
-# Process two: hard total budget; native worker death and replacement.
-import sys
-sys.path.insert(0, '/tmp/ticket80-native-cron-src')
-from cron_restart_worker import run
-run(env, '/tmp/ticket80-native-cron-run', timeout=200)
-```
-
-```python
-# Process three: new transaction, exact durable identities and zero-HTTP replay.
-import sys
-sys.path.insert(0, '/tmp/ticket80-native-cron-src')
-from cron_restart_fixture import verify
-verify(env, '/tmp/ticket80-native-cron-run')
-```
-
-The seed reuses existing restart carts and explicit tip reports, then starts a
-617-minor-unit partial refund against the verified zero-tip source. The remaining
-payment has a 300-minor-unit tip awaiting final report evidence. A failed seed
-must retain its checkpoint; never reseed financial dispatches to hide a failure.
-The fixture can resume its inspected committed source and saved return without
-repeating dispatches. After a failed worker run, retain its markers and inspect
-which original attempts are still pending before deciding how to resume. Do not
-reset verified financial evidence or create replacement attempts to obtain a pass.
-
-The supervisor kills a PID-bound native worker during a mocked GET, then starts
-a different native worker. Recovery must respect the original payment's real
-60-second observation lease: the early cron call makes zero HTTP and the test
-waits for actual expiry without editing lease fields or constants. It separately
-interrupts and recovers the partial refund. Provider mocks reject every POST,
-unexpected host/path and wrong synthetic Authorization value. A hard timeout
-cleans up the test's process group. Check lifecycle markers, fresh financial
-identities/counts and replay assertions; do not treat worker startup as a pass.
-This proves the bounded native-worker lifecycle on the hosted database, not a
-successful platform-managed `odoosh-restart cron` command or its scheduling SLA.
-
-Use `restart_seed.py`, `restart_wait.py` and `restart_verify.py` under
-`pos_revolut/tests/` for committed payment recovery across fresh Odoo shells.
-For database-source coverage, create the synthetic Sandbox authority for
-`ODOO_REVOLUT_SECRET_TEST_TERMINAL` with source **Database** before seeding,
-without exporting that variable. Run these fixtures in an isolated synthetic
-company with a native chart, warehouse and register setup. Each phase must
-complete before the next starts. Retain its marker and unchanged attempt IDs;
-the final fixture checks original references, tips, dispatch counts and replay.
-Record refund restart coverage separately; these three files cover payments.
-
-The adapter commits financial observations through owned cursors. An observing
-shell can retain an older repeatable-read transaction even after
-`env.invalidate_all()`. Commit intentional fixture setup first; after the
-operation, use a new Odoo shell/transaction to inspect its durable result.
-The existing restart fixtures end the old observing transaction with rollback
-before invalidating caches. Never dispatch again merely to refresh a display.
-
-For a database-copy check, distinguish these cases:
-
-- A platform staging rebuild: verify a fresh production copy, neutralized flag,
-  lost staging-only setup and repeatable first installation.
-- A controlled source with the addon installed: retain synthetic pending
-  payment/refund snapshots, apply Odoo neutralization twice, and compare their
-  financial history while checking all companies' Production key cleanup,
-  revoked authorities, archived methods and disabled jobs.
-- A copy neutralized **before** addon installation: retain proof the addon was
-  absent, then install and verify new Production keys of both sources still
-  cannot dispatch. `scripts/test-database-neutralization` is the disposable
-  local fixture; report local evidence separately from hosted evidence.
-
-Never neutralize the production database. Do not infer history preservation
-from a platform rebuild whose production source contains no addon history.
-Copied live attempts stay uncertain and must be reconciled in production by
-their original references. Use distinct Sandbox configuration for test traffic.
-
-## Evidence and handoff
-
-Retain build IDs/revisions, exact commands/tags, before/after snapshots, test
-summaries, service restarts, cron invocation results and copy provenance.
-Separate passed checks, failed runs, unexercised behavior and external gates.
-Redact keys, subscription material, private host details and financial references
-from repository records. Leave both addon jobs inactive after mocked acceptance
-unless a separate controlled scheduling check requires them.
-
-Official platform references, checked 2026-11-02:
-[build/copy behavior](https://www.odoo.com/documentation/18.0/administration/odoo_sh/getting_started/builds.html),
-[shell commands](https://www.odoo.com/documentation/18.0/administration/odoo_sh/getting_started/branches.html),
-[worker and scheduling restrictions](https://www.odoo.sh/faq), and
-[production subscription registration](https://www.odoo.com/documentation/18.0/administration/odoo_sh/getting_started/create.html#register-the-subscription).
+- [Odoo.sh builds and database copies](https://www.odoo.com/documentation/18.0/administration/odoo_sh/getting_started/builds.html)
+- [Odoo.sh branch operations](https://www.odoo.com/documentation/18.0/administration/odoo_sh/getting_started/branches.html)
+- [Worker and scheduling restrictions](https://www.odoo.sh/faq)
+- [Production subscription registration](https://www.odoo.com/documentation/18.0/administration/odoo_sh/getting_started/create.html#register-the-subscription)

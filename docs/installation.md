@@ -1,13 +1,14 @@
 # Install POS Revolut
 
-For an existing database, use [Upgrading](upgrading.md). Tested local runtime:
-Odoo Community `18.0.20261015` and PostgreSQL `16.14`. Bounded Odoo.sh Enterprise
-18 lifecycle checks used mocked provider traffic; see [Validation](validation.md)
-and the [release checklist](releasing.md) before client activation.
+This Odoo 18 addon provides configuration for Community installations and
+Enterprise installations, including Odoo.sh. For an existing installation, use
+[Upgrading](upgrading.md). See [Validation](validation.md) for the tested runtime
+and the limits of mocked Enterprise/Odoo.sh checks, and complete the
+[release checklist](releasing.md) before enabling live cashier use.
 
 ## Requirements
 
-- An administered Odoo server with outbound HTTPS, standard Odoo 18 Point of Sale and working journal, currency and accounting configuration.
+- An administered Odoo 18 Community or Enterprise installation with outbound HTTPS, standard Point of Sale and working journal, currency and accounting configuration. Odoo.sh installations require project administration access and the appropriate Odoo subscription.
 - A Revolut Merchant account, secret, location ID and terminal belonging to that location.
 - An online terminal in **Pay at Counter** mode.
 - Access to terminal operations and Merchant `payments_report` creation, polling and download. **Check Connection** does not verify all these permissions.
@@ -16,8 +17,8 @@ The addon uses fixed Sandbox/Production Merchant hosts and API version `2026-08-
 
 ## Odoo.sh test environments
 
-For repeatable hosted installation, worker restarts, controlled scheduled jobs
-and rebuild/copy acceptance, use the [Odoo.sh staging runbook](odoo-sh-staging.md).
+For hosted installation, credential setup, scheduled jobs and database copies,
+use the [Odoo.sh guide](odoo-sh-staging.md).
 
 Production Revolut HTTP is disabled when the server's `ODOO_STAGE` is present
 and is anything other than exactly `production`. This includes `staging`, `dev`,
@@ -89,7 +90,25 @@ A raw PostgreSQL copy or backup restore without Odoo neutralization does not
 execute cleanup; ORM `copy=False` exclusions do not protect database copies.
 Protect the original backups, which still contain their original keys.
 
-## Install
+## Install on Odoo.sh
+
+1. Add the reviewed `pos_revolut/` addon at the root of your Odoo.sh project's
+   repository and deploy it to a test branch first. Keep API keys out of the
+   repository. Back up the database and filestore before installing into an
+   existing database.
+2. In the intended database, open **Apps**, update the Apps list if necessary,
+   search for **POS Revolut**, and install it. Confirm the installed addon version;
+   a successful code build does not install the module by itself.
+3. As system administrator, create a **Database** Merchant authority using the
+   instructions below, then configure a Sandbox payment method for the test
+   database. Live Production connections are intentionally blocked on staging,
+   development and neutralized copies.
+4. Before deploying to the operational database, follow the
+   [release checklist](releasing.md). Code promotion does not copy staging-only
+   database configuration. Configure the operational company, credentials,
+   payment method, register access and reconciliation jobs there explicitly.
+
+## Install on a self-hosted server
 
 1. Place the reviewed `pos_revolut` directory on the server. Add its parent to `addons_path`, preserving existing entries. The module lives at the repository root; when using a full clone, add the repository root to `addons_path`.
 2. Back up the database and filestore, stop Odoo, then install using the service's configuration and environment. Replace the placeholders:
@@ -136,15 +155,16 @@ underscores, for example `ODOO_REVOLUT_SECRET_REGISTER_1`.
 
 Choose one source:
 
-- **Environment variable**: inject the Merchant secret into every Odoo worker
-  using the deployment secret store. The authority reference is the variable
-  name. Keep its value out of Odoo fields, `odoo.conf` and command arguments.
-  Any environment file must be outside the repository with restricted ownership
-  and mode `0600`. Existing environment-backed authorities keep this source
-  after an addon update.
 - **Database**: enter the Merchant key in the administrator-only **Merchant API Key** password field
   when creating the authority. The reference identifies this stored key; it
   does not require an environment variable. The saved form hides the key.
+  This is the recommended source on Odoo.sh.
+- **Environment variable**: on deployments that support persistent secret
+  injection, provide the Merchant secret to every Odoo HTTP and cron worker.
+  The authority reference is the variable name. Keep its value out of Odoo
+  fields, `odoo.conf` and command arguments. Any environment file must be outside
+  the repository with restricted ownership and mode `0600`. Existing
+  environment-backed authorities keep this source after an addon update.
 
 Only system administrators can read, export or change authority records through
 Odoo, including direct RPC. POS managers configure the authorized reference on
@@ -162,8 +182,8 @@ masking is not encryption. Protect database access, backups and copied databases
 System administrators are trusted across all companies in their database.
 Unrelated customers must use separate databases.
 
-On Odoo.sh, prefer **Database** when your deployment does not offer persistent
-secret injection into every Odoo process. Saving an Environment variable
+On Odoo.sh, use **Database** to avoid requiring custom worker environment
+variables. Saving an Environment variable
 authority does not provision a key. An `export` in an interactive Odoo.sh shell
 only changes that shell and its children; it does not configure running HTTP
 or cron workers or survive a rebuild. Do not put keys in branch files or assume

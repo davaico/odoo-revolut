@@ -1,10 +1,10 @@
 # Contributing
 
-Develop Odoo 18 Enterprise/Odoo.sh changes on `staging/18-enterprise`, including
-task-branch bases, integration and hosted validation. Community 18 development
-remains on `feat/v18_rev`; transfer shared fixes selectively rather than merging
-the divergent product branches wholesale. Target `18.0` only with a production-ready PR; it
-automatically deploys production. Odoo 19 releases target `19.0`. Keep
+Use `18.0` for the distributed Odoo 18 source and `19.0` for Odoo 19.
+Develop Odoo 18 changes on `staging/18-enterprise`; prepare sanitized release
+changes separately before opening a PR into `18.0`. Keep tickets, handoffs,
+private runtime evidence and agent instructions on the development branch.
+Retain public guides and reusable tests in the release source. Keep
 equivalent payment and refund behavior across versions, adapting to each
 version's native APIs and testing relevant fixes on both.
 Keep integration code in `pos_revolut` and follow Odoo conventions. Read
@@ -59,10 +59,9 @@ To test the exact committed addon, use a full commit hash from this branch:
   --revision REVIEWED_FULL_COMMIT_SHA --migration-from COMBINED_FULL_COMMIT_SHA
 ```
 
-Legacy Odoo 19 upgrade runners and fixtures are retained as development tools.
-Their old baseline revisions are intentionally absent from this fresh history.
-They require separately retained private baselines and the matching Odoo 19
-addon. Do not restore the old history to this branch to make those checks pass.
+Use upgrade fixtures with their matching Odoo major version and an available
+reviewed baseline. The retained Odoo 19 runners do not establish Odoo 18
+compatibility.
 
 ## Payment changes
 

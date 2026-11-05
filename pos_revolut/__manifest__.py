@@ -12,7 +12,12 @@ Checkout completes after payment verification and native Odoo validation.
 Requires an administered Odoo server, a Revolut Merchant account, authorized
 Merchant API credentials, an online compatible terminal in Pay at Counter mode,
 and permissions for terminal operations and payments_report creation, polling
-and download. Retail requires point_of_sale. Restaurant registers also require pos_restaurant
+and download. On Odoo.sh, administrators can enter keys in restricted Database
+credential authorities; Environment variable credentials remain available for
+deployments with persistent worker secret injection. Keys stay on the server.
+Database keys are included in backups; masking is not encryption. Live Revolut
+access is blocked on Odoo.sh test builds and neutralized database copies.
+Retail requires point_of_sale. Restaurant registers also require pos_restaurant
 and the matching pos_revolut_restaurant_integration addon. Verified runtime:
 Odoo Community 18.0.20261015 and PostgreSQL 16.14. Bounded Odoo.sh Enterprise 18
 installation, copy safety and worker recovery were also verified with mocked

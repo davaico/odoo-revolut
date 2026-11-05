@@ -1,6 +1,7 @@
 # POS Revolut for Odoo 18
 
-Connect Odoo 18 Point of Sale to a Revolut terminal. Send the amount,
+Connect Odoo 18 Community or Enterprise Point of Sale to a Revolut terminal,
+including Enterprise installations on Odoo.sh. Send the amount,
 let the customer pay, and complete the sale after Odoo verifies the underlying
 payment. Credentials and authenticated Revolut calls stay on the server.
 
@@ -12,12 +13,16 @@ tips, full and partial refunds, interrupted-payment recovery, external refund
 reconciliation, shared-register access, native receipts, invoices and accounting.
 Odoo 18 preset and pickup controls provide dine-in and timed Takeout workflows.
 
-Local test runtime: **Odoo Community 18.0.20261015** and **PostgreSQL 16.14**.
-Bounded Odoo.sh Enterprise 18 lifecycle checks use mocked provider traffic.
-See [Validation](docs/validation.md) and [Release and activation](docs/releasing.md)
-for coverage, client setup and live acceptance requirements.
-See [Validation](docs/validation.md) for recorded automated coverage and device
-testing limitations. Installing into an existing Odoo 18 database preserves
+On Odoo.sh, an administrator stores the Merchant API key in a restricted
+**Database** credential authority. Self-hosted deployments can also use
+**Environment variable** credentials. Keys stay out of POS browser data.
+Live Revolut access is blocked on Odoo.sh test builds and neutralized database
+copies; use separate Sandbox credentials for testing.
+
+Local tests use **Odoo Community 18.0.20261015** and **PostgreSQL 16.14**.
+Hosted Odoo.sh Enterprise 18 checks use mocked provider traffic.
+See [Validation](docs/validation.md) for coverage and live-acceptance limitations.
+Installing into an existing Odoo 18 database preserves
 native business data; importing another integration's payment history is outside
 the initial installation scope.
 
@@ -40,6 +45,8 @@ For a full clone, include the repository root in Odoo's
 | Install and configure credentials/access | [Installation](docs/installation.md) |
 | Take payments, refund and recover | [User guide](docs/user-guide.md) |
 | Update an existing installation | [Upgrading](docs/upgrading.md) |
+| Operate on Odoo.sh | [Odoo.sh setup](docs/odoo-sh-staging.md) |
+| Deploy and verify a customer installation | [Release and activation](docs/releasing.md) |
 | Run tests and contribute | [Contributing](CONTRIBUTING.md) |
 | Understand payment boundaries | [Architecture](docs/architecture.md) |
 | Check tested scope and limitations | [Validation](docs/validation.md) |

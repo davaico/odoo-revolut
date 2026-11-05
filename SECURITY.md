@@ -16,6 +16,20 @@ authorized references without reading keys. Database keys are included in
 backups; password masking is not encryption. Restrict database access,
 configuration, backups and logs; grant users only the registers they need.
 
+On Odoo.sh, use the **Database** credential source so configuration does not
+depend on custom environment variables for HTTP and cron workers. Only system
+administrators administer authorities and keys. Rotation creates a new authority;
+retain the original authority and working key for unresolved operations and
+historical refunds. The configured source never falls back to another source
+or Merchant account.
+
+Keep test databases neutralized. The addon blocks Production Revolut access on
+Odoo.sh test stages and neutralized databases, including connection checks and
+scheduled reconciliation. Neutralization removes Production database keys and
+disables live configuration while preserving financial history. Protect backups,
+which can still contain their original keys, and use separate Sandbox
+credentials for testing.
+
 Follow [Installation](docs/installation.md) and [Upgrading](docs/upgrading.md). Resolve uncertain payments/refunds through their original records using the [recovery steps](docs/user-guide.md#understand-the-payment-status).
 
 Compose is a disposable test environment with fake credentials and blocked Merchant HTTP, not a production template.

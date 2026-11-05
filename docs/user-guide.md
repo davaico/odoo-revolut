@@ -2,6 +2,13 @@
 
 Complete [register setup](installation.md) first. Cashiers need a backend-user register grant; refunds and manual reconciliation require a POS manager with that grant.
 
+These payment and refund steps also apply to Odoo 18 Enterprise on Odoo.sh.
+Merchant keys are configured by a system administrator; cashiers never enter
+them in POS. On staging, development or neutralized databases, Production
+connections are intentionally blocked. Ask an administrator for a separate
+Sandbox configuration when testing. A blocked status check does not establish
+that an original live payment failed: recover it in its operational database.
+
 ## Take a payment
 
 1. Review the goods. Remove Odoo-entered tips; customers choose tips on the terminal.
