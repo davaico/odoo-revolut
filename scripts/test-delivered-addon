@@ -110,6 +110,14 @@ def verify_matching_versions(release, addons):
         raise ArtifactError("POS Revolut and Restaurant companion versions must match.")
 
 
+def has_companion(revision):
+    paths = (f"{COMPANION_ADDON}/__manifest__.py", f"addons/{COMPANION_ADDON}/__manifest__.py")
+    return bool(subprocess.check_output(
+        ["git", "ls-tree", "-r", "--name-only", revision, "--", *paths],
+        cwd=REPOSITORY,
+    ))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--revision", required=True)
@@ -141,12 +149,16 @@ def main():
         if resolved != revision:
             parser.error(f"{option} did not resolve to the exact commit")
 
+    scenario = args.scenario
+    if scenario == "migration" and has_companion(args.revision):
+        scenario = "legacy-upgrade"
+
     with tempfile.TemporaryDirectory(prefix="pos-revolut-delivered-") as temporary:
         root = Path(temporary)
         archive = root / "release.tar.gz"
         try:
             addons = ("pos_revolut",)
-            if args.scenario in PAIRED_SCENARIOS:
+            if scenario in PAIRED_SCENARIOS:
                 addons += (COMPANION_ADDON,)
             archive_addons(args.revision, archive, addons)
             release = extract_addons(archive, root / "release", addons)
@@ -170,7 +182,7 @@ def main():
         subprocess.run(
             [str(REPOSITORY / "scripts" / "test-addon"),
              "--addons-dir", str(release), *legacy_args,
-             "--delivered-scenario", args.scenario, *test_args],
+             "--delivered-scenario", scenario, *test_args],
             cwd=REPOSITORY, check=True,
         )
 

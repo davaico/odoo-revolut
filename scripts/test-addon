@@ -44,6 +44,11 @@ while (($#)); do
     esac
 done
 
+addon_root="${ODOO_REVOLUT_ADDONS_DIR:-$repository_root}"
+if [[ "$delivered_scenario" == migration && -f "$addon_root/$companion/__manifest__.py" ]]; then
+    delivered_scenario=legacy-upgrade
+fi
+
 case "$delivered_scenario" in
     ""|retail|restaurant|restaurant-later|retail-with-restaurant|upgrade|legacy-upgrade|migration) ;;
     *) echo "Unknown delivered scenario: $delivered_scenario" >&2; exit 2 ;;
@@ -133,7 +138,6 @@ if [[ "$explicit_test_tags" == true ]]; then
 fi
 
 if [[ "$delivered_scenario" == retail ]]; then
-    addon_root="${ODOO_REVOLUT_ADDONS_DIR:-$repository_root}"
     if python3 -c 'import ast, pathlib, sys; sys.exit("pos_restaurant" not in ast.literal_eval(pathlib.Path(sys.argv[1]).read_text())["depends"])' \
         "$addon_root/pos_revolut/__manifest__.py"; then
         # This scenario also accepts old combined artifacts for comparison.
