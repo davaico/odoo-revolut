@@ -26,6 +26,7 @@ private host details and credentials in restricted records.
 
 | Ticket | Category | Triage | State | Blocked by |
 | --- | --- | --- | --- | --- |
+| [85 — Preserve POS checkout when legacy orders have no UUID](ready-for-agents/85-handle-missing-pos-order-uuids.md) | Bug | `ready-for-agent` | Claimed | No implementation blocker. Hosted acceptance needs an Odoo 18 Enterprise test database with legacy orders. |
 | [75 — Adapt Revolut to Odoo.sh Enterprise 18](ready-for-agents/75-adapt-revolut-to-odoo-sh.md) | Deployment compatibility | `ready-for-agent` | Open | No local implementation blocker; release PR #96 prepared and unmerged; live trial acceptance in #82; no permanent activation or client rollout gate |
 | [82 — Test real payments and refunds on the Odoo.sh Enterprise trial](ready-for-human/82-activate-odoo-sh-and-check-payment-refund.md) | Enhancement / live trial acceptance | `ready-for-human` | Open | Usable operational trial build, candidate/deployment approval, owner/terminal participation and agreed small amounts; no activation code or permanent registration |
 | [83 — Finish the deferred Odoo 18 refund, return and session](ready-for-human/83-finish-deferred-v18-refund-return-session.md) | Enhancement / deferred acceptance follow-up | `ready-for-human` | Open | Original provider finality and authorised custodian; non-blocking for release, independent of Enterprise activation |
