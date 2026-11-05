@@ -2,6 +2,7 @@ import { _t } from "@web/core/l10n/translation";
 import { AlertDialog } from "@web/core/confirmation_dialog/confirmation_dialog";
 import { patch } from "@web/core/utils/patch";
 import { PosStore } from "@point_of_sale/app/store/pos_store";
+import { PosOrder } from "@point_of_sale/app/models/pos_order";
 import { SplitBillScreen } from "@pos_restaurant/app/split_bill_screen/split_bill_screen";
 import { hasRevolutExposure } from "@pos_revolut/app/payment_revolut";
 import { TipScreen } from "@pos_restaurant/app/tip_screen/tip_screen";
@@ -46,10 +47,21 @@ patch(PosData.prototype, {
     },
 });
 
+patch(PosOrder.prototype, {
+    setPreset(preset, { explicitSelection = false } = {}) {
+        const applied = super.setPreset(...arguments);
+        if (applied && explicitSelection && preset.revolut_fulfilment === "take_away") {
+            // Applying a default when opening a table must preserve its context.
+            this.update({ table_id: false });
+        }
+        return applied;
+    },
+});
+
 patch(PosStore.prototype, {
     async syncAllOrders() {
         const request = super.syncAllOrders(...arguments);
-        const pending = this.revolutRestaurantSyncs ||= new Set();
+        const pending = this.revolutPendingDraftSyncs ||= new Set();
         pending.add(request);
         try {
             return await request;
@@ -62,7 +74,7 @@ patch(PosStore.prototype, {
         // Opening the floor starts an unawaited native draft save. Native 18
         // skips another save of that order while it is in flight, so wait
         // before changing its table or an older response can undo the move.
-        await Promise.all([...(this.revolutRestaurantSyncs || [])]);
+        await Promise.all([...(this.revolutPendingDraftSyncs || [])]);
         const sourceOrder = this.models["pos.order"].getBy("uuid", orderUuid);
         const destinationOrders = this.getActiveOrdersOnTable(destinationTable);
         // Odoo 18 performs both a table move and a merge through transferOrder.

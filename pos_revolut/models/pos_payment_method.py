@@ -313,6 +313,13 @@ class PosPaymentMethod(models.Model):
         ].normalize_amount(currency, amount)
         return session, currency, normalized_amount, amount_minor, order_uuid, payment_line_uuid
 
+    def _revolut_charge_fulfilment(self, order):
+        if order.config_id.module_pos_restaurant:
+            raise UserError(_(
+                "Install the POS Revolut Restaurant integration before taking new Revolut payments on this register."
+            ))
+        return self.sudo().revolut_fulfilment_type
+
     def _revolut_operation_values(
         self,
         session,
@@ -329,31 +336,6 @@ class PosPaymentMethod(models.Model):
             financial_snapshot
         ) if financial_snapshot else False)
         configuration = self.sudo()
-        fulfilment_type = configuration.revolut_fulfilment_type
-        if ("module_pos_restaurant" in session.config_id._fields
-                and session.config_id.module_pos_restaurant):
-            context = financial_snapshot.get("restaurant") if isinstance(financial_snapshot, dict) else None
-            if not isinstance(context, dict):
-                raise UserError(_("Restaurant order context is required for Revolut payment."))
-            try:
-                preset_id = int(context.get("preset_id") or 0)
-            except (TypeError, ValueError):
-                raise UserError(_("The restaurant order preset is invalid.")) from None
-            takeout = self.env.ref("pos_revolut.pos_takeout_preset", raise_if_not_found=False)
-            takein = self.env.ref("pos_revolut.pos_takein_preset", raise_if_not_found=False)
-            delivery = self.env.ref("pos_revolut.pos_delivery_preset", raise_if_not_found=False)
-            if delivery and preset_id == delivery.id:
-                raise UserError(_("Delivery orders are not supported by the Revolut terminal contract."))
-            if takeout and preset_id == takeout.id:
-                if context.get("table_id"):
-                    raise UserError(_("A takeaway payment cannot be attached to a table."))
-                fulfilment_type = "take_away"
-            elif takein and preset_id == takein.id:
-                fulfilment_type = "eat_in"
-            else:
-                raise UserError(_(
-                    "Select a Dine In or Takeout preset before starting a Revolut payment."
-                ))
         return {
             "payment_method_id": self.id,
             "company_id": self.company_id.id,
@@ -368,7 +350,7 @@ class PosPaymentMethod(models.Model):
             "environment": configuration.revolut_environment,
             "location_id": configuration.revolut_location_id,
             "terminal_id": configuration.revolut_terminal_id,
-            "fulfilment_type": fulfilment_type,
+            "fulfilment_type": configuration.revolut_fulfilment_type,
             "secret_reference": configuration.revolut_secret_reference,
             "credential_id": self._revolut_configuration_credential().id,
             "blocking_order_key": f"{self.company_id.id}:{order_uuid}",
@@ -464,8 +446,16 @@ class PosPaymentMethod(models.Model):
                         or authority.currency_id.id != values["currency_id"]
                     ):
                         raise UserError(_("Prepare the exact original cart before payment."))
+                    method = owned_env["pos.payment.method"].browse(self.id)
+                    order = authority.pos_order_id.with_env(owned_env)
+                    # Replay above uses the stored operation. Only a new
+                    # reservation needs fulfilment from the current server order.
+                    fulfilment_type = method._revolut_charge_fulfilment(order)
                     with _authority_mutation(owned_env):
-                        values = {**values, **authority._admit(owned_env["pos.payment.method"].browse(self.id), values)}
+                        values = {
+                            **values, **authority._admit(method, values),
+                            "fulfilment_type": fulfilment_type,
+                        }
                     # Earlier verified lines release the order lock so another
                     # allocation can start, but their cart and POS ownership
                     # remain bound to the original order.
@@ -785,12 +775,8 @@ class PosPaymentMethod(models.Model):
                 amount_minor,
                 order_uuid,
                 payment_line_uuid,
-                {**authority.canonical["snapshot"], "restaurant": {
-                    "preset_id": authority.pos_order_id.preset_id.id,
-                    "table_id": authority.pos_order_id.table_id.id if "table_id" in authority.pos_order_id._fields else False,
-                }},
+                authority.canonical["snapshot"],
             )
-            # Restaurant context is derived from the frozen server cart.
             operation_values.update({"authorization_id":authorization_id,
                 "cart_version":cart_version, "tender_revision":tender_revision})
         except FinancialSnapshotError as error:

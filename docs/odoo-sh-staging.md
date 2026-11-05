@@ -14,7 +14,10 @@ Database credentials. Use this guide with [Installation](installation.md),
    it does not prove that the addon is installed or its payment flows are verified.
 3. Under **Apps**, find **POS Revolut** and install it. Confirm the installed
    addon version. An existing installation needs a module upgrade when deploying
-   a newer addon version.
+   a newer addon version. Retail requires only standard Point of Sale. If
+   standard Restaurant is installed, include the matching
+   `pos_revolut_restaurant_integration/` directory in the project and verify
+   that the companion is installed after the upgrade.
 4. Configure a separate Sandbox authority, payment method and register as
    described below. Preserve copied Production records for reference.
 

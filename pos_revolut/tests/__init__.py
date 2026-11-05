@@ -2,7 +2,6 @@ from . import test_pos_payment_method
 from . import test_revolut_payment
 from . import test_revolut_retry_concurrency
 from . import test_ui
-from . import test_revolut_restaurant_ui
 from . import test_revolut_reconciliation
 from . import test_revolut_authorization
 from . import test_shared_pos_session_access
@@ -23,7 +22,6 @@ from . import test_revolut_cart_pricing
 
 from . import test_revolut_terminal_tip
 from . import test_revolut_cart_authority_concurrency
-from . import test_revolut_restaurant_authority
 from . import test_revolut_credential_authority
 from . import test_revolut_database_credentials
 
@@ -45,14 +43,12 @@ from . import test_external_native_association
 
 from . import test_discounted_rounded_returns
 from . import test_native_adjustment_ui
-from . import test_takeout_readiness_ui
 from . import test_takeout_scheduling
 from . import test_odoo_tip_ui
 from . import test_revolut_combo_ui
 from . import test_revolut_register_ui
 
 from . import test_revolut_native_refund_ui
-from . import test_revolut_restaurant_refund_ui
 from . import test_revolut_refund_history_ui
 
 from . import test_external_refund_ui

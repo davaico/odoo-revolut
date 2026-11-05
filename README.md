@@ -29,13 +29,14 @@ the initial installation scope.
 ## Repository structure
 
 - `pos_revolut/`: installable addon, migrations, Odoo and browser tests.
+- `pos_revolut_restaurant_integration/` provides the optional Restaurant integration and its tests.
 - `docs/`: installation, usage, upgrade and architecture guides.
 - `scripts/`, `docker/`, `compose.yaml`: guarded disposable development runners.
 - `tests/`: tests for the development and deployment tooling.
 
 For a full clone, include the repository root in Odoo's
-`addons_path`. The addon depends on standard `point_of_sale` and `pos_restaurant`;
-retail registers can remain in retail mode.
+`addons_path`. Retail needs only standard `point_of_sale`. Use the matching
+`pos_revolut_restaurant_integration` addon for Restaurant registers.
 
 ## Documentation
 

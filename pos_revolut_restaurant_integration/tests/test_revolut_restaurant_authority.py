@@ -9,23 +9,22 @@ from odoo.addons.point_of_sale.tests.common import TestPointOfSaleCommon
 from odoo.exceptions import UserError
 from odoo.tests.common import tagged
 
-from .test_revolut_terminal_tip import TerminalTipFixtures
+from odoo.addons.pos_revolut.tests.test_revolut_terminal_tip import TerminalTipFixtures
 
 
 @tagged("post_install", "-at_install", "pos_revolut_restaurant")
 class TestRevolutRestaurantAuthority(TerminalTipFixtures, TestPointOfSaleCommon):
     def setUp(self):
         super().setUp()
-        if self.env["ir.module.module"].search([("name", "=", "pos_restaurant")]).state != "installed":
-            self.skipTest("Restaurant table ownership needs pos_restaurant installed")
         self.registry.enter_test_mode(self.cr)
         self.addCleanup(self.registry.leave_test_mode)
+        secret_reference = f"ODOO_REVOLUT_SECRET_RESTAURANT_TEST_{uuid4().hex.upper()}"
         self.method = self.bank_payment_method.copy({
             "name": "Restaurant authority terminal", "payment_method_type": "terminal",
             "use_payment_terminal": "revolut", "revolut_environment": "sandbox",
             "revolut_location_id": str(uuid4()), "revolut_terminal_id": str(uuid4()),
             "revolut_fulfilment_type": "eat_in",
-            "revolut_secret_reference": "ODOO_REVOLUT_SECRET_TEST_TERMINAL",
+            "revolut_secret_reference": secret_reference,
         })
         self.product = self.env["product.product"].create({
             "name": "Restaurant authorized goods", "available_in_pos": True,
@@ -79,7 +78,7 @@ class TestRevolutRestaurantAuthority(TerminalTipFixtures, TestPointOfSaleCommon)
                 "amount": 12.34, "payment_status": "waiting",
             })],
         })
-        self.enterContext(patch.dict(os.environ, {"ODOO_REVOLUT_SECRET_TEST_TERMINAL": "test-only"}))
+        self.enterContext(patch.dict(os.environ, {secret_reference: "test-only"}))
 
     def _select_timed_takeout(self, preset_time=False):
         preset = self.env.ref("pos_revolut.pos_takeout_preset")

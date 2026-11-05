@@ -81,3 +81,49 @@ class TestStorePackaging(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exactly one"):
             self.delivered.archive_addons(revision, archive)
         self.assertFalse(archive.exists())
+
+    def test_retail_and_restaurant_archives_select_the_expected_addons(self):
+        self.addon("")
+        companion = self.repository / "pos_revolut_restaurant_integration"
+        companion.mkdir()
+        (companion / "__manifest__.py").write_text("{'version': '18.0.1.0.4'}\n")
+        revision = self.commit()
+        for package, has_companion in (("retail", False), ("restaurant", True)):
+            with self.subTest(package=package):
+                archive = self.repository / f"{package}.tar.gz"
+                self.delivered.archive_addons(revision, archive, package=package)
+                with tarfile.open(archive) as bundle:
+                    self.assertIn("addons/pos_revolut/__manifest__.py", bundle.getnames())
+                    self.assertEqual(
+                        "addons/pos_revolut_restaurant_integration/__manifest__.py" in bundle.getnames(),
+                        has_companion,
+                    )
+
+    def test_restaurant_archive_requires_companion_in_reviewed_revision(self):
+        self.addon("")
+        revision = self.commit()
+        archive = self.repository / "release.tar.gz"
+        with self.assertRaisesRegex(ValueError, "Restaurant companion"):
+            self.delivered.archive_addons(revision, archive, package="restaurant")
+        self.assertFalse(archive.exists())
+
+    def test_store_source_extraction_checks_matching_versions(self):
+        self.addon("")
+        companion = self.repository / "pos_revolut_restaurant_integration"
+        companion.mkdir()
+        manifest = companion / "__manifest__.py"
+        for version in ("18.0.1.0.1", "18.0.1.0.4"):
+            with self.subTest(version=version):
+                manifest.write_text(repr({"version": version}))
+                archive = self.repository / f"restaurant-{version}.tar.gz"
+                self.delivered.archive_addons(self.commit(), archive, package="restaurant")
+                if version.endswith(".1"):
+                    with self.assertRaisesRegex(ValueError, "versions must match"):
+                        self.delivered.extract_store_source(
+                            archive, self.repository / "mismatch", package="restaurant"
+                        )
+                else:
+                    release = self.delivered.extract_store_source(
+                        archive, self.repository / "matched", package="restaurant"
+                    )
+                    self.assertTrue((release / companion.name / manifest.name).is_file())

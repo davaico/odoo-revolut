@@ -2,6 +2,7 @@
 """Install one reviewed POS Revolut release on an existing Odoo host."""
 
 import argparse
+import ast
 import configparser
 import fcntl
 import hashlib
@@ -22,7 +23,9 @@ class DeploymentError(RuntimeError):
     """An expected safety refusal or remote command failure."""
 
 
-ADDONS = ("pos_revolut",)
+BASE_ADDON = "pos_revolut"
+COMPANION_ADDON = "pos_revolut_restaurant_integration"
+ADDONS = (BASE_ADDON, COMPANION_ADDON)
 LEGACY_ADDON = "pos_revolut_restaurant"
 
 # No database, HTTP, provider credentials, or saved transaction data are used.
@@ -120,6 +123,7 @@ class RemoteDeployment:
         customer,
         environment,
         mode,
+        package=None,
     ):
         self.runner = runner
         self.root = Path(root)
@@ -130,6 +134,8 @@ class RemoteDeployment:
         self.customer = customer
         self.environment = environment
         self.mode = mode
+        self.package = package
+        self.addons = ADDONS if package == "restaurant" else (BASE_ADDON,)
         self.financial_tables = []
 
     def _rooted(self, path):
@@ -148,6 +154,8 @@ class RemoteDeployment:
                 raise DeploymentError(f"Invalid {label}.")
         if self.mode not in {"install", "upgrade"}:
             raise DeploymentError("Invalid deployment mode.")
+        if self.package not in {None, "retail", "restaurant"}:
+            raise DeploymentError("Invalid deployment package.")
 
     def _psql(self, sql, step):
         return run_checked(
@@ -501,7 +509,8 @@ WHERE table_schema = 'public'
         releases = self._rooted(
             f"/opt/odoo-releases/{self.customer}/{self.environment}"
         )
-        revision_root = releases / self.revision
+        release_name = f"{self.revision}-{self.package}" if self.package else self.revision
+        revision_root = releases / release_name
         releases.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(
             prefix=f".{self.revision[:12]}-", dir=releases
@@ -523,7 +532,7 @@ WHERE table_schema = 'public'
                         is_addon_content = (
                             len(path.parts) >= 2
                             and path.parts[0] == "addons"
-                            and path.parts[1] in ADDONS
+                            and path.parts[1] in self.addons
                             and (len(path.parts) > 2 or member.isdir())
                         )
                         if (
@@ -546,10 +555,23 @@ WHERE table_schema = 'public'
                     "Deployment artifact extraction failed."
                 ) from error
             source = temporary_path / "addons"
-            if any(not (source / addon / "__manifest__.py").is_file() for addon in ADDONS):
+            if not (source / BASE_ADDON / "__manifest__.py").is_file():
                 raise DeploymentError(
                     "Deployment artifact does not contain the POS Revolut addon manifest."
                 )
+            if self.package == "restaurant":
+                companion_manifest = source / COMPANION_ADDON / "__manifest__.py"
+                if not companion_manifest.is_file():
+                    raise DeploymentError("Deployment artifact is missing the Restaurant companion.")
+                try:
+                    base_version = ast.literal_eval(
+                        (source / BASE_ADDON / "__manifest__.py").read_text()
+                    )["version"]
+                    companion_version = ast.literal_eval(companion_manifest.read_text())["version"]
+                except (OSError, SyntaxError, ValueError, TypeError, KeyError) as error:
+                    raise DeploymentError("Cannot read addon versions from the artifact.") from error
+                if not isinstance(base_version, str) or not base_version or base_version != companion_version:
+                    raise DeploymentError("POS Revolut and Restaurant companion versions must match.")
             if revision_root.exists():
                 marker = revision_root / "REVISION"
                 if (
@@ -580,7 +602,7 @@ WHERE table_schema = 'public'
             staged.mkdir()
             published = False
             try:
-                for addon in ADDONS:
+                for addon in self.addons:
                     shutil.move(str(source / addon), staged / addon)
                 (staged / "REVISION").write_text(self.revision + "\n")
                 (staged / "ARTIFACT_SHA256").write_text(
@@ -607,7 +629,7 @@ WHERE table_schema = 'public'
         return revision_root
 
     def _activate_release(self, release):
-        currents = [self._rooted(f"/opt/odoo-hosting/addons/{addon}") for addon in ADDONS]
+        currents = [self._rooted(f"/opt/odoo-hosting/addons/{addon}") for addon in self.addons]
         currents[0].parent.mkdir(parents=True, exist_ok=True)
         legacy = self._rooted(f"/opt/odoo-hosting/addons/{LEGACY_ADDON}")
         for current in [*currents, legacy]:
@@ -618,7 +640,7 @@ WHERE table_schema = 'public'
                 )
         temporaries = [current.with_name(f".{current.name}.{os.getpid()}") for current in currents]
         try:
-            for temporary, addon in zip(temporaries, ADDONS):
+            for temporary, addon in zip(temporaries, self.addons):
                 temporary.unlink(missing_ok=True)
                 temporary.symlink_to(release / addon, target_is_directory=True)
             for temporary, current in zip(temporaries, currents):
@@ -629,14 +651,29 @@ WHERE table_schema = 'public'
             for temporary in temporaries:
                 temporary.unlink(missing_ok=True)
 
+    def _check_package_state(self, states):
+        pending = {"to install", "to upgrade", "to remove"}
+        if states.get(LEGACY_ADDON) in pending:
+            raise DeploymentError("Restaurant bridge has a pending module operation.")
+        if states.get(COMPANION_ADDON) in pending or states.get("pos_restaurant") in pending:
+            raise DeploymentError("Restaurant has a pending module operation.")
+        if self.package == "retail" and any(
+            states.get(name) == "installed" for name in ("pos_restaurant", COMPANION_ADDON, LEGACY_ADDON)
+        ):
+            raise DeploymentError("Restaurant is installed. Select the Restaurant package for this database.")
+
     def _update_module(self):
         before = self._module_states()
-        if before.get(LEGACY_ADDON) in {"to install", "to upgrade", "to remove"}:
-            raise DeploymentError("Restaurant bridge has a pending module operation.")
+        self._check_package_state(before)
         if self.mode == "install":
-            operations = ["--init", "pos_revolut"]
+            operations = ["--init", COMPANION_ADDON if self.package == "restaurant" else BASE_ADDON]
         else:
-            operations = ["--update", "pos_revolut"]
+            update = BASE_ADDON
+            if self.package == "restaurant" and before.get(COMPANION_ADDON) == "installed":
+                update += f",{COMPANION_ADDON}"
+            operations = ["--update", update]
+            if self.package == "restaurant" and before.get(COMPANION_ADDON) != "installed":
+                operations += ["--init", COMPANION_ADDON]
         venv_python = self._rooted("/opt/odoo-hosting/venv/bin/python")
         odoo_command = ["/usr/bin/odoo"]
         if venv_python.is_file() and os.access(venv_python, os.X_OK):
@@ -666,8 +703,12 @@ WHERE table_schema = 'public'
         after = self._module_states()
         if after.get("pos_revolut") != "installed":
             raise DeploymentError("POS Revolut base addon is not installed after update.")
-        if after.get("pos_restaurant") != "installed":
+        if self.package != "retail" and after.get("pos_restaurant") != "installed":
             raise DeploymentError("Restaurant dependency is not installed after update.")
+        if self.package == "restaurant" and after.get(COMPANION_ADDON) != "installed":
+            raise DeploymentError("Restaurant companion is not installed after update.")
+        if self.package == "retail":
+            self._check_package_state(after)
         if after.get(LEGACY_ADDON) is not None:
             raise DeploymentError("Restaurant bridge was not merged during update.")
         legacy = self._rooted(f"/opt/odoo-hosting/addons/{LEGACY_ADDON}")
@@ -678,7 +719,7 @@ WHERE table_schema = 'public'
         rows = self._psql(
             "SELECT name || '|' || state FROM ir_module_module "
             "WHERE name IN ('pos_revolut', 'pos_restaurant', "
-            "'pos_revolut_restaurant') ORDER BY name",
+            f"'pos_revolut_restaurant', '{COMPANION_ADDON}') ORDER BY name",
             "Odoo module state check",
         ).splitlines()
         states = {}
@@ -724,6 +765,8 @@ WHERE table_schema = 'public'
             raise DeploymentError("Deployment artifact is missing.")
         if sha256(self.archive) != self.expected_sha256:
             raise DeploymentError("Deployment artifact checksum mismatch.")
+        if self.package:
+            self._check_package_state(self._module_states())
         blockers = self._financial_blockers()
         if blockers:
             raise DeploymentError(
@@ -731,6 +774,8 @@ WHERE table_schema = 'public'
             )
         self._verify_addons_path()
         self._pdf_preflight()
+        # Validate a split payload while the live service is still running.
+        release = self._extract_release() if self.package else None
         self._run(
             ["systemctl", "start", "odoo-backup.service"],
             "Database and filestore backup",
@@ -755,7 +800,8 @@ WHERE table_schema = 'public'
             financial_path.chmod(0o600)
         except OSError as error:
             raise DeploymentError("Financial preservation backup failed; Odoo remains stopped.") from error
-        release = self._extract_release()
+        if release is None:
+            release = self._extract_release()
         self._activate_release(release)
         self._update_module()
         self._verify_financial_snapshot(financial_state)
@@ -767,8 +813,7 @@ WHERE table_schema = 'public'
         self._health_check()
         return (
             f"Deployed POS Revolut revision {self.revision}\n"
-            f"Release: /opt/odoo-releases/{self.customer}/{self.environment}/"
-            f"{self.revision}/pos_revolut\n"
+            f"Release: /{(release / BASE_ADDON).relative_to(self.root)}\n"
             f"Configuration backup: /{backup.relative_to(self.root)}\n"
             f"Financial state preserved: {sum(len(rows) for rows in financial_state.values())} records\n"
         )
@@ -783,6 +828,7 @@ def parse_arguments(argv):
     parser.add_argument("--customer", required=True)
     parser.add_argument("--environment", required=True)
     parser.add_argument("--mode", choices=("install", "upgrade"), required=True)
+    parser.add_argument("--package", choices=("retail", "restaurant"))
     return parser.parse_args(argv)
 
 
@@ -813,6 +859,7 @@ def main(
         customer=args.customer,
         environment=args.environment,
         mode=args.mode,
+        package=args.package,
     )
     lock_path = root / "run" / "lock" / "pos-revolut-deploy.lock"
     try:

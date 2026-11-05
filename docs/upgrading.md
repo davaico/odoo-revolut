@@ -3,6 +3,8 @@
 These steps cover Odoo 18 Community and Enterprise, including Odoo.sh. The
 `18.0.1.0.8` update adds administrator-managed Database credentials, Odoo.sh
 stage and neutralization safeguards, and clearer Payment Method configuration.
+The `18.0.1.0.9` update moves Restaurant support to the optional
+`pos_revolut_restaurant_integration` addon.
 An addon upgrade is required to load the new fields, views and data; deploying
 code alone is insufficient. This is not a migration between Odoo major versions
 and does not import payment history from another integration.
@@ -22,10 +24,12 @@ and does not import payment history from another integration.
 
 ## Upgrade on Odoo.sh
 
-1. Deploy the reviewed addon to the test branch and upgrade **POS Revolut** in
-   **Apps**. Verify the installed version and the checks below before promoting
-   the same code to the operational branch through your normal deployment
-   process.
+1. If standard Restaurant is installed, include both matching addon directories
+   in the project, even if all registers are in retail mode. Deploy the reviewed
+   source to the test branch and upgrade **POS Revolut** in **Apps**. Verify
+   that the upgrade installed the companion when Restaurant was present. Check
+   the installed versions and the results below before promoting the same code
+   to the operational branch through your normal deployment process.
 2. Upgrade the module in the operational database using the supported Odoo.sh
    deployment/module-update process. Verify the installed version after the
    upgrade; a successful branch build alone does not establish completion.
@@ -36,22 +40,39 @@ and does not import payment history from another integration.
 
 ## Upgrade on a self-hosted server
 
-1. Stop all Odoo workers. Install the reviewed `pos_revolut` directory,
-   preserving the configured `addons_path` and existing runtime environment.
-2. Update using the service's configuration and environment:
+1. Stop all Odoo workers. Put the reviewed `pos_revolut` directory on the
+   configured `addons_path`. If standard Restaurant is installed, include the
+   matching `pos_revolut_restaurant_integration` directory, even if all registers
+   are in retail mode. Preserve the service's existing runtime environment.
+2. If Restaurant is installed, update the base and install the companion in the
+   same offline command:
 
    ```bash
    odoo --config /path/to/odoo.conf --database DATABASE_NAME \
-     --update pos_revolut --stop-after-init --no-http --workers=0
+     --update pos_revolut --init pos_revolut_restaurant_integration \
+     --stop-after-init --no-http --workers=0
    ```
+
+   If the companion is already installed, use
+   `--update pos_revolut,pos_revolut_restaurant_integration` in place of the
+   `--update` and `--init` options above. Without Restaurant, use only
+   `--update pos_revolut`.
 
 3. Restart all workers and reload POS assets.
 
+For the guarded deployer, choose `--package restaurant` whenever standard
+Restaurant is installed. Choose `--package retail` for a base-only database.
+Retain the reviewed package and its source revision for rollback.
+
+If an update fails, keep POS activity stopped. Restore the matching previous
+addon release, database and filestore together. Reconcile any later provider or
+native financial operations before restoring.
+
 ## Verify configuration and credentials
 
-Confirm the installed addon version, credential authorities, register grants,
-reconciliation jobs, terminal connectivity and existing unresolved attempts
-before permitting further payments. Check Connection verifies terminal discovery,
+Confirm the installed addon versions, credential authorities, register grants,
+reconciliation jobs, terminal connectivity and original financial references
+including unresolved attempts before permitting further payments. Check Connection verifies terminal discovery,
 not payment-report permissions or a completed sale. Follow the bounded
 payment/refund acceptance steps in [Release and activation](releasing.md).
 

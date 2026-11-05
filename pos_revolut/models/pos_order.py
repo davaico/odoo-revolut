@@ -419,6 +419,8 @@ class PosOrder(models.Model):
             return orders
 
     def _revolut_table_move_orders(self, values):
+        # Keep protecting orders exposed before a companion was made available.
+        # Retail registries have no table field.
         moving = self.env["pos.order"]
         occupied = self.env["pos.order"]
         if values.get("table_id") and "table_id" in self._fields:

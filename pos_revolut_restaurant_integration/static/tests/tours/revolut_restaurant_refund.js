@@ -43,12 +43,14 @@ function originalSale(method) {
     ].flat();
 }
 
-function nativeReturn() {
+function nativeReturn(quantity = "1", amount = "12.34") {
     return [
         Chrome.clickMenuOption("Orders"),
         TicketScreen.selectFilter("Paid"),
         TicketScreen.selectOrderByPrice("12.34"),
-        { trigger: ".ticket-screen .numpad button:contains('1')", run: "click" },
+        ...[...quantity].map((key) => ({
+            trigger: `.ticket-screen .numpad button:contains('${key}')`, run: "click",
+        })),
         TicketScreen.confirmRefund(),
         {
             content: "Native refund creation retains the original customer, taxes, prices and source line",
@@ -61,7 +63,7 @@ function nativeReturn() {
                     (order.partner_id?.id || false) !== original.partnerId ||
                     order.lines[0]?.refunded_orderline_id?.uuid !== original.lineUuid ||
                     order.lines[0]?.refunded_orderline_id?.order_id?.uuid !== original.uuid ||
-                    order.get_total_with_tax() !== -12.34) {
+                    order.get_total_with_tax() !== -Number(amount)) {
                     throw new Error("Default Restaurant sale preset replaced the native return's original policy: " +
                         JSON.stringify({ original, pricelist: order.pricelist_id?.name,
                             fiscal: order.fiscal_position_id?.name, total: order.get_total_with_tax() }));
@@ -88,24 +90,32 @@ registry.category("web_tour.tours").add("pos_revolut_restaurant_bank_return_poli
     ].flat(),
 });
 
-registry.category("web_tour.tours").add("pos_revolut_restaurant_revolut_return_policy", {
-    steps: () => [
+function revolutReturn(quantity, amount) {
+    return [
         originalSale("Revolut"),
         refresh(),
         { trigger: ".floor-screen .floor-map" },
-        nativeReturn(),
+        nativeReturn(quantity, amount),
         PaymentScreen.clickPaymentMethod("Revolut"),
         { trigger: ".payment-screen .send_payment_request", run: "click" },
         { trigger: ".revolut-refund-amount", run() {
-            if (Number(this.anchor.value) !== 12.34) {
+            if (Number(this.anchor.value) !== Number(amount)) {
                 throw new Error("Restaurant return changed the original card allocation");
             }
         } },
         { trigger: ".revolut-refund-confirm", run: "click" },
         ReceiptScreen.isShown(),
-        ReceiptScreen.paymentLineContains("Revolut", "-12.34"),
-        ReceiptScreen.totalAmountContains("-12.34"),
+        ReceiptScreen.paymentLineContains("Revolut", `-${amount}`),
+        ReceiptScreen.totalAmountContains(`-${amount}`),
         { trigger: ".receipt-screen .pos-payment-terminal-receipt:contains('6c2f3842-c34d-4cc3-a0fc-9ae40b04dfbf')" },
         { trigger: ".receipt-screen", run() { sessionStorage.removeItem("restaurantReturnOriginal"); } },
-    ].flat(),
+    ].flat();
+}
+
+registry.category("web_tour.tours").add("pos_revolut_restaurant_revolut_return_policy", {
+    steps: () => revolutReturn("1", "12.34"),
+});
+
+registry.category("web_tour.tours").add("pos_revolut_restaurant_revolut_partial_return", {
+    steps: () => revolutReturn("0.5", "6.17"),
 });

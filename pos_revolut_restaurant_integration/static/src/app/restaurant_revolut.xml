@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="pos_revolut_restaurant_integration.CheckoutPreset"
+       t-inherit="point_of_sale.ControlButtons" t-inherit-mode="extension">
+        <xpath expr="//button[@t-on-click='clickTakeAway']" position="attributes">
+            <attribute name="t-if">pos.config.takeaway and !pos.config.use_presets</attribute>
+        </xpath>
+    </t>
+</templates>

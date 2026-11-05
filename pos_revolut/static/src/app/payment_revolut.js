@@ -46,10 +46,6 @@ function financialSnapshot(order) {
         amount_total: roundCurrency(order.get_total_with_tax(), order.currency),
         pricelist_id: order.pricelist_id?.id || false,
         fiscal_position_id: order.fiscal_position_id?.id || false,
-        restaurant: order.config?.module_pos_restaurant ? {
-            preset_id: order.preset_id?.id || false,
-            table_id: order.table_id?.id || false,
-        } : false,
         lines: order.lines.map((line) => ({
             uuid: line.uuid,
             product_id: line.product_id.id,

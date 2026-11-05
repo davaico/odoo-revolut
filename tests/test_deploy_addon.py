@@ -277,6 +277,36 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             self.assertTrue((release / "pos_revolut" / "__manifest__.py").is_file())
             self.assertFalse((release / "pos_revolut_restaurant").exists())
 
+    def test_restaurant_artifact_requires_matching_companion(self):
+        remote = load_script("deploy-addon-remote")
+        for version, expected_error in (
+            (None, "Restaurant companion"),
+            ("18.0.1.0.1", "versions must match"),
+            ("18.0.1.0.9", None),
+        ):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                source = root / "source"
+                base = source / "pos_revolut"
+                base.mkdir(parents=True)
+                (base / "__manifest__.py").write_text("{'version': '18.0.1.0.9'}\n")
+                if version:
+                    companion = source / "pos_revolut_restaurant_integration"
+                    companion.mkdir()
+                    (companion / "__manifest__.py").write_text(repr({"version": version}))
+                archive = root / "artifact.tar.gz"
+                with tarfile.open(archive, "w:gz") as bundle:
+                    bundle.add(source, arcname="addons")
+                deployment = self._deployment(
+                    remote, FakeRunner([]), root, archive, package="restaurant"
+                )
+                if expected_error:
+                    with self.assertRaisesRegex(remote.DeploymentError, expected_error):
+                        deployment._extract_release()
+                else:
+                    release = deployment._extract_release()
+                    self.assertTrue((release / "pos_revolut_restaurant_integration/__manifest__.py").is_file())
+
     def _artifact(self, root):
         source = root / "source" / "addons" / "pos_revolut"
         source.mkdir(parents=True)
@@ -315,7 +345,7 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
         (drop_in / "python.conf").write_text("[Service]\nExecStart=/usr/bin/odoo\n")
 
     def _deployment(
-        self, remote, runner, root, archive, revision="4" * 40, mode="upgrade"
+        self, remote, runner, root, archive, revision="4" * 40, mode="upgrade", **options
     ):
         return remote.RemoteDeployment(
             runner=runner,
@@ -327,6 +357,7 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
             customer="revolut",
             environment="staging",
             mode=mode,
+            **options,
         )
 
     def test_pdf_failure_aborts_before_any_deployment_mutation(self):
@@ -552,6 +583,29 @@ class TestRemoteDeploymentWorkflow(unittest.TestCase):
         update = runner.calls[1][0]
         self.assertEqual(update[update.index("--update") + 1], "pos_revolut")
         self.assertNotIn("--init", update)
+
+    def test_paired_upgrade_explicitly_installs_then_updates_companion(self):
+        remote = load_script("deploy-addon-remote")
+        installed = "pos_revolut|installed\npos_restaurant|installed\n"
+        companion = "pos_revolut_restaurant_integration"
+        for state, flag, modules in (
+            ("uninstalled", "--init", companion),
+            ("installed", "--update", f"pos_revolut,{companion}"),
+        ):
+            with self.subTest(state=state), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                archive = root / "unused.tar.gz"
+                archive.write_bytes(b"unused")
+                runner = FakeRunner([
+                    f"{installed}{companion}|{state}\n",
+                    "",
+                    f"{installed}{companion}|installed\n",
+                ])
+                self._deployment(remote, runner, root, archive, package="restaurant")._update_module()
+                update = runner.calls[1][0]
+                self.assertEqual(update[update.index(flag) + 1], modules)
+                if state == "uninstalled":
+                    self.assertEqual(update[update.index("--update") + 1], "pos_revolut")
 
     def test_upgrade_merges_installed_bridge(self):
         remote = load_script("deploy-addon-remote")

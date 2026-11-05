@@ -2,6 +2,8 @@
 """Run disposable Odoo acceptance from an exact committed release artifact."""
 
 import argparse
+import ast
+import hashlib
 import importlib.machinery
 import importlib.util
 import os
@@ -13,12 +15,17 @@ from pathlib import Path
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
+COMPANION_ADDON = "pos_revolut_restaurant_integration"
+PAIRED_SCENARIOS = ("restaurant", "restaurant-later", "upgrade", "legacy-upgrade")
 
 
-def archive_addons(revision, archive, *, legacy_restaurant=False):
+def archive_addons(revision, archive, *, legacy_restaurant=False, package=None):
     candidates = ("pos_revolut/__manifest__.py", "addons/pos_revolut/__manifest__.py")
+    companion_candidates = (
+        f"{COMPANION_ADDON}/__manifest__.py", f"addons/{COMPANION_ADDON}/__manifest__.py",
+    )
     paths = set(subprocess.check_output(
-        ["git", "ls-tree", "-r", "--name-only", revision, "--", *candidates],
+        ["git", "ls-tree", "-r", "--name-only", revision, "--", *candidates, *companion_candidates],
         cwd=REPOSITORY, text=True,
     ).splitlines())
     if len(paths.intersection(candidates)) != 1:
@@ -27,6 +34,11 @@ def archive_addons(revision, archive, *, legacy_restaurant=False):
     addon_paths = ["pos_revolut" if root_layout else "addons/pos_revolut"]
     if legacy_restaurant:
         addon_paths.append("pos_revolut_restaurant" if root_layout else "addons/pos_revolut_restaurant")
+    if package == "restaurant":
+        companion_manifest = companion_candidates[0 if root_layout else 1]
+        if companion_manifest not in paths:
+            raise ValueError("Revision is missing the Restaurant companion")
+        addon_paths.append(str(Path(companion_manifest).parent))
     subprocess.run(
         ["git", "archive", "--format=tar.gz", "--output", str(archive),
          *(["--prefix=addons/"] if root_layout else []), revision, "--", *addon_paths],
@@ -34,12 +46,73 @@ def archive_addons(revision, archive, *, legacy_restaurant=False):
     )
 
 
+def extract_store_source(archive, target, *, package):
+    """Extract an exact Store-branch Git archive without a deployer."""
+    addons = ["pos_revolut"]
+    if package == "restaurant":
+        addons.append(COMPANION_ADDON)
+    with tarfile.open(archive, "r:gz") as bundle:
+        members = bundle.getmembers()
+        if not members or len(members) > 10000 or sum(member.size for member in members) > 100 * 1024 * 1024:
+            raise ValueError("Invalid POS Revolut archive size")
+        for member in members:
+            path = Path(member.name)
+            if (
+                path.is_absolute() or ".." in path.parts or path.parts[:1] != ("addons",)
+                or (len(path.parts) > 1 and path.parts[1] not in addons)
+                or not (member.isdir() or len(path.parts) > 2 and member.isfile())
+            ):
+                raise ValueError("Unsafe path in POS Revolut archive")
+        bundle.extractall(target, filter="data")
+    release = target / "addons"
+    versions = set()
+    for addon in addons:
+        manifest = release / addon / "__manifest__.py"
+        if not manifest.is_file():
+            raise ValueError(f"POS Revolut archive is missing the {addon} manifest")
+        version = ast.literal_eval(manifest.read_text())["version"]
+        if not isinstance(version, str) or not version:
+            raise ValueError("Invalid addon version in POS Revolut archive")
+        versions.add(version)
+    if len(versions) != 1:
+        raise ValueError("POS Revolut and Restaurant companion versions must match")
+    return release
+
+
+def extract_deployment_source(remote_source, root, archive, revision, package):
+    remote_path = root / "deploy-addon-remote"
+    remote_path.write_text(remote_source)
+    loader = importlib.machinery.SourceFileLoader("delivered_remote", str(remote_path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    remote = importlib.util.module_from_spec(spec)
+    loader.exec_module(remote)
+    package_args = {"package": package} if package else {}
+    deployment = remote.RemoteDeployment(
+        runner=remote.CommandRunner(), root=root, archive=archive,
+        expected_sha256=remote.sha256(archive), revision=revision,
+        database="odoo_revolut_tests", customer="revolut", environment="test",
+        mode="install", **package_args,
+    )
+    return deployment._extract_release()
+
+
+def has_companion(revision):
+    paths = (f"{COMPANION_ADDON}/__manifest__.py", f"addons/{COMPANION_ADDON}/__manifest__.py")
+    return bool(subprocess.check_output(
+        ["git", "ls-tree", "-r", "--name-only", revision, "--", *paths],
+        cwd=REPOSITORY,
+    ))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--revision", required=True)
-    parser.add_argument("--scenario", choices=("retail", "populated", "migration"), required=True)
+    parser.add_argument("--scenario", choices=(
+        "retail", "restaurant", "restaurant-later", "retail-with-restaurant",
+        "upgrade", "legacy-upgrade", "populated", "migration",
+    ), required=True)
     parser.add_argument("--test-tags", help="Override acceptance selection; populated defaults to /pos_revolut")
-    parser.add_argument("--migration-from", help="Full SHA of a legacy two-addon release")
+    parser.add_argument("--migration-from", help="Full SHA of the release to install before upgrading")
     parser.add_argument("--odoo-major", choices=("18", "19"),
                         default=os.environ.get("ODOO_REVOLUT_ODOO_MAJOR", "18"))
     args = parser.parse_args()
@@ -47,11 +120,12 @@ def main():
         parser.error("ODOO_REVOLUT_ODOO_MAJOR must be 18 or 19")
     if args.scenario == "populated" and args.odoo_major != "18":
         parser.error("Populated first-install acceptance currently requires --odoo-major 18")
-    if args.scenario == "migration" and args.odoo_major != "19":
-        parser.error("Migration acceptance exercises Odoo 19 history; select --odoo-major 19 with the Odoo 19 addon")
+    legacy = args.scenario in {"migration", "legacy-upgrade"}
+    if legacy and args.odoo_major != "19":
+        parser.error("Legacy bridge migration exercises Odoo 19 history; select --odoo-major 19")
     os.environ["ODOO_REVOLUT_ODOO_MAJOR"] = args.odoo_major
-    if args.scenario == "migration" and not args.migration_from:
-        parser.error("--scenario migration requires --migration-from")
+    if (legacy or args.scenario == "upgrade") and not args.migration_from:
+        parser.error(f"--scenario {args.scenario} requires --migration-from")
     if args.migration_from and not re.fullmatch(r"[0-9a-f]{40}", args.migration_from):
         parser.error("--migration-from must be a full commit SHA")
     if not re.fullmatch(r"[0-9a-f]{40}", args.revision):
@@ -63,39 +137,42 @@ def main():
     if resolved != args.revision:
         parser.error("--revision did not resolve to the exact commit")
 
+    scenario = args.scenario
+    if scenario == "migration" and has_companion(args.revision):
+        scenario = "legacy-upgrade"
+
     with tempfile.TemporaryDirectory(prefix="pos-revolut-delivered-") as temporary:
         root = Path(temporary)
         archive = root / "release.tar.gz"
-        archive_addons(args.revision, archive)
-        remote_source = subprocess.check_output(
+        package = None
+        if scenario in PAIRED_SCENARIOS or (scenario == "populated" and has_companion(args.revision)):
+            package = "restaurant"
+        archive_addons(args.revision, archive, package=package)
+        remote_source = subprocess.run(
             ["git", "show", f"{args.revision}:scripts/deploy-addon-remote"],
-            cwd=REPOSITORY,
+            cwd=REPOSITORY, text=True, capture_output=True,
         )
-        remote_path = root / "deploy-addon-remote"
-        remote_path.write_bytes(remote_source)
-        loader = importlib.machinery.SourceFileLoader("delivered_remote", str(remote_path))
-        spec = importlib.util.spec_from_loader(loader.name, loader)
-        remote = importlib.util.module_from_spec(spec)
-        loader.exec_module(remote)
-        deployment = remote.RemoteDeployment(
-            runner=remote.CommandRunner(), root=root, archive=archive,
-            expected_sha256=remote.sha256(archive), revision=args.revision,
-            database="odoo_revolut_tests", customer="revolut", environment="test",
-            mode="install",
-        )
-        release = deployment._extract_release()
+        if remote_source.returncode == 0:
+            release = extract_deployment_source(
+                remote_source.stdout, root, archive, args.revision, package,
+            )
+        elif args.odoo_major == "19":
+            release = extract_store_source(archive, root, package=package)
+            print("Artifact extractor: Store source acceptance runner", flush=True)
+        else:
+            remote_source.check_returncode()
         legacy_args = []
-        if args.scenario == "migration":
+        if args.migration_from:
             legacy_archive = root / "legacy.tar.gz"
-            archive_addons(args.migration_from, legacy_archive, legacy_restaurant=True)
+            archive_addons(args.migration_from, legacy_archive, legacy_restaurant=legacy)
             legacy_root = root / "legacy"
             with tarfile.open(legacy_archive) as bundle:
                 bundle.extractall(legacy_root, filter="data")
             legacy_args = ["--legacy-addons-dir", str(legacy_root / "addons")]
         print(f"Artifact revision: {args.revision}", flush=True)
-        print(f"Artifact SHA256: {remote.sha256(archive)}", flush=True)
+        print(f"Artifact SHA256: {hashlib.sha256(archive.read_bytes()).hexdigest()}", flush=True)
         scenario_args = (["--verify-install-upgrade"] if args.scenario == "populated"
-                         else ["--delivered-scenario", args.scenario])
+                         else ["--delivered-scenario", scenario])
         test_args = ["--test-tags", args.test_tags] if args.test_tags is not None else []
         subprocess.run(
             [str(REPOSITORY / "scripts" / "test-addon"),

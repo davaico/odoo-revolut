@@ -54,6 +54,9 @@ To test the exact committed addon, use a full commit hash from this branch:
 ```bash
 ./scripts/test-delivered-addon --odoo-major 18 --scenario retail --revision REVIEWED_FULL_COMMIT_SHA
 ./scripts/test-delivered-addon --odoo-major 18 --scenario populated --revision REVIEWED_FULL_COMMIT_SHA
+./scripts/test-delivered-addon --odoo-major 18 --scenario restaurant --revision REVIEWED_FULL_COMMIT_SHA
+./scripts/test-delivered-addon --odoo-major 18 --scenario upgrade \
+  --revision REVIEWED_FULL_COMMIT_SHA --migration-from COMBINED_FULL_COMMIT_SHA
 ```
 
 Use upgrade fixtures with their matching Odoo major version and an available
