@@ -4,6 +4,7 @@
     "category": "Sales/Point of Sale",
     "summary": "Use Revolut terminal payments on Odoo Restaurant registers",
     "author": "Davai",
+    "images": ["static/description/revolut-restaurant.png"],
     "depends": ["pos_revolut", "pos_restaurant"],
     "assets": {
         "point_of_sale._assets_pos": [
