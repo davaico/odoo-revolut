@@ -7,6 +7,7 @@ from odoo import Command, fields
 from odoo.addons.point_of_sale.tests.common import TestPointOfSaleCommon
 from odoo.exceptions import AccessError, UserError
 from odoo.tests.common import tagged
+from odoo.tools import SQL
 
 from .test_external_refunds import TestExternalRefunds
 
@@ -212,6 +213,33 @@ class TestExternalNativeStock(TestPointOfSaleCommon):
             with self.assertRaises(AccessError):
                 tender.with_user(cashier).read(["amount"])
         self.request.assert_not_called()
+
+    def test_cashier_payment_search_applies_order_pagination_once(self):
+        self._sale(kind="service")
+        returned = self._prepare(self._verified_refund())
+        cashier = self._mutation_actor(manager=False)
+        orders = self.env["pos.order"].with_user(cashier)
+        payments = self.env["pos.payment"].with_user(cashier)
+        page = orders._search(
+            [("id", "in", [self.original.id, returned.id])],
+            offset=1, limit=1, order="id desc",
+        )
+        domain = [("pos_order_id", "in", page)]
+        self.assertEqual(payments.search(domain).ids, self.original.payment_ids.ids)
+
+        # A caller's order page can be computed once for all tenders. Applying
+        # each tender's order ID to its subquery repeats the page calculation.
+        self.env.cr.execute(SQL(
+            "EXPLAIN (ANALYZE, FORMAT JSON) %s", payments._search(domain).select(),
+        ))
+        pending = [self.env.cr.fetchone()[0][0]["Plan"]]
+        page_loops = []
+        while pending:
+            node = pending.pop()
+            if node["Node Type"] == "Limit":
+                page_loops.append(node["Actual Loops"])
+            pending.extend(node.get("Plans", []))
+        self.assertEqual(page_loops, [1])
 
     def test_serial_return_requires_original_selected_serial_and_prevents_reuse(self):
         self._sale(tracking="serial", quantity=2, lots=("RETURN-SERIAL-A", "RETURN-SERIAL-B"))

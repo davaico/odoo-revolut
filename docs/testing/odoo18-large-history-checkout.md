@@ -35,12 +35,14 @@ We compared the released addon and the fix on copies of the same synthetic fixtu
 
 | Cashier method | Released `.9` | Staging fix |
 | --- | ---: | ---: |
-| Prepare Revolut payment | 9.69 s | 0.30 s |
-| Read Revolut checkout state | 1.20 s | 0.08 s |
-| Sync Revolut draft | 12.65 s | 0.42 s |
-| Sync cash draft | 0.32 s | 0.33 s |
+| Prepare Revolut payment | 9.69 s | 0.26 s |
+| Read Revolut checkout state | 1.20 s | 0.09 s |
+| Sync Revolut draft | 12.65 s | 0.40 s |
+| Sync cash draft | 0.32 s | 0.36 s |
 
-The cashier payment SELECT in checkout state took 0.25 ms and touched 28 shared buffers. Each executed order lookup used the primary key. A sale linked only by its historical UUID took 0.62 ms and touched 48 buffers. A linked refund took 0.47 ms and touched 77. Hiding the original sale denied the cashier that refund in 0.49 ms. With JIT enabled at default thresholds, the linked cases also finished in under 1 ms. The cashier and register tests exercise searches, direct reads, pagination, grant revocation, cash visibility and the missing refund UUID.
+The cashier payment SELECT in checkout state took 0.26 ms and touched 28 shared buffers. Each executed order lookup used the primary key. A sale linked only by its historical UUID took 0.37 ms and touched 48 buffers. A linked refund took 0.25 ms and touched 77. Hiding the original sale denied the cashier that refund in 0.25 ms. With JIT enabled at default thresholds, the linked cases also finished in under 1 ms. The cashier and register tests exercise searches, direct reads, pagination, grant revocation, cash visibility and the missing refund UUID.
+
+The query rewrite applies while compiling access checks. Separate cashier and superuser searches by order UUID, including a lazy order query passed to the payment search, used the order UUID and payment foreign-key indexes. With internal UUID fields restricted to administrators, the cashier could still read the authorized cash tender.
 
 ## Rechecking the plan on staging
 
