@@ -9,7 +9,7 @@ lazy; no user's changing register allowlist is cached in a rule expression.
 from odoo import api, models
 from odoo.exceptions import AccessError
 from odoo.osv.expression import AND, OR
-from odoo.tools import SQL
+from odoo.tools import Query, SQL
 
 
 _OPERATION_NATIVE_PATHS = (
@@ -42,24 +42,54 @@ class RevolutRegisterWorklistMixin(models.AbstractModel):
                     for length in range(1, len(names) + 1)
                 ])])
             domain = AND([domain, accessible])
-        if self._revolut_order_identity_paths:
-            orders = self.env["pos.order"].with_context(active_test=False)
-            readable = orders._search([])
-            for company in self.env.companies:
-                hidden = orders.sudo()._search(
-                    [("company_id", "=", company.id), ("uuid", "!=", False),
-                     ("id", "not in", readable)]
-                ).subselect(SQL.identifier("pos_order", "uuid"))
-                for prefix in self._revolut_order_identity_paths:
-                    # Legacy attempts may have no order/authority relation yet.
-                    # A matching persisted draft still supplies a native order
-                    # boundary; UUID knowledge must not bypass its read rule.
-                    visible = OR([
-                        [(prefix + "company_id", "!=", company.id)],
-                        [(prefix + "order_uuid", "not in", hidden)],
-                    ])
-                    domain = AND([domain, visible])
+        for prefix in self._revolut_order_identity_paths:
+            owner = self.browse().mapped(prefix[:-1]) if prefix else self
+            visible = owner._revolut_visible_order_identities()
+            domain = AND([domain, [(prefix + "id", "in", visible)]])
         return domain
+
+    def _revolut_visible_order_identities(self):
+        """Include legacy attempts only if their matching native draft is readable."""
+        orders = self.env["pos.order"].with_context(active_test=False)
+        existing = orders.sudo()._search([
+            ("company_id", "in", self.env.companies.ids), ("uuid", "!=", False),
+        ])
+        readable = orders._search([])
+        owners = self.sudo()._where_calc([], active_test=False)
+        owner_uuid = self._field_to_sql(owners.table, "order_uuid", owners)
+        owner_company = self._field_to_sql(owners.table, "company_id", owners)
+        candidate_fields = [orders._field_to_sql(existing.table, name, existing)
+                            for name in ("id", "company_id", "uuid")]
+        hidden = SQL(
+            """SELECT candidate.uuid FROM %s AS candidate
+                WHERE candidate.company_id = %s
+                  AND NOT EXISTS (SELECT 1 FROM %s AS readable WHERE readable.id = candidate.id)""",
+            existing.subselect(*candidate_fields),
+            owner_company, readable.subselect(SQL.identifier(readable.table, "id")),
+        )
+        visible = SQL("NOT EXISTS (%s AND candidate.uuid = %s)", hidden, owner_uuid)
+        if not self._fields["order_uuid"].required:
+            # Preserve the previous NOT IN behavior for an unassociated refund:
+            # NULL passes only when the set of hidden UUIDs is empty.
+            visible = SQL("CASE WHEN %s IS NULL THEN NOT EXISTS (%s) ELSE %s END",
+                          owner_uuid, hidden, visible)
+        owners.add_where(visible)
+        return owners
+
+    def _condition_to_sql(self, alias, fname, operator, value, query):
+        if (operator == "in" and isinstance(value, Query) and value._ids is None
+                and fname in ("pos_order_id", "pos_session_id", "pos_config_id",
+                              "authorization_id", "original_operation_id",
+                              "revolut_operation_id", "revolut_refund_operation_id")):
+            # Probe native visibility and grant queries with the current foreign
+            # key. Leave known ID lists to the ORM and apply the correlation
+            # outside the subquery so its LIMIT and OFFSET retain their meaning.
+            related_id = self._field_to_sql(alias, fname, query)
+            value = SQL(
+                "(SELECT visible.id FROM %s AS visible WHERE visible.id = %s)",
+                value.subselect(SQL.identifier(value.table, "id")), related_id,
+            )
+        return super()._condition_to_sql(alias, fname, operator, value, query)
 
     @api.model
     def _search(self, domain, offset=0, limit=None, order=None):

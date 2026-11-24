@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from odoo import Command, fields
 from odoo.addons.point_of_sale.tests.common import TestPointOfSaleCommon
-from odoo.exceptions import UserError
+from odoo.exceptions import AccessError, UserError
 from odoo.tests.common import tagged
 
 from .test_external_refunds import TestExternalRefunds
@@ -160,6 +160,57 @@ class TestExternalNativeStock(TestPointOfSaleCommon):
         self.assertEqual(self.env["stock.move"].search_count([]), before)
         self.assertEqual(native.payment_ids.amount, -12.34)
         self.assertEqual(refund.native_reconciliation_status, "native_completed")
+        self.request.assert_not_called()
+
+    def test_cashier_tender_lookup_checks_both_refund_orders_and_register_grant(self):
+        self._sale(kind="service")
+        refund = self._verified_refund()
+        returned = self._prepare(refund)
+        refund.action_validate_native_return()
+        charge, reimbursement = self.original.payment_ids, returned.payment_ids
+        self.assertEqual(charge.revolut_operation_id, self.source)
+        self.assertEqual(reimbursement.revolut_refund_operation_id, refund)
+
+        cash_order = self.env["pos.order"].create({
+            "session_id": self.session.id, "uuid": str(uuid4()), "state": "draft",
+            "amount_paid": 0, "amount_return": 0, "amount_total": 0, "amount_tax": 0,
+        })
+        cash = self.env["pos.payment"].create({
+            "pos_order_id": cash_order.id, "uuid": str(uuid4()),
+            "payment_method_id": self.cash_payment_method.id, "amount": 0,
+        })
+        cashier = self._mutation_actor(manager=False)
+        payments = self.env["pos.payment"].with_user(cashier)
+        orders = self.original | returned | cash_order
+        domain = [("pos_order_id", "in", orders.ids)]
+        self.assertEqual(payments.search(domain, order="id").ids, [charge.id, reimbursement.id, cash.id])
+
+        # Older attempts can retain the sale UUID without an order or cart
+        # authority link. Model that history after constructing the real refund.
+        self.env.flush_all()
+        self.env.cr.execute(
+            "UPDATE pos_revolut_payment_operation SET pos_order_id = NULL, authorization_id = NULL WHERE id = %s",
+            [self.source.id],
+        )
+        self.source.invalidate_recordset(["pos_order_id", "authorization_id"])
+        rule = self.env["ir.rule"].sudo().create({
+            "name": "Cashier cannot read the original sale",
+            "model_id": self.env["ir.model"]._get_id("pos.order"),
+            "domain_force": f"[('id', '!=', {self.original.id})] if user.id == {cashier.id} else []",
+        })
+        returned.with_user(cashier).check_access("read")
+        self.assertEqual(payments.search(domain, limit=1, order="id").ids, cash.ids)
+        self.assertFalse(payments.search([("pos_order_id", "=", returned.id)]))
+        with self.assertRaises(AccessError):
+            reimbursement.with_user(cashier).read(["amount"])
+
+        rule.unlink()
+        self.assertEqual(reimbursement.with_user(cashier).read(["amount"])[0]["id"], reimbursement.id)
+        self.pos_config.sudo().write({"revolut_user_ids": [Command.unlink(cashier.id)]})
+        self.assertEqual(payments.search(domain, order="id").ids, cash.ids)
+        for tender in (charge, reimbursement):
+            with self.assertRaises(AccessError):
+                tender.with_user(cashier).read(["amount"])
         self.request.assert_not_called()
 
     def test_serial_return_requires_original_selected_serial_and_prevents_reuse(self):

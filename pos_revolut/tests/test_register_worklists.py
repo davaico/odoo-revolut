@@ -176,6 +176,22 @@ class TestRevolutRegisterWorklists(TransactionCase):
         self.env.flush_all()
         self._assert_visibility(True, records)
 
+    def test_external_refund_without_return_identity_preserves_native_order_visibility(self):
+        external = self.env["pos.revolut.refund.operation"].sudo().create({
+            "origin": "external", "revolut_order_id": str(uuid4()),
+            "original_operation_id": self.operation.id, "pos_session_id": self.session.id,
+            "amount": 1, "amount_minor": 100, "currency_id": self.session.currency_id.id,
+        })
+        records = ((external, "amount"),)
+        self.assertFalse(external.order_uuid)
+        self._assert_visibility(True, records)
+        # With no return UUID, the existing visibility rule cannot exclude a
+        # match to an order with an identity hidden from this manager.
+        rule = self._deny("pos.order", self.return_draft)
+        self._assert_visibility(False, records)
+        rule.unlink()
+        self._assert_visibility(True, records)
+
     def test_orphan_lock_cannot_supply_register_authority(self):
         orphan = self.env["pos.revolut.order.lock"].sudo().create({
             "company_id": self.env.company.id, "order_uuid": str(uuid4()),
