@@ -1,9 +1,9 @@
 # Contributing
 
 Use `18.0` for the distributed Odoo 18 source and `19.0` for Odoo 19.
-Develop Odoo 18 changes on `staging/18-enterprise`; prepare sanitized release
-changes separately before opening a PR into `18.0`. Keep tickets, handoffs,
-private runtime evidence and agent instructions on the development branch.
+Develop Odoo 18 changes on `feat/v18` and Odoo 19 changes on `feat/v19`.
+Prepare sanitized release changes separately before opening a PR into the
+matching release branch. Keep private runtime evidence in restricted storage.
 Retain public guides and reusable tests in the release source. Keep
 equivalent payment and refund behavior across versions, adapting to each
 version's native APIs and testing relevant fixes on both.
