@@ -1,0 +1,77 @@
+name: POS Revolut smoke tests
+
+on:
+  push:
+    branches: &version_branches [main, '18.0', '19.0', feat/v18_rev, staging/18-enterprise]
+    paths: &smoke_paths
+      - 'pos_revolut/**'
+      - 'pos_revolut_restaurant_integration/**'
+      - 'docker/**'
+      - 'compose.yaml'
+      - '.github/compose.smoke.yaml'
+      - '.github/workflows/pos-revolut-ci.yml'
+  pull_request:
+    branches: *version_branches
+    paths: *smoke_paths
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Payment and refund smoke tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check POS payment states and refund amounts
+        run: >-
+          node --test pos_revolut/static/tests/revolut_payment_state.test.mjs
+          pos_revolut/static/tests/refund_allowances.test.mjs
+
+      - name: Install the addon and check mocked Revolut flows
+        shell: bash
+        run: |
+          version=$(python3 -c 'import ast; print(ast.literal_eval(open("pos_revolut/__manifest__.py").read())["version"].split(".")[0])')
+          case "$version" in
+            18) export ODOO_SMOKE_IMAGE=odoo:18.0-20261015@sha256:1b346c6f9145c79b802b711a554a141acbd0503ed6cd7d31cb3c938889c4cc36 ;;
+            19) export ODOO_SMOKE_IMAGE=odoo:19.0@sha256:144175ec0039d52daff1d79f7e51c9281ca3c98b96c830feb49d09764a9f5d7c ;;
+            *) echo "Unsupported Odoo version for smoke tests: $version" >&2; exit 1 ;;
+          esac
+
+          tests=(
+            /pos_revolut:TestRevolutPayment.test_success_is_idempotent_and_uses_currency_exponent
+            /pos_revolut:TestRevolutPayment.test_completed_intent_with_failed_payment_is_not_success
+            /pos_revolut:TestRevolutPayment.test_declined_payment_is_not_success
+            /pos_revolut:TestRevolutPayment.test_cancelled_intent_is_not_success
+            /pos_revolut:TestRevolutPayment.test_foreground_timeout_stays_unresolved
+            /pos_revolut:TestRevolutPayment.test_lost_create_response_is_interrupted_and_blocks_retry
+            /pos_revolut:TestRevolutPayment.test_safe_retry_retains_attempt_and_deduplicates_start
+            /pos_revolut:TestRevolutOrderSettlement.test_verified_payment_settles_once_and_stores_references
+            /pos_revolut:TestRevolutOrderSettlement.test_unsuccessful_attempts_cannot_settle_a_sale
+            /pos_revolut:TestRevolutRefund.test_full_refund_requires_verified_completion
+            /pos_revolut:TestRevolutRefund.test_repeated_partial_refunds_can_use_full_remaining_balance
+            /pos_revolut:TestRevolutPaymentMethod.test_pos_data_exports_no_revolut_credentials
+          )
+          test_tags=$(IFS=,; echo "${tests[*]}")
+          log="$RUNNER_TEMP/odoo-smoke.log"
+          compose=(docker compose -f compose.yaml -f .github/compose.smoke.yaml)
+
+          "${compose[@]}" pull --quiet
+          "${compose[@]}" up --detach --wait db
+          "${compose[@]}" run --rm --no-deps -T --entrypoint python3 odoo \
+            /opt/odoo-test-guard/verify_merchant_http_guard.py
+          "${compose[@]}" run --rm --no-deps -T odoo \
+            --database odoo_revolut_smoke --init pos_revolut --stop-after-init \
+            --workers 0 --max-cron-threads 0 --test-tags "$test_tags" \
+            --log-level warn --log-handler odoo.tests.result:INFO \
+            --log-handler odoo.addons.pos_revolut.tests:INFO 2>&1 | tee "$log"
+
+          if ! grep -Fq "0 failed, 0 error(s) of ${#tests[@]} tests" "$log" ||
+             grep -Eq 'odoo\.addons\.pos_revolut\.tests\.[^:]+: skipped ' "$log"; then
+            echo "Expected all ${#tests[@]} Odoo smoke tests to pass without skips." >&2
+            exit 1
+          fi
