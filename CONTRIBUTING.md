@@ -1,5 +1,8 @@
 # Contributing
 
+Develop Odoo 18 changes on `feat/v18` and Odoo 19 changes on `feat/v19`.
+Open release PRs into `18.0` and `19.0`, respectively.
+
 Keep integration code in `pos_revolut` and follow Odoo conventions. Keep changes focused on the addon, its tests or documentation. Read [Architecture](docs/architecture.md) before changing payment boundaries; discuss broad redesigns first.
 
 ## Development setup
