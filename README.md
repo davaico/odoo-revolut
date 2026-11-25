@@ -38,6 +38,10 @@ Use terminal-selected tips; Odoo-entered tips and Restaurant **Add tips after pa
 
 A timeout does not prove failure. Keep the original order and tender until reconciliation resolves uncertainty. Checkout requires verified payment details, the full balance, and native Odoo validation. See the [user guide](docs/user-guide.md) for recovery steps.
 
+## Maintained by Davai
+
+Built with Revolut and maintained by [Davai](https://davai.co), a Paris software studio. Need Odoo adapted to your point of sale or operations? See [ERP sur mesure et intégration Odoo](https://davai.co/fr/services/erp-sur-mesure).
+
 ## License
 
 [LGPL-3](LICENSE), with the referenced [GPL-3 terms](COPYING).
