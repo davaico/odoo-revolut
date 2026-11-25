@@ -9,6 +9,7 @@ htmlcov/
 coverage.xml
 
 # Local environments and tooling
+/docs/tickets/
 .env
 .env.*
 !.env.example
