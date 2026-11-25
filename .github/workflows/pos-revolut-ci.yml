@@ -2,7 +2,7 @@ name: POS Revolut smoke tests
 
 on:
   push:
-    branches: &version_branches [main, '18.0', '19.0', feat/v18_rev, staging/18-enterprise]
+    branches: &version_branches [main, '18.0', '19.0']
     paths: &smoke_paths
       - 'pos_revolut/**'
       - 'pos_revolut_restaurant_integration/**'
