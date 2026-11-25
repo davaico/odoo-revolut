@@ -1,8 +1,0 @@
-services:
-  odoo:
-    build: !reset null
-    image: ${ODOO_SMOKE_IMAGE}
-    environment:
-      PYTHONPATH: /opt/odoo-test-guard
-    volumes:
-      - ./docker:/opt/odoo-test-guard:ro
