@@ -6,10 +6,13 @@ direct reads with fresh native config/session/order queries. Query objects stay
 lazy; no user's changing register allowlist is cached in a rule expression.
 """
 
-from odoo import api, models
+from contextlib import contextmanager
+from contextvars import ContextVar
+
+from odoo import models
 from odoo.exceptions import AccessError
-from odoo.osv.expression import AND, OR
-from odoo.tools import SQL
+from odoo.osv.expression import AND, OR, expression
+from odoo.tools import Query, SQL
 
 
 _OPERATION_NATIVE_PATHS = (
@@ -18,6 +21,17 @@ _OPERATION_NATIVE_PATHS = (
     ("operation_id.pos_order_id", "pos.order", True),
     ("operation_id.authorization_id.pos_order_id", "pos.order", True),
 )
+
+_rule_cursor = ContextVar("revolut_register_rule_cursor", default=None)
+
+
+@contextmanager
+def _compiling_register_rules(cursor):
+    token = _rule_cursor.set(cursor)
+    try:
+        yield
+    finally:
+        _rule_cursor.reset(token)
 
 
 class RevolutRegisterWorklistMixin(models.AbstractModel):
@@ -42,30 +56,67 @@ class RevolutRegisterWorklistMixin(models.AbstractModel):
                     for length in range(1, len(names) + 1)
                 ])])
             domain = AND([domain, accessible])
-        if self._revolut_order_identity_paths:
-            orders = self.env["pos.order"].with_context(active_test=False)
-            readable = orders._search([])
-            for company in self.env.companies:
-                hidden = orders.sudo()._search(
-                    [("company_id", "=", company.id), ("uuid", "!=", False),
-                     ("id", "not in", readable)]
-                ).subselect(SQL.identifier("pos_order", "uuid"))
-                for prefix in self._revolut_order_identity_paths:
-                    # Legacy attempts may have no order/authority relation yet.
-                    # A matching persisted draft still supplies a native order
-                    # boundary; UUID knowledge must not bypass its read rule.
-                    visible = OR([
-                        [(prefix + "company_id", "!=", company.id)],
-                        [(prefix + "order_uuid", "not in", hidden)],
-                    ])
-                    domain = AND([domain, visible])
+        for prefix in self._revolut_order_identity_paths:
+            owner = self.browse().mapped(prefix[:-1]) if prefix else self
+            visible = owner._revolut_visible_order_identities()
+            domain = AND([domain, [(prefix + "id", "in", visible)]])
         return domain
 
-    @api.model
-    def _search(self, domain, offset=0, limit=None, order=None):
-        if not self.env.su:
-            domain = AND([domain, self._revolut_native_visibility_domain()])
-        return super()._search(domain, offset=offset, limit=limit, order=order)
+    def _revolut_visible_order_identities(self):
+        """Include legacy attempts only if their matching native draft is readable."""
+        orders = self.env["pos.order"].with_context(active_test=False)
+        all_orders = orders.sudo()
+        existing = all_orders._search([
+            ("company_id", "in", self.env.companies.ids), ("uuid", "!=", False),
+        ])
+        readable = orders._search([])
+        owner = self.sudo()
+        owners = owner._where_calc([], active_test=False)
+        owner_uuid = owner._field_to_sql(owners.table, "order_uuid", owners)
+        owner_company = owner._field_to_sql(owners.table, "company_id", owners)
+        candidate_fields = [all_orders._field_to_sql(existing.table, name, existing)
+                            for name in ("id", "company_id", "uuid")]
+        hidden = SQL(
+            """SELECT candidate.uuid FROM %s AS candidate
+                WHERE candidate.company_id = %s
+                  AND NOT EXISTS (SELECT 1 FROM %s AS readable WHERE readable.id = candidate.id)""",
+            existing.subselect(*candidate_fields),
+            owner_company, readable.subselect(SQL.identifier(readable.table, "id")),
+        )
+        visible = SQL("NOT EXISTS (%s AND candidate.uuid = %s)", hidden, owner_uuid)
+        if not self._fields["order_uuid"].required:
+            # Preserve the previous NOT IN behavior for an unassociated refund:
+            # NULL passes only when the set of hidden UUIDs is empty.
+            visible = SQL("CASE WHEN %s IS NULL THEN NOT EXISTS (%s) ELSE %s END",
+                          owner_uuid, hidden, visible)
+        owners.add_where(visible)
+        return owners
+
+    def _condition_to_sql(self, alias, fname, operator, value, query):
+        if (_rule_cursor.get() is self.env.cr and operator == "in"
+                and isinstance(value, Query) and value._ids is None
+                and fname in ("pos_order_id", "pos_session_id", "pos_config_id",
+                              "authorization_id", "original_operation_id",
+                              "revolut_operation_id", "revolut_refund_operation_id")):
+            # Probe native visibility and grant queries with the current foreign
+            # key. Leave known ID lists to the ORM and apply the correlation
+            # outside the subquery so its LIMIT and OFFSET retain their meaning.
+            related_id = self._field_to_sql(alias, fname, query)
+            value = SQL(
+                "(SELECT visible.id FROM %s AS visible WHERE visible.id = %s)",
+                value.subselect(SQL.identifier(value.table, "id")), related_id,
+            )
+        return super()._condition_to_sql(alias, fname, operator, value, query)
+
+    def _apply_ir_rules(self, query, mode="read"):
+        if self.env.su or mode != "read":
+            return super()._apply_ir_rules(query, mode)
+        # The caller's search domain was already compiled by _where_calc.
+        # Only scope access predicates; an ordinary search by order UUID
+        # should still start from the matching order and join to its tenders.
+        with _compiling_register_rules(self.env.cr):
+            super()._apply_ir_rules(query, mode)
+            expression(self._revolut_native_visibility_domain(), self, query=query)
 
     def _check_access(self, operation):
         result = super()._check_access(operation)
@@ -74,9 +125,10 @@ class RevolutRegisterWorklistMixin(models.AbstractModel):
         # Odoo 18's Python filtered_domain cannot evaluate Query/SQL values.
         # Evaluate the caller-derived visibility domain in SQL, with sudo only
         # for this final ID query; its native subqueries retain caller rules.
-        accessible = self.sudo().with_context(active_test=False).search(AND([
-            [("id", "in", self.ids)], self._revolut_native_visibility_domain(),
-        ]))
+        with _compiling_register_rules(self.env.cr):
+            accessible = self.sudo().with_context(active_test=False).search(AND([
+                [("id", "in", self.ids)], self._revolut_native_visibility_domain(),
+            ]))
         forbidden = self - accessible
         if forbidden:
             message = self.env._(
